@@ -229,7 +229,7 @@
 							{/if}
 						</details>
 					{/if}
-					<button class="btn-primary" onclick={() => downloadAndRelaunch()}>
+					<button class="btn btn-primary" onclick={() => downloadAndRelaunch()}>
 						{t('update.installBtn', $locale)}
 					</button>
 				{:else if $updateState.status === 'downloading'}
@@ -265,7 +265,7 @@
 						적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.
 					</span>
 				</div>
-				<button class="btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
+				<button class="btn btn-warning btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
 			</div>
 		{/if}
 	{/each}
@@ -407,17 +407,6 @@
 	}
 	.upd .btn-primary {
 		margin-top: var(--sp-8);
-		padding: var(--sp-6) var(--sp-16);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.upd .btn-primary:hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
 	}
 
 	/* ── schema ── */
@@ -450,16 +439,5 @@
 	}
 	.schema .btn-update {
 		align-self: flex-start;
-		background: var(--warning);
-		color: var(--bg);
-		border: none;
-		border-radius: var(--r-sm);
-		padding: var(--sp-4) var(--sp-12);
-		font-size: var(--fs-sm);
-		font-weight: var(--fw-semibold);
-		cursor: pointer;
-	}
-	.schema .btn-update:hover {
-		background: color-mix(in srgb, var(--warning) 80%, white);
 	}
 </style>

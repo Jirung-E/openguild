@@ -340,7 +340,7 @@
 				     누를 생각을 못 한 사람은 그대로 막힌다. -->
 				<p class="plugin-error" role="alert">
 					{pluginError}
-					<button class="btn-plain" onclick={refreshPlugins}
+					<button class="btn" onclick={refreshPlugins}
 						>{t('plugins.retry', $locale)}</button
 					>
 				</p>
@@ -352,23 +352,23 @@
 				     뿐이고, 앞으로 올 것을 묻지 않는 것은 자동 허용이 따로 맡는다. -->
 				<!-- DEV-400 / DEV-394: 더하기와 다시 읽기. 일괄 동의와는 다른 일이라 줄을 나눈다. -->
 				<div class="plugin-toolbar">
-					<button type="button" class="btn-go" disabled={sourceBusy} onclick={addPluginFolder}
+					<button type="button" class="btn btn-primary" disabled={sourceBusy} onclick={addPluginFolder}
 						>{t('plugins.add', $locale)}</button
 					>
-					<button type="button" class="btn-plain" disabled={reloading} onclick={reload}
+					<button type="button" class="btn" disabled={reloading} onclick={reload}
 						>{t('plugins.reload', $locale)}</button
 					>
 					<span class="plugin-auto-hint">{t('plugins.reloadHint', $locale)}</span>
 				</div>
 				<div class="plugin-bulk">
 					<button
-						class="btn-plain"
+						class="btn"
 						disabled={bulkBusy || pluginStatus.plugins.length === 0}
 						onclick={() => (confirmBulk = 'allowAll')}
 						>{t('plugins.allowAll', $locale)}</button
 					>
 					<button
-						class="btn-plain"
+						class="btn"
 						disabled={bulkBusy || pluginStatus.plugins.length === 0}
 						onclick={() => bulk('revokeAll')}>{t('plugins.revokeAll', $locale)}</button
 					>
@@ -568,7 +568,7 @@
 											{#if isDirty(p.name, i)}
 												<button
 													type="button"
-													class="btn-go"
+													class="btn btn-primary"
 													disabled={busy}
 													onclick={() => saveInput(p.name, i)}
 													aria-label={`${t('plugins.valueSave', $locale)} — ${i.label}`}
@@ -577,7 +577,7 @@
 											{:else if i.source === 'stored' && canManage}
 												<button
 													type="button"
-													class="btn-plain"
+													class="btn"
 													disabled={busy}
 													onclick={() => clearInput(p.name, i)}
 													aria-label={`${t('plugins.valueClear', $locale)} — ${i.label}`}
@@ -648,7 +648,7 @@
 								{#if p.granted}
 									<button
 										type="button"
-										class="btn-plain"
+										class="btn"
 										bind:this={pluginBtns[p.name]}
 										disabled={pluginBusy.includes(p.name)}
 										aria-label={`${t('plugins.revoke', $locale)} — ${p.name}`}
@@ -658,7 +658,7 @@
 								{:else}
 									<button
 										type="button"
-										class="btn-go"
+										class="btn btn-primary"
 										bind:this={pluginBtns[p.name]}
 										disabled={pluginBusy.includes(p.name)}
 										aria-label={`${t('plugins.allow', $locale)} — ${p.name}`}
@@ -671,7 +671,7 @@
 									{#if folder !== null}
 										<button
 											type="button"
-											class="btn-plain"
+											class="btn"
 											disabled={sourceBusy}
 											aria-label={`${t('plugins.stopUsing', $locale)} — ${p.name}`}
 											onclick={() => p.source && stopUsing(p.source, folder)}
@@ -746,7 +746,7 @@
 													<span class="sp-used">{t('plugins.inUse', $locale)}</span>
 													<button
 														type="button"
-														class="btn-plain"
+														class="btn"
 														disabled={sourceBusy}
 														aria-label={`${t('plugins.stopUsing', $locale)} — ${sp.name}`}
 														onclick={() => stopUsing(src.name, sp.folder)}
@@ -755,7 +755,7 @@
 												{:else}
 													<button
 														type="button"
-														class="btn-go"
+														class="btn btn-primary"
 														disabled={sourceBusy}
 														aria-label={`${t('plugins.use', $locale)} — ${sp.name}`}
 														onclick={() => usePlugin(src.name, sp.folder, sp.name)}
@@ -770,7 +770,7 @@
 								<div class="plugin-actions">
 									<button
 										type="button"
-										class="btn-plain"
+										class="btn"
 										disabled={sourceBusy}
 										aria-label={`${t('plugins.removeSource', $locale)} — ${src.name}`}
 										onclick={() => (confirmSource = src.name)}
@@ -1079,44 +1079,6 @@
 		display: flex;
 		gap: var(--sp-6);
 		margin-top: var(--sp-2);
-	}
-	/* DEV-382: 앱의 버튼 관용구를 따른다. 처음엔 `ghost` / `primary` 라고 썼는데
-	   이 저장소에 그런 클래스가 **없어서** 브라우저 기본 버튼이 그대로 나왔다 —
-	   회색 덩어리 하나만 다른 UI 와 따로 놀았다. 같은 페이지의 `.btn-check-upd`
-	   와 전역 `--btn-*` 토큰에 맞춘다. */
-	.btn-plain,
-	.btn-go {
-		padding: var(--sp-4) var(--sp-12);
-		border-radius: var(--r-md);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			color var(--dur-fast),
-			border-color var(--dur-fast);
-	}
-	.btn-plain {
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text-muted);
-	}
-	.btn-plain:hover:not(:disabled) {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
-	.btn-go {
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-	}
-	.btn-go:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-plain:disabled,
-	.btn-go:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 	.plugin-error {
 		color: var(--danger);

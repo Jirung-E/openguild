@@ -237,7 +237,7 @@
 			maxlength="200"
 			disabled={busy}
 		/>
-		<button class="btn save" onclick={save} disabled={busy}>{t('common.save', $locale)}</button>
+		<button class="btn btn-primary" onclick={save} disabled={busy}>{t('common.save', $locale)}</button>
 		<button class="btn" onclick={() => (editing = null)} disabled={busy}
 			>{t('common.cancel', $locale)}</button
 		>
@@ -293,7 +293,7 @@
 								<button class="btn" onclick={() => startEdit(r)} disabled={busy}
 									>{t('tags.edit', $locale)}</button
 								>
-								<button class="btn danger" onclick={() => (confirmDelete = r)} disabled={busy}
+								<button class="btn btn-danger" onclick={() => (confirmDelete = r)} disabled={busy}
 									>{t('tags.delete', $locale)}</button
 								>
 							{:else if isDefinableName(r.tag)}
@@ -454,32 +454,6 @@
 		gap: var(--sp-4);
 		padding-right: var(--sp-8);
 		flex: none;
-	}
-	.btn {
-		padding: var(--sp-4) var(--sp-12);
-		background: var(--bg-subtle);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.btn:hover:not(:disabled) {
-		background: var(--border);
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn.danger {
-		color: var(--danger);
-		border-color: var(--danger);
-	}
-	.btn.save {
-		background: var(--btn-primary-bg);
-		border-color: var(--btn-primary-border);
-		color: var(--btn-primary-text);
 	}
 	.intro {
 		margin: -0.6rem 0 var(--sp-16);

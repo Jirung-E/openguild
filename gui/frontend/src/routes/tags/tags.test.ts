@@ -63,7 +63,7 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		const btns = row.querySelectorAll('.row-actions button');
 		expect(btns.length).toBe(1);
 		await fireEvent.click(btns[0]);
-		const save = row.querySelector('.editor .btn.save') as HTMLButtonElement;
+		const save = row.querySelector('.editor .btn.btn-primary') as HTMLButtonElement;
 		// 이름은 이미 정해져 있다 — 입력란을 또 받지 않는다.
 		expect(row.querySelector('.editor .slug')).toBeNull();
 		await fireEvent.click(save);
@@ -76,7 +76,7 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		const btn = rowOf('한글태그').querySelector('.row-actions button') as HTMLButtonElement;
 		expect(btn).not.toBeNull();
 		await fireEvent.click(btn);
-		await fireEvent.click(rowOf('한글태그').querySelector('.editor .btn.save') as HTMLButtonElement);
+		await fireEvent.click(rowOf('한글태그').querySelector('.editor .btn.btn-primary') as HTMLButtonElement);
 		expect(upsertTagDef).toHaveBeenCalledWith(expect.objectContaining({ slug: '한글태그' }));
 	});
 
@@ -90,7 +90,7 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		await fireEvent.click(screen.getByText('+ 새 태그'));
 		const slug = document.querySelector('.tag-item.new .slug') as HTMLInputElement;
 		await fireEvent.input(slug, { target: { value: 'needs-review' } });
-		await fireEvent.click(document.querySelector('.tag-item.new .btn.save') as HTMLButtonElement);
+		await fireEvent.click(document.querySelector('.tag-item.new .btn.btn-primary') as HTMLButtonElement);
 		expect(upsertTagDef).toHaveBeenCalledWith(expect.objectContaining({ slug: 'needs-review' }));
 	});
 });

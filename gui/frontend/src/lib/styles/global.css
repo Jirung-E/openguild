@@ -591,3 +591,88 @@ input[type='checkbox']:disabled {
 	background: var(--accent);
 	color: var(--btn-primary-text);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   DEV-428: 버튼 — 공통 부품 하나.
+
+   예전엔 같은 "취소" 가 화면마다 따로 정의돼 있었다(`.btn-cancel` 8곳, `.btn-save` 6곳,
+   `.btn-yes` · `.btn-no` · `.btn-edit` … 20종). 글자 크기(0.8 · 0.825 · 0.85rem), 모서리,
+   안쪽 여백이 조금씩 달라서 "버튼이 띄엄띄엄 놓인다" 같은 보고가 나왔다.
+
+   쓰는 법 — 종류는 색으로만 가른다:
+     <button class="btn">취소</button>                 보조 (기본)
+     <button class="btn btn-primary">저장</button>     주 동작 — 한 화면에 하나 (초록)
+     <button class="btn btn-danger">삭제</button>      되돌릴 수 없는 일 (빨강)
+     <button class="btn btn-warning">복원</button>     조심할 일 (노랑)
+     <button class="btn btn-quiet">…</button>          테두리 없는 조용한 버튼
+     <button class="btn btn-sm">…</button>             작은 크기 (목록 머리의 + 신규 등)
+
+   배치(margin-left: auto 등)는 각 화면이 정한다 — 이 클래스는 모양만.
+   `line-height` 를 **일부러 안 정한다** — 본문(1.6)을 물려받던 예전 버튼들과 높이를 맞춘다.
+   설명은 도서관 [[BOOK-009]] 디자인 언어.
+   ───────────────────────────────────────────────────────────── */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--sp-4);
+	padding: var(--sp-6) var(--sp-12);
+	font-size: var(--fs-sm);
+	border-radius: var(--r-md);
+	border: var(--bw) solid var(--border);
+	background: transparent;
+	color: var(--text);
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		background var(--dur-fast),
+		border-color var(--dur-fast),
+		color var(--dur-fast);
+}
+.btn:hover:not(:disabled) {
+	background: var(--bg-subtle);
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.btn:focus-visible {
+	outline: none;
+	box-shadow: var(--ring);
+}
+.btn-primary {
+	background: var(--btn-primary-bg);
+	border-color: var(--btn-primary-border);
+	color: var(--btn-primary-text);
+}
+.btn-primary:hover:not(:disabled) {
+	background: var(--btn-primary-bg-hover);
+	border-color: var(--btn-primary-border-hover);
+}
+.btn-danger {
+	color: var(--danger);
+	border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+.btn-danger:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+.btn-warning {
+	background: var(--btn-warning-bg);
+	border-color: var(--btn-warning-border);
+	color: var(--btn-warning-text);
+}
+.btn-warning:hover:not(:disabled) {
+	background: var(--btn-warning-bg-hover);
+}
+.btn-quiet {
+	border-color: transparent;
+	color: var(--text-muted);
+}
+.btn-quiet:hover:not(:disabled) {
+	color: var(--text);
+}
+.btn-sm {
+	padding: var(--sp-2) var(--sp-8);
+	font-size: var(--fs-xs);
+	border-radius: var(--r-sm);
+}

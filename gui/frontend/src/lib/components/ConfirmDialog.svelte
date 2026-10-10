@@ -106,10 +106,10 @@
 			<h3 class="modal-title" id="{uid}-title">{displayTitle}</h3>
 			<p class="modal-msg" id="{uid}-msg">{message}</p>
 			<div class="modal-actions">
-				<button class="btn-no" data-autofocus={danger ? '' : undefined} onclick={close}>
+				<button class="btn" data-autofocus={danger ? '' : undefined} onclick={close}>
 					{displayCancel}
 				</button>
-				<button class="btn-yes" class:danger data-autofocus={danger ? undefined : ''} onclick={confirm}>
+				<button class="btn" class:btn-primary={!danger} class:btn-danger={danger} data-autofocus={danger ? undefined : ''} onclick={confirm}>
 					{displayConfirm}
 				</button>
 			</div>
@@ -162,38 +162,5 @@
 		display: flex;
 		gap: var(--sp-8);
 		justify-content: flex-end;
-	}
-	.btn-no {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-no:hover {
-		background: var(--bg-subtle);
-	}
-	.btn-yes {
-		padding: var(--sp-6) var(--sp-16);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-yes:hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-yes.danger {
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
-		border-color: var(--danger);
-		color: var(--danger);
-	}
-	.btn-yes.danger:hover {
-		background: color-mix(in srgb, var(--danger) 32%, transparent);
 	}
 </style>

@@ -765,8 +765,8 @@
 			     쓰고, 그쪽은 `?from=` fallback 이 필요하다(BUG-015 / DEV-011). -->
 			{#if !editMode}
 				<div class="top-actions">
-					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-					<button class="btn-delete" onclick={openDeleteModal}
+					<button class="btn" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn btn-danger" onclick={openDeleteModal}
 						><Icon name="trash" /> {t('detail.delete', $locale)}</button
 					>
 				</div>
@@ -928,10 +928,10 @@
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 
 				<div class="edit-actions">
-					<button class="btn-save" onclick={() => saveEdit()} disabled={saving}>
+					<button class="btn btn-primary" onclick={() => saveEdit()} disabled={saving}>
 						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}
+					<button class="btn" onclick={exitEditMode} disabled={saving}
 						>{t('common.cancel', $locale)}</button
 					>
 				</div>
@@ -1451,11 +1451,11 @@
 				</p>
 			{/if}
 			<div class="del-actions">
-				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
+				<button class="btn btn-danger" onclick={doChangeType} disabled={changingType}>
 					{changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
 				</button>
 				<button
-					class="btn-del-no"
+					class="btn"
 					onclick={() => (confirmTypeChange = null)}
 					disabled={changingType}
 				>
@@ -1525,11 +1525,11 @@
 			<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
 			<!-- 버튼 순서: [취소][삭제] — ConfirmDialog(캠페인 상세 등)와 통일. -->
 			<div class="del-actions">
-				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
+				<button class="btn" onclick={() => (deleteModal = false)} disabled={deleting}
 					>{t('common.cancel', $locale)}</button
 				>
 				<button
-					class="btn-del-yes"
+					class="btn btn-danger"
 					onclick={confirmDelete}
 					disabled={deleting}
 					data-testid="confirm-delete"
@@ -1595,44 +1595,6 @@
 		   `flex-wrap: wrap` 이라 pill 이 많아 줄이 넘어가면 버튼도 따라
 		   내려가는데, 그때도 오른쪽 끝에 붙는다. */
 		margin-left: auto;
-	}
-
-	.btn-edit {
-		padding: var(--sp-4) var(--sp-16);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		background: var(--bg-subtle);
-		color: var(--text-muted);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			color var(--dur-fast);
-	}
-	.btn-edit:hover {
-		background: var(--border);
-		color: var(--text);
-	}
-
-	.btn-delete {
-		/* BUG-254 후속: 아이콘 + 글자 버튼의 세로 정렬.
-		   `Icon` 은 인라인 SVG 라 기본적으로 글자 **기준선** 위에 얹힌다 —
-		   아이콘만 위로 떠 보였다(실측 200% 에서 2px). flex 로 두 자식의
-		   박스를 중앙에 맞추면 어긋남이 사라진다(실측 0.23px). */
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3em;
-		padding: var(--sp-4) var(--sp-16);
-		border: var(--bw) solid color-mix(in srgb, var(--danger) 35%, transparent);
-		border-radius: var(--r-md);
-		background: transparent;
-		color: var(--danger);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-		transition: background var(--dur-fast);
-	}
-	.btn-delete:hover {
-		background: rgba(233, 79, 79, 0.1);
 	}
 
 	.state-msg {
@@ -1888,35 +1850,6 @@
 		display: flex;
 		gap: var(--sp-8);
 		margin-top: var(--sp-8);
-	}
-	.btn-save {
-		padding: var(--sp-6) var(--sp-16);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-save:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.btn-cancel {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 
 	.section-head {
@@ -2374,34 +2307,6 @@
 		display: flex;
 		gap: var(--sp-8);
 		justify-content: flex-end;
-	}
-	.btn-del-yes {
-		padding: var(--sp-6) var(--sp-16);
-		background: rgba(233, 79, 79, 0.15);
-		border: var(--bw) solid var(--danger);
-		border-radius: var(--r-md);
-		color: var(--danger);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-del-yes:hover:not(:disabled) {
-		background: rgba(233, 79, 79, 0.25);
-	}
-	.btn-del-yes:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.btn-del-no {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-del-no:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 
 	/* DEV-109/123/127: 우하단 floating 점프 cluster — 위/댓글/메모. */

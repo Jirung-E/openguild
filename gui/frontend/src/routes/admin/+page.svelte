@@ -331,14 +331,14 @@
 				<div class="section-header">
 					<h2>{t('admin.backupsHeading', $locale)}</h2>
 					<div class="actions">
-						<button onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
+						<button class="btn" onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
 						{#if adminApi.canRestoreFromFile()}
 							<!-- DEV-436: 길드 밖에 둔 백업 파일(backup-archive 가 쌓아 둔 것 등)로 복원. -->
-							<button onclick={onPickBackupFile} disabled={busy}
+							<button class="btn" onclick={onPickBackupFile} disabled={busy}
 								>{t('admin.restoreFromFile', $locale)}</button
 							>
 						{/if}
-						<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
+						<button class="btn" onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
 					</div>
 				</div>
 
@@ -364,11 +364,11 @@
 									<td><code>{formatTimestamp(s.timestamp)}</code></td>
 									<td>{formatSize(s.size_bytes)}</td>
 									<td class="snap-actions">
-										<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
+										<button class="btn btn-warning" onclick={() => onRestore(s.timestamp)} disabled={busy}
 											>{t('admin.restore', $locale)}</button
 										>
 										<button
-											class="del-snap"
+											class="btn btn-danger"
 											title={t('admin.deleteThisBackup', $locale)}
 											onclick={() => (confirmDeleteSnap = s.timestamp)}
 											disabled={busy}>{t('detail.delete', $locale)}</button
@@ -386,8 +386,8 @@
 				<div class="section-header">
 					<h2>{t('admin.driftHeading', $locale)}</h2>
 					<div class="actions">
-						<button onclick={onCheckDrift} disabled={busy}>{t('admin.check', $locale)}</button>
-						<button onclick={onReindex} disabled={busy}>Reindex</button>
+						<button class="btn" onclick={onCheckDrift} disabled={busy}>{t('admin.check', $locale)}</button>
+						<button class="btn" onclick={onReindex} disabled={busy}>Reindex</button>
 					</div>
 				</div>
 
@@ -454,8 +454,8 @@
 				<div class="section-header">
 					<h2>{t('admin.maintHeading', $locale)}</h2>
 					<div class="actions">
-						<button onclick={onVacuum} disabled={busy}>{t('admin.vacuum', $locale)}</button>
-						<button onclick={onJournalTail} disabled={busy}>{t('admin.recentOps', $locale)}</button>
+						<button class="btn" onclick={onVacuum} disabled={busy}>{t('admin.vacuum', $locale)}</button>
+						<button class="btn" onclick={onJournalTail} disabled={busy}>{t('admin.recentOps', $locale)}</button>
 					</div>
 				</div>
 
@@ -666,33 +666,6 @@
 		flex-wrap: wrap;
 		gap: var(--sp-8);
 	}
-	button {
-		padding: var(--sp-6) var(--sp-16);
-		background: var(--bg-subtle);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-		transition: background var(--dur-fast);
-	}
-	button:hover:not(:disabled) {
-		background: var(--border);
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	/* DEV-074 fix6: --btn-warning-* 토큰으로 통일. */
-	button.restore {
-		background: var(--btn-warning-bg);
-		border-color: var(--btn-warning-border);
-		color: var(--btn-warning-text);
-	}
-	button.restore:hover:not(:disabled) {
-		background: var(--btn-warning-bg-hover);
-	}
-	/* DEV-175: 백업 삭제 버튼. */
 	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 행 구분선
 	   어긋남). 일반 셀 + 버튼 간격은 margin. */
 	.snap-actions {
@@ -706,13 +679,6 @@
 	   width:100% 라도 내용 최소폭 아래로 못 줄어들어 **표가 섹션 밖으로** 나갔다
 	   (그때 tr 아래 테두리가 같이 나가 '구분선이 삐져나온' 것처럼 보인다).
 	   좁은 화면에선 버튼이 쌓이도록 풀고 셀 여백도 줄인다. */
-	button.del-snap {
-		color: var(--danger);
-		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-	}
-	button.del-snap:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--danger) 14%, transparent);
-	}
 	table {
 		width: 100%;
 		border-collapse: collapse;

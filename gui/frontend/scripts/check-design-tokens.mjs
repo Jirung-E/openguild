@@ -15,6 +15,8 @@
 //   - 위로 떠 있는 그림자 `0 Ypx Bpx …` (Y > 0)
 //   - transition · animation 의 0.45s 이하 시간 (무한 반복 애니메이션은 제외)
 //   - font-weight 의 숫자 · bold, line-height 의 단위 없는 1 ~ 1.7
+//   - [[DEV-428]] 컴포넌트에서 `.btn` · `.btn-*` 의 **모양**(배경 · 테두리 · 글자색 · 여백 · 글자 크기 ·
+//     모서리)을 다시 정하는 것 — 버튼 모양은 global.css 의 `.btn` 하나다. 배치(margin · align-self 등)는 된다.
 //
 // **검사하지 않는 것**: px · em(부모를 따라 줄어드는 자리) · var() · calc() 안의 값,
 // `lib/styles/global.css`(토큰의 정본).
@@ -32,6 +34,11 @@ const CANON = 'lib/styles/global.css';
 const OK = '\u0000OK\u0000';
 
 const violations = [];
+
+/** 상단 바의 아이콘 버튼(⋯ · ⚙ · 다시 색인)은 창 크롬이라 `.btn` 이 아니다. */
+const BTN_ALLOW = new Set(['lib/components/Nav.svelte']);
+const BTN_SEL = /\.btn(-[\w-]+)?(?![\w-])/;
+const BTN_LOOK = /^(background(-color)?|border(-[a-z]+)*|color|padding(-[a-z]+)?|font-size|border-radius)$/;
 
 /** 주석을 지우되 `token-ok` 표시는 자리표시자로 남긴다. */
 function prepare(css) {
@@ -90,6 +97,20 @@ const RULES = [
 function scan(rel, css) {
 	if (rel === CANON) return;
 	const clean = prepare(css);
+	if (!BTN_ALLOW.has(rel)) {
+		// 선택자 = 앞 중괄호 뒤부터 이 `{` 까지. (`}` 를 소비하는 패턴이면 규칙이 하나 걸러 빠진다.)
+		for (const m of clean.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+			const sel = m[1].trim();
+			if (!BTN_SEL.test(sel) || m[2].includes(OK)) continue;
+			for (const d of m[2].split(';')) {
+				const prop = d.split(':')[0].trim();
+				if (BTN_LOOK.test(prop)) {
+					violations.push(`${rel}  ${sel.replace(/\s+/g, ' ')} { ${prop} }  → 버튼 모양은 global.css 의 .btn`);
+					break;
+				}
+			}
+		}
+	}
 	// 선언 하나 = `이름: 값;` 그리고 같은 줄의 나머지(뒤에 붙인 token-ok 표시를 보려고).
 	for (const m of clean.matchAll(/(?<![-\w])([a-z-]+)\s*:\s*([^;{}]*);([^\n]*)/g)) {
 		const [, prop, value, tail] = m;

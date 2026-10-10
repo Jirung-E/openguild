@@ -367,7 +367,7 @@
 			<aside class="sidebar">
 				<div class="sidebar-head">
 					<h2>{t('rules.listHeading', $locale)}</h2>
-					<button class="btn-new" onclick={openCreate} title={t('rules.newRule', $locale)}
+					<button class="btn btn-sm btn-new" onclick={openCreate} title={t('rules.newRule', $locale)}
 						>{t('rules.newBtn', $locale)}</button
 					>
 				</div>
@@ -442,8 +442,8 @@
 						/>
 						{#if createError}<p class="err">{createError}</p>{/if}
 						<div class="actions">
-							<button class="btn-save" onclick={submitCreate}>{t('rules.create', $locale)}</button>
-							<button class="btn-cancel" onclick={cancelCreate}
+							<button class="btn btn-primary" onclick={submitCreate}>{t('rules.create', $locale)}</button>
+							<button class="btn" onclick={cancelCreate}
 								>{t('common.cancel', $locale)}</button
 							>
 						</div>
@@ -469,13 +469,13 @@
 						<h1 class="slug-title"># {selectedSlug}</h1>
 						{#if !editMode}
 							<div class="top-actions">
-								<button class="btn-edit" onclick={enterEdit}>
+								<button class="btn" onclick={enterEdit}>
 									{selectedContent && selectedContent.trim()
 										? `✎ ${t('detail.edit', $locale)}`
 										: t('rules.writeBtn', $locale)}
 								</button>
-								<button class="btn-edit" onclick={openRename}>{t('rules.rename', $locale)}</button>
-								<button class="btn-edit danger" onclick={askDeleteSelected}
+								<button class="btn" onclick={openRename}>{t('rules.rename', $locale)}</button>
+								<button class="btn btn-danger" onclick={askDeleteSelected}
 									>{t('detail.delete', $locale)}</button
 								>
 							</div>
@@ -520,10 +520,10 @@
 							/>
 							{#if renameError}<p class="err">{renameError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitRename}
+								<button class="btn btn-primary" onclick={submitRename}
 									>{t('common.change', $locale)}</button
 								>
-								<button class="btn-cancel" onclick={cancelRename}
+								<button class="btn" onclick={cancelRename}
 									>{t('common.cancel', $locale)}</button
 								>
 							</div>
@@ -555,10 +555,10 @@
 								/>
 							</div>
 							<div class="actions">
-								<button class="btn-save" onclick={() => save()} disabled={saving}>
+								<button class="btn btn-primary" onclick={() => save()} disabled={saving}>
 									{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>
+								<button class="btn" onclick={cancelEdit} disabled={saving}>
 									{t('common.cancel', $locale)}
 								</button>
 							</div>
@@ -676,17 +676,6 @@
 	}
 	.btn-new {
 		margin-left: auto;
-		padding: var(--sp-2) var(--sp-8);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text-muted);
-		font-size: var(--fs-xs);
-		cursor: pointer;
-	}
-	.btn-new:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
 	}
 	.empty-list {
 		color: var(--text-muted);
@@ -828,25 +817,6 @@
 		display: flex;
 		gap: var(--sp-6);
 	}
-	.btn-edit {
-		padding: var(--sp-4) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.btn-edit:hover {
-		background: var(--bg-subtle);
-	}
-	.btn-edit.danger {
-		color: var(--danger);
-		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-	}
-	.btn-edit.danger:hover {
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
-	}
 
 	.modal-inline {
 		display: flex;
@@ -915,34 +885,5 @@
 		display: flex;
 		gap: var(--sp-6);
 		margin-top: var(--sp-8);
-	}
-	.btn-save {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-save:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-cancel {
-		padding: var(--sp-6) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 </style>

@@ -121,10 +121,10 @@
 			{#if error}<div class="error">{error}</div>{/if}
 
 			<div class="actions">
-				<button type="submit" class="btn-create" disabled={saving || !title.trim()}>
+				<button type="submit" class="btn btn-primary" disabled={saving || !title.trim()}>
 					{saving ? t('ncm.creating', $locale) : t('ncm.create', $locale)}
 				</button>
-				<button type="button" class="btn-cancel" onclick={onclose} disabled={saving}>
+				<button type="button" class="btn" onclick={onclose} disabled={saving}>
 					{t('common.cancel', $locale)}
 				</button>
 			</div>
@@ -248,35 +248,5 @@
 	.actions {
 		display: flex;
 		gap: var(--sp-8);
-	}
-	.btn-create {
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-		border-radius: var(--r-md);
-		padding: var(--sp-6) var(--sp-16);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-create:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-cancel {
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text-muted);
-		border-radius: var(--r-md);
-		padding: var(--sp-6) var(--sp-16);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
-	}
-	.btn-create:disabled,
-	.btn-cancel:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 </style>

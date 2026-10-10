@@ -146,15 +146,15 @@
 			{/if}
 
 			<div class="modal-actions">
-				<button class="btn-no" onclick={() => onclose?.()}
+				<button class="btn" onclick={() => onclose?.()}
 					>{t('editConflict.keepEditing', $locale)}</button
 				>
 				{#if conflict.reason === 'text'}
-					<button class="btn-yes" disabled={!allChosen} onclick={resolve}
+					<button class="btn btn-primary" disabled={!allChosen} onclick={resolve}
 						>{t('editConflict.apply', $locale)}</button
 					>
 				{:else if conflict.reason === 'renamed' && conflict.new_id}
-					<button class="btn-yes" onclick={openNew}
+					<button class="btn btn-primary" onclick={openNew}
 						>{t('editConflict.openNew', $locale).replace('{id}', conflict.new_id)}</button
 					>
 				{/if}
@@ -278,34 +278,5 @@
 		display: flex;
 		gap: var(--sp-8);
 		justify-content: flex-end;
-	}
-	.btn-no {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-no:hover {
-		background: var(--bg-subtle);
-	}
-	.btn-yes {
-		padding: var(--sp-6) var(--sp-16);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-yes:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.btn-yes:not(:disabled):hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
 	}
 </style>

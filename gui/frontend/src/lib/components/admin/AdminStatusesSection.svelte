@@ -340,10 +340,10 @@
 			</div>
 			<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}
+				<button class="btn btn-primary" onclick={doCreate} disabled={busy}
 					>{t('common.add', $locale)}</button
 				>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}
+				<button class="btn" onclick={() => (creating = false)} disabled={busy}
 					>{t('common.cancel', $locale)}</button
 				>
 			</div>
@@ -367,10 +367,10 @@
 				)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}
+				<button class="btn btn-danger" onclick={doDelete} disabled={busy}
 					>{t('detail.delete', $locale)}</button
 				>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}
+				<button class="btn" onclick={() => (confirmDelete = null)} disabled={busy}
 					>{t('common.cancel', $locale)}</button
 				>
 			</div>
@@ -611,38 +611,6 @@
 		display: flex;
 		gap: var(--sp-8);
 		justify-content: flex-end;
-	}
-	.btn-yes {
-		padding: var(--sp-6) var(--sp-16);
-		background: rgba(31, 111, 235, 0.18);
-		border: var(--bw) solid var(--accent);
-		border-radius: var(--r-md);
-		color: var(--accent);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-yes:hover:not(:disabled) {
-		background: rgba(31, 111, 235, 0.32);
-	}
-	.btn-yes.danger {
-		background: rgba(233, 79, 79, 0.18);
-		border-color: var(--danger);
-		color: var(--danger);
-	}
-	.btn-yes.danger:hover:not(:disabled) {
-		background: rgba(233, 79, 79, 0.32);
-	}
-	.btn-no {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-no:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 	/* BUG-275: '완료로 침' 칸 — 표시는 있었는데 스타일이 없었다. */
 	.done-mark {

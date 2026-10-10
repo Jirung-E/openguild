@@ -512,12 +512,12 @@
 			{#if !editMode}
 				<div class="top-actions">
 					<!-- DEV-087: 배너 이미지. BUG-255 전까지 Tauri 전용이었다. -->
-					<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}
+					<button class="btn" onclick={pickBanner} disabled={bannerBusy}
 						><Icon name="image" /> {t('campaign.banner', $locale)}
 					</button>
 					{#if detail.image_path}
 						<button
-							class="btn-edit"
+							class="btn"
 							onclick={removeBanner}
 							disabled={bannerBusy}
 							title={t('campaign.bannerRemove', $locale)}
@@ -525,8 +525,8 @@
 							<Icon name="image" /> ×
 						</button>
 					{/if}
-					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-					<button class="btn-delete" onclick={askDeleteCampaign}
+					<button class="btn" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn btn-danger" onclick={askDeleteCampaign}
 						><Icon name="trash" /> {t('detail.delete', $locale)}</button
 					>
 				</div>
@@ -618,13 +618,13 @@
 				</div>
 				<div class="actions">
 					<button
-						class="btn-save"
+						class="btn btn-primary"
 						onclick={() => saveEdit()}
 						disabled={saving || !titleEdit.trim()}
 					>
 						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}
+					<button class="btn" onclick={exitEditMode} disabled={saving}
 						>{t('common.cancel', $locale)}</button
 					>
 				</div>
@@ -915,35 +915,8 @@
 		gap: var(--sp-8);
 		margin-bottom: var(--sp-16);
 	}
-	.btn-delete,
-	.btn-edit {
-		/* BUG-254 후속: 아이콘 + 글자 버튼의 세로 정렬.
-		   `Icon` 은 인라인 SVG 라 기본적으로 글자 **기준선** 위에 얹힌다 —
-		   아이콘만 위로 떠 보였다(실측 200% 에서 2px). flex 로 두 자식의
-		   박스를 중앙에 맞추면 어긋남이 사라진다(실측 0.23px). */
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3em;
-		font-size: var(--fs-sm);
-		padding: var(--sp-4) var(--sp-12);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		font-family: inherit;
-	}
-	.btn-edit:hover {
-		background: var(--bg-subtle);
-	}
 	/* BUG-035: 단독 margin-left 제거 — top-actions wrapper 가 push right. */
-	.btn-delete {
-		color: var(--danger);
-		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
-	}
-	.btn-delete:hover {
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
-	}
+
 	.top-actions {
 		display: flex;
 		gap: var(--sp-6);
@@ -1097,32 +1070,6 @@
 		display: flex;
 		gap: var(--sp-6);
 		margin-top: var(--sp-8);
-	}
-	.btn-save {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-save:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-cancel {
-		padding: var(--sp-6) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
 	}
 
 	/* BUG-021: textarea 는 CodeMirror 로 교체. CSS 미사용 selector 정리. */

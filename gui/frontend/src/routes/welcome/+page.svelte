@@ -416,7 +416,7 @@
 		<section class="picker">
 			<!-- DEV-302: 라벨 문자열에 섞여 있던 📁 를 아이콘으로 분리 —
 			     번역 문구와 아이콘은 관심사가 다르다. -->
-			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
+			<button class="btn btn-primary btn-pick" onclick={pickFolder} disabled={pickRunning}>
 				{#if !pickRunning}<Icon name="folder" size={13} />{/if}
 				{pickRunning ? t('welcome.opening', $locale) : t('welcome.pickFolder', $locale)}
 			</button>
@@ -444,12 +444,12 @@
 					bind:value={remoteInput}
 					aria-label={t('welcome.remoteAria', $locale)}
 				/>
-				<button class="btn-pick alt" onclick={checkRemote} disabled={!remoteInput.trim()}>
+				<button class="btn btn-pick" onclick={checkRemote} disabled={!remoteInput.trim()}>
 					{remoteCheckState === 'checking'
 						? t('welcome.checking', $locale)
 						: t('welcome.checkConn', $locale)}
 				</button>
-				<button class="btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
+				<button class="btn btn-primary btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
 					{t('welcome.connect', $locale)}
 				</button>
 			</div>
@@ -486,10 +486,10 @@
 				<p class="err">{initErr}</p>
 			{/if}
 			<div class="uninit-actions">
-				<button class="btn-yes" onclick={initUninit} disabled={initRunning}>
+				<button class="btn btn-primary" onclick={initUninit} disabled={initRunning}>
 					{initRunning ? t('welcome.initializing', $locale) : t('welcome.initAndOpen', $locale)}
 				</button>
-				<button class="btn-no" onclick={declineUninit} disabled={initRunning}
+				<button class="btn" onclick={declineUninit} disabled={initRunning}
 					>{t('common.no', $locale)}</button
 				>
 			</div>
@@ -596,8 +596,8 @@
 			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
 			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doClear}>{t('welcome.clearConfirm', $locale)}</button>
-				<button class="btn-no" onclick={cancelClear}>{t('common.cancel', $locale)}</button>
+				<button class="btn btn-danger" onclick={doClear}>{t('welcome.clearConfirm', $locale)}</button>
+				<button class="btn" onclick={cancelClear}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -620,8 +620,8 @@
 					: t('welcome.removeNoteRemote', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doRemove}>{t('welcome.remove', $locale)}</button>
-				<button class="btn-no" onclick={cancelRemove}>{t('common.cancel', $locale)}</button>
+				<button class="btn btn-danger" onclick={doRemove}>{t('welcome.remove', $locale)}</button>
+				<button class="btn" onclick={cancelRemove}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -844,27 +844,7 @@
 		border-radius: var(--r-lg);
 	}
 	.btn-pick {
-		/* DEV-302: 아이콘 + 라벨 기준선 정렬. */
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4em;
-		padding: var(--sp-8) var(--sp-16);
-		background: var(--accent-strong);
-		border: var(--bw) solid var(--accent);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		font-weight: var(--fw-medium);
-		cursor: pointer;
-		transition: background var(--dur-fast);
 		flex: 0 0 auto;
-	}
-	.btn-pick:hover:not(:disabled) {
-		background: var(--accent);
-	}
-	.btn-pick:disabled {
-		opacity: 0.6;
-		cursor: default;
 	}
 	.picker-hint {
 		flex: 1 1 auto;
@@ -897,14 +877,6 @@
 		background: var(--bg);
 		color: var(--text);
 		font-size: var(--fs-md);
-	}
-	.btn-pick.alt {
-		background: transparent;
-		color: var(--text);
-		border-color: var(--border);
-	}
-	.btn-pick.alt:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 	.remote-check {
 		flex: 1 0 100%;
@@ -1038,29 +1010,5 @@
 		display: flex;
 		gap: var(--sp-8);
 		justify-content: flex-end;
-	}
-	.btn-yes {
-		padding: var(--sp-6) var(--sp-16);
-		background: rgba(233, 79, 79, 0.15);
-		border: var(--bw) solid var(--danger);
-		border-radius: var(--r-md);
-		color: var(--danger);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-yes:hover {
-		background: rgba(233, 79, 79, 0.25);
-	}
-	.btn-no {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-no:hover {
-		background: var(--bg-subtle);
 	}
 </style>

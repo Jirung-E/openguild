@@ -123,7 +123,7 @@
 	<div class="header">
 		<h1>{t('campaignList.title', $locale)}</h1>
 		<!-- DEV-395: 예전엔 `/campaigns/new` 페이지로 갔다 — 새 퀘스트와 같은 모달로 통일. -->
-		<button class="btn-primary" onclick={() => (showNewCampaign = true)}
+		<button class="btn btn-primary" onclick={() => (showNewCampaign = true)}
 			>{t('campaignList.new', $locale)}</button
 		>
 	</div>
@@ -230,19 +230,6 @@
 		font-size: var(--fs-xl);
 		color: var(--text);
 		margin: 0;
-	}
-	.btn-primary {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-primary:hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
 	}
 
 	.controls {

@@ -238,10 +238,10 @@
 						/>
 					</div>
 					<div class="actions">
-						<button class="btn-save" onclick={() => save()} disabled={saving}>
+						<button class="btn btn-primary" onclick={() => save()} disabled={saving}>
 							{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 						</button>
-						<button class="btn-cancel" onclick={cancelEdit} disabled={saving}
+						<button class="btn" onclick={cancelEdit} disabled={saving}
 							>{t('common.cancel', $locale)}</button
 						>
 					</div>
@@ -409,34 +409,5 @@
 		display: flex;
 		gap: var(--sp-6);
 		margin-top: var(--sp-8);
-	}
-	.btn-save {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-save:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-cancel {
-		padding: var(--sp-6) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 </style>

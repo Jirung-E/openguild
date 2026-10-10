@@ -495,7 +495,7 @@
 						<!-- BUG-321: 휴대폰에서도 되는 크기 손잡이 — 구석의 브라우저 손잡이는 끈다. -->
 						<SizeGrip target={editorContainer} min={10} />
 						<div class="actions">
-							<button class="btn primary" onclick={() => saveNote()} disabled={saving}>
+							<button class="btn btn-primary" onclick={() => saveNote()} disabled={saving}>
 								{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 							</button>
 							<button class="btn" onclick={cancelEdit} disabled={saving}
@@ -946,31 +946,6 @@
 	.state.err,
 	.err {
 		color: var(--danger);
-	}
-
-	.btn {
-		padding: var(--sp-4) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.btn:hover:not(:disabled) {
-		background: var(--bg-subtle);
-	}
-	.btn.primary {
-		background: var(--btn-primary-bg);
-		border-color: var(--btn-primary-border);
-		color: var(--btn-primary-text);
-	}
-	.btn.primary:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 	.actions {
 		display: flex;

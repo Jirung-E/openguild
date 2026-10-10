@@ -298,10 +298,10 @@
 			{/if}
 
 			<div class="actions">
-				<button class="btn-link" type="button" onclick={() => goto('/campaigns')}>
+				<button class="btn" type="button" onclick={() => goto('/campaigns')}>
 					{t('home.campaignList', $locale)}
 				</button>
-				<button class="btn-primary" type="button" onclick={() => (showNewCampaign = true)}>
+				<button class="btn btn-primary" type="button" onclick={() => (showNewCampaign = true)}>
 					{t('home.addCampaign', $locale)}
 				</button>
 			</div>
@@ -428,31 +428,6 @@
 		display: flex;
 		gap: var(--sp-8);
 		margin-top: var(--sp-8);
-	}
-	.btn-link {
-		padding: var(--sp-6) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.btn-link:hover {
-		background: var(--bg-subtle);
-	}
-	.btn-primary {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.btn-primary:hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
 	}
 
 	.empty {

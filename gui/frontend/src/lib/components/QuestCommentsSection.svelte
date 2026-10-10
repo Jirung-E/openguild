@@ -1117,13 +1117,13 @@
 			{#if replyError}<p class="state err">{replyError}</p>{/if}
 			<div class="actions">
 				<button
-					class="btn-save"
+					class="btn btn-primary"
 					onclick={() => submitReply(replyingTo ?? rootId)}
 					disabled={replySaving || !replyBody.trim()}
 				>
 					{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
 				</button>
-				<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
+				<button class="btn" onclick={cancelReply} disabled={replySaving}>
 					{t('common.cancel', $locale)}
 				</button>
 			</div>
@@ -1251,10 +1251,10 @@
 			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
-				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
+				<button class="btn btn-primary" onclick={() => saveEdit(e.id)} disabled={editSaving}>
 					{editSaving ? t('common.saving', $locale) : t('common.save', $locale)}
 				</button>
-				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}
+				<button class="btn" onclick={cancelEdit} disabled={editSaving}
 					>{t('common.cancel', $locale)}</button
 				>
 			</div>
@@ -1605,7 +1605,7 @@
 					{/if}
 					{#if saveError}<p class="state err">{saveError}</p>{/if}
 					<div class="actions">
-						<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
+						<button class="btn btn-primary" onclick={add} disabled={saving || !newBody.trim()}>
 							{saving ? t('comment.adding', $locale) : t('comment.addComment', $locale)}
 						</button>
 					</div>
@@ -2328,34 +2328,5 @@
 		display: flex;
 		gap: var(--sp-6);
 		margin-top: var(--sp-6);
-	}
-	.btn-save {
-		padding: var(--sp-4) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-save:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-cancel {
-		padding: var(--sp-4) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 </style>

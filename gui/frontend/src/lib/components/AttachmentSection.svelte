@@ -659,23 +659,6 @@
 		display: flex;
 		gap: var(--sp-6);
 	}
-	.btn {
-		font-size: var(--fs-sm);
-		padding: var(--sp-4) var(--sp-12);
-		border-radius: var(--r-md);
-		border: var(--bw) solid var(--border);
-		background: var(--bg-subtle);
-		color: var(--text);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.btn:hover:not(:disabled) {
-		background: var(--bg-elevated);
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
 	.err {
 		color: var(--danger);
 		font-size: var(--fs-sm);

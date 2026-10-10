@@ -508,8 +508,8 @@
 					{t('nqm.noTypesMsg', $locale)}
 				</p>
 				<div class="form-actions">
-					<a class="btn-create" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
-					<button class="btn-cancel" onclick={onclose}>{t('nqm.close', $locale)}</button>
+					<a class="btn btn-primary" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
 				</div>
 			</div>
 		{:else if !openStatusSlug}
@@ -524,7 +524,7 @@
 				{/if}
 				<div class="form-actions">
 					<button
-						class="btn-create"
+						class="btn btn-primary"
 						onclick={bootstrapDefaultStatus}
 						disabled={creatingDefaultStatus}
 					>
@@ -532,8 +532,8 @@
 							? t('nqm.addingStatus', $locale)
 							: t('nqm.addDefaultStatus', $locale)}
 					</button>
-					<a class="btn-cancel" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
-					<button class="btn-cancel" onclick={onclose}>{t('nqm.close', $locale)}</button>
+					<a class="btn" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
 				</div>
 			</div>
 		{:else}
@@ -682,15 +682,15 @@
 				{/if}
 
 				<div class="form-actions">
-					<button class="btn-create" onclick={create} disabled={saving || !title.trim()}>
+					<button class="btn btn-primary" onclick={create} disabled={saving || !title.trim()}>
 						{saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={onclose} disabled={saving}
+					<button class="btn" onclick={onclose} disabled={saving}
 						>{t('common.cancel', $locale)}</button
 					>
 					{#if isTauri}
 						<button
-							class="btn-tpl"
+							class="btn btn-tpl"
 							type="button"
 							onclick={() => {
 								showSaveTpl = !showSaveTpl;
@@ -717,7 +717,7 @@
 							}}
 						/>
 						<button
-							class="btn-create"
+							class="btn btn-primary"
 							type="button"
 							onclick={() => saveAsTemplate(false)}
 							disabled={savingTpl || !tplName.trim()}
@@ -726,7 +726,7 @@
 						</button>
 						{#if tplExists}
 							<button
-								class="btn-overwrite"
+								class="btn btn-danger"
 								type="button"
 								onclick={() => saveAsTemplate(true)}
 								disabled={savingTpl}
@@ -1057,77 +1057,16 @@
 		gap: var(--sp-8);
 		margin-top: var(--sp-4);
 	}
-	.btn-create {
-		padding: var(--sp-8) var(--sp-16);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			border-color var(--dur-fast);
-	}
-	.btn-create:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-create:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.btn-cancel {
-		padding: var(--sp-8) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
-	}
 
 	/* DEV-158: 템플릿으로 저장 — 우측 정렬, 보조 액션. */
 	.btn-tpl {
 		margin-left: auto;
-		padding: var(--sp-8) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.btn-tpl:hover:not(:disabled) {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
-	.btn-tpl:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 	.tpl-save {
 		display: flex;
 		gap: var(--sp-8);
 		align-items: center;
 		margin-top: var(--sp-8);
-	}
-	.btn-overwrite {
-		padding: var(--sp-8) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--danger);
-		border-radius: var(--r-md);
-		color: var(--danger);
-		font-size: var(--fs-md);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.btn-overwrite:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 	.tpl-msg {
 		margin: var(--sp-6) 0 0;
@@ -1156,12 +1095,5 @@
 	}
 	.empty-msg strong {
 		color: var(--text-strong);
-	}
-	/* href 인 .btn-create / .btn-cancel 도 동일 패딩. */
-	a.btn-create,
-	a.btn-cancel {
-		text-decoration: none;
-		display: inline-flex;
-		align-items: center;
 	}
 </style>

@@ -398,7 +398,7 @@
 					{#if isTauri}
 						<!-- DEV-086: 버전 아래 '슬쩍' 업데이트 확인. 결과는 floating toast. -->
 						<button
-							class="btn-check-upd"
+							class="btn btn-sm"
 							onclick={() => checkForUpdate()}
 							disabled={$updateState.status === 'checking' || $updateState.status === 'downloading'}
 						>
@@ -489,7 +489,7 @@
 							<span class="unit">%</span>
 						</div>
 						<button
-							class="btn-reset"
+							class="btn"
 							onclick={resetUiScale}
 							disabled={$uiScale === DEFAULT_SCALE}
 							title={t('settings.resetTo100', $locale)}>{t('settings.reset', $locale)}</button
@@ -581,7 +581,7 @@
 							</div>
 						{/if}
 						<button
-							class="btn-reset"
+							class="btn"
 							onclick={resetContentWidth}
 							disabled={$contentWidth === DEFAULT_CONTENT_WIDTH}
 							title="{DEFAULT_CONTENT_WIDTH}px{t('settings.resetToDefaultPx', $locale)}"
@@ -939,27 +939,7 @@
 		color: var(--accent);
 	}
 
-	/* DEV-086: 버전 아래 '슬쩍' 업데이트 확인 — subtle outline 버튼. */
-	.btn-check-upd {
-		padding: var(--sp-4) var(--sp-8);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-xs);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			color var(--dur-fast);
-	}
-	.btn-check-upd:hover:not(:disabled) {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
-	.btn-check-upd:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
+
 
 	/* DEV-207: '정보' 탭의 원격 서버 주소 강조. */
 	.remote-active {
@@ -1052,23 +1032,6 @@
 		color: var(--accent);
 		font-size: var(--fs-md);
 		font-weight: var(--fw-semibold);
-	}
-	.ui-scale .btn-reset {
-		padding: var(--sp-4) var(--sp-8);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.ui-scale .btn-reset:hover:not(:disabled) {
-		background: var(--bg-elevated);
-		border-color: var(--text-faint);
-	}
-	.ui-scale .btn-reset:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
 	}
 	/* DEV-383: 예전엔 `.ui-scale .scale-hint` 하나뿐이라 그 조상이 없는 탭
 	   (플러그인)에서는 **아무것도 안 먹었다** — 안내문이 본문 크기 그대로에

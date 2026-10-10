@@ -1138,10 +1138,10 @@
 			/>
 			{#if renameFolderError}<p class="err">{renameFolderError}</p>{/if}
 			<div class="actions">
-				<button class="btn-save" onclick={submitRenameFolder}
+				<button class="btn btn-primary" onclick={submitRenameFolder}
 					>{t('library.folderRenameSubmit', $locale)}</button
 				>
-				<button class="btn-cancel" onclick={() => (renamingFolder = null)}
+				<button class="btn" onclick={() => (renamingFolder = null)}
 					>{t('library.cancel', $locale)}</button
 				>
 			</div>
@@ -1159,10 +1159,10 @@
 			/>
 			{#if renameDocError}<p class="err">{renameDocError}</p>{/if}
 			<div class="actions">
-				<button class="btn-save" onclick={submitRenameDoc}
+				<button class="btn btn-primary" onclick={submitRenameDoc}
 					>{t('library.folderRenameSubmit', $locale)}</button
 				>
-				<button class="btn-cancel" onclick={() => (renamingDoc = null)}
+				<button class="btn" onclick={() => (renamingDoc = null)}
 					>{t('library.cancel', $locale)}</button
 				>
 			</div>
@@ -1188,8 +1188,8 @@
 					title={t('library.iconView', $locale)}>▦</button
 				>
 			</div>
-			<button class="btn-new" onclick={openCreateFolder}>{t('library.newFolder', $locale)}</button>
-			<button class="btn-new" onclick={openCreate}>{t('library.newDoc', $locale)}</button>
+			<button class="btn btn-sm" onclick={openCreateFolder}>{t('library.newFolder', $locale)}</button>
+			<button class="btn btn-sm" onclick={openCreate}>{t('library.newDoc', $locale)}</button>
 		</div>
 		<div class="search-row">
 			<input
@@ -1237,7 +1237,7 @@
 			     BUG-127: 상위/도서관/각 경로 조각도 드롭 대상 — 문서를 여기로 끌어다
 			     놓으면 그 조상 경로로 이동. -->
 			<button
-				class="btn-up"
+				class="btn btn-sm btn-up"
 				class:drag-over={dragOverFolder === parentOf(explorerPath)}
 				onclick={() => gotoFolder(parentOf(explorerPath))}
 				disabled={!explorerPath}
@@ -1323,10 +1323,10 @@
 				/>
 				{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 				<div class="actions">
-					<button class="btn-save" onclick={submitCreateFolder}
+					<button class="btn btn-primary" onclick={submitCreateFolder}
 						>{t('library.create', $locale)}</button
 					>
-					<button class="btn-cancel" onclick={cancelCreateFolder}
+					<button class="btn" onclick={cancelCreateFolder}
 						>{t('library.cancel', $locale)}</button
 					>
 				</div>
@@ -1343,8 +1343,8 @@
 				/>
 				{#if createError}<p class="err">{createError}</p>{/if}
 				<div class="actions">
-					<button class="btn-save" onclick={submitCreate}>{t('library.create', $locale)}</button>
-					<button class="btn-cancel" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
+					<button class="btn btn-primary" onclick={submitCreate}>{t('library.create', $locale)}</button>
+					<button class="btn" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
 				</div>
 			</div>
 		{/if}
@@ -1523,11 +1523,11 @@
 					</div>
 					<div class="sidebar-actions">
 						<button
-							class="btn-new"
+							class="btn btn-sm"
 							onclick={openCreateFolder}
 							title={t('library.newFolder', $locale)}>{t('library.newFolder', $locale)}</button
 						>
-						<button class="btn-new" onclick={openCreate} title={t('library.newDoc', $locale)}
+						<button class="btn btn-sm" onclick={openCreate} title={t('library.newDoc', $locale)}
 							>{t('library.newDoc', $locale)}</button
 						>
 					</div>
@@ -1653,10 +1653,10 @@
 							/>
 							{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitCreateFolder}
+								<button class="btn btn-primary" onclick={submitCreateFolder}
 									>{t('library.create', $locale)}</button
 								>
-								<button class="btn-cancel" onclick={cancelCreateFolder}
+								<button class="btn" onclick={cancelCreateFolder}
 									>{t('library.cancel', $locale)}</button
 								>
 							</div>
@@ -1679,10 +1679,10 @@
 							</select>
 							{#if createError}<p class="err">{createError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitCreate}
+								<button class="btn btn-primary" onclick={submitCreate}
 									>{t('library.create', $locale)}</button
 								>
-								<button class="btn-cancel" onclick={cancelCreate}
+								<button class="btn" onclick={cancelCreate}
 									>{t('library.cancel', $locale)}</button
 								>
 							</div>
@@ -1710,7 +1710,7 @@
 						     돌아갈 목록이 없다 — 눌러도 말이 안 되는 자리다. TitleBar 가
 						     뒤로·검색을 숨기는 것과 같은 판정을 쓴다. -->
 						{#if showsBackToList(viewMode, $isChildWindow)}
-							<button class="btn-edit" onclick={explorerBack}
+							<button class="btn" onclick={explorerBack}
 								>{t('library.backToList', $locale)}</button
 							>
 						{/if}
@@ -1727,27 +1727,27 @@
 						</h1>
 						{#if !editMode}
 							<div class="top-actions">
-								<button class="btn-edit" onclick={enterEdit}>
+								<button class="btn" onclick={enterEdit}>
 									{selected.body.trim()
 										? t('library.editDoc', $locale)
 										: t('library.writeDoc', $locale)}
 								</button>
-								<button class="btn-edit" onclick={openRetitle}
+								<button class="btn" onclick={openRetitle}
 									>{t('library.retitle', $locale)}</button
 								>
-								<button class="btn-edit" onclick={openMove}
+								<button class="btn" onclick={openMove}
 									>{t('library.moveFolder', $locale)}</button
 								>
 								<!-- REQ-028: 파일 시스템으로 — 데스크톱에서만(이 기계에 파일을 쓴다). -->
 								{#if isTauri}
-									<button class="btn-edit" onclick={copyOut} disabled={takeOutBusy}
+									<button class="btn" onclick={copyOut} disabled={takeOutBusy}
 										>{t('library.copyOut', $locale)}</button
 									>
-									<button class="btn-edit" onclick={exportOut} disabled={takeOutBusy}
+									<button class="btn" onclick={exportOut} disabled={takeOutBusy}
 										>{t('library.exportOut', $locale)}</button
 									>
 								{/if}
-								<button class="btn-edit danger" onclick={askDeleteSelected}
+								<button class="btn btn-danger" onclick={askDeleteSelected}
 									>{t('library.delete', $locale)}</button
 								>
 							</div>
@@ -1795,10 +1795,10 @@
 							/>
 							{#if retitleError}<p class="err">{retitleError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitRetitle}
+								<button class="btn btn-primary" onclick={submitRetitle}
 									>{t('library.change', $locale)}</button
 								>
-								<button class="btn-cancel" onclick={cancelRetitle}
+								<button class="btn" onclick={cancelRetitle}
 									>{t('library.cancel', $locale)}</button
 								>
 							</div>
@@ -1815,8 +1815,8 @@
 							</select>
 							{#if moveError}<p class="err">{moveError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitMove}>{t('library.move', $locale)}</button>
-								<button class="btn-cancel" onclick={cancelMove}
+								<button class="btn btn-primary" onclick={submitMove}>{t('library.move', $locale)}</button>
+								<button class="btn" onclick={cancelMove}
 									>{t('library.cancel', $locale)}</button
 								>
 							</div>
@@ -1848,10 +1848,10 @@
 								/>
 							</div>
 							<div class="actions">
-								<button class="btn-save" onclick={() => save()} disabled={saving}>
+								<button class="btn btn-primary" onclick={() => save()} disabled={saving}>
 									{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>
+								<button class="btn" onclick={cancelEdit} disabled={saving}>
 									{t('library.cancel', $locale)}
 								</button>
 							</div>
@@ -1950,13 +1950,13 @@
 				</select>
 				<div class="actions">
 					<button
-						class="btn-save"
+						class="btn btn-primary"
 						onclick={async () => {
 							movingPicked = false;
 							await movePickedTo(movePickedPath);
 						}}>{t('library.move', $locale)}</button
 					>
-					<button class="btn-cancel" onclick={() => (movingPicked = false)}
+					<button class="btn" onclick={() => (movingPicked = false)}
 						>{t('library.cancel', $locale)}</button
 					>
 				</div>
@@ -1969,26 +1969,26 @@
 				</span>
 				{#if pickedOne}
 					<!-- BUG-313: 하나만 골랐을 때 — 폴더면 폴더 이름, 문서면 제목. -->
-					<button class="btn-edit" onclick={renamePicked}
+					<button class="btn" onclick={renamePicked}
 						>{t('library.folderRenameSubmit', $locale)}</button
 					>
 				{/if}
-				<button class="btn-edit" onclick={() => (movingPicked = true)}
+				<button class="btn" onclick={() => (movingPicked = true)}
 					>{t('library.moveFolder', $locale)}</button
 				>
-				<button class="btn-edit danger" onclick={() => (confirmDeletePicked = true)}
+				<button class="btn btn-danger" onclick={() => (confirmDeletePicked = true)}
 					>{t('library.delete', $locale)}</button
 				>
 				{#if isTauri}
 					<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
-					<button class="btn-edit" onclick={copyOut} disabled={takeOutBusy}
+					<button class="btn" onclick={copyOut} disabled={takeOutBusy}
 						>{t('library.copyOut', $locale)}</button
 					>
-					<button class="btn-edit" onclick={exportOut} disabled={takeOutBusy}
+					<button class="btn" onclick={exportOut} disabled={takeOutBusy}
 						>{t('library.exportOut', $locale)}</button
 					>
 				{/if}
-				<button class="btn-edit" onclick={() => (picked = msel.clear())}
+				<button class="btn" onclick={() => (picked = msel.clear())}
 					>{t('library.pickedClear', $locale)}</button
 				>
 			</div>
@@ -2099,19 +2099,6 @@
 	}
 	.view-toggle button.on {
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
-		color: var(--text);
-	}
-	.btn-new {
-		padding: var(--sp-2) var(--sp-8);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text-muted);
-		font-size: var(--fs-xs);
-		cursor: pointer;
-	}
-	.btn-new:hover {
-		background: var(--bg-subtle);
 		color: var(--text);
 	}
 	.empty-list {
@@ -2242,28 +2229,10 @@
 	.crumb-sep {
 		color: var(--text-muted);
 	}
-	.btn-up {
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text-muted);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-		line-height: var(--lh-tight);
-		padding: var(--sp-4) var(--sp-6);
-	}
-	.btn-up:hover:not(:disabled) {
-		color: var(--text);
-		border-color: var(--text-faint);
-	}
-	.btn-up:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
 	/* BUG-127: 상위 폴더 버튼/경로 조각도 드롭 대상. */
 	.btn-up.drag-over,
 	.crumb.drag-over {
-		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		background: color-mix(in srgb, var(--accent) 16%, transparent); /* token-ok: 끌어다 놓기 강조 — 버튼 모양이 아니라 상태 표시 */
 		border-radius: var(--r-sm);
 		outline: 1px dashed var(--accent);
 	}
@@ -2479,25 +2448,6 @@
 		gap: var(--sp-6);
 		flex: none;
 	}
-	.btn-edit {
-		padding: var(--sp-4) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.btn-edit:hover {
-		background: var(--bg-subtle);
-	}
-	.btn-edit.danger {
-		color: var(--danger);
-		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-	}
-	.btn-edit.danger:hover {
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
-	}
 
 	.modal-inline {
 		display: flex;
@@ -2645,35 +2595,6 @@
 		display: flex;
 		gap: var(--sp-6);
 		margin-top: var(--sp-8);
-	}
-	.btn-save {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		color: var(--btn-primary-text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-save:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-save:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-cancel {
-		padding: var(--sp-6) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		cursor: pointer;
-		font-size: var(--fs-sm);
-	}
-	.btn-cancel:hover:not(:disabled) {
-		background: var(--bg-subtle);
 	}
 	/* REQ-011: 검색 영역 확장 체크박스 — quest 목록 필터의 같은 이름 클래스와
 	   같은 모양으로 맞춘다. */
