@@ -485,6 +485,9 @@
 		}
 	}
 
+	/** DEV-439(admin): 레인 열 수 · 정렬 열 수의 기본값 — 고른 적 없을 때만. 고른 값은 길드별로 기억한다. */
+	const DEFAULT_COLS = 3;
+
 	function loadGlobalCols(): number {
 		try {
 			const raw = localStorage.getItem(gk('globalCols'));
@@ -493,7 +496,7 @@
 		} catch {
 			/* 무시 */
 		}
-		return 2;
+		return DEFAULT_COLS;
 	}
 
 	function saveGlobalCols(n: number) {
@@ -857,7 +860,7 @@
 	let activeHighlights = $state(new Set<HighlightType>());
 	// globalCols — toolbar 의 Arrange cols. localStorage 영속 (BUG-009 / BUG-019).
 	// 초기값은 default — onMount 의 guild prefix 확정 후 loadGlobalCols() 결과로 덮어씀.
-	let globalCols = $state(2);
+	let globalCols = $state(DEFAULT_COLS);
 
 	// 전역 정렬 모드 (toolbar Arrange 버튼).
 	//   'all'   = 단순 wrap (왼쪽 위부터 채움)
@@ -1149,7 +1152,7 @@
 		const visIdx = Math.max(0, Math.min(visCount - 1, visibleLaneIdxAtVisualPoint({ x, y })));
 		const statusId = statusIdAtVisibleIdx(visIdx);
 		const li = statusId !== null ? (laneOf.get(statusId) ?? 0) : 0;
-		const cols = laneCols[li] ?? 2;
+		const cols = laneCols[li] ?? DEFAULT_COLS;
 		const sid = statusId ?? sorted[li]?.id ?? 0;
 		const canonical = visualToCanonical(x, y, sid);
 		const firstX = laneFirstCellX(li, cols);
@@ -1951,7 +1954,7 @@
 				if (node.length === 0) return;
 				const sid = node.data('statusId') as number;
 				const li = laneOf.get(sid) ?? 0;
-				const lcols = laneCols[li] ?? 2;
+				const lcols = laneCols[li] ?? DEFAULT_COLS;
 				const firstX = laneFirstCellX(li, lcols);
 				const absX = firstX + col * cellW;
 				const absY = baseY + row * cellH;
@@ -1982,7 +1985,7 @@
 			let globalRow = 0;
 			for (const [li, ids] of isolatedByLane) {
 				ids.sort((a, b) => slugOf(a).localeCompare(slugOf(b)));
-				const lcols = laneCols[li] ?? 2;
+				const lcols = laneCols[li] ?? DEFAULT_COLS;
 				ids.forEach((qid, i) => {
 					const col = i % lcols;
 					const r = Math.floor(i / lcols);
@@ -2041,7 +2044,7 @@
 					cluster.map((qid) => ({ id: qid, status_id: statusOf(qid) })),
 					clusterEdges,
 					laneOf,
-					laneCols[[...byLane.keys()][0]] ?? 2,
+					laneCols[[...byLane.keys()][0]] ?? DEFAULT_COLS,
 					slugOf,
 					{
 						cellW,
@@ -3097,7 +3100,7 @@
 				return;
 			}
 
-			const cols = Math.max(1, Math.min(3, laneCols[i] ?? 2));
+			const cols = Math.max(1, Math.min(3, laneCols[i] ?? DEFAULT_COLS));
 			gridCol.style.display = '';
 			gridCol.style.bottom = '';
 			gridCol.style.right = '';
