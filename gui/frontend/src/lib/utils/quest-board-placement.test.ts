@@ -5,7 +5,9 @@ import {
 	type PlacementQuest,
 	depthOf,
 	countNodeCrossings,
-	clusterSlots
+	clusterSlots,
+	clusterLaneSpan,
+	stackClusters
 } from './quest-board-placement';
 
 const M: PlacementMetrics = {
@@ -494,5 +496,61 @@ describe('줄 단위 배치 — 레인을 건너간 자식은 부모 줄 옆에 
 		]);
 		const s = clusterSlots(members, [{ quest_id: 2, prerequisite_id: 1 }], lanes, 3, slug, geom, true);
 		expect(s.get(2)!.row).toBe(s.get(1)!.row + 1);
+	});
+});
+
+describe('BUG-355 그룹이 걸친 사이 레인까지 줄을 잡는다', () => {
+	it('사이 레인을 채운다', () => {
+		expect(clusterLaneSpan([4, 1])).toEqual([1, 2, 3, 4]);
+		expect(clusterLaneSpan([2])).toEqual([2]);
+		expect(clusterLaneSpan([])).toEqual([]);
+	});
+
+	it('1 · 4번 레인 그룹 뒤에 2번 레인 그룹이 오면 같은 줄에 들어가지 않는다', () => {
+		// 예전 규칙(노드가 있는 레인만)이면 둘 다 0 줄에서 시작해 사각형이 겹쳤다.
+		const [a, b] = stackClusters(
+			[
+				{ lanes: [1, 4], height: 1 },
+				{ lanes: [2], height: 3 }
+			],
+			0
+		);
+		expect(a).toBe(0);
+		expect(b).toBe(2); // a 의 높이 1 + 한 줄 띄움
+	});
+
+	it('걸친 범위가 안 겹치는 그룹끼리는 같은 줄을 나눠 쓴다', () => {
+		const [a, b] = stackClusters(
+			[
+				{ lanes: [0, 1], height: 2 },
+				{ lanes: [3, 4], height: 2 }
+			],
+			5
+		);
+		expect(a).toBe(5);
+		expect(b).toBe(5);
+	});
+
+	it('놓인 사각형(레인 범위 × 줄 범위)이 서로 겹치지 않는다', () => {
+		const clusters = [
+			{ lanes: [0, 3], height: 1 },
+			{ lanes: [1], height: 2 },
+			{ lanes: [2, 5], height: 1 },
+			{ lanes: [4], height: 4 },
+			{ lanes: [0], height: 1 },
+			{ lanes: [1, 6], height: 2 }
+		];
+		const starts = stackClusters(clusters, 0);
+		const boxes = clusters.map((c, i) => {
+			const span = clusterLaneSpan(c.lanes);
+			return { l0: span[0], l1: span.at(-1)!, r0: starts[i], r1: starts[i] + c.height - 1 };
+		});
+		for (let i = 0; i < boxes.length; i++)
+			for (let j = i + 1; j < boxes.length; j++) {
+				const a = boxes[i];
+				const b = boxes[j];
+				const overlap = a.l0 <= b.l1 && b.l0 <= a.l1 && a.r0 <= b.r1 && b.r0 <= a.r1;
+				expect(overlap, `${i} · ${j}`).toBe(false);
+			}
 	});
 });

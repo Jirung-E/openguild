@@ -457,3 +457,43 @@ function clusterCost(
 	);
 	return (x2 - x1) * (y2 - y1) + crossing * CROSSING_PENALTY;
 }
+
+/**
+ * BUG-355: 그룹(클러스터)이 차지하는 레인 — 노드가 있는 레인만이 아니라 **그 사이 레인까지**.
+ *
+ * 그룹 사각형은 왼쪽 끝 레인부터 오른쪽 끝 레인까지 가로질러 그려진다. 노드가 있는 레인에만 줄을 잡아 두면
+ * 사이 레인이 비어 보여서 다른 그룹이 같은 줄에 들어오고 사각형이 겹친다(1번 · 4번 레인 그룹이 2 · 3번 레인
+ * 그룹을 덮음). 레인을 접으면 가운데 노드가 정렬에서 빠져 이런 그룹이 흔해진다.
+ */
+export function clusterLaneSpan(lanes: Iterable<number>): number[] {
+	let lo = Number.POSITIVE_INFINITY;
+	let hi = Number.NEGATIVE_INFINITY;
+	for (const li of lanes) {
+		if (li < lo) lo = li;
+		if (li > hi) hi = li;
+	}
+	if (lo > hi) return [];
+	const out: number[] = [];
+	for (let li = lo; li <= hi; li++) out.push(li);
+	return out;
+}
+
+/**
+ * BUG-355: 그룹들을 차례로 놓을 때 각 그룹의 **시작 줄**. 그룹이 걸친 레인(사이 포함)의 "다음 빈 줄" 중 가장
+ * 아래에서 시작하고, 놓은 뒤 그 레인들 모두를 `높이 + 1`(한 줄 띄움) 아래로 올린다.
+ *
+ * 정렬 화면이 쓰는 규칙과 같다 — 시험으로 "사각형끼리 안 겹친다" 를 고정하려고 따로 뺐다.
+ */
+export function stackClusters(
+	clusters: readonly { lanes: Iterable<number>; height: number }[],
+	baseRow: number
+): number[] {
+	const next = new Map<number, number>();
+	return clusters.map((c) => {
+		const span = clusterLaneSpan(c.lanes);
+		let start = baseRow;
+		for (const li of span) start = Math.max(start, next.get(li) ?? baseRow);
+		for (const li of span) next.set(li, start + c.height + 1);
+		return start;
+	});
+}

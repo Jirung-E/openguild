@@ -38,6 +38,7 @@
 	import {
 		autoPlace,
 		clusterSlots,
+		clusterLaneSpan,
 		type PlacementMetrics
 	} from '$lib/utils/quest-board-placement';
 	import {
@@ -2018,9 +2019,12 @@
 					arr.push(qid);
 					byLane.set(li, arr);
 				}
-				// cluster 시작 row = 참여 lane 들의 next-row 의 max.
+				// cluster 시작 row = 걸친 lane 들의 next-row 의 max.
+				// BUG-355: 노드가 있는 레인만이 아니라 **사이 레인까지** — 그룹 사각형은 사이 레인을 가로질러
+				// 그려지므로, 사이 레인을 비워 둔 것으로 보면 다른 그룹이 같은 줄에 들어와 사각형이 겹친다.
+				const spanLanes = clusterLaneSpan(byLane.keys());
 				let startRow = globalRow;
-				for (const li of byLane.keys()) {
+				for (const li of spanLanes) {
 					startRow = Math.max(startRow, laneNextRow.get(li) ?? globalRow);
 				}
 				// 각 lane 안 cluster height — 열을 적게 쓰면 더 길어지므로 slots 로 다시 잰다(아래).
@@ -2057,7 +2061,7 @@
 				);
 				clusterHeight = Math.max(1, ...[...slots.values()].map((s2) => s2.row + 1));
 				for (const [qid, slot] of slots) place(qid, slot.col, startRow + slot.row);
-				for (const li of byLane.keys()) laneNextRow.set(li, startRow + clusterHeight + 1);
+				for (const li of spanLanes) laneNextRow.set(li, startRow + clusterHeight + 1);
 				void ci; // ci 는 더 이상 순차 globalRow 증가에 사용 안 함.
 			});
 
