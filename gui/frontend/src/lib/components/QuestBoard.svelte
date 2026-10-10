@@ -5255,8 +5255,11 @@
 		box-sizing: border-box;
 		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
 		/* BUG-264: 위와 같은 이유 — 폴백 후 `dvh`. */
-		max-height: calc(100vh - 4rem);
-		max-height: calc(100dvh - 4rem);
+		/* BUG-354: 화면 높이만 상한으로 두면 큰 화면에서 창이 화면 거의 전체만큼 길었다(admin:
+		   "너무 높아져서 스크롤하라고 한 것"). 창 높이 자체를 32rem(UI 배율 따라감)으로 묶고 나머지는
+		   스크롤 — 레인 표와 체크박스까지가 한눈에 들어오는 높이다. 작은 화면에서는 여전히 화면 안으로. */
+		max-height: min(calc(32rem * var(--popup-scale, 1)), calc(100vh - 4rem));
+		max-height: min(calc(32rem * var(--popup-scale, 1)), calc(100dvh - 4rem));
 		overflow-y: auto;
 	}
 	/* BUG-354: 세로 flex 라 안 항목이 기본으로 줄어든다(flex-shrink: 1). 그러면 창이 스크롤되는 대신
