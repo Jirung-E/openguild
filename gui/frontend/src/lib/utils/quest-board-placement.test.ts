@@ -456,3 +456,43 @@ describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
 		expect(s.size).toBe(3);
 	});
 });
+
+describe('줄 단위 배치 — 레인을 건너간 자식은 부모 줄 옆에 (DEV-421)', () => {
+	const geom = { cellW: 324, cellH: 120, laneStride: 1012, nodeW: 284, nodeH: 80 };
+	const slug = (id: number) => `Q-${String(id).padStart(3, '0')}`;
+
+	it('부모가 셋째 줄이면 다른 레인의 자식도 셋째 줄 — 그보다 아래로 떨어지지 않는다', () => {
+		// 레인 0 에 사슬 1 → 2 → 3 (1열이라 0·1·2 줄), 레인 1 의 4 는 3 의 자식.
+		const members = [
+			{ id: 1, status_id: 10 },
+			{ id: 2, status_id: 10 },
+			{ id: 3, status_id: 10 },
+			{ id: 4, status_id: 20 }
+		];
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 1 },
+			{ quest_id: 3, prerequisite_id: 2 },
+			{ quest_id: 4, prerequisite_id: 3 }
+		];
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const s = clusterSlots(members, edges, lanes, 1, slug, geom);
+		expect(s.get(3)!.row).toBe(2);
+		expect(s.get(4)!.row).toBe(s.get(3)!.row);
+	});
+
+	it('무조건 아래(strictDown)면 한 줄 아래', () => {
+		const members = [
+			{ id: 1, status_id: 10 },
+			{ id: 2, status_id: 20 }
+		];
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const s = clusterSlots(members, [{ quest_id: 2, prerequisite_id: 1 }], lanes, 3, slug, geom, true);
+		expect(s.get(2)!.row).toBe(s.get(1)!.row + 1);
+	});
+});

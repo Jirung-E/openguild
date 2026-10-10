@@ -300,9 +300,11 @@ export function clusterSlots(
 	strictDown = false
 ): Map<number, ClusterSlot> {
 	const C = Math.max(1, cols);
+	const laneOfId = new Map<number, number>();
 	const byLane = new Map<number, number[]>();
 	for (const m of members) {
 		const lane = laneOf.get(m.status_id) ?? 0;
+		laneOfId.set(m.id, lane);
 		(byLane.get(lane) ?? byLane.set(lane, []).get(lane)!).push(m.id);
 	}
 	// 레인 안 채우는 순서 — **선행 · 부모가 먼저**(위상 순서), 같은 차례면 슬러그. 레인 안은 왼쪽→오른쪽,
@@ -319,59 +321,42 @@ export function clusterSlots(
 		return out;
 	});
 
-	// 줄은 **띠**로 잡는다 — 레인을 가로질러 하나. 이게 "화살표가 위로 안 간다" 를 보장한다.
-	const baseRank = rankOf(members, edges, laneOf, strictDown);
-	// 무조건 아래 순위 — 모든 선이 더 높은 띠로 가므로 띠 안에서 위로 갈 일이 없다. 최후의 안전판.
-	const strictRank = strictDown ? baseRank : rankOf(members, edges, laneOf, true);
+	// 부모 · 선행 목록 — 노드마다 "이 줄보다 위로는 못 간다" 를 정하는 데 쓴다.
+	const parents = new Map<number, number[]>(members.map((m) => [m.id, []]));
+	for (const e of edges) {
+		if (e.prerequisite_id === e.quest_id) continue;
+		parents.get(e.quest_id)?.push(e.prerequisite_id);
+	}
+	const sequence = [...members.map((m) => m.id)].sort(
+		(a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0)
+	);
 
-	const place = (
-		rank: ReadonlyMap<number, number>,
-		choice: readonly { lane: number; c: number; s: number }[]
-	) => {
+	// 줄은 **한 노드씩** 정한다 — 위상 순서(선행 · 부모가 먼저)로 놓으면서, 각 노드는 이미 놓인
+	// 부모 · 선행 중 가장 아래 있는 줄보다 위로 못 간다(무조건 아래면 그보다 한 줄 아래).
+	// 레인 안은 왼쪽→오른쪽, 위→아래로 채우되, 그 줄보다 위 칸은 건너뛴다.
+	//
+	// 예전엔 깊이 **띠**로 줄을 잡았다. 띠 높이는 가장 붐비는 레인을 따라가므로, 레인을 건너가다
+	// 위로 간 선을 바로잡으려고 자식을 "다음 띠" 로 보내면 한 줄이면 될 것을 띠 전체 아래로 떨어뜨렸다
+	// (실험대 8개 예제: DEV-033 → DEV-031 이 셋째 줄 옆이면 되는데 다섯째 줄로 갔다, admin 지적).
+	// 줄 단위로 정하면 그 일이 없고, 바로잡는 단계도 필요 없다 — 처음부터 위로 갈 수 없다.
+	const build = (choice: readonly { lane: number; c: number; s: number }[]) => {
 		const slots = new Map<number, ClusterSlot>();
 		const colsOfLane = new Map(choice.map((o) => [o.lane, o]));
-		const bands = [...new Set(members.map((m) => rank.get(m.id) ?? 0))].sort((a, b) => a - b);
-		let row = 0;
-		for (const d of bands) {
-			let bandRows = 1;
-			for (const [lane, ids] of byLane) {
-				const here = ids.filter((id) => (rank.get(id) ?? 0) === d);
-				if (here.length === 0) continue;
-				const { c, s } = colsOfLane.get(lane)!;
-				here.forEach((id, i) => {
-					slots.set(id, { lane, col: s + (i % c), row: row + Math.floor(i / c) });
-				});
-				bandRows = Math.max(bandRows, Math.ceil(here.length / c));
+		const cursor = new Map<number, { row: number; k: number }>();
+		for (const id of sequence) {
+			const lane = laneOfId.get(id)!;
+			const { c, s } = colsOfLane.get(lane)!;
+			let minRow = 0;
+			for (const p of parents.get(id) ?? []) {
+				const at = slots.get(p);
+				if (at) minRow = Math.max(minRow, at.row + (strictDown ? 1 : 0));
 			}
-			row += bandRows;
+			let cur = cursor.get(lane) ?? { row: 0, k: 0 };
+			if (cur.row < minRow) cur = { row: minRow, k: 0 };
+			slots.set(id, { lane, col: s + cur.k, row: cur.row });
+			cursor.set(lane, cur.k + 1 >= c ? { row: cur.row + 1, k: 0 } : { row: cur.row, k: cur.k + 1 });
 		}
 		return slots;
-	};
-	const upEdges = (slots: ReadonlyMap<number, ClusterSlot>) =>
-		edges.filter((e) => {
-			const a = slots.get(e.prerequisite_id);
-			const b = slots.get(e.quest_id);
-			return a && b && b.row < a.row;
-		});
-
-	// 같은 띠라도 **같은 줄은 아니다** — 띠가 여러 줄이면 그 안에서 옆으로 둔 선이 위로 갈 수 있다.
-	// 몇 줄이 되는지는 레인마다 고른 열 수에 달려 있으므로 **열 선택마다** 검사한다(예전엔 3열
-	// 배치로 한 번만 봐서, 열을 적게 고른 그룹에서 위로 가는 선이 3개 남았다). 올라간 선의 도착
-	// 노드를 출발 노드보다 한 띠 아래로 내리고 다시 놓는다. 멤버 수만큼 해도 남으면 무조건 아래 순위로 —
-	// 그 순위에서는 위로 가는 선이 생길 수 없다.
-	const build = (choice: readonly { lane: number; c: number; s: number }[]) => {
-		const rank = new Map(baseRank);
-		let slots = place(rank, choice);
-		for (let pass = 0; pass <= members.length; pass++) {
-			const up = upEdges(slots);
-			if (up.length === 0) return slots;
-			for (const e of up) {
-				const need = (rank.get(e.prerequisite_id) ?? 0) + 1;
-				rank.set(e.quest_id, Math.max(rank.get(e.quest_id) ?? 0, need));
-			}
-			slots = place(rank, choice);
-		}
-		return upEdges(slots).length === 0 ? slots : place(strictRank, choice);
 	};
 
 	const combos = options.reduce((n, o) => n * o.length, 1);
@@ -402,69 +387,6 @@ export function clusterSlots(
 	};
 	walk(0, []);
 	return best!.slots;
-}
-
-/**
- * DEV-421: 각 노드가 몇 번째 **띠**에 설지 — "화살표가 위로 안 간다" 를 보장하는 순위.
- *
- * admin 이 정한 규칙: **"아래 또는 옆"** — 같은 레인 안이든 레인을 건너가든, 자식 · 후행은 부모 ·
- * 선행과 **같은 줄(옆)이거나 아래**에 선다. 위로만 안 가면 된다.
- *
- * (중간에 "같은 레인 안은 무조건 아래" 로 넣었었다. 같은 줄에 붙으면 선이 짧아 안 보일 거라는 내
- * 짐작이었고 admin 에게 묻지 않았다. 그래서 부모 · 자식이 같은 레인인 묶음은 옆이 하나도 안 나왔다.
- * admin 이 같은 레인 안에서도 옆을 허용하기로 정했다, 2026-10-10.)
- *
- * 그래서 기본은 모든 간선 비용이 0 — 모두 같은 띠에서 시작한다. 같은 레인 안은 위상 순서로 채우므로
- * 저절로 아래 또는 옆이 되고, 레인을 건너가다 위로 간 선만 `clusterSlots` 의 바로잡기가 한 띠씩
- * 내린다.
- *
- * `strictDown` 이면 전부 1 — 모든 선이 아래를 향한다([[DEV-438]] 의 옵션 켠 상태).
- *
- * 고리가 있으면 전부를 아래로 보낼 수 없다(수학적으로). 고리에 속한 것은 같은 띠로 묶는다.
- */
-function rankOf(
-	members: readonly ClusterMember[],
-	edges: readonly PlacementEdge[],
-	laneOf: ReadonlyMap<number, number>,
-	strictDown: boolean
-): Map<number, number> {
-	const laneById = new Map(members.map((m) => [m.id, laneOf.get(m.status_id) ?? 0]));
-	const ids = new Set(members.map((m) => m.id));
-	const out = new Map<number, { to: number; w: number }[]>();
-	const indeg = new Map<number, number>();
-	for (const id of ids) {
-		out.set(id, []);
-		indeg.set(id, 0);
-	}
-	for (const e of edges) {
-		const a = e.prerequisite_id;
-		const b = e.quest_id;
-		if (a === b || !ids.has(a) || !ids.has(b)) continue;
-		out.get(a)!.push({ to: b, w: strictDown ? 1 : 0 });
-		indeg.set(b, (indeg.get(b) ?? 0) + 1);
-	}
-	const rank = new Map<number, number>();
-	let queue = [...ids].filter((id) => (indeg.get(id) ?? 0) === 0).sort((a, b) => a - b);
-	for (const id of queue) rank.set(id, 0);
-	while (queue.length > 0) {
-		const next: number[] = [];
-		for (const id of queue) {
-			for (const { to, w } of out.get(id) ?? []) {
-				rank.set(to, Math.max(rank.get(to) ?? 0, (rank.get(id) ?? 0) + w));
-				const left = (indeg.get(to) ?? 0) - 1;
-				indeg.set(to, left);
-				if (left === 0) next.push(to);
-			}
-		}
-		queue = next.sort((a, b) => a - b);
-	}
-	// 남은 것 = 고리. 지금까지의 최대 + 1 로 묶는다.
-	const leftover = [...ids].filter((id) => !rank.has(id));
-	if (leftover.length > 0) {
-		const mx = Math.max(0, ...rank.values());
-		for (const id of leftover) rank.set(id, mx + 1);
-	}
-	return rank;
 }
 
 /**
