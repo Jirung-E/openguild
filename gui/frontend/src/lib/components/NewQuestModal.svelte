@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205: 새 퀘스트 모달 i18n.
@@ -489,7 +490,7 @@
 
 <!-- 배경 오버레이 -->
 <div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
-	<div class="modal-box modal" role="document">
+	<div class="modal-box modal" role="document" use:modalFocus>
 		<div class="modal-head">
 			<h2 class="modal-title">
 				{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}

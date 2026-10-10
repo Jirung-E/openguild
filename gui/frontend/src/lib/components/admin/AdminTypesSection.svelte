@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onMount } from 'svelte';
 	import { adminApi, type QuestTypeWithCount } from '$lib/api/admin';
 	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
@@ -262,7 +263,7 @@
 
 {#if creating}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => { if (!busy) creating = false; } }}>
 			<h3 class="modal-title">{t('adminTypes.newTypeTitle', $locale)}</h3>
 			<div class="form">
 				<label>
@@ -304,7 +305,7 @@
 
 {#if confirmDelete}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => { if (!busy) confirmDelete = null; } }}>
 			<h3 class="modal-title">{t('adminTypes.deleteTypeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />
@@ -315,7 +316,7 @@
 				<button class="btn btn-danger" onclick={doDelete} disabled={busy}
 					>{t('detail.delete', $locale)}</button
 				>
-				<button class="btn" onclick={() => (confirmDelete = null)} disabled={busy}
+				<button class="btn" data-autofocus onclick={() => (confirmDelete = null)} disabled={busy}
 					>{t('common.cancel', $locale)}</button
 				>
 			</div>

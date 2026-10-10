@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import DocLink from '$lib/components/DocLink.svelte';
 	import { applyStatusUpdate } from '$lib/utils/quest-detail';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
@@ -1341,7 +1342,7 @@
 			if (e.target === e.currentTarget) closeCombo();
 		}}
 	>
-		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: closeCombo }}>
 			<div class="modal-head">
 				<h3>
 					{#if comboMode === 'parent'}{t(
@@ -1382,7 +1383,7 @@
 			if (e.target === e.currentTarget) closeCampaignCombo();
 		}}
 	>
-		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: closeCampaignCombo }}>
 			<div class="modal-head">
 				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
 				<button class="x" onclick={closeCampaignCombo}>×</button>
@@ -1421,7 +1422,8 @@
 			if (e.target === e.currentTarget && !changingType) confirmTypeChange = null;
 		}}
 	>
-		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1"
+			use:modalFocus={{ onEscape: () => { if (!changingType) confirmTypeChange = null; } }}>
 			<div class="modal-head">
 				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
 				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
@@ -1456,6 +1458,7 @@
 				</button>
 				<button
 					class="btn"
+					data-autofocus
 					onclick={() => (confirmTypeChange = null)}
 					disabled={changingType}
 				>
@@ -1477,7 +1480,8 @@
 			if (e.target === e.currentTarget && !deleting) deleteModal = false;
 		}}
 	>
-		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1"
+			use:modalFocus={{ onEscape: () => { if (!deleting) deleteModal = false; } }}>
 			<div class="modal-head">
 				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
 				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}>×</button>
@@ -1525,7 +1529,7 @@
 			<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
 			<!-- 버튼 순서: [취소][삭제] — ConfirmDialog(캠페인 상세 등)와 통일. -->
 			<div class="del-actions">
-				<button class="btn" onclick={() => (deleteModal = false)} disabled={deleting}
+				<button class="btn" data-autofocus onclick={() => (deleteModal = false)} disabled={deleting}
 					>{t('common.cancel', $locale)}</button
 				>
 				<button

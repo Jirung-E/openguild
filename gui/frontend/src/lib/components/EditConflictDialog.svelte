@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import { locale, t } from '$lib/stores/locale';
 	import {
 		assemble,
@@ -96,6 +97,7 @@
 			aria-modal="true"
 			aria-labelledby="ec-title"
 			tabindex="-1"
+			use:modalFocus
 		>
 			<h3 class="modal-title" id="ec-title">{title}</h3>
 			<p class="modal-msg">{conflict.message}</p>

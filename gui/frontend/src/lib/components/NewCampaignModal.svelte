@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
@@ -70,7 +71,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
-	<div class="modal-box modal" role="document">
+	<div class="modal-box modal" role="document" use:modalFocus>
 		<div class="modal-head">
 			<h2 class="modal-title">{t('ncm.newCampaign', $locale)}</h2>
 			<button class="close-btn" onclick={onclose} aria-label={t('common.cancel', $locale)}
@@ -93,6 +94,7 @@
 					placeholder={t('ncm.titlePlaceholder', $locale)}
 					disabled={saving}
 					autofocus
+					data-autofocus
 				/>
 			</label>
 

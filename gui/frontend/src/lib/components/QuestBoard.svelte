@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onDestroy, onMount } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
@@ -3897,7 +3898,13 @@
 
 {#if confirmDialog}
 	<div class="dialog-backdrop" role="presentation">
-		<div class="modal-box dialog" role="alertdialog" tabindex="-1">
+		<div
+			class="modal-box dialog"
+			role="alertdialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: () => confirmDialogResolve(false) }}
+		>
 			<p class="dialog-msg">{confirmDialog.msg}</p>
 			<div class="dialog-btns">
 				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}
@@ -3920,7 +3927,13 @@
 			if (e.target === e.currentTarget) showHideModal = false;
 		}}
 	>
-		<div class="modal-box hide-modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div
+			class="modal-box hide-modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: () => (showHideModal = false) }}
+		>
 			<div class="hide-head">
 				<h3 class="hide-title">{t('board.settings', $locale)}</h3>
 				<button

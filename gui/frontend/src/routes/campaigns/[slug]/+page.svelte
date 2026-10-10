@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import DocLink from '$lib/components/DocLink.svelte';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
 	import {
@@ -861,7 +862,7 @@
 			if (e.target === e.currentTarget) comboOpen = false;
 		}}
 	>
-		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => (comboOpen = false) }}>
 			<div class="modal-head">
 				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
 				<button class="x" onclick={() => (comboOpen = false)}>×</button>

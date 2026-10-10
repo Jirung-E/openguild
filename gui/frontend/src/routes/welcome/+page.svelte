@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
@@ -592,12 +593,12 @@
 {#if confirmOpen}
 	<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 스타일 모달. -->
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: cancelClear }}>
 			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
 			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
 			<div class="modal-actions">
 				<button class="btn btn-danger" onclick={doClear}>{t('welcome.clearConfirm', $locale)}</button>
-				<button class="btn" onclick={cancelClear}>{t('common.cancel', $locale)}</button>
+				<button class="btn" data-autofocus onclick={cancelClear}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -606,7 +607,7 @@
 {#if confirmRemove}
 	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: cancelRemove }}>
 			<h3 class="modal-title">{t('welcome.removeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmRemove.name}</strong>{t('welcome.removeSuffix', $locale)}
@@ -621,7 +622,7 @@
 			</p>
 			<div class="modal-actions">
 				<button class="btn btn-danger" onclick={doRemove}>{t('welcome.remove', $locale)}</button>
-				<button class="btn" onclick={cancelRemove}>{t('common.cancel', $locale)}</button>
+				<button class="btn" data-autofocus onclick={cancelRemove}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>

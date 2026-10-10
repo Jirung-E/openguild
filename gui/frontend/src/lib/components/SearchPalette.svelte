@@ -26,6 +26,7 @@
 	// BUG-248: 팔레트가 떠 있는 동안 배경 페이지 스크롤 잠금. 다른 모달들이
 	// 이미 쓰는 장치(BUG-199) 인데 팔레트만 빠져 있었다.
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	// REQ-014: 발췌에서 걸린 부분 표시.
 	import { highlightSegments } from '$lib/utils/highlight';
 	import MarkdownView from './MarkdownView.svelte';
@@ -505,7 +506,12 @@
 	use:modalScrollLock
 ></div>
 
-<div class="modal-box palette" role="dialog" aria-label={t('palette.dialogAria', $locale)}>
+<div
+	class="modal-box palette"
+	role="dialog"
+	aria-label={t('palette.dialogAria', $locale)}
+	use:modalFocus
+>
 	{#if !preview}
 		<div class="input-wrap">
 			{#if scopeKind}
@@ -515,6 +521,7 @@
 			{/if}
 			<input
 				bind:this={inputEl}
+				data-autofocus
 				bind:value={query}
 				onkeydown={onKey}
 				placeholder={t(
