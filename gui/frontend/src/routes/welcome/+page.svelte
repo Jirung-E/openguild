@@ -416,7 +416,7 @@
 		<section class="picker">
 			<!-- DEV-302: 라벨 문자열에 섞여 있던 📁 를 아이콘으로 분리 —
 			     번역 문구와 아이콘은 관심사가 다르다. -->
-			<button class="btn btn-primary btn-pick" onclick={pickFolder} disabled={pickRunning}>
+			<button class="btn btn-accent btn-pick" onclick={pickFolder} disabled={pickRunning}>
 				{#if !pickRunning}<Icon name="folder" size={13} />{/if}
 				{pickRunning ? t('welcome.opening', $locale) : t('welcome.pickFolder', $locale)}
 			</button>
@@ -449,7 +449,7 @@
 						? t('welcome.checking', $locale)
 						: t('welcome.checkConn', $locale)}
 				</button>
-				<button class="btn btn-primary btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
+				<button class="btn btn-accent btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
 					{t('welcome.connect', $locale)}
 				</button>
 			</div>
@@ -486,7 +486,7 @@
 				<p class="err">{initErr}</p>
 			{/if}
 			<div class="uninit-actions">
-				<button class="btn btn-primary" onclick={initUninit} disabled={initRunning}>
+				<button class="btn btn-danger" onclick={initUninit} disabled={initRunning}>
 					{initRunning ? t('welcome.initializing', $locale) : t('welcome.initAndOpen', $locale)}
 				</button>
 				<button class="btn" onclick={declineUninit} disabled={initRunning}

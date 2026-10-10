@@ -605,7 +605,8 @@ input[type='checkbox']:disabled {
 
    쓰는 법 — 종류는 색으로만 가른다:
      <button class="btn">취소</button>                 보조 (기본)
-     <button class="btn btn-primary">저장</button>     주 동작 — 한 화면에 하나 (초록)
+     <button class="btn btn-primary">저장</button>     주 동작 — 저장 · 만들기 (초록). 한 화면에 여럿이어도 된다
+     <button class="btn btn-accent">열기</button>      파랑 — 원래 파랑이던 버튼(환영 화면 열기 · 연결, 관리 추가)
      <button class="btn btn-danger">삭제</button>      되돌릴 수 없는 일 (빨강)
      <button class="btn btn-warning">복원</button>     조심할 일 (노랑)
      <button class="btn btn-quiet">…</button>          테두리 없는 조용한 버튼
@@ -652,6 +653,14 @@ input[type='checkbox']:disabled {
 .btn-primary:hover:not(:disabled) {
 	background: var(--btn-primary-bg-hover);
 	border-color: var(--btn-primary-border-hover);
+}
+.btn-accent {
+	background: var(--accent-strong);
+	border-color: var(--accent);
+	color: var(--btn-primary-text);
+}
+.btn-accent:hover:not(:disabled) {
+	background: var(--accent);
 }
 .btn-danger {
 	color: var(--danger);

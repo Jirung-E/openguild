@@ -340,7 +340,7 @@
 			</div>
 			<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn btn-primary" onclick={doCreate} disabled={busy}
+				<button class="btn btn-accent" onclick={doCreate} disabled={busy}
 					>{t('common.add', $locale)}</button
 				>
 				<button class="btn" onclick={() => (creating = false)} disabled={busy}
