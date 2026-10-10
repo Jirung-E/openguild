@@ -882,6 +882,18 @@
 		}
 	}
 
+	// DEV-438: 정렬할 때 자식 · 후행을 **무조건 아래**로. 끄면(기본) "아래 또는 옆" — 같은 줄 옆에도
+	// 설 수 있다. 보드 설정에서 켜고 끔, 길드별 기억. 정렬을 누를 때만 쓰인다.
+	let arrangeStrictDown = $state(false);
+	function toggleArrangeStrictDown() {
+		arrangeStrictDown = !arrangeStrictDown;
+		try {
+			localStorage.setItem(gk('arrangeStrictDown'), String(arrangeStrictDown));
+		} catch {
+			/* 무시 */
+		}
+	}
+
 	// REQ-037: 레인 배경에 그 상태의 색을 연하게. 보드 설정에서 켜고 끔, 길드별 기억.
 	let laneTint = $state(false);
 	function toggleLaneTint() {
@@ -2023,7 +2035,8 @@
 						laneStride: LANE_STRIDE,
 						nodeW: NODE_W,
 						nodeH: NODE_H
-					}
+					},
+					arrangeStrictDown
 				);
 				clusterHeight = Math.max(1, ...[...slots.values()].map((s2) => s2.row + 1));
 				for (const [qid, slot] of slots) place(qid, slot.col, startRow + slot.row);
@@ -2458,6 +2471,7 @@
 			try {
 				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
 				laneTint = localStorage.getItem(gk('laneTint')) === 'true';
+				arrangeStrictDown = localStorage.getItem(gk('arrangeStrictDown')) === 'true';
 				// DEV-073: 같이 복원.
 				toolbarCollapsed = localStorage.getItem(gk('toolbarCollapsed')) === 'true';
 			} catch {
@@ -3964,6 +3978,14 @@
 			<label class="lane-tint-toggle">
 				<input type="checkbox" checked={laneTint} onchange={toggleLaneTint} />
 				{t('board.laneTint', $locale)}
+			</label>
+			<label class="lane-tint-toggle" title={t('board.arrangeStrictDownHint', $locale)}>
+				<input
+					type="checkbox"
+					checked={arrangeStrictDown}
+					onchange={toggleArrangeStrictDown}
+				/>
+				{t('board.arrangeStrictDown', $locale)}
 			</label>
 
 			<!-- DEV-135: 보드 필터 — List 와 동일한 필터 UI. 변경 시 공유 store +

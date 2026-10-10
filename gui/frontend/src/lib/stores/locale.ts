@@ -1418,6 +1418,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '레인 배경에 상태 색 입히기',
 		en: 'Tint lane backgrounds with status color'
 	},
+	'board.arrangeStrictDown': {
+		ko: '정렬할 때 자식·후행을 무조건 아래로',
+		en: 'When arranging, always put children and successors below'
+	},
+	'board.arrangeStrictDownHint': {
+		ko: '끄면 아래 또는 옆 — 부모·선행과 같은 줄 옆에도 설 수 있다. 정렬 버튼을 누를 때 적용된다.',
+		en: 'Off: below or beside — they may also sit next to the parent/prerequisite on the same row. Applies when you press Arrange.'
+	},
 	'board.hideHelp': {
 		ko: '레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체 숨김.',
 		en: 'Reorder lanes + hide + hide group/solo nodes. ◀ / ▶ to move, unchecking Show hides the whole lane.'
