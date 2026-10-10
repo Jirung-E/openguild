@@ -5259,6 +5259,11 @@
 		max-height: calc(100dvh - 4rem);
 		overflow-y: auto;
 	}
+	/* BUG-354: 세로 flex 라 안 항목이 기본으로 줄어든다(flex-shrink: 1). 그러면 창이 스크롤되는 대신
+	   레인 표 칸이 눌려 잘렸다(7번째 레인이 가려짐). 줄어들지 않게 해서 창 전체가 스크롤되게 한다. */
+	.hide-modal > :global(*) {
+		flex-shrink: 0;
+	}
 	/* DEV-135: 보드 설정 모달 안 필터 섹션. */
 	.lane-tint-toggle {
 		display: flex;
@@ -5314,6 +5319,15 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		/* BUG-354: 스크롤해도 제목 · 닫기 버튼은 위에 붙어 있게. 창의 위 여백만큼 끌어올려 그 자리를
+		   배경으로 덮는다 — 안 그러면 스크롤된 내용이 제목 위 틈으로 비친다. */
+		position: sticky;
+		top: -1.25rem;
+		margin-top: -1.25rem;
+		padding-top: 1.25rem;
+		padding-bottom: 0.35rem;
+		background: var(--bg-elevated);
+		z-index: 1;
 	}
 	.hide-title {
 		margin: 0;
