@@ -53,12 +53,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async_zip = { version = "0.0.18", default-features = false, features = ["tokio"] }
 tokio-util = { version = "0.7.19", features = ["compat", "io"] }
+# DEV-441: zip 항목의 수정 시각(로컬 시각) — 없으면 1980-01-01 로 풀린다. 테스트의 시간 연산
+# (자정 경계 wrap 버그 방지)도 이것을 쓴다. core 가 이미 쓰는 판이라 새로 받는 크레이트는 없다.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
-# 테스트의 시간 연산 — 자정 경계 wrap 버그 방지 (chrono 절대 시각 연산).
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [build-dependencies]
 # DEV-169: Windows exe 아이콘 임베드 (cfg(windows) 에서만 동작 — 다른 OS 는 no-op).

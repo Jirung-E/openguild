@@ -4330,3 +4330,99 @@ async fn an_unknown_api_path_is_a_json_404_not_the_page() {
     assert_eq!(st, StatusCode::OK);
     let _ = std::fs::remove_dir_all(&dist);
 }
+
+/// DEV-441: 도서관 내보내기 zip — 로컬 내보내기와 **같은 폴더 구조**로 담기고, 고른 것만 들어간다.
+#[tokio::test]
+async fn test_library_export_zip_keeps_folder_tree() {
+    let app = setup().await;
+    for p in ["설계", "설계/결정", "다른곳"] {
+        post(app.clone(), "/api/library/folders", json!({ "path": p })).await;
+    }
+    for (title, path) in [("라우터", "설계"), ("결정 기록", "설계/결정"), ("바깥", "다른곳"), ("맨 위", "")] {
+        let (s, b) = post(app.clone(), "/api/library", json!({ "title": title, "body": "본문", "path": path })).await;
+        assert!(s.is_success(), "{b}");
+    }
+
+    async fn zip_names(app: Router, uri: &str) -> (StatusCode, Option<String>, Vec<String>) {
+        let res = app.oneshot(Request::get(uri).body(Body::empty()).unwrap()).await.unwrap();
+        let status = res.status();
+        let cd = res
+            .headers()
+            .get("content-disposition")
+            .map(|v| v.to_str().unwrap_or("").to_string());
+        let bytes = res.into_body().collect().await.unwrap().to_bytes().to_vec();
+        if !status.is_success() {
+            return (status, cd, vec![]);
+        }
+        let zip = async_zip::base::read::mem::ZipFileReader::new(bytes).await.unwrap();
+        let mut names: Vec<String> = zip
+            .file()
+            .entries()
+            .iter()
+            .map(|e| e.filename().as_str().unwrap().to_string())
+            .collect();
+        names.sort();
+        (status, cd, names)
+    }
+
+    // 전체
+    let (s, cd, names) = zip_names(app.clone(), "/api/library/export.zip").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(names, vec!["다른곳/바깥.md", "맨 위.md", "설계/결정/결정 기록.md", "설계/라우터.md"]);
+    assert!(cd.unwrap_or_default().contains("attachment"), "내려받기로 와야 한다");
+
+    // 폴더 하나 — 그 폴더가 뿌리(로컬 내보내기와 같은 규칙).
+    let uri = format!("/api/library/export.zip?folder={}", urlencoding_min("설계"));
+    let (_, _, names) = zip_names(app.clone(), &uri).await;
+    assert_eq!(names, vec!["설계/결정/결정 기록.md", "설계/라우터.md"]);
+
+    // 여러 개 — 화면의 열쇠 그대로(`folder:<경로>` · 문서 번호).
+    let (_, list) = get(app.clone(), "/api/library").await;
+    let top = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["title"] == json!("맨 위"))
+        .unwrap()["book_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let uri = format!(
+        "/api/library/export.zip?pick={}&pick={top}",
+        urlencoding_min("folder:다른곳")
+    );
+    let (_, _, names) = zip_names(app.clone(), &uri).await;
+    assert_eq!(names, vec!["다른곳/바깥.md", "맨 위.md"]);
+
+    // 문서 번호 경로(`/api/library/{book_id}`)와 겹치지 않는다 — 없는 문서는 그대로 404.
+    let (s, _) = get(app.clone(), "/api/library/BOOK-999").await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    // 빈 폴더는 404 — 빈 zip 을 성공처럼 주지 않는다.
+    post(app.clone(), "/api/library/folders", json!({ "path": "빈곳" })).await;
+    let uri = format!("/api/library/export.zip?folder={}", urlencoding_min("빈곳"));
+    let (s, _, _) = zip_names(app.clone(), &uri).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
+    // 다 보낸 뒤 서버의 임시 폴더는 남지 않는다.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let prefix = format!("openguild-library-export-{}-", std::process::id());
+    let left: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+        .collect();
+    assert!(left.is_empty(), "임시 폴더가 남았다: {left:?}");
+}
+
+/// 시험용 percent-encode — 쿼리 값에 한글 · `:` · `/` 가 들어간다.
+fn urlencoding_min(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}

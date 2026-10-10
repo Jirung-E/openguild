@@ -19,6 +19,8 @@ serde_json = "1"
 anyhow = "1"
 # tokio: 로컬 모드에서 current_thread runtime 만 빌더로 생성. #[tokio::main] 미사용.
 tokio = { version = "1", features = ["rt"] }
+# DEV-441: 원격 길드의 도서관 내보내기 — 서버가 보낸 zip 을 풀어 폴더로 펼친다. 서버와 같은 판(무압축 store 만 읽는다).
+async_zip = { version = "0.0.18", default-features = false, features = ["tokio"] }
 # sqlx: SqlitePool 타입만 사용 (migrate 는 core 가 호출).
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 unicode-width = "0.2.2"

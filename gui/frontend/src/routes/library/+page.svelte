@@ -22,6 +22,7 @@
 		shouldRefresh,
 		takeOutTarget
 	} from '$lib/utils/library-view';
+	import { libraryExportZipUrl } from '$lib/utils/banner';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy, tick } from 'svelte';
@@ -855,7 +856,8 @@
 	// 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이라, 밖으로 가져가려면 그 구조를
 	// **그때 만들어야** 한다. 두 갈래를 준다 — 폴더를 골라 펼치는 "내보내기" 와, 임시 폴더에
 	// 펼친 뒤 클립보드에 올려 탐색기에서 붙여넣는 "복사".
-	// 파일을 **이 기계에** 쓰므로 데스크톱 로컬 길드에서만 — 원격 길드의 문서는 이 디스크에 없다.
+	// 복사는 파일을 **이 기계에** 펼쳐 클립보드에 올리므로 데스크톱 로컬 길드에서만 된다.
+	// DEV-441: 내보내기는 어디서나 — 원격 길드 · 웹 화면에서는 서버가 같은 규칙으로 펼친 zip 을 받는다.
 	const isTauri = isLocalTauri();
 	let takeOutBusy = $state(false);
 
@@ -866,6 +868,16 @@
 
 	async function exportOut() {
 		if (takeOutBusy) return;
+		if (!isTauri) {
+			// DEV-441: 파일 이름은 서버가 정한다(Content-Disposition) — 첨부 zip 과 같다. 제스처가 끊기지 않게
+			// `await` 없이 곧바로 링크를 누른다.
+			const a = document.createElement('a');
+			a.href = libraryExportZipUrl(takeOutPick());
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			return;
+		}
 		try {
 			const { open } = await import('@tauri-apps/plugin-dialog');
 			const dir = await open({ directory: true, title: t('library.exportPick', $locale) });
@@ -1303,10 +1315,10 @@
 					<button class="crumb-btn" onclick={copyOut} disabled={takeOutBusy}>
 						{t('library.copyOut', $locale)}
 					</button>
-					<button class="crumb-btn" onclick={exportOut} disabled={takeOutBusy}>
-						{t('library.exportOut', $locale)}
-					</button>
 				{/if}
+				<button class="crumb-btn" onclick={exportOut} disabled={takeOutBusy}>
+					{t('library.exportOut', $locale)}
+				</button>
 			</span>
 		</div>
 		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. DEV-429: 트리 보기도 같은 것을 쓴다. -->
@@ -1738,15 +1750,15 @@
 								<button class="btn" onclick={openMove}
 									>{t('library.moveFolder', $locale)}</button
 								>
-								<!-- REQ-028: 파일 시스템으로 — 데스크톱에서만(이 기계에 파일을 쓴다). -->
+								<!-- REQ-028: 파일 시스템으로. 복사는 데스크톱에서만(이 기계에 파일을 쓴다), 내보내기는 어디서나(DEV-441). -->
 								{#if isTauri}
 									<button class="btn" onclick={copyOut} disabled={takeOutBusy}
 										>{t('library.copyOut', $locale)}</button
 									>
-									<button class="btn" onclick={exportOut} disabled={takeOutBusy}
-										>{t('library.exportOut', $locale)}</button
-									>
 								{/if}
+								<button class="btn" onclick={exportOut} disabled={takeOutBusy}
+									>{t('library.exportOut', $locale)}</button
+								>
 								<button class="btn btn-danger" onclick={askDeleteSelected}
 									>{t('library.delete', $locale)}</button
 								>
@@ -1979,15 +1991,15 @@
 				<button class="btn btn-danger" onclick={() => (confirmDeletePicked = true)}
 					>{t('library.delete', $locale)}</button
 				>
+				<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
 				{#if isTauri}
-					<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
 					<button class="btn" onclick={copyOut} disabled={takeOutBusy}
 						>{t('library.copyOut', $locale)}</button
 					>
-					<button class="btn" onclick={exportOut} disabled={takeOutBusy}
-						>{t('library.exportOut', $locale)}</button
-					>
 				{/if}
+				<button class="btn" onclick={exportOut} disabled={takeOutBusy}
+					>{t('library.exportOut', $locale)}</button
+				>
 				<button class="btn" onclick={() => (picked = msel.clear())}
 					>{t('library.pickedClear', $locale)}</button
 				>

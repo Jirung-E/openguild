@@ -74,6 +74,21 @@ export function guildAttachmentsZipUrl(
 }
 
 /**
+ * DEV-441: 도서관을 폴더 구조 그대로 담은 zip 의 URL — 서버(원격 길드 · 웹 화면)에서 내보낼 때.
+ *
+ * 로컬 데스크톱은 파일을 이 기계에 바로 펼치지만, 서버의 문서는 이 디스크에 없다. 서버가 같은 규칙으로 펼쳐
+ * zip 하나로 보낸다. 고른 것은 화면의 열쇠 그대로(`folder:<경로>` · 문서 번호)를 `pick` 으로 여러 번 넘긴다.
+ */
+export function libraryExportZipUrl(take: { folder?: string; id?: string; picks?: string[] }): string {
+	const q = new URLSearchParams();
+	if (take.picks?.length) for (const p of take.picks) q.append('pick', p);
+	else if (take.id) q.set('id', take.id);
+	else if (take.folder) q.set('folder', take.folder);
+	const qs = q.toString();
+	return `${httpBase()}/api/library/export.zip${qs ? `?${qs}` : ''}`;
+}
+
+/**
  * BUG-263: URL 경로에 그대로 넣으면 안 되는 글자를 세그먼트마다 인코딩한다.
  * `/` 는 경로 구분자라 남긴다.
  *

@@ -243,11 +243,30 @@ async fn stream_attachments_zip(
     items: Vec<openguild_core::models::QuestAttachment>,
     download_name: String,
 ) -> AppResult<axum::response::Response> {
-    use axum::response::IntoResponse;
-
     if items.is_empty() {
         return Err(openguild_core::error::AppError::NotFound("첨부 없음".into()).into());
     }
+    let mut entries = Vec::new();
+    for a in items {
+        // REQ-002 와 같은 allowlist 검증 — zip 경로로 우회되면 안 된다.
+        let Ok(rel) = openguild_core::ops::attachments::validate_guild_rel(&a.path) else {
+            continue;
+        };
+        entries.push((a.name.clone(), store.paths.dot_guild().join(&rel)));
+    }
+    stream_zip(entries, download_name, None)
+}
+
+/// 파일들을 zip 으로 스트리밍한다 — `(zip 안 이름, 디스크 경로)`. 이름에 `/` 가 있으면 zip 안 폴더가 된다.
+///
+/// DEV-441: 첨부 zip([[BUG-241]])과 도서관 내보내기가 함께 쓴다. `cleanup` 을 주면 다 흘려보낸 뒤(실패해도) 그
+/// 폴더를 지운다 — 도서관 내보내기는 임시 폴더에 펼친 것을 담는다.
+pub(crate) fn stream_zip(
+    entries: Vec<(String, std::path::PathBuf)>,
+    download_name: String,
+    cleanup: Option<std::path::PathBuf>,
+) -> AppResult<axum::response::Response> {
+    use axum::response::IntoResponse;
 
     // duplex 로 writer↔reader 를 잇는다. zip 을 쓰는 쪽은 별도 task 에서 돌고,
     // 응답 본문은 reader 를 그대로 흘려보낸다 — 어느 쪽도 전체를 들고 있지 않다.
@@ -255,16 +274,26 @@ async fn stream_attachments_zip(
 
     let writer = tokio::spawn(async move {
         let mut zip = ZipFileWriter::with_tokio(w);
-        for a in items {
-            // REQ-002 와 같은 allowlist 검증 — zip 경로로 우회되면 안 된다.
-            let Ok(rel) = openguild_core::ops::attachments::validate_guild_rel(&a.path) else {
-                continue;
-            };
-            let path = store.paths.dot_guild().join(&rel);
+        for (name, path) in entries {
             let Ok(mut f) = tokio::fs::File::open(&path).await else {
                 continue; // 사이드카엔 있으나 파일이 사라진 경우 — 건너뛴다.
             };
-            let entry = ZipEntryBuilder::new(a.name.clone().into(), Compression::Stored);
+            // DEV-441: 파일의 수정 시각을 싣는다 — 없으면 풀었을 때 전부 1980-01-01 이 된다.
+            let mut entry = ZipEntryBuilder::new(name.into(), Compression::Stored);
+            if let Ok(modified) = f.metadata().await.and_then(|m| m.modified()) {
+                use chrono::{Datelike, Timelike};
+                let t: chrono::DateTime<chrono::Local> = modified.into();
+                entry = entry.last_modification_date(
+                    async_zip::ZipDateTimeBuilder::new()
+                        .year(t.year())
+                        .month(t.month())
+                        .day(t.day())
+                        .hour(t.hour())
+                        .minute(t.minute())
+                        .second(t.second())
+                        .build(),
+                );
+            }
             let Ok(mut ew) = zip.write_entry_stream(entry).await else {
                 break;
             };
@@ -282,6 +311,9 @@ async fn stream_attachments_zip(
         // 실패해도 여기서 할 수 있는 건 스트림을 닫는 것뿐이다. 클라이언트는
         // 잘린 zip 을 받고 압축 해제 시 알게 된다.
         let _ = zip.close().await;
+        if let Some(dir) = cleanup {
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+        }
     });
 
     // DEV-368: 쓰기 태스크가 패닉하면 writer 가 drop 되고 duplex 는 그냥 EOF 로
@@ -323,7 +355,7 @@ async fn stream_attachments_zip(
 ///
 /// 길드 이름은 사용자가 정하므로 공백·슬래시·따옴표가 들어올 수 있다. 한글 등
 /// 비ASCII 는 **그대로 둔다**(아래 RFC 5987 로 전달되고, 파일명으로도 정상이다).
-fn safe_name_part(raw: &str) -> String {
+pub(crate) fn safe_name_part(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
         .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c })
@@ -335,7 +367,7 @@ fn safe_name_part(raw: &str) -> String {
 /// `Content-Disposition` 값. 한글 길드/문서 이름을 위해 **RFC 5987** 형식을 함께
 /// 낸다 — `filename=` 만 쓰면 비ASCII 가 브라우저마다 다르게 깨진다. 구형
 /// 클라이언트를 위해 ASCII 로 접은 이름을 `filename=` 에 남긴다.
-fn content_disposition(name: &str) -> String {
+pub(crate) fn content_disposition(name: &str) -> String {
     let ascii: String = name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '[' | ']') { c } else { '_' })

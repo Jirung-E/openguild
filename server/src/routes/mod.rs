@@ -170,6 +170,8 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/library/{book_id}/tags", patch(library::set_tags).post(library::edit_tags))
         // DEV-290: 도서관 문서 변경 이력.
         .route("/api/library/{book_id}/history", get(library::list_history))
+        // DEV-441: 도서관 내보내기 — 폴더 구조 그대로 zip. `{book_id}` 와 겹치지 않게 `.zip` 으로 끝난다.
+        .route("/api/library/export.zip", get(library::export_zip))
         // DEV-239: 도서관 폴더(계층) — `.guild/library/folders.toml`.
         .route(
             "/api/library/folders",

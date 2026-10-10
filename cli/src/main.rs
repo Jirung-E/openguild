@@ -1926,6 +1926,123 @@ struct CliInfo {
     journal_total: i64,
 }
 
+/// DEV-441: 원격 길드의 도서관을 `dest` 에 폴더 구조 그대로 펼친다 — 서버가 보낸 zip 을 푼다.
+///
+/// 펼치는 규칙(제목 → 파일 이름, 첨부 폴더)은 서버가 로컬과 같은 함수로 정했다. 여기서는 받은 것을 그대로
+/// 풀기만 하되 두 가지를 지킨다: zip 안 이름이 `dest` 밖을 가리키면(`..`, 절대 경로) 버리고, 이미 있는 파일은
+/// 덮지 않고 ` (2)` 를 붙인다 — 로컬 내보내기와 같다.
+fn remote_library_export(
+    h: &HttpClient,
+    dest: &str,
+    folder: Option<&str>,
+    id: Option<&str>,
+) -> Result<Vec<(String, std::path::PathBuf)>> {
+    let dest = std::path::Path::new(dest);
+    if !dest.is_dir() {
+        return Err(anyhow!(tf!(
+            "내보낼 폴더가 없습니다: {}",
+            "no such folder to export into: {}",
+            dest.display()
+        )));
+    }
+    let mut query: Vec<(&str, &str)> = Vec::new();
+    if let Some(i) = id {
+        query.push(("id", i));
+    } else if let Some(f) = folder {
+        query.push(("folder", f));
+    }
+    let res = h.http.get(h.url("/api/library/export.zip")).query(&query).send()?;
+    let status = res.status();
+    if !status.is_success() {
+        let body = res.text().unwrap_or_default();
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+            && let Some(err) = v.get("error").and_then(|e| e.as_str())
+        {
+            return Err(anyhow!("{status}: {err}"));
+        }
+        return Err(anyhow!("{status}: {body}"));
+    }
+    let bytes = res.bytes()?.to_vec();
+    let rt = tokio::runtime::Builder::new_current_thread().build()?;
+    rt.block_on(async {
+        let zip = async_zip::base::read::mem::ZipFileReader::new(bytes)
+            .await
+            .map_err(|e| anyhow!(tf!("받은 zip 을 읽지 못했습니다: {e}", "could not read the zip: {e}")))?;
+        let mut written = Vec::new();
+        for i in 0..zip.file().entries().len() {
+            let name = zip.file().entries()[i]
+                .filename()
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if name.ends_with('/') {
+                continue; // 폴더 항목 — 파일을 쓸 때 만든다.
+            }
+            let Some(rel) = safe_zip_rel(&name) else {
+                continue;
+            };
+            let mut buf = Vec::new();
+            let mut r = zip
+                .reader_with_entry(i)
+                .await
+                .map_err(|e| anyhow!("{name}: {e}"))?;
+            r.read_to_end_checked(&mut buf)
+                .await
+                .map_err(|e| anyhow!("{name}: {e}"))?;
+            let target = unique_path(&dest.join(&rel));
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&target, &buf)?;
+            let shown = target
+                .strip_prefix(dest)
+                .unwrap_or(&target)
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            written.push((shown, target));
+        }
+        written.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(written)
+    })
+}
+
+/// zip 안 이름을 `dest` 아래 상대 경로로. 밖을 가리키는 것(`..`, 절대 경로, 드라이브 문자)은 `None`.
+fn safe_zip_rel(name: &str) -> Option<std::path::PathBuf> {
+    let mut out = std::path::PathBuf::new();
+    for seg in name.split(['/', '\\']) {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg == ".." || seg.contains(':') {
+            return None;
+        }
+        out.push(seg);
+    }
+    if out.as_os_str().is_empty() { None } else { Some(out) }
+}
+
+/// 이미 있으면 ` (2)`, ` (3)` … — 내보내기가 남의 파일을 지우면 안 된다.
+fn unique_path(p: &std::path::Path) -> std::path::PathBuf {
+    if !p.exists() {
+        return p.to_path_buf();
+    }
+    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = p.extension().map(|e| e.to_string_lossy().into_owned());
+    for n in 2.. {
+        let name = match &ext {
+            Some(e) => format!("{stem} ({n}).{e}"),
+            None => format!("{stem} ({n})"),
+        };
+        let cand = p.with_file_name(name);
+        if !cand.exists() {
+            return cand;
+        }
+    }
+    unreachable!()
+}
+
 /// 백엔드 추상화. 같은 메서드 시그니처로 HTTP / Local 양쪽 지원.
 ///
 /// - Http: 기존 reqwest blocking 클라이언트 위임
@@ -8790,11 +8907,25 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             }
         }
         LibraryCmd::Export { dest, folder, id } => {
-            let Backend::Local(l) = c else {
-                return Err(anyhow!(tf!(
-                    "내보내기는 로컬 길드에서만 됩니다 — 파일을 이 기계에 씁니다.",
-                    "Export works only on a local guild — it writes files on this machine."
-                )));
+            // DEV-441: 원격 길드는 서버가 같은 규칙으로 펼친 것을 zip 으로 받아 여기에 푼다.
+            let l = match c {
+                Backend::Local(l) => l,
+                Backend::Http(h) => {
+                    let written = remote_library_export(h, &dest, folder.as_deref(), id.as_deref())?;
+                    if json {
+                        let items: Vec<_> = written
+                            .iter()
+                            .map(|(rel, path)| serde_json::json!({ "rel": rel, "path": path.display().to_string() }))
+                            .collect();
+                        json_println!(serde_json::json!({ "ok": true, "exported": items }));
+                    } else {
+                        for (rel, _) in &written {
+                            println!("{rel}");
+                        }
+                        println!("{}", tf!("-- {} 개 파일", "-- {} files", written.len()));
+                    }
+                    return Ok(());
+                }
             };
             let pick = match (&id, &folder) {
                 (Some(i), _) => openguild_core::ops::library_export::Pick::Doc(i.clone()),
@@ -13272,5 +13403,39 @@ scope = ["gui"]
             }
             _ => panic!(),
         }
+    }
+}
+
+/// DEV-441: 원격 도서관 내보내기 — 받은 zip 을 풀 때의 이름 규칙.
+#[cfg(test)]
+mod remote_export_tests {
+    use super::{safe_zip_rel, unique_path};
+    use std::path::PathBuf;
+
+    #[test]
+    fn zip_names_stay_inside_the_destination() {
+        assert_eq!(safe_zip_rel("설계/결정/기록.md"), Some(PathBuf::from("설계").join("결정").join("기록.md")));
+        assert_eq!(safe_zip_rel("./a.md"), Some(PathBuf::from("a.md")));
+        // 밖을 가리키는 것은 버린다.
+        assert_eq!(safe_zip_rel("../밖.md"), None);
+        assert_eq!(safe_zip_rel("설계/../../밖.md"), None);
+        assert_eq!(safe_zip_rel("C:/Windows/x.md"), None);
+        assert_eq!(safe_zip_rel("..\\밖.md"), None);
+        assert_eq!(safe_zip_rel(""), None);
+        // 맨 앞 `/` 는 절대 경로가 아니라 dest 아래로 붙는다.
+        assert_eq!(safe_zip_rel("/a.md"), Some(PathBuf::from("a.md")));
+    }
+
+    #[test]
+    fn existing_files_are_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("og-remote-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("문서.md");
+        assert_eq!(unique_path(&p), p);
+        std::fs::write(&p, "x").unwrap();
+        assert_eq!(unique_path(&p), dir.join("문서 (2).md"));
+        std::fs::write(dir.join("문서 (2).md"), "y").unwrap();
+        assert_eq!(unique_path(&p), dir.join("문서 (3).md"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

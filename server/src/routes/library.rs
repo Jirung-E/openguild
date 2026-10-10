@@ -238,3 +238,111 @@ pub async fn delete_folder(
     ops::delete_folder(&store, &q.path).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ─── DEV-441: 도서관 내보내기 — 폴더 구조 그대로 zip ───────────────────
+//
+// [[REQ-028]] 의 내보내기는 파일을 **이 기계에** 쓰므로 데스크톱 로컬 길드에서만 됐다. 서버(원격 길드 · 웹 화면 ·
+// 원격 CLI)에서도 꺼내려면 받는 쪽으로 보내야 하고, 여러 파일 · 폴더를 한 번에 보내는 방법은 zip 하나다.
+//
+// 펼치는 규칙은 로컬과 **같은 함수**(`ops::library_export::export`)를 쓴다 — 서버의 임시 폴더에 펼친 뒤 그
+// 폴더를 그대로 담는다. 그래야 제목 → 파일 이름, 겹치는 이름의 ` (2)`, 첨부 폴더 같은 규칙이 두 곳으로
+// 갈라지지 않는다. 다 보낸 뒤 임시 폴더는 지운다.
+
+/// `GET /api/library/export.zip?folder=…` · `?id=BOOK-NNN` · `?pick=…&pick=…`
+///
+/// `pick` 은 화면이 쓰는 열쇠 그대로 — 폴더는 `folder:<경로>`, 문서는 문서 번호. 여러 번 줄 수 있다. 아무것도
+/// 없으면 도서관 전체.
+pub async fn export_zip(
+    State(store): State<Store>,
+    Query(q): Query<Vec<(String, String)>>,
+) -> AppResult<axum::response::Response> {
+    use openguild_core::ops::library_export::{Pick, export};
+    let get = |k: &str| q.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+    let mut picks: Vec<Pick> = q
+        .iter()
+        .filter(|(k, _)| k == "pick")
+        .map(|(_, v)| match v.strip_prefix("folder:") {
+            Some(f) => Pick::Folder(f.to_string()),
+            None => Pick::Doc(v.clone()),
+        })
+        .collect();
+    if picks.is_empty() {
+        picks.push(match (get("id"), get("folder")) {
+            (Some(i), _) => Pick::Doc(i),
+            (None, Some(f)) => Pick::Folder(f),
+            (None, None) => Pick::Folder(String::new()),
+        });
+    }
+
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let stage = std::env::temp_dir().join(format!(
+        "openguild-library-export-{}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&stage).map_err(|e| {
+        openguild_core::error::AppError::Internal(anyhow::anyhow!("임시 폴더를 만들지 못했습니다: {e}"))
+    })?;
+    let mut count = 0usize;
+    for pick in &picks {
+        match export(&store, pick, &stage).await {
+            Ok(out) => count += out.len(),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&stage);
+                return Err(e.into());
+            }
+        }
+    }
+    if count == 0 {
+        let _ = std::fs::remove_dir_all(&stage);
+        return Err(openguild_core::error::AppError::NotFound(openguild_core::tf!(
+            "내보낼 문서가 없습니다",
+            "no documents to export"
+        ))
+        .into());
+    }
+
+    let mut entries = Vec::new();
+    collect_files(&stage, &stage, &mut entries);
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // 파일 이름: `[길드]도서관.zip`, 폴더 하나면 `[길드]<폴더 끝 조각>.zip`, 문서 하나면 그 번호.
+    let guild = super::attachments::safe_name_part(&openguild_core::recents::guess_name(
+        &store.paths.guild_root,
+    ));
+    let what = match picks.as_slice() {
+        [Pick::Folder(f)] if !f.is_empty() => f.rsplit('/').next().unwrap_or(f).to_string(),
+        [Pick::Doc(id)] => id.clone(),
+        _ => "library".to_string(),
+    };
+    let name = format!("[{guild}]{}.zip", super::attachments::safe_name_part(&what));
+    super::attachments::stream_zip(entries, name, Some(stage))
+}
+
+/// `dir` 아래 파일 전부를 `(root 기준 상대 경로, 절대 경로)` 로. 구분자는 언제나 `/` — zip 의 규칙이다.
+fn collect_files(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    out: &mut Vec<(String, std::path::PathBuf)>,
+) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_files(root, &p, out);
+        } else if let Ok(rel) = p.strip_prefix(root) {
+            let rel = rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            out.push((rel, p));
+        }
+    }
+}
