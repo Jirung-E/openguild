@@ -120,15 +120,15 @@
 	.cb-wrap {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.cb-input {
-		padding: 0.4rem 0.7rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-strong);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		outline: none;
 	}
 	.cb-input:focus {
@@ -136,9 +136,9 @@
 	}
 
 	.cb-empty {
-		padding: 0.6rem 0.8rem;
+		padding: var(--sp-8) var(--sp-12);
 		color: var(--text-faint);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		border: var(--bw) dashed var(--bg-subtle);
 		border-radius: var(--r-md);
 		text-align: center;
@@ -177,10 +177,10 @@
 	.cb-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.4rem 0.7rem;
+		gap: var(--sp-8);
+		padding: var(--sp-6) var(--sp-12);
 		cursor: pointer;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		width: 100%;
 		background: none;
 		border: none;

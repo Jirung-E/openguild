@@ -160,22 +160,22 @@
 
 <style>
 	.block {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--sp-24);
 	}
 	.card {
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
 		background: var(--bg-elevated);
-		padding: 0.9rem 1rem;
+		padding: var(--sp-16) var(--sp-16);
 	}
 	.head {
 		display: flex;
 		align-items: center;
 		width: 100%;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		background: transparent;
 		border: none;
-		padding: 0 0 0.6rem;
+		padding: 0 0 var(--sp-8);
 		cursor: pointer;
 		color: var(--text);
 	}
@@ -184,13 +184,13 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.35em;
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		margin: 0;
 	}
 	.range {
 		margin-left: auto;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	.head:hover .range {
@@ -200,13 +200,13 @@
 	/* BUG-117: 셀/간격을 rem 으로 — uiScale(root font-size)에 비례. */
 	.heat {
 		display: flex;
-		gap: 0.1875rem;
-		margin-bottom: 0.7rem;
+		gap: var(--sp-2);
+		margin-bottom: var(--sp-12);
 	}
 	.week {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1875rem;
+		gap: var(--sp-2);
 	}
 	.cell {
 		width: 0.6875rem;
@@ -244,13 +244,13 @@
 		   않게 줄바꿈 허용. */
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.35rem 0.9rem;
+		gap: var(--sp-6) var(--sp-16);
 		width: 100%;
-		padding: 0.55rem 0 0;
+		padding: var(--sp-8) 0 0;
 		border: none;
 		border-top: var(--bw) solid var(--border);
 		background: transparent;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		cursor: pointer;
 		text-align: left;

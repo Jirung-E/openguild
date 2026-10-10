@@ -96,7 +96,7 @@
 		flex: none;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.1rem;
+		gap: var(--sp-2);
 	}
 	.row-act {
 		display: inline-flex;

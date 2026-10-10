@@ -91,7 +91,7 @@
 	.doc-row {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		flex: 1;
 		min-width: 0;
 	}

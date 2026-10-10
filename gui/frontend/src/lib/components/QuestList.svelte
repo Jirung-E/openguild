@@ -677,13 +677,13 @@
 		z-index: 10;
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.25rem 0.625rem;
+		gap: var(--sp-4);
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		cursor: pointer;
 		transition:
@@ -713,7 +713,7 @@
 		padding: 4rem;
 		text-align: center;
 		color: var(--text-faint);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 	}
 
 	.state-msg.error {
@@ -728,33 +728,33 @@
 		justify-content: flex-start;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.75rem;
-		margin: 0.4rem 0 0.75rem;
-		padding: 0 1.5rem;
+		gap: var(--sp-12);
+		margin: var(--sp-6) 0 var(--sp-12);
+		padding: 0 var(--sp-24);
 	}
 
 	/* BUG-194: 좁은 화면에선 머리말이 목록을 밀어낸다 — 여백을 줄이고 태그 칩은
 	   줄바꿈 대신 그 줄만 가로 스크롤(설정 페이지 탭과 같은 방식). */
 	@media (max-width: 640px) {
 		.view-toggle-row {
-			gap: 0.5rem;
-			margin: 0.3rem 0 0.5rem;
-			padding: 0 0.75rem;
+			gap: var(--sp-8);
+			margin: var(--sp-4) 0 var(--sp-8);
+			padding: 0 var(--sp-12);
 		}
 	}
 	/* DEV-033: 정렬 select + 방향 토글. */
 	.sort-group {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.sort-sel {
-		padding: 0.25rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.sort-dir {
@@ -764,7 +764,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.sort-dir:hover {
@@ -781,18 +781,18 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 0.125rem;
+		padding: var(--sp-2);
 	}
 	.vt-btn {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.1875rem 0.625rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
 			background 0.1s,

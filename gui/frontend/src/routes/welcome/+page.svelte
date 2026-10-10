@@ -641,7 +641,7 @@
 	.welcome {
 		max-width: var(--content-max-width, 720px);
 		margin: 0 auto;
-		padding: 2rem 1.5rem;
+		padding: var(--sp-32) var(--sp-24);
 		color: var(--text);
 	}
 	header h1 {
@@ -650,7 +650,7 @@
 		color: var(--accent);
 	}
 	header .sub {
-		margin: 0.25rem 0 1.5rem;
+		margin: var(--sp-4) 0 var(--sp-24);
 		color: var(--text-muted);
 	}
 	/* DEV-052 fix: welcome 의 설정 진입 — 우상단 톱니바퀴. */
@@ -658,7 +658,7 @@
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: var(--sp-16);
 	}
 	/* DEV-138: 퀵메뉴 anchor. */
 	.settings-wrap {
@@ -678,7 +678,7 @@
 		color: var(--text-muted);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
-		font-size: 1.1rem;
+		font-size: var(--fs-lg);
 		transition:
 			background 0.1s,
 			color 0.1s,
@@ -697,11 +697,11 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.recent-list .recent-row {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: stretch;
 	}
 	.recent-list .recent-row.missing .recent-btn {
@@ -710,7 +710,7 @@
 	}
 	.recent-remove {
 		flex: 0 0 auto;
-		padding: 0 0.85rem;
+		padding: 0 var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
@@ -733,17 +733,17 @@
 	}
 	.missing-label {
 		color: var(--warning);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	/* DEV-206: 원격 길드 ping 확인 중 — 아직 경고는 아니므로 muted. */
 	.checking-label {
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.recent-btn {
 		width: 100%;
 		text-align: left;
-		padding: 0.75rem 1rem;
+		padding: var(--sp-12) var(--sp-16);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
@@ -752,7 +752,7 @@
 		cursor: pointer;
 		display: grid;
 		grid-template-columns: 1fr;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		transition:
 			border-color 0.12s,
 			background 0.12s;
@@ -769,35 +769,35 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
-		gap: 1rem;
+		gap: var(--sp-16);
 	}
 	.recent-btn .name {
 		font-weight: 600;
-		font-size: 1.05rem;
+		font-size: var(--fs-lg);
 	}
 	.recent-btn .last {
 		color: var(--text-muted);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-family: var(--font-mono);
 	}
 	.recent-btn .path {
 		color: var(--text-muted);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-family: var(--font-mono);
 		word-break: break-all;
 	}
 	.recent-btn .opening {
 		color: var(--accent);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.clear {
-		margin-top: 1rem;
-		padding: 0.4rem 0.9rem;
+		margin-top: var(--sp-16);
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		color: var(--danger);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.clear:hover {
@@ -807,28 +807,28 @@
 	.empty,
 	.info,
 	.err {
-		padding: 1rem;
+		padding: var(--sp-16);
 		background: var(--bg-elevated);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
 	}
 	.err {
 		color: var(--danger);
-		margin-top: 1rem;
+		margin-top: var(--sp-16);
 	}
 	code {
 		background: var(--bg);
-		padding: 0.1rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		border-radius: var(--r-xs);
 		font-family: var(--font-mono);
 		font-size: 0.9em;
 	}
 	.hint {
-		margin-top: 2rem;
-		padding-top: 1rem;
+		margin-top: var(--sp-32);
+		padding-top: var(--sp-16);
 		border-top: var(--bw) solid var(--border);
 		color: var(--text-muted);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 
 	/* --- DEV-053: 폴더 열기 picker --- */
@@ -836,9 +836,9 @@
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.85rem;
-		margin: 0 0 1.25rem;
-		padding: 0.85rem 1rem;
+		gap: var(--sp-12);
+		margin: 0 0 var(--sp-16);
+		padding: var(--sp-12) var(--sp-16);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -848,12 +848,12 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4em;
-		padding: 0.5rem 1rem;
+		padding: var(--sp-8) var(--sp-16);
 		background: var(--accent-strong);
 		border: var(--bw) solid var(--accent);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		font-weight: 500;
 		cursor: pointer;
 		transition: background 0.12s;
@@ -870,13 +870,13 @@
 		flex: 1 1 auto;
 		min-width: 12.5rem; /* BUG-064 */
 		color: var(--text-muted);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.picker .err {
 		flex: 1 0 100%;
 		margin: 0;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.85rem;
+		padding: var(--sp-8) var(--sp-12);
+		font-size: var(--fs-md);
 	}
 	/* DEV-113: 원격 서버 연결 섹션 — 길드 폴더 열기 picker 와 같은 톤, 살짝 구분. */
 	.remote-picker {
@@ -885,18 +885,18 @@
 	.remote-input-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		flex: 1 0 100%;
 	}
 	.remote-input-row input {
 		flex: 1 1 auto;
 		min-width: 12.5rem;
-		padding: 0.45rem 0.6rem;
+		padding: var(--sp-8) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		background: var(--bg);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	.btn-pick.alt {
 		background: transparent;
@@ -909,7 +909,7 @@
 	.remote-check {
 		flex: 1 0 100%;
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.remote-check.ok {
 		color: var(--success);
@@ -920,38 +920,38 @@
 
 	/* --- uninit prompt (DEV-052 후속 2회차) --- */
 	.uninit {
-		margin-bottom: 1.5rem;
-		padding: 1rem 1.25rem;
+		margin-bottom: var(--sp-24);
+		padding: var(--sp-16) var(--sp-16);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--accent);
 		border-radius: var(--r-lg);
 	}
 	.uninit h2 {
-		margin: 0 0 0.5rem;
-		font-size: 1.05rem;
+		margin: 0 0 var(--sp-8);
+		font-size: var(--fs-lg);
 		color: var(--accent);
 	}
 	.uninit-path {
-		margin: 0 0 0.5rem;
-		padding: 0.4rem 0.6rem;
+		margin: 0 0 var(--sp-8);
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border-radius: var(--r-sm);
 		font-family: var(--font-mono);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		word-break: break-all;
 	}
 	.uninit-desc {
-		margin: 0 0 0.85rem;
+		margin: 0 0 var(--sp-12);
 		color: var(--text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.uninit-name {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		margin: 0 0 0.85rem;
-		font-size: 0.875rem;
+		gap: var(--sp-8);
+		margin: 0 0 var(--sp-12);
+		font-size: var(--fs-md);
 		color: var(--text);
 	}
 	.uninit-name > span {
@@ -960,7 +960,7 @@
 	}
 	.uninit-name input {
 		flex: 1 1 auto;
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
@@ -974,7 +974,7 @@
 	}
 	.uninit-actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
 
@@ -992,7 +992,7 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 	}
 	.modal {
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
@@ -1002,62 +1002,62 @@
 		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: 1.2rem 1.4rem;
+		padding: var(--sp-16) var(--sp-24);
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		color: var(--text);
 	}
 	.modal-title {
-		margin: 0 0 0.5rem;
-		font-size: 1rem;
+		margin: 0 0 var(--sp-8);
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
 	.modal-msg {
-		margin: 0 0 1rem;
-		font-size: 0.875rem;
+		margin: 0 0 var(--sp-16);
+		font-size: var(--fs-md);
 		color: var(--text);
 	}
 	.modal-msg strong {
 		color: var(--text-strong);
 	}
 	.modal-path {
-		margin: -0.5rem 0 0.85rem;
-		padding: 0.4rem 0.6rem;
+		margin: -0.5rem 0 var(--sp-12);
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border-radius: var(--r-sm);
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		word-break: break-all;
 	}
 	.modal-note {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.modal-actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
 	.btn-yes {
-		padding: 0.4rem 1.1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: rgba(233, 79, 79, 0.15);
 		border: var(--bw) solid var(--danger);
 		border-radius: var(--r-md);
 		color: var(--danger);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-yes:hover {
 		background: rgba(233, 79, 79, 0.25);
 	}
 	.btn-no {
-		padding: 0.4rem 1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-no:hover {

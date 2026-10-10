@@ -905,15 +905,15 @@
 
 <style>
 	.page {
-		padding: 1.25rem 1.5rem;
+		padding: var(--sp-16) var(--sp-24);
 		max-width: var(--content-max-width, 880px);
 		margin: 0 auto;
 	}
 	.top {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-16);
 	}
 	.btn-delete,
 	.btn-edit {
@@ -924,8 +924,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3em;
-		font-size: 0.825rem;
-		padding: 0.3rem 0.7rem;
+		font-size: var(--fs-sm);
+		padding: var(--sp-4) var(--sp-12);
 		border-radius: var(--r-md);
 		cursor: pointer;
 		background: transparent;
@@ -946,7 +946,7 @@
 	}
 	.top-actions {
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		margin-left: auto;
 	}
 
@@ -967,31 +967,31 @@
 
 	.state {
 		color: var(--text-faint);
-		padding: 1.5rem 0;
-		font-size: 0.875rem;
+		padding: var(--sp-24) 0;
+		font-size: var(--fs-md);
 	}
 	.state.error {
 		color: var(--danger);
 	}
 
 	section {
-		margin-bottom: 1.75rem;
+		margin-bottom: var(--sp-24);
 	}
 	.section-head {
 		display: flex;
 		align-items: baseline;
-		gap: 0.75rem;
-		margin-bottom: 0.4rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-6);
 	}
 	h1 {
-		font-size: 1.4rem;
+		font-size: var(--fs-xl);
 		color: var(--text);
 		margin: 0;
 	}
 	h2 {
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		color: var(--text);
-		margin: 0 0 0.4rem 0;
+		margin: 0 0 var(--sp-6) 0;
 	}
 	/* BUG-025: 체크리스트 100% 달성 시 헤더 초록 */
 	h2.done {
@@ -1000,24 +1000,24 @@
 	h2 .done-mark {
 		font-weight: 700;
 		color: var(--success);
-		font-size: 0.85rem;
-		margin-left: 0.25rem;
+		font-size: var(--fs-md);
+		margin-left: var(--sp-4);
 	}
 
 	.title-row {
 		display: flex;
 		align-items: baseline;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 	}
 	/* BUG-035: title-row 안 편집 버튼 제거 — top-bar 로 이동. */
 	.slug {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		color: var(--text-muted);
 	}
 	.period {
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	/* DEV-079: 종료 기한 지난 캠페인 (status != done) 의 period 빨강 강조. */
 	.period.overdue {
@@ -1030,9 +1030,9 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.4rem;
-		margin-top: 0.4rem;
-		font-size: 0.75rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-6);
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 	}
 	/* BUG-275: 퀘스트 화면의 `.meta-item` 과 같게 — 이름과 값을 한 덩어리로. */
@@ -1042,7 +1042,7 @@
 	}
 	.meta-times .meta-label {
 		color: var(--text-muted);
-		margin-right: 0.25rem;
+		margin-right: var(--sp-4);
 	}
 	.meta-times .meta-val {
 		color: var(--text);
@@ -1055,10 +1055,10 @@
 	.period-row label {
 		display: flex;
 		align-items: center;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.period-row .lbl {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	.period-row .dash {
@@ -1069,11 +1069,11 @@
 	.field-label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.field-label > span {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 
@@ -1082,30 +1082,30 @@
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
-		padding: 0.4rem 0.6rem;
-		font-size: 1.2rem;
+		padding: var(--sp-6) var(--sp-8);
+		font-size: var(--fs-lg);
 		width: 100%;
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--sp-8);
 	}
 	.period-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-8);
 	}
 	.actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.btn-save {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-save:hover:not(:disabled) {
 		background: var(--btn-primary-bg-hover);
@@ -1116,13 +1116,13 @@
 		cursor: not-allowed;
 	}
 	.btn-cancel {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 
 	/* BUG-021: textarea 는 CodeMirror 로 교체. CSS 미사용 selector 정리. */
@@ -1133,7 +1133,7 @@
 
 	.empty {
 		color: var(--text-faint);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.link {
 		background: none;
@@ -1150,14 +1150,14 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: var(--sp-2);
 	}
 	.checklist li,
 	.linked li {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.45rem 0.7rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
@@ -1165,7 +1165,7 @@
 	.checklist li label {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		flex: 1;
 		cursor: pointer;
 	}
@@ -1180,7 +1180,7 @@
 	.linked li :global(.doc-row > a) {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		flex: 1;
 		text-decoration: none;
 		color: inherit;
@@ -1206,8 +1206,8 @@
 
 	.add-row {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.add-row input {
 		flex: 1;
@@ -1215,17 +1215,17 @@
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
-		padding: 0.35rem 0.6rem;
-		font-size: 0.875rem;
+		padding: var(--sp-6) var(--sp-8);
+		font-size: var(--fs-md);
 	}
 	.add-row button {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.add-row button:disabled {
 		opacity: 0.5;
@@ -1249,7 +1249,7 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 	}
 	.modal-sm {
 		/* BUG-199 후속(admin 보고: "지나치게 위로 치우쳐져 있음"): 오버레이
@@ -1271,7 +1271,7 @@
 		max-height: 92vh;
 		max-height: 92dvh;
 		overflow-y: auto;
-		padding: 1rem 1.25rem 1rem;
+		padding: var(--sp-16) var(--sp-16) var(--sp-16);
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
 	/* BUG-160: 콤보박스 팝업 넓은 변형 — quests/[id] 와 동일 수치. */
@@ -1282,11 +1282,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--sp-12);
 	}
 	.modal-head h3 {
 		margin: 0;
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
@@ -1297,19 +1297,19 @@
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 0.25rem;
+		padding: 0 var(--sp-4);
 	}
 	.x:hover {
 		color: var(--text);
 	}
 	.link-add-btn {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.link-add-btn:hover {
 		background: var(--bg-subtle);
@@ -1318,9 +1318,9 @@
 	/* BUG-021: linked quest 의 type/status badge 도 Quest List pill 패턴. */
 	.badge {
 		flex-shrink: 0;
-		padding: 0.15rem 0.55rem;
+		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		font-weight: 500;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
@@ -1337,7 +1337,7 @@
 		background: var(--bg-subtle);
 		border-radius: var(--r-xs);
 		overflow: hidden;
-		margin: 0 0 0.75rem;
+		margin: 0 0 var(--sp-12);
 		display: flex;
 	}
 	.quest-progress-fill {
@@ -1360,20 +1360,20 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 0.4rem 0.6rem;
-		font-size: 0.72rem;
+		padding: var(--sp-6) var(--sp-8);
+		font-size: var(--fs-xs);
 		z-index: 50;
 		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
 		pointer-events: none;
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: var(--sp-4);
 		white-space: nowrap;
 	}
 	.tooltip-row {
 		display: flex;
 		align-items: center;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.tooltip-dot {
 		width: 0.5rem;
@@ -1399,19 +1399,19 @@
 		z-index: 80;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: flex-end;
 	}
 	.jump-btn {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		padding: 0.55rem 1rem;
+		gap: var(--sp-6);
+		padding: var(--sp-8) var(--sp-16);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-weight: 500;
 		cursor: pointer;
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
@@ -1443,7 +1443,7 @@
 	@media (max-width: 640px) {
 		.linked li :global(.doc-row > a) {
 			flex-wrap: wrap;
-			row-gap: 0.15rem;
+			row-gap: var(--sp-2);
 		}
 		.qtitle {
 			order: 10;

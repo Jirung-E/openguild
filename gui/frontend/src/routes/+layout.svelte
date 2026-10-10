@@ -779,9 +779,9 @@
 		min-height: 100%;
 		align-items: center;
 		justify-content: center;
-		gap: 0.65rem;
+		gap: var(--sp-12);
 		color: var(--text-muted);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 	}
 	.history-guild-spinner {
 		width: 1rem;

@@ -216,7 +216,7 @@
 
 <style>
 	.page {
-		padding: 1.25rem 1.5rem;
+		padding: var(--sp-16) var(--sp-24);
 		max-width: var(--content-max-width, 1100px);
 		margin: 0 auto;
 	}
@@ -224,20 +224,20 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 1rem;
+		margin-bottom: var(--sp-16);
 	}
 	.header h1 {
-		font-size: 1.25rem;
+		font-size: var(--fs-xl);
 		color: var(--text);
 		margin: 0;
 	}
 	.btn-primary {
-		padding: 0.4rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-primary:hover {
@@ -247,29 +247,29 @@
 
 	.controls {
 		display: flex;
-		gap: 1rem;
-		margin-bottom: 1rem;
+		gap: var(--sp-16);
+		margin-bottom: var(--sp-16);
 	}
 	.controls label {
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.controls select {
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		padding: 0.25rem 0.5rem;
-		font-size: 0.825rem;
+		padding: var(--sp-4) var(--sp-8);
+		font-size: var(--fs-sm);
 	}
 
 	.state {
 		color: var(--text-muted);
-		padding: 1.5rem 0;
-		font-size: 0.875rem;
+		padding: var(--sp-24) 0;
+		font-size: var(--fs-md);
 	}
 	.state.error {
 		color: var(--danger);
@@ -281,21 +281,21 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.row {
 		display: flex;
 		align-items: stretch;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.main {
 		flex: 1;
 		/* admin 요청: 2단 배치 — 위 줄에 메타(슬러그·상태·기간), 아래 줄에 제목. */
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		align-items: stretch;
-		padding: 0.6rem 0.85rem;
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
@@ -311,13 +311,13 @@
 	.prog {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-top: 0.1rem;
+		gap: var(--sp-8);
+		margin-top: var(--sp-2);
 	}
 	.prog-label {
 		flex: none;
 		min-width: 3.2rem;
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 	}
 	.prog-bar {
@@ -344,7 +344,7 @@
 	}
 	.prog-text {
 		flex: none;
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		font-variant-numeric: tabular-nums;
 	}
@@ -354,17 +354,17 @@
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.slug {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		font-family: var(--font-mono);
 		flex: none;
 	}
 	.title {
 		color: var(--text);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		/* BUG-198: 예전엔 한 줄 안에서 pill·기간에 밀려 한 글자 폭까지 눌렸다.
 		   이제 제목이 자기 줄을 통째로 쓰므로 그럴 일이 없다. 아주 긴 제목만
 		   자연스럽게 감싸도록. */
@@ -381,7 +381,7 @@
 		--c: var(--text-muted);
 	}
 	.period {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	/* DEV-079: 기한 지남 + status != done — 빨강. */
@@ -393,7 +393,7 @@
 	.reorder {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: var(--sp-2);
 	}
 	.reorder button {
 		background: var(--bg-subtle);
@@ -401,7 +401,7 @@
 		color: var(--text);
 		border-radius: var(--r-sm);
 		width: 1.8rem;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.reorder button:hover {

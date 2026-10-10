@@ -533,7 +533,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		box-shadow: 0 8px 28px var(--shadow);
-		padding: 0.5rem 0.6rem 0.6rem;
+		padding: var(--sp-8) var(--sp-8) var(--sp-8);
 	}
 	/* admin: 보내기 버튼이 머리줄로 올라갔으니 아래 버튼 줄은 자리만 먹는다 — 접는다. */
 	.dock-box.docked :global(.actions) {
@@ -595,8 +595,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
-		margin-bottom: 0.35rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-6);
 	}
 	/* 이름표가 없으니 버튼이 왼쪽으로 붙는다 — 오른쪽 위로 돌려놓는다. */
 	.dock-box.compact .dock-head {
@@ -606,13 +606,13 @@
 	   입력칸 사이로 올라오기 때문이다. 둘 다 띄우면 멀어진다(admin). 지금은 버튼 2 ·
 	   손잡이 8 · 입력칸 2 로 12px 다. 손잡이가 없는 자리를 대비해 값은 남겨 둔다. */
 	.dock-box.docked .dock-head {
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--sp-8);
 	}
 	.dock-box.docked:has(:global(.size-grip)) .dock-head {
 		margin-bottom: 0;
 	}
 	.dock-label {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -622,7 +622,7 @@
 		flex: none;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.dock-btn {
 		display: inline-flex;

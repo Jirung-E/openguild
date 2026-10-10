@@ -254,10 +254,10 @@
 	.filter-bar {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		/* DEV-086: 우측 New Quest 플로팅 버튼 자리 확보 (보드 toolbar 와 동일
 		   위치). 필터가 wrap 돼도 버튼 밑으로 안 들어가게 padding-right 예약. */
-		padding: 0.75rem 8.125rem 0.75rem 1.5rem;
+		padding: var(--sp-12) 8.125rem var(--sp-12) var(--sp-24);
 		background: var(--bg-elevated);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 		flex-wrap: wrap;
@@ -265,8 +265,8 @@
 	/* BUG-194: 좁은 화면에선 세로 공간이 귀하다 — 여백을 줄이고 검색은 한 줄 전체. */
 	@media (max-width: 640px) {
 		.filter-bar {
-			gap: 0.5rem;
-			padding: 0.5rem 0.75rem;
+			gap: var(--sp-8);
+			padding: var(--sp-8) var(--sp-12);
 		}
 		.filter-bar .search-group {
 			flex: 1 1 100%;
@@ -278,7 +278,7 @@
 
 	.filter-group {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		flex-wrap: wrap;
 	}
 
@@ -289,12 +289,12 @@
 	}
 
 	button {
-		padding: 0.25rem 0.65rem;
+		padding: var(--sp-4) var(--sp-12);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition: all 0.15s;
 	}
@@ -314,7 +314,7 @@
 	.search-group {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		flex-wrap: wrap;
 	}
 	.search-input-wrap {
@@ -340,12 +340,12 @@
 		border: 0;
 	}
 	.search-input {
-		padding: 0.3rem 1.8rem 0.3rem 0.7rem;
+		padding: var(--sp-4) var(--sp-32) var(--sp-4) var(--sp-12);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		min-width: 12.5rem; /* BUG-064 */
 		outline: none;
 		transition: border-color 0.15s;
@@ -359,7 +359,7 @@
 	.search-clear {
 		position: absolute;
 		right: 0.3rem;
-		padding: 0 0.4rem;
+		padding: 0 var(--sp-6);
 		border: none;
 		border-radius: var(--r-pill);
 		background: transparent;
@@ -375,8 +375,8 @@
 	.search-opt {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
-		font-size: 0.8rem;
+		gap: var(--sp-4);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		cursor: pointer;
 		user-select: none;
@@ -401,19 +401,19 @@
 	.xfilter-panel {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		flex-wrap: wrap;
-		padding: 0.5rem 8.125rem 0.5rem 1.5rem;
+		padding: var(--sp-8) 8.125rem var(--sp-8) var(--sp-24);
 		background: var(--bg-elevated);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.xfilter-panel button {
-		padding: 0.25rem 0.65rem;
+		padding: var(--sp-4) var(--sp-12);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.xfilter-panel button.active {
@@ -427,8 +427,8 @@
 	.date-range {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
-		font-size: 0.78rem;
+		gap: var(--sp-4);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.xfilter-clear {
@@ -442,7 +442,7 @@
 	   (base .xfilter-panel 규칙보다 반드시 뒤에 와야 캐스케이드에서 이김.) */
 	@media (max-width: 640px) {
 		.xfilter-panel {
-			padding: 0.5rem 0.75rem;
+			padding: var(--sp-8) var(--sp-12);
 		}
 	}
 </style>

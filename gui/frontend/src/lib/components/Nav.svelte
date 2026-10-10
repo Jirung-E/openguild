@@ -535,8 +535,8 @@
 	header {
 		display: flex;
 		align-items: center;
-		gap: 2rem;
-		padding: 0 1.5rem;
+		gap: var(--sp-32);
+		padding: 0 var(--sp-24);
 		height: var(--nav-h, 3.25rem);
 		background: var(--nav-bg);
 		border-bottom: var(--bw) solid var(--nav-border);
@@ -552,14 +552,14 @@
 	.nav-group {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		flex: 1;
 		min-width: 0;
 	}
 
 	nav {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		flex: 1;
 		/* DEV-260: 측정 사본(absolute) 기준점 + 계산 어긋난 순간의 삐져나옴 방지. */
 		position: relative;
@@ -568,9 +568,9 @@
 	}
 
 	nav a {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		border-radius: var(--r-md);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		color: var(--text-muted);
 		text-decoration: none;
 		/* DEV-260: overflow 계산은 항목 자연 폭 기준 — 줄바꿈/수축 금지. */
@@ -627,7 +627,7 @@
 		min-width: 10rem;
 		display: flex;
 		flex-direction: column;
-		padding: 0.3rem;
+		padding: var(--sp-4);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -635,9 +635,9 @@
 		z-index: 300;
 	}
 	.more-menu a {
-		padding: 0.4rem 0.7rem;
+		padding: var(--sp-6) var(--sp-12);
 		border-radius: var(--r-md);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		text-decoration: none;
 	}
@@ -662,7 +662,7 @@
 	.nav-right {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		margin-left: auto;
 	}
 
@@ -748,7 +748,7 @@
 		   그대로라 여백이 줄어 보였다. */
 		min-width: 16.25rem;
 		max-width: 42vw;
-		padding: 0 0.75rem;
+		padding: 0 var(--sp-12);
 
 		/* BUG-192: 좁은 화면에서 pill 의 min-width(260px) 가 양옆 공간을 다 먹어,
 		   pill 바깥에 절대 배치되는 ＋(퀘스트 추가)·시계(최근 문서)가 ☰·⚙ 위로
@@ -771,7 +771,7 @@
 		color: var(--text);
 	}
 	.nav-pill-name {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		letter-spacing: 0.02em;
 		overflow: hidden;
 		text-overflow: ellipsis;

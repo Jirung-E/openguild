@@ -836,32 +836,32 @@
 <style>
 	.settings {
 		display: flex;
-		gap: 1.5rem;
+		gap: var(--sp-24);
 		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
-		padding: 1.5rem;
+		padding: var(--sp-24);
 	}
 	.side {
 		flex: 0 0 10rem;
 	}
 	.side h1 {
-		font-size: 1.1rem;
+		font-size: var(--fs-xl);
 		color: var(--text);
-		margin: 0 0 1rem;
+		margin: 0 0 var(--sp-16);
 	}
 	.side nav {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.tab {
 		text-align: left;
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		border: none;
 		background: transparent;
 		color: var(--text-muted);
 		border-radius: var(--r-md);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
 			background 0.15s,
@@ -887,20 +887,20 @@
 	@media (max-width: 640px) {
 		.settings {
 			flex-direction: column;
-			gap: 1rem;
-			padding: 1rem;
+			gap: var(--sp-16);
+			padding: var(--sp-16);
 		}
 		.side {
 			flex: none;
 		}
 		.side h1 {
-			margin-bottom: 0.5rem;
+			margin-bottom: var(--sp-8);
 		}
 		.side nav {
 			flex-direction: row;
 			overflow-x: auto;
 			/* 탭이 세로로 눌리지 않게 — 줄바꿈 대신 그 줄만 스크롤. */
-			padding-bottom: 0.25rem;
+			padding-bottom: var(--sp-4);
 			scrollbar-width: none;
 		}
 		.side nav::-webkit-scrollbar {
@@ -912,17 +912,17 @@
 		}
 	}
 	.panel h2 {
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		color: var(--text);
-		margin: 0 0 1rem;
+		margin: 0 0 var(--sp-16);
 	}
 
 	.info-grid {
 		display: grid;
 		grid-template-columns: 6rem 1fr;
-		gap: 0.5rem 1rem;
-		margin: 0 0 1rem;
-		font-size: 0.875rem;
+		gap: var(--sp-8) var(--sp-16);
+		margin: 0 0 var(--sp-16);
+		font-size: var(--fs-md);
 	}
 	.info-grid dt {
 		color: var(--text-muted);
@@ -932,7 +932,7 @@
 		color: var(--text);
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 		align-items: flex-start;
 	}
 	.info-grid a {
@@ -941,12 +941,12 @@
 
 	/* DEV-086: 버전 아래 '슬쩍' 업데이트 확인 — subtle outline 버튼. */
 	.btn-check-upd {
-		padding: 0.2rem 0.6rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
 			background 0.15s,
@@ -971,20 +971,20 @@
 	.ui-scale .scale-row {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		width: 100%;
 		max-width: 24rem;
 	}
 	/* DEV-272: 글꼴 선택 — 드롭다운 + (직접 입력일 때) 이름 칸 + 견본. */
 	.ui-scale .font-select,
 	.ui-scale .font-custom {
-		padding: 0.25rem 0.4rem;
+		padding: var(--sp-4) var(--sp-6);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
 		font: inherit;
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		outline: none;
 	}
 	.ui-scale .font-select:focus-visible,
@@ -1001,7 +1001,7 @@
 	.ui-scale .font-preview {
 		flex: none;
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		white-space: nowrap;
 	}
 	.ui-scale .font-preview.mono {
@@ -1012,8 +1012,8 @@
 	.ui-scale .num-input {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.15rem 0.4rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-6);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
@@ -1028,7 +1028,7 @@
 		border: none;
 		color: var(--text);
 		font: inherit;
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		font-variant-numeric: tabular-nums;
 		text-align: right;
 		outline: none;
@@ -1042,7 +1042,7 @@
 	}
 	.ui-scale .num-input .unit {
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	/* DEV-275: 최대값("전체")일 때 숫자 입력 대신 표시하는 라벨 — 숫자
 	   입력칸과 같은 자리/크기를 차지해 슬라이더가 밀리지 않게. */
@@ -1050,16 +1050,16 @@
 		justify-content: center;
 		min-width: 7ch;
 		color: var(--accent);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-weight: 600;
 	}
 	.ui-scale .btn-reset {
-		padding: 0.2rem 0.6rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.ui-scale .btn-reset:hover:not(:disabled) {
@@ -1076,14 +1076,14 @@
 	   기본 모양은 조건 없이 준다. */
 	/* BUG-275: 토글 옆 안내 — 다른 안내 문구(`.scale-hint`)와 같은 크기 · 색. */
 	.hint {
-		margin-left: 0.5rem;
-		font-size: 0.75rem;
+		margin-left: var(--sp-8);
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 	}
 	.scale-hint {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		margin: 0.5rem 0 0;
+		margin: var(--sp-8) 0 0;
 	}
 
 	/* DEV-074: 테마 토글 — segmented (QuestList 의 view-toggle 과 같은 패턴). */
@@ -1096,15 +1096,15 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 0.125rem;
+		padding: var(--sp-2);
 	}
 	.th-btn {
-		padding: 0.25rem 0.75rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
 			background 0.1s,
@@ -1138,7 +1138,7 @@
 	.ct-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		align-items: center;
 	}
 	.ct-actions .th-btn {
@@ -1148,51 +1148,51 @@
 	.ct-create {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		align-items: center;
-		margin-top: 0.5rem;
+		margin-top: var(--sp-8);
 	}
 	.ct-name {
-		padding: 0.3rem 0.6rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	.ct-error {
 		color: var(--danger);
-		font-size: 0.8rem;
-		margin: 0.3rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0 0;
 	}
 	.ct-import {
-		margin-top: 0.5rem;
+		margin-top: var(--sp-8);
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.ct-import-text {
 		width: 100%;
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		resize: vertical;
 	}
 	.ct-tokens {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(11.25rem, 1fr));
-		gap: 0.35rem 0.75rem;
-		margin-top: 0.6rem;
+		gap: var(--sp-6) var(--sp-12);
+		margin-top: var(--sp-8);
 	}
 	.ct-token {
 		display: flex;
 		align-items: center;
-		gap: 0.45rem;
-		padding: 0.15rem 0.3rem;
+		gap: var(--sp-8);
+		padding: var(--sp-2) var(--sp-4);
 		border-radius: var(--r-md);
 	}
 	.ct-token.overridden {
@@ -1209,7 +1209,7 @@
 		flex: none;
 	}
 	.ct-token-label {
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1221,7 +1221,7 @@
 		background: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		flex: none;
 	}
 	.ct-reset:hover {
@@ -1230,9 +1230,9 @@
 	.ct-advanced {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-		margin-top: 0.5rem;
-		font-size: 0.8rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -1250,10 +1250,10 @@
 	@media (max-width: 640px) {
 		.info-grid {
 			grid-template-columns: 1fr;
-			gap: 0.15rem 0;
+			gap: var(--sp-2) 0;
 		}
 		.info-grid dt {
-			margin-top: 0.6rem;
+			margin-top: var(--sp-8);
 		}
 		.info-grid dt:first-child {
 			margin-top: 0;

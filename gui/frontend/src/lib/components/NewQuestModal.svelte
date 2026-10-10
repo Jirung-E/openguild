@@ -772,7 +772,7 @@
 		   + auto 여백으로, 짧을 땐 가운데처럼 보이고 길면 위부터 보인다. */
 		align-items: flex-start;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 		overflow-y: auto;
 		overscroll-behavior: contain;
 	}
@@ -806,12 +806,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 1rem 1.25rem 0.75rem;
+		padding: var(--sp-16) var(--sp-16) var(--sp-12);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.modal-title {
 		margin: 0;
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
@@ -822,7 +822,7 @@
 		font-size: 1.3rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 0.25rem;
+		padding: 0 var(--sp-4);
 		transition: color 0.1s;
 	}
 	.close-btn:hover {
@@ -830,52 +830,52 @@
 	}
 
 	.loading {
-		padding: 2rem;
+		padding: var(--sp-32);
 		text-align: center;
 		color: var(--text-faint);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 	}
 
 	.form {
-		padding: 1rem 1.25rem 1.25rem;
+		padding: var(--sp-16) var(--sp-16) var(--sp-16);
 		display: flex;
 		flex-direction: column;
-		gap: 0.85rem;
+		gap: var(--sp-12);
 	}
 
 	.field {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.relations-field {
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		background: var(--bg-subtle);
-		padding: 0.55rem 0.7rem;
+		padding: var(--sp-8) var(--sp-12);
 	}
 	.relations-field summary {
 		cursor: pointer;
 		color: var(--text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 	}
 	.relations-hint {
-		margin: 0.45rem 0 0.65rem;
+		margin: var(--sp-8) 0 var(--sp-12);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 	}
 	.relation-row {
-		padding: 0.45rem 0;
+		padding: var(--sp-8) 0;
 		border-top: var(--bw) solid var(--border);
 	}
 	.relation-head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		color: var(--text-muted);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 	}
 	.relation-add {
@@ -883,8 +883,8 @@
 		border-radius: var(--r-sm);
 		background: var(--bg-elevated);
 		color: var(--text-muted);
-		padding: 0.12rem 0.45rem;
-		font-size: 0.7rem;
+		padding: var(--sp-2) var(--sp-8);
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.relation-add:hover {
@@ -894,21 +894,21 @@
 	.relation-chips {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.35rem;
-		margin-top: 0.4rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-6);
 	}
 	.relation-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		min-width: 0;
 		max-width: 100%;
-		padding: 0.2rem 0.4rem;
+		padding: var(--sp-4) var(--sp-6);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: var(--bg);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 	}
 	.relation-chip strong {
 		color: var(--accent);
@@ -925,18 +925,18 @@
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;
-		padding: 0 0.1rem;
+		padding: 0 var(--sp-2);
 	}
 	.relation-chip button:hover {
 		color: var(--danger);
 	}
 	.relation-picker {
-		margin-top: 0.45rem;
+		margin-top: var(--sp-8);
 	}
 	/* BUG-010: uppercase / letter-spacing 은 라벨 텍스트 span 에만 적용 —
 	   label 전체에 두면 자식 input / textarea / select 까지 대문자로 표시됨. */
 	.field-label {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		color: var(--text-muted);
 	}
@@ -949,25 +949,25 @@
 	/* DEV-293: 타입/긴급도 pill — quest 상세의 status-btn 과 동일 감각.
 	   각각 자기 라벨과 한 행(가로 나열 금지 — 어느 pill 이 어느 항목인지 혼동). */
 	.pill-field {
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.status-field {
 		flex-direction: row;
 		align-items: baseline;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.pill-btns {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.pill-btn {
-		padding: 0.15rem 0.7rem;
+		padding: var(--sp-2) var(--sp-12);
 		border-radius: var(--r-pill);
 		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
 		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
 			background 0.12s,
@@ -985,12 +985,12 @@
 	}
 
 	.sel {
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		outline: none;
 		min-width: 5rem;
 	}
@@ -1001,12 +1001,12 @@
 	.status-fixed {
 		display: inline-flex;
 		align-items: center;
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		min-width: 5rem;
 		/* BUG-253: 테두리 두께는 --bw 토큰(배율 반응). */
 		min-height: calc(0.875rem + 0.8rem + var(--bw) * 2);
@@ -1014,12 +1014,12 @@
 	}
 
 	.inp {
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-strong);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		outline: none;
 		width: 100%;
 		box-sizing: border-box;
@@ -1029,12 +1029,12 @@
 	}
 
 	.ta {
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		outline: none;
 		width: 100%;
 		box-sizing: border-box;
@@ -1048,22 +1048,22 @@
 
 	.save-error {
 		color: var(--danger);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		margin: 0;
 	}
 
 	.form-actions {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.25rem;
+		gap: var(--sp-8);
+		margin-top: var(--sp-4);
 	}
 	.btn-create {
-		padding: 0.45rem 1.25rem;
+		padding: var(--sp-8) var(--sp-16);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
 			background 0.1s,
@@ -1078,12 +1078,12 @@
 		cursor: default;
 	}
 	.btn-cancel {
-		padding: 0.45rem 1rem;
+		padding: var(--sp-8) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-cancel:hover:not(:disabled) {
@@ -1093,12 +1093,12 @@
 	/* DEV-158: 템플릿으로 저장 — 우측 정렬, 보조 액션. */
 	.btn-tpl {
 		margin-left: auto;
-		padding: 0.45rem 0.9rem;
+		padding: var(--sp-8) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-tpl:hover:not(:disabled) {
@@ -1111,17 +1111,17 @@
 	}
 	.tpl-save {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: center;
-		margin-top: 0.5rem;
+		margin-top: var(--sp-8);
 	}
 	.btn-overwrite {
-		padding: 0.45rem 0.9rem;
+		padding: var(--sp-8) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--danger);
 		border-radius: var(--r-md);
 		color: var(--danger);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		white-space: nowrap;
 	}
@@ -1130,27 +1130,27 @@
 		cursor: default;
 	}
 	.tpl-msg {
-		margin: 0.4rem 0 0;
-		font-size: 0.8rem;
+		margin: var(--sp-6) 0 0;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 
 	/* DEV-014 후속: empty-state — type / status 가 0개일 때 폼 대신 안내. */
 	.empty-state {
-		padding: 1.5rem 0.25rem 0.5rem;
+		padding: var(--sp-24) var(--sp-4) var(--sp-8);
 		display: flex;
 		flex-direction: column;
-		gap: 0.85rem;
+		gap: var(--sp-12);
 	}
 	.empty-title {
 		margin: 0;
-		font-size: 1.05rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
 	.empty-msg {
 		margin: 0;
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		line-height: 1.5;
 		color: var(--text);
 	}

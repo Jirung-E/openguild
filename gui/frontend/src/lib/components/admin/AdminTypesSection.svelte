@@ -345,7 +345,7 @@
 <style>
 	section {
 		margin-bottom: 2.5rem;
-		padding: 1.25rem;
+		padding: var(--sp-16);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -357,24 +357,24 @@
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 1rem;
+		margin-bottom: var(--sp-16);
 	}
 	h2 {
 		margin: 0;
-		font-size: 1.1rem;
+		font-size: var(--fs-lg);
 	}
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	button {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	button:hover:not(:disabled) {
@@ -409,12 +409,12 @@
 	table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	th,
 	td {
 		text-align: left;
-		padding: 0.5rem 0.6rem;
+		padding: var(--sp-8) var(--sp-8);
 		border-bottom: var(--bw) solid var(--border);
 		vertical-align: middle;
 		/* BUG-143: CJK 는 word-break 없이도 글자 단위로 꺾임 — 명시 nowrap. */
@@ -423,18 +423,18 @@
 	th {
 		color: var(--text-muted);
 		font-weight: 500;
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	code {
 		font-family: var(--font-mono);
 		font-size: 0.85em;
 		background: var(--bg);
-		padding: 0.05rem 0.3rem;
+		padding: 0.05rem var(--sp-4);
 		border-radius: var(--r-xs);
 	}
 	.hex {
 		color: var(--text-muted);
-		margin-left: 0.4rem;
+		margin-left: var(--sp-6);
 	}
 	.swatch {
 		display: inline-block;
@@ -459,11 +459,11 @@
 		text-align: right;
 	}
 	.row-actions button + button {
-		margin-left: 0.3rem;
+		margin-left: var(--sp-4);
 	}
 	input[type='text'] {
 		width: 100%;
-		padding: 0.3rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
@@ -490,12 +490,12 @@
 	}
 	.empty {
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.hint {
-		margin-top: 0.75rem;
+		margin-top: var(--sp-12);
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 
 	/* modal */
@@ -512,7 +512,7 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 	}
 	.modal {
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
@@ -522,19 +522,19 @@
 		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: 1.2rem 1.4rem;
+		padding: var(--sp-16) var(--sp-24);
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		color: var(--text);
 	}
 	.modal-title {
-		margin: 0 0 0.85rem;
-		font-size: 1rem;
+		margin: 0 0 var(--sp-12);
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
 	.modal-msg {
-		margin: 0 0 1rem;
-		font-size: 0.875rem;
+		margin: 0 0 var(--sp-16);
+		font-size: var(--fs-md);
 		color: var(--text);
 	}
 	.modal-msg strong {
@@ -543,14 +543,14 @@
 	.form {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-16);
 	}
 	.form label {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		font-size: 0.875rem;
+		gap: var(--sp-8);
+		font-size: var(--fs-md);
 	}
 	.form label > span {
 		flex: 0 0 4rem;
@@ -558,16 +558,16 @@
 	}
 	.modal-actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
 	.btn-yes {
-		padding: 0.4rem 1.1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: rgba(31, 111, 235, 0.18);
 		border: var(--bw) solid var(--accent);
 		border-radius: var(--r-md);
 		color: var(--accent);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-yes:hover:not(:disabled) {
@@ -582,12 +582,12 @@
 		background: rgba(233, 79, 79, 0.32);
 	}
 	.btn-no {
-		padding: 0.4rem 1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-no:hover:not(:disabled) {

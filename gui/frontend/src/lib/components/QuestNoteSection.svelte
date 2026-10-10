@@ -279,19 +279,19 @@
 		display: contents;
 	}
 	.note-sec {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--sp-24);
 	}
 	.section-head {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-8);
 	}
 	/* DEV-107: 섹션 토글. */
 	.section-toggle {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		background: none;
 		border: none;
 		padding: 0;
@@ -300,7 +300,7 @@
 		font: inherit;
 	}
 	.toggle-icon {
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		transition: transform 0.12s;
 		display: inline-block;
@@ -309,7 +309,7 @@
 		transform: rotate(-90deg);
 	}
 	.section-title {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -321,12 +321,12 @@
 	}
 
 	.sec-add-btn {
-		padding: 0.15rem 0.6rem;
+		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 		margin-left: auto;
 	}
@@ -337,12 +337,12 @@
 
 	/* DEV-189: 표시 높이 모드 토글 버튼. */
 	.sec-mode-btn {
-		padding: 0.15rem 0.6rem;
+		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.sec-mode-btn:hover {
@@ -361,7 +361,7 @@
 		max-height: 125rem;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 0.25rem 0.75rem;
+		padding: var(--sp-4) var(--sp-12);
 	}
 	.memo-body.fixed::-webkit-scrollbar {
 		display: none;
@@ -369,8 +369,8 @@
 
 	.state {
 		color: var(--text-muted);
-		font-size: 0.825rem;
-		margin: 0.25rem 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0;
 	}
 	.state.err {
 		color: var(--danger);
@@ -378,8 +378,8 @@
 
 	.no-desc {
 		color: var(--text-faint);
-		font-size: 0.825rem;
-		margin: 0.25rem 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0;
 	}
 	.link-btn {
 		background: none;
@@ -389,35 +389,35 @@
 		padding: 0;
 		font: inherit;
 		text-decoration: underline;
-		margin-left: 0.35rem;
+		margin-left: var(--sp-6);
 	}
 
 	.field-label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	/* BUG-318: 이름은 [[ComposeDock]] 과의 약속이다 — 붙어서 좁게 보일 때 접힌다.
 	   모양은 여기서 정한다. */
 	.field-label > .compose-aside {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	.actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.btn-save {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-save:disabled {
 		opacity: 0.5;
@@ -428,13 +428,13 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.btn-cancel {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-cancel:hover:not(:disabled) {
 		background: var(--bg-subtle);

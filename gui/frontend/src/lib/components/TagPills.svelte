@@ -105,17 +105,17 @@
 
 <style>
 	section {
-		margin-top: 1rem;
-		margin-bottom: 1.5rem;
+		margin-top: var(--sp-16);
+		margin-bottom: var(--sp-24);
 	}
 	.section-head {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-8);
 	}
 	.section-title {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-muted);
 		text-transform: uppercase;
@@ -127,7 +127,7 @@
 	}
 	.no-desc {
 		color: var(--text-faint);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		margin: 0;
 	}
 	.tag-pills {
@@ -136,17 +136,17 @@
 		margin: 0;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.tag-pill {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.15rem 0.6rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		background: color-mix(in srgb, var(--warning) 12%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--warning) 40%, transparent);
 		border-radius: var(--r-pill);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--warning);
 		font-family: var(--font-mono);
 		letter-spacing: 0.02em;
@@ -158,32 +158,32 @@
 		cursor: pointer;
 		font-size: 1rem;
 		line-height: 1;
-		padding: 0 0 0 0.125rem;
+		padding: 0 0 0 var(--sp-2);
 	}
 	.tag-rm:hover {
 		color: var(--danger);
 	}
 	.tag-add-form {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.tag-add-form input {
 		flex: 1;
-		padding: 0.3rem 0.6rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	.tag-add-form button {
-		padding: 0.3rem 0.85rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.tag-add-form button:disabled {
@@ -194,12 +194,12 @@
 		background: var(--border);
 	}
 	.sec-add-btn {
-		padding: 0.15rem 0.6rem;
+		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.sec-add-btn:hover {

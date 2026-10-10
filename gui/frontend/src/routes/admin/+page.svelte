@@ -557,33 +557,33 @@
 	/* DEV-393: 설정 페이지와 같은 세로 탭 — 두 페이지의 모양을 맞춘다. */
 	.admin {
 		display: flex;
-		gap: 1.5rem;
+		gap: var(--sp-24);
 		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
-		padding: 1.5rem;
+		padding: var(--sp-24);
 		color: var(--text);
 	}
 	.side {
 		flex: 0 0 10rem;
 	}
 	.side h1 {
-		font-size: 1.1rem;
+		font-size: var(--fs-xl);
 		color: var(--text);
-		margin: 0 0 1rem;
+		margin: 0 0 var(--sp-16);
 	}
 	.side nav {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.tab {
 		text-align: left;
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		border: none;
 		background: transparent;
 		color: var(--text-muted);
 		border-radius: var(--r-md);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
 			background 0.15s,
@@ -606,19 +606,19 @@
 	@media (max-width: 640px) {
 		.admin {
 			flex-direction: column;
-			gap: 1rem;
-			padding: 1rem;
+			gap: var(--sp-16);
+			padding: var(--sp-16);
 		}
 		.side {
 			flex: none;
 		}
 		.side h1 {
-			margin-bottom: 0.5rem;
+			margin-bottom: var(--sp-8);
 		}
 		.side nav {
 			flex-direction: row;
 			overflow-x: auto;
-			padding-bottom: 0.25rem;
+			padding-bottom: var(--sp-4);
 			scrollbar-width: none;
 		}
 		.side nav::-webkit-scrollbar {
@@ -631,21 +631,21 @@
 	}
 	h2 {
 		margin: 0;
-		font-size: 1.1rem;
+		font-size: var(--fs-lg);
 	}
 	h3 {
-		margin: 0.75rem 0 0.25rem;
-		font-size: 0.95rem;
+		margin: var(--sp-12) 0 var(--sp-4);
+		font-size: var(--fs-lg);
 		color: var(--text-muted);
 	}
 	.note {
 		color: var(--text-muted);
-		font-size: 0.85rem;
-		margin-bottom: 1.5rem;
+		font-size: var(--fs-md);
+		margin-bottom: var(--sp-24);
 	}
 	section {
 		margin-bottom: 2.5rem;
-		padding: 1.25rem;
+		padding: var(--sp-16);
 		/* 다른 admin 섹션(Statuses/Types 컴포넌트)과 동일 토큰.
 		   이전 --nav-bg/--nav-border 는 다크에서 보라빛이라 섹션마다 색이 달랐음. */
 		background: var(--bg-elevated);
@@ -659,20 +659,20 @@
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 1rem;
+		margin-bottom: var(--sp-16);
 	}
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	button {
-		padding: 0.4rem 0.9rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		transition: background 0.15s;
 	}
@@ -699,7 +699,7 @@
 		white-space: nowrap;
 	}
 	.snap-actions button + button {
-		margin-left: 0.4rem;
+		margin-left: var(--sp-6);
 	}
 	/* BUG-196 후속(admin 재보고 "백업 섹션이 아직 삐져나옴"): 영어에서 Restore +
 	   Delete 를 nowrap 으로 한 줄에 묶으면 그 칸만 180px 를 요구하고, table 은
@@ -719,22 +719,22 @@
 	}
 	th,
 	td {
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		text-align: left;
 		border-bottom: var(--bw) solid var(--border);
 	}
 	th {
 		color: var(--text-muted);
 		font-weight: 500;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	td code {
 		font-family: var(--font-mono);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	.empty {
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		margin: 0;
 	}
 	.ok {
@@ -743,77 +743,77 @@
 	}
 	.hint {
 		color: var(--text-muted);
-		font-size: 0.825rem;
-		margin-top: 0.75rem;
+		font-size: var(--fs-sm);
+		margin-top: var(--sp-12);
 	}
 	/* BUG-188: 백업 범위 안내는 목록 위에 오므로 아래 여백으로 목록과 띄운다. */
 	.hint.scope {
-		margin: 0 0 0.75rem;
+		margin: 0 0 var(--sp-12);
 		line-height: 1.5;
 	}
 	.drift-report ul {
-		margin: 0.25rem 0 0.75rem 1.25rem;
+		margin: var(--sp-4) 0 var(--sp-12) var(--sp-16);
 		padding: 0;
 	}
 	.drift-report li {
 		font-family: var(--font-mono);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		list-style: disc;
 	}
 	/* DEV-162: journal(AOF) tail 뷰. */
 	.journal {
-		margin: 0.5rem 0 0;
+		margin: var(--sp-8) 0 0;
 		padding: 0;
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.journal li {
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		background: var(--bg-subtle);
 	}
 	.jop {
 		font-family: var(--font-mono);
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		color: var(--text-strong);
 	}
 	.jts {
-		margin-left: 0.5rem;
-		font-size: 0.75rem;
+		margin-left: var(--sp-8);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	.jargs {
-		margin-top: 0.25rem;
+		margin-top: var(--sp-4);
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		word-break: break-all;
 	}
 	.problem-files {
-		margin-bottom: 1rem;
-		padding: 0.75rem 1rem;
+		margin-bottom: var(--sp-16);
+		padding: var(--sp-12) var(--sp-16);
 		border-radius: var(--r-lg);
 		background: color-mix(in srgb, var(--danger) 12%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 	}
 	.problem-files h3 {
-		margin: 0 0 0.25rem 0;
-		font-size: 0.95rem;
+		margin: 0 0 var(--sp-4) 0;
+		font-size: var(--fs-lg);
 		color: var(--danger);
 	}
 	.problem-files ul {
-		margin: 0.5rem 0 0 1.25rem;
+		margin: var(--sp-8) 0 0 var(--sp-16);
 		padding: 0;
 	}
 	.problem-files li {
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		list-style: disc;
-		margin-bottom: 0.15rem;
+		margin-bottom: var(--sp-2);
 	}
 	.problem-files code {
 		font-family: var(--font-mono);
@@ -830,14 +830,14 @@
 			white-space: normal;
 			display: flex;
 			flex-wrap: wrap;
-			gap: 0.35rem;
+			gap: var(--sp-6);
 		}
 		.snap-actions button + button {
 			margin-left: 0;
 		}
 		th,
 		td {
-			padding: 0.45rem 0.4rem;
+			padding: var(--sp-8) var(--sp-6);
 		}
 	}
 </style>

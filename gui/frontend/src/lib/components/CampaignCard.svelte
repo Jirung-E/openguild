@@ -278,7 +278,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		padding: 0.85rem 1rem;
+		padding: var(--sp-12) var(--sp-16);
 		text-align: left;
 		cursor: pointer;
 		transition:
@@ -286,7 +286,7 @@
 			background 0.15s;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		color: inherit;
 		font: inherit;
 		text-decoration: none;
@@ -333,20 +333,20 @@
 	/* BUG-027: active 카드 세로 길이 늘림 (사용자 피드백 — 너무 짧음). */
 	.card.active {
 		min-height: 11.25rem;
-		padding: 1.1rem 1.4rem;
-		gap: 0.85rem;
+		padding: var(--sp-16) var(--sp-24);
+		gap: var(--sp-12);
 	}
 	.card.upcoming {
-		padding: 0.65rem 0.8rem;
-		gap: 0.35rem;
+		padding: var(--sp-12) var(--sp-12);
+		gap: var(--sp-6);
 	}
 	/* DEV-080 → DEV-081: overdue 카드 — upcoming 과 동일 패딩 + completed 와
 	   동일 패턴의 빨강 그라데이션 + border (완료와 시각 대칭, 색만 빨강).
 	   DEV-074 fix8: tint 강도 + base 색을 토큰 (--card-hl-strength / --card-hl-base)
 	   으로 추상화 → global.css 에서 theme 별로 분리 정의. */
 	.card.overdue {
-		padding: 0.65rem 0.8rem;
-		gap: 0.35rem;
+		padding: var(--sp-12) var(--sp-12);
+		gap: var(--sp-6);
 		border-color: var(--danger);
 		background: linear-gradient(
 			180deg,
@@ -370,29 +370,29 @@
 		justify-content: space-between;
 	}
 	.slug {
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		letter-spacing: 0.04em;
 		font-family: var(--font-mono);
 	}
 	.done-mark {
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		font-weight: 700;
 		color: var(--success);
 		letter-spacing: 0.02em;
 	}
 	.title {
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text);
 		line-height: 1.3;
 	}
 	.title.small {
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	/* BUG-027: active 카드의 title 도 더 크게. */
 	.card.active .title {
-		font-size: 1.1rem;
+		font-size: var(--fs-lg);
 		line-height: 1.4;
 	}
 
@@ -400,13 +400,13 @@
 		margin-top: auto;
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.period {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		display: flex;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 		align-items: center;
 		flex-wrap: wrap;
 	}
@@ -431,11 +431,11 @@
 	.progress-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	/* DEV-093: progress 종류 라벨 (체크 / 퀘스트) — 짧은 모노스페이스. */
 	.progress-label {
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		min-width: 2.4rem;
 		font-family: var(--font-mono);
@@ -475,20 +475,20 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 0.4rem 0.6rem;
-		font-size: 0.72rem;
+		padding: var(--sp-6) var(--sp-8);
+		font-size: var(--fs-xs);
 		z-index: 50;
 		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
 		pointer-events: none;
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: var(--sp-4);
 		white-space: nowrap;
 	}
 	.tooltip-row {
 		display: flex;
 		align-items: center;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.tooltip-dot {
 		width: 0.5rem;
@@ -504,7 +504,7 @@
 		color: var(--text-muted);
 	}
 	.progress-text {
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		white-space: nowrap;
 	}

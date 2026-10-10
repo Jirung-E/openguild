@@ -100,21 +100,21 @@
 	.tag-filter-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		align-items: center;
-		margin-bottom: 0.4rem;
+		margin-bottom: var(--sp-6);
 	}
 	.tag-toggle {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.15rem 0.5rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
 		color: var(--text-muted);
 		font: inherit;
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.tag-toggle:hover {
@@ -123,7 +123,7 @@
 	}
 	.tag-toggle-icon {
 		display: inline-block;
-		font-size: 0.6rem;
+		font-size: var(--fs-xs);
 		transition: transform 0.12s;
 	}
 	.tag-toggle-icon.collapsed {
@@ -134,13 +134,13 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.tag-filter-chip {
-		padding: 0.15rem 0.65rem;
+		padding: var(--sp-2) var(--sp-12);
 		background: color-mix(in srgb, var(--warning) 8%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
 		border-radius: var(--r-pill);
 		color: var(--warning);
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.tag-filter-chip:hover {
@@ -151,19 +151,19 @@
 		border-color: var(--warning);
 	}
 	.tag-chip-count {
-		margin-left: 0.25rem;
+		margin-left: var(--sp-4);
 		color: var(--text-faint);
 		font-variant-numeric: tabular-nums;
 	}
 	.tag-more,
 	.tag-clear {
-		padding: 0.15rem 0.5rem;
+		padding: var(--sp-2) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid transparent;
 		border-radius: var(--r-pill);
 		color: var(--text-muted);
 		font: inherit;
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.tag-more:hover,

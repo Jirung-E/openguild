@@ -1656,17 +1656,17 @@
 
 <style>
 	.comments-sec {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--sp-24);
 	}
 	.section-head {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-8);
 		/* BUG-216: 좁은 화면에서 헤더 버튼(토론만 / 전체 접기)이 옆으로 밀려
 		   페이지 전체에 가로 스크롤을 만들었다(admin 스크린샷). 줄로 흘린다. */
 		flex-wrap: wrap;
-		row-gap: 0.35rem;
+		row-gap: var(--sp-6);
 	}
 	/* 제목 자체도 줄어들 수 있어야 버튼이 다음 줄로 안 밀리고 먼저 좁아진다. */
 	.section-toggle {
@@ -1676,7 +1676,7 @@
 	.section-toggle {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		background: none;
 		border: none;
 		padding: 0;
@@ -1688,7 +1688,7 @@
 		color: var(--text);
 	}
 	.toggle-icon {
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		transition: transform 0.12s;
 		display: inline-block;
@@ -1697,7 +1697,7 @@
 		transform: rotate(-90deg);
 	}
 	.section-title {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -1706,7 +1706,7 @@
 		transition: color 0.12s;
 	}
 	.count {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 
@@ -1714,12 +1714,12 @@
 	/* DEV-213: 토론만 모아보기 토글. */
 	.disc-filter-btn {
 		margin-left: auto;
-		padding: 0.15rem 0.6rem;
+		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.disc-filter-btn:hover {
@@ -1739,7 +1739,7 @@
 	}
 	/* 필터 버튼이 있으면 전체접기 버튼은 그 옆 (auto margin 은 필터 쪽). */
 	.disc-filter-btn + .collapse-all-btn {
-		margin-left: 0.4rem;
+		margin-left: var(--sp-6);
 	}
 	/* DEV-213: 토론만 보기에서 비토론 entry dim — 숨김 대신 문맥 유지. */
 	.entry.dimmed {
@@ -1747,7 +1747,7 @@
 	}
 	/* DEV-214: 접힘 지점(스레드/본문/섹션)의 토론 상태 글리프 — DEV-150 글리프 재사용. */
 	.disc-flag {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		font-weight: 700;
 	}
 	.disc-flag.unresolved {
@@ -1759,12 +1759,12 @@
 
 	.collapse-all-btn {
 		margin-left: auto;
-		padding: 0.15rem 0.6rem;
+		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.collapse-all-btn:hover {
@@ -1774,25 +1774,25 @@
 
 	.state {
 		color: var(--text-muted);
-		font-size: 0.825rem;
-		margin: 0.25rem 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0;
 	}
 	.state.err {
 		color: var(--danger);
 	}
 	.no-desc {
 		color: var(--text-faint);
-		font-size: 0.825rem;
-		margin: 0.25rem 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0;
 	}
 
 	.entry-list {
 		list-style: none;
-		margin: 0 0 1rem;
+		margin: 0 0 var(--sp-16);
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 	}
 	/* DEV-139: root + 답글을 감싸는 카드 — 댓글 간 시각 구분.
 	   본문 (entry-body 의 MarkdownView) 은 --bg 라 카드 배경과 한 단계 차이. */
@@ -1801,7 +1801,7 @@
 		background: color-mix(in srgb, var(--bg-elevated) 65%, var(--bg));
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-lg);
-		padding: 0.6rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 	}
 	/* DEV-234: 상단 고정된 댓글 — pin(위치 이동) 만으로는 눈에 안 띄어서
 	   테두리로 하이라이트도 함께. */
@@ -1844,7 +1844,7 @@
 	.entry.reply.pinned {
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 55%, transparent);
 		background: color-mix(in srgb, var(--accent) 6%, transparent);
-		padding: 0.3rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		margin: -0.3rem -0.5rem 0;
 	}
 	.thread {
@@ -1852,30 +1852,30 @@
 		padding: 0;
 	}
 	.reply-list {
-		margin: 0.25rem 0 0 1.5rem;
-		padding-left: 0.75rem;
+		margin: var(--sp-4) 0 0 var(--sp-24);
+		padding-left: var(--sp-12);
 		border-left: 2px solid var(--bg-subtle);
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	/* DEV-200: level-2 (답글의 답글) — 한 단 더 들여쓰기. 그 이상 깊이는 여기에
 	   flatten (↩ #id 링크가 실제 대상 표시). */
 	.reply-list.l2 {
-		margin: 0 0 0 1.25rem;
-		padding-left: 0.75rem;
+		margin: 0 0 0 var(--sp-16);
+		padding-left: var(--sp-12);
 	}
 	.reply-form {
 		border: var(--bw) dashed var(--border);
 		border-radius: var(--r-md);
-		padding: 0.5rem 0.7rem;
+		padding: var(--sp-8) var(--sp-12);
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.reply-author {
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.reply-author .author-input,
 	.new-row .author-input {
@@ -1891,10 +1891,10 @@
 	.orphan-card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.orphan-label {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		font-style: italic;
 	}
@@ -1902,16 +1902,16 @@
 	.entry-head {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.78rem;
+		gap: var(--sp-6);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
-		margin-bottom: 0.4rem;
+		margin-bottom: var(--sp-6);
 		/* BUG-195: 좁은 화면에서 한 줄에 안 들어가면 날짜가 "2026. 8." / "2. 오후" /
 		   "7:08:32" 처럼 조각나 세 줄로 흩어졌고, 영어 UI 에선 액션(Discussion/
 		   Edit/Delete)이 화면 밖으로 나가 가로 스크롤이 생겼다. 줄바꿈을 허용하고
 		   각 조각은 붙여 둔다. */
 		flex-wrap: wrap;
-		row-gap: 0.25rem;
+		row-gap: var(--sp-4);
 	}
 	.entry-head > * {
 		/* 날짜·작성자·번호가 조각나지 않게 — 줄바꿈은 항목 사이에서만. */
@@ -1931,17 +1931,17 @@
 	/* DEV-182: 편집됨 표시. */
 	.edited-marker {
 		color: var(--text-faint);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		font-style: italic;
 	}
 	/* DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 버튼. */
 	.entry-no {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		background: transparent;
 		cursor: pointer;
-		padding: 0.05rem 0.35rem;
+		padding: 0.05rem var(--sp-6);
 		border-radius: var(--r-sm);
 		border: var(--bw) solid var(--border-muted);
 	}
@@ -1951,7 +1951,7 @@
 	}
 	.reply-to {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		text-decoration: none;
 	}
@@ -1966,9 +1966,9 @@
 		background: none;
 		border: none;
 		border-left: 2px solid var(--border);
-		padding: 0.15rem 0 0.15rem 0.6rem;
+		padding: var(--sp-2) 0 var(--sp-2) var(--sp-8);
 		color: var(--text-faint);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-style: italic;
 		cursor: pointer;
 		white-space: nowrap;
@@ -1988,39 +1988,39 @@
 		   옮겨진 뒤에도 반응 pill 들은 여전히 오른쪽 끝에 몰려있는 것처럼
 		   보였다 — foot-left 바로 옆에 왼쪽 정렬로 이어지게 하고, 고정
 		   버튼(.pin-btn)에만 margin-left:auto 를 줘서 그것만 오른쪽 끝으로. */
-		margin-top: 0.4rem;
-		gap: 0.5rem;
+		margin-top: var(--sp-6);
+		gap: var(--sp-8);
 	}
 	.foot-left {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	/* 삼각형만 클릭 — 채운 삼각형 (▼/▶), 일반 글자색, 종전보다 큼. */
 	.tri-btn {
 		background: transparent;
 		border: none;
 		cursor: pointer;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		line-height: 1;
 		color: var(--text);
-		padding: 0.1rem 0.2rem;
+		padding: var(--sp-2) var(--sp-4);
 	}
 	.tri-btn:hover {
 		color: var(--accent);
 	}
 	.reply-count {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		user-select: none;
 	}
 	/* '답글 쓰기' — 댓글번호 (#N) 와 같은 테두리 버튼 느낌. */
 	.reply-write-btn {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		background: transparent;
 		cursor: pointer;
-		padding: 0.1rem 0.5rem;
+		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-sm);
 		border: var(--bw) solid var(--border-muted);
 	}
@@ -2030,12 +2030,12 @@
 	}
 	/* DEV-234: 상단 고정 버튼 — 꺼짐 상태는 흐리게, 켜지면 강조색 채움. */
 	.pin-btn {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		line-height: 1;
 		color: var(--text-faint);
 		background: transparent;
 		cursor: pointer;
-		padding: 0.15rem 0.35rem;
+		padding: var(--sp-2) var(--sp-6);
 		border-radius: var(--r-sm);
 		border: var(--bw) solid transparent;
 		opacity: 0.6;
@@ -2055,18 +2055,18 @@
 	.foot-right {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		/* BUG-125: foot-left 옆으로 자연스레 이어지되(반응 pill 왼쪽 정렬),
 		   남는 공간을 이 컨테이너가 차지해야 .pin-btn 의 margin-left:auto 가
 		   카드 오른쪽 끝까지 닿는다. */
 		flex: 1;
 	}
 	.reaction-pill {
-		padding: 0.1rem 0.45rem;
+		padding: var(--sp-2) var(--sp-8);
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
 		border-radius: var(--r-xl);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.reaction-pill:hover {
@@ -2079,8 +2079,8 @@
 	}
 	/* 반응 수 (2명 이상). */
 	.reaction-pill .rc {
-		margin-left: 0.2rem;
-		font-size: 0.7rem;
+		margin-left: var(--sp-4);
+		font-size: var(--fs-xs);
 		font-weight: 700;
 		color: var(--text-muted);
 	}
@@ -2088,11 +2088,11 @@
 		position: relative;
 	}
 	.reaction-add {
-		padding: 0.1rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		background: transparent;
 		border: var(--bw) solid var(--border-muted);
 		border-radius: var(--r-xl);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		cursor: pointer;
 	}
@@ -2114,8 +2114,8 @@
 		z-index: 91;
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
-		padding: 0.3rem 0.4rem;
+		gap: var(--sp-4);
+		padding: var(--sp-4) var(--sp-6);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -2125,17 +2125,17 @@
 	.picker-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.2rem;
+		gap: var(--sp-4);
 	}
 	.picker-item-wrap {
 		position: relative;
 	}
 	.picker-item {
-		padding: 0.15rem 0.35rem;
+		padding: var(--sp-2) var(--sp-6);
 		background: transparent;
 		border: var(--bw) solid transparent;
 		border-radius: var(--r-md);
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		cursor: pointer;
 	}
 	.picker-item:hover {
@@ -2160,7 +2160,7 @@
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--danger) 85%, transparent);
 		color: white;
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		line-height: 1;
 		cursor: pointer;
 	}
@@ -2169,27 +2169,27 @@
 	}
 	.picker-add-row {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		border-top: var(--bw) solid var(--border);
-		padding-top: 0.3rem;
+		padding-top: var(--sp-4);
 	}
 	.picker-add-input {
 		flex: 1;
 		min-width: 0;
-		padding: 0.2rem 0.4rem;
+		padding: var(--sp-4) var(--sp-6);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.picker-add-btn {
-		padding: 0.2rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.picker-add-btn:disabled {
@@ -2201,14 +2201,14 @@
 	}
 	/* DEV-132 후속: 이모지 1개 검증 실패 메시지. */
 	.picker-add-err {
-		margin: 0.2rem 0 0;
-		font-size: 0.7rem;
+		margin: var(--sp-4) 0 0;
+		font-size: var(--fs-xs);
 		color: var(--danger);
 	}
 	.entry-actions {
 		margin-left: auto;
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.link-btn {
 		background: none;
@@ -2217,7 +2217,7 @@
 		cursor: pointer;
 		padding: 0;
 		font: inherit;
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		text-decoration: underline;
 	}
 	.link-btn:hover {
@@ -2237,13 +2237,13 @@
 
 	/* DEV-142: 토론 상태 배지 — 미해결(빨강) / 해결(초록). */
 	.disc-badge {
-		margin-left: 0.4rem;
-		padding: 0.05rem 0.4rem;
+		margin-left: var(--sp-6);
+		padding: 0.05rem var(--sp-6);
 		border-radius: var(--r-pill);
 		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
 		color: var(--danger);
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		font-weight: 700;
 		cursor: pointer;
 		white-space: nowrap;
@@ -2261,37 +2261,37 @@
 	}
 
 	.entry-body :global(p) {
-		margin: 0.25rem 0;
+		margin: var(--sp-4) 0;
 	}
 
 	.new-form {
 		border-top: var(--bw) dashed var(--bg-subtle);
-		padding-top: 0.75rem;
+		padding-top: var(--sp-12);
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.new-row {
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.author-input {
 		flex: 0 0 14rem;
-		padding: 0.3rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.body-input {
 		width: 100%;
-		padding: 0.45rem 0.6rem;
+		padding: var(--sp-8) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		/* BUG-320: 브라우저가 구석에 그려 주던 손잡이는 끈다 — 바로 아래 [[SizeGrip]] 이
 		   같은 일을 하고, 그건 휴대폰에서도 된다. 둘을 같이 두면 손잡이가 두 개다(admin).
@@ -2307,9 +2307,9 @@
 	}
 	/* DEV-289: 댓글 입력창 마크다운 편집기 토글 버튼. */
 	.ce-toggle {
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		font-family: var(--font-mono);
-		padding: 0.1rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
@@ -2326,17 +2326,17 @@
 	}
 	.actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.35rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-6);
 	}
 	.btn-save {
-		padding: 0.3rem 0.85rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-save:disabled {
 		opacity: 0.5;
@@ -2347,13 +2347,13 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.btn-cancel {
-		padding: 0.3rem 0.85rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-cancel:hover:not(:disabled) {
 		background: var(--bg-subtle);

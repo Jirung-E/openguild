@@ -428,9 +428,9 @@
 		background: var(--bg);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
-		padding: 0.85rem 1rem;
+		padding: var(--sp-12) var(--sp-16);
 		color: var(--text);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		line-height: 1.55;
 		/* BUG-039: 자식 (긴 링크 / inline code 등) 이 컨테이너 폭을 못 넘게. */
 		max-width: 100%;
@@ -453,23 +453,23 @@
 	}
 	.md :global(ul),
 	.md :global(ol) {
-		padding-left: 1.5rem;
+		padding-left: var(--sp-24);
 		margin: 0.4em 0;
 	}
 	.md :global(input[type='checkbox']) {
-		margin-right: 0.4rem;
+		margin-right: var(--sp-6);
 	}
 
 	.md :global(code) {
 		background: var(--bg-elevated);
-		padding: 0.1rem 0.3rem;
+		padding: var(--sp-2) var(--sp-4);
 		border-radius: var(--r-xs);
 	}
 	.md :global(pre) {
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
-		padding: 0.75rem 1rem;
+		padding: var(--sp-12) var(--sp-16);
 		overflow-x: auto;
 	}
 	.md :global(pre code) {
@@ -537,7 +537,7 @@
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 30%, transparent);
 		border-radius: var(--r-sm);
-		padding: 0 0.3rem;
+		padding: 0 var(--sp-4);
 		white-space: nowrap;
 	}
 	.md :global(a.xlink:hover) {
@@ -562,12 +562,12 @@
 	.md :global(table) {
 		border-collapse: collapse;
 		width: 100%;
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.md :global(th),
 	.md :global(td) {
 		border: var(--bw) solid var(--bg-subtle);
-		padding: 0.35rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 	}
 	.md :global(th) {
 		background: var(--bg-elevated);
@@ -586,7 +586,7 @@
 	.md :global(.mermaid-rendered) {
 		display: flex;
 		justify-content: center;
-		padding: 0.5rem 0;
+		padding: var(--sp-8) 0;
 		margin: 0.5em 0;
 		/* BUG-237: `.md` 는 BUG-039 때문에 `overflow-wrap: anywhere` 를 건다
 		   (긴 링크/inline code 가 컨테이너를 넘지 않게). 그런데 mermaid 는 노드·엣지
@@ -607,12 +607,12 @@
 		height: auto;
 	}
 	.md :global(.mermaid-error) {
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		background: color-mix(in srgb, var(--danger) 12%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 		border-radius: var(--r-md);
 		color: var(--danger);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		white-space: pre-wrap;
 	}

@@ -343,22 +343,22 @@
 	.wrap {
 		max-width: var(--content-max-width, 1100px);
 		margin: 0 auto;
-		padding: 1.5rem;
+		padding: var(--sp-24);
 	}
 	header {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.9rem;
-		margin-bottom: 1.2rem;
+		gap: var(--sp-16);
+		margin-bottom: var(--sp-16);
 	}
 	h1 {
-		font-size: 1.4rem;
+		font-size: var(--fs-xl);
 		font-weight: 700;
 		color: var(--text-strong);
 	}
 	.count {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.filter {
@@ -366,8 +366,8 @@
 		   왼쪽에 빈자리를 남겼다(브라우저로 확인). */
 		flex: 1 1 12rem;
 		min-width: 8rem;
-		padding: 0.4rem 0.7rem;
-		font-size: 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
+		font-size: var(--fs-md);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		background: var(--bg-subtle);
@@ -378,7 +378,7 @@
 		border-color: var(--accent);
 	}
 	.empty {
-		padding: 2rem;
+		padding: var(--sp-32);
 		text-align: center;
 		color: var(--text-faint);
 	}
@@ -386,7 +386,7 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.tag-item {
 		border: var(--bw) solid var(--border);
@@ -401,10 +401,10 @@
 	.tag-head {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		flex: 1;
 		min-width: 0;
-		padding: 0.6rem 0.9rem;
+		padding: var(--sp-8) var(--sp-16);
 		background: transparent;
 		border: none;
 		cursor: pointer;
@@ -414,10 +414,10 @@
 		background: var(--nav-hover-bg);
 	}
 	.chip {
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-weight: 600;
 		color: var(--text-muted);
-		padding: 0.15rem 0.5rem;
+		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-sm);
 		background: var(--bg-subtle);
 	}
@@ -427,7 +427,7 @@
 		border: var(--bw) solid color-mix(in srgb, var(--chip) 35%, transparent);
 	}
 	.usage {
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		min-width: 1.5rem;
 		text-align: center;
@@ -442,7 +442,7 @@
 		transform: rotate(90deg);
 	}
 	.tag-desc {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -451,17 +451,17 @@
 	}
 	.row-actions {
 		display: flex;
-		gap: 0.3rem;
-		padding-right: 0.6rem;
+		gap: var(--sp-4);
+		padding-right: var(--sp-8);
 		flex: none;
 	}
 	.btn {
-		padding: 0.25rem 0.7rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		white-space: nowrap;
 	}
@@ -482,33 +482,33 @@
 		color: var(--btn-primary-text);
 	}
 	.intro {
-		margin: -0.6rem 0 1rem;
-		font-size: 0.8rem;
+		margin: -0.6rem 0 var(--sp-16);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.editor {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 0.9rem 0.7rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-16) var(--sp-12);
 		border-top: var(--bw) solid var(--border);
 	}
 	.tag-item.new {
-		margin-bottom: 0.35rem;
+		margin-bottom: var(--sp-6);
 	}
 	.tag-item.new .editor {
 		border-top: none;
-		padding-top: 0.7rem;
+		padding-top: var(--sp-12);
 	}
 	.editor input[type='text'] {
-		padding: 0.3rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text);
 		font: inherit;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	.editor .slug {
 		width: 12rem;
@@ -529,20 +529,20 @@
 	.docs {
 		list-style: none;
 		border-top: var(--bw) solid var(--border);
-		padding: 0.3rem;
+		padding: var(--sp-4);
 	}
 	.doc-empty {
-		padding: 0.5rem 0.7rem;
-		font-size: 0.78rem;
+		padding: var(--sp-8) var(--sp-12);
+		font-size: var(--fs-sm);
 		color: var(--text-faint);
 	}
 	.doc {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 0.6rem;
+		gap: var(--sp-8);
+		padding: var(--sp-6) var(--sp-8);
 		border-radius: var(--r-sm);
-		font-size: 0.83rem;
+		font-size: var(--fs-sm);
 		text-decoration: none;
 		color: var(--text);
 	}
@@ -553,10 +553,10 @@
 		flex: none;
 		min-width: 3.4rem;
 		text-align: center;
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		border-radius: var(--r-sm);
-		padding: 0.1rem 0.35rem;
+		padding: var(--sp-2) var(--sp-6);
 	}
 	.dtype.quest {
 		color: var(--accent);

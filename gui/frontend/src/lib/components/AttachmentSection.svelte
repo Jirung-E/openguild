@@ -499,32 +499,32 @@
 <style>
 	.attachments {
 		/* 본문과는 좁게(본문 컨테이너가 아래 여백 담당), 구분선 위/아래는 넉넉히. */
-		margin-top: 0.4rem;
-		padding-bottom: 1.5rem;
+		margin-top: var(--sp-6);
+		padding-bottom: var(--sp-24);
 		border-bottom: var(--bw) solid var(--border);
-		margin-bottom: 1.75rem;
+		margin-bottom: var(--sp-24);
 	}
 	.head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.head h3 {
 		margin: 0;
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		color: var(--text-strong);
 	}
 	/* DEV-298 → DEV-322: 업로드 대기열. 진행률을 알 수 없는 구간(경로 기반 복사
 	   시작 전 / base64 변환)에서는 불확정 바 — 목적은 "돌고 있음"의 확인. */
 	.upq {
 		list-style: none;
-		margin: 0.6rem 0 0;
+		margin: var(--sp-8) 0 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.45rem;
-		font-size: 0.8rem;
+		gap: var(--sp-8);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		/* 많이 고르면 섹션이 통째로 길어지므로 자체 스크롤. */
 		max-height: 11rem;
@@ -534,7 +534,7 @@
 		/* BUG-190: 이름 줄 / 진행 줄 2단. */
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.upq-item.failed .up-name {
 		color: var(--danger);
@@ -547,9 +547,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
-		margin-top: 0.6rem;
-		font-size: 0.8rem;
+		gap: var(--sp-8);
+		margin-top: var(--sp-8);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.upq-cancel {
@@ -557,8 +557,8 @@
 		background: none;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
-		padding: 0.1rem 0.45rem;
-		font-size: 0.75rem;
+		padding: var(--sp-2) var(--sp-8);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -571,8 +571,8 @@
 		flex: none;
 		background: none;
 		border: none;
-		padding: 0 0.2rem;
-		font-size: 0.8rem;
+		padding: 0 var(--sp-4);
+		font-size: var(--fs-sm);
 		line-height: 1;
 		color: var(--text-muted);
 		cursor: pointer;
@@ -591,7 +591,7 @@
 	.up-line {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.up-name {
 		/* 이름 줄을 통째로 쓰되 넘치면 말줄임 — 바를 밀어내지 않는다. */
@@ -657,11 +657,11 @@
 	}
 	.head-actions {
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.btn {
-		font-size: 0.8rem;
-		padding: 0.25rem 0.7rem;
+		font-size: var(--fs-sm);
+		padding: var(--sp-4) var(--sp-12);
 		border-radius: var(--r-md);
 		border: var(--bw) solid var(--border);
 		background: var(--bg-subtle);
@@ -678,30 +678,30 @@
 	}
 	.err {
 		color: var(--danger);
-		font-size: 0.825rem;
-		margin: 0.4rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-6) 0 0;
 	}
 	.empty {
 		color: var(--text-muted);
-		font-size: 0.825rem;
-		margin: 0.4rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-6) 0 0;
 	}
 	.grid {
 		list-style: none;
-		margin: 0.6rem 0 0;
+		margin: var(--sp-8) 0 0;
 		padding: 0;
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-		gap: 0.6rem;
+		gap: var(--sp-8);
 	}
 	.item {
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		padding: 0.4rem;
+		padding: var(--sp-6);
 		background: var(--bg-elevated);
 	}
 	.thumb {
@@ -736,7 +736,7 @@
 	/* BUG-291: 앞 조각만 줄어들게 — 가운데가 잘리고 확장자가 남는다. */
 	.name {
 		display: flex;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text);
 		min-width: 0;
 	}
@@ -754,11 +754,11 @@
 		position: absolute;
 		right: 0.2rem;
 		bottom: 0.2rem;
-		padding: 0 0.25rem;
+		padding: 0 var(--sp-4);
 		border-radius: var(--r-xs);
 		background: color-mix(in srgb, var(--bg) 78%, transparent);
 		color: var(--text-muted);
-		font-size: 0.6rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		letter-spacing: 0.02em;
 		pointer-events: none;
@@ -779,7 +779,7 @@
 		background: color-mix(in srgb, var(--accent) 85%, transparent);
 		color: white;
 		cursor: pointer;
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		line-height: 1;
 	}
 	.dl:hover {

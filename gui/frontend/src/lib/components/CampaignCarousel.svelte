@@ -158,15 +158,15 @@
 	.carousel {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.25rem 0 0.5rem 0;
+		gap: var(--sp-8);
+		padding: var(--sp-4) 0 var(--sp-8) 0;
 		/* BUG-191: 가로 스와이프는 우리가, 세로 스크롤은 브라우저가. */
 		touch-action: pan-y;
 	}
 	.empty {
 		color: var(--text-faint);
-		font-size: 0.875rem;
-		padding: 1rem 0;
+		font-size: var(--fs-md);
+		padding: var(--sp-16) 0;
 	}
 
 	.viewport {
@@ -188,7 +188,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.arrow {
 		/* BUG-254: 원형 버튼 안의 아이콘/글자가 중앙에 안 맞던 문제.
@@ -214,7 +214,7 @@
 	}
 	.dots {
 		display: flex;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.dot {
 		background: var(--border);
@@ -251,11 +251,11 @@
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		line-height: 1;
 		cursor: pointer;
 		transition: background 0.15s;
-		margin-left: 0.4rem;
+		margin-left: var(--sp-6);
 	}
 	.play-pause:hover {
 		background: var(--bg-subtle);

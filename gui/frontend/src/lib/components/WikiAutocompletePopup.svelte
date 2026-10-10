@@ -129,7 +129,7 @@
 		   오버레이보다 확실히 위에 오도록 상향.*/
 		z-index: 250;
 		margin: 0;
-		padding: 0.2rem;
+		padding: var(--sp-4);
 		list-style: none;
 		/* 모바일 수정: 예전엔 min 14rem / max 22rem 고정이라 375px 화면에서 팝업이
 		   화면을 거의 덮고 오른쪽으로 넘쳐 나갔다. 뷰포트를 넘지 않도록 상한을
@@ -159,9 +159,9 @@
 	.wiki-opt {
 		display: flex;
 		align-items: baseline;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		width: 100%;
-		padding: 0.3rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		border: none;
 		border-radius: var(--r-sm);
 		background: transparent;
@@ -176,7 +176,7 @@
 	.wiki-id {
 		flex: none;
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--accent);
 	}
 	.wiki-id.missing {
@@ -185,7 +185,7 @@
 	.wiki-meta {
 		flex: 1;
 		min-width: 0;
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -203,7 +203,7 @@
 	.wiki-opt:global(.collapsing) {
 		flex-direction: column;
 		align-items: stretch;
-		gap: 0.15rem;
+		gap: var(--sp-2);
 	}
 	.wiki-pop li:has(.wiki-opt.expanded),
 	.wiki-pop li:has(.wiki-opt:global(.collapsing)) {

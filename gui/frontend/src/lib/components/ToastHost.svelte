@@ -281,7 +281,7 @@
 		z-index: 2000;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: stretch;
 		width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		max-width: calc(100vw - 3rem);
@@ -295,7 +295,7 @@
 		background: var(--bg-elevated);
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		pointer-events: auto;
 		animation: notif-in 0.18s ease-out;
 	}
@@ -319,7 +319,7 @@
 		font-size: 1.1rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 0.3rem;
+		padding: 0 var(--sp-4);
 	}
 	.card-x:hover {
 		color: var(--text);
@@ -327,7 +327,7 @@
 
 	/* ── toast ── */
 	.toast {
-		padding: 0.85rem 1rem;
+		padding: var(--sp-12) var(--sp-16);
 		border-left: 3px solid var(--accent);
 		line-height: 1.45;
 		cursor: pointer;
@@ -343,19 +343,19 @@
 	}
 	/* DEV-266: 같은 알림 재발생 횟수 뱃지. */
 	.toast .count {
-		margin-left: 0.4rem;
-		font-size: 0.72rem;
+		margin-left: var(--sp-6);
+		font-size: var(--fs-xs);
 		font-weight: 700;
 		color: var(--text-muted);
 		background: color-mix(in srgb, var(--text) 10%, transparent);
 		border-radius: var(--r-pill);
-		padding: 0.05rem 0.4rem;
+		padding: 0.05rem var(--sp-6);
 	}
 	/* DEV-266: "+N개 더" 축약 칩. */
 	.more-chip {
 		align-self: flex-end;
-		padding: 0.3rem 0.7rem;
-		font-size: 0.75rem;
+		padding: var(--sp-4) var(--sp-12);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -365,7 +365,7 @@
 
 	/* ── update ── */
 	.upd {
-		padding: 0.85rem 2rem 0.85rem 1rem;
+		padding: var(--sp-12) var(--sp-32) var(--sp-12) var(--sp-16);
 		border-left: 3px solid var(--success-strong);
 	}
 	.upd.err {
@@ -382,13 +382,13 @@
 		color: var(--danger);
 	}
 	.upd .t-msg {
-		margin: 0.35rem 0 0;
+		margin: var(--sp-6) 0 0;
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		word-break: break-word;
 	}
 	.upd details {
-		margin: 0.5rem 0;
+		margin: var(--sp-8) 0;
 		color: var(--text-muted);
 	}
 	.upd pre {
@@ -396,23 +396,23 @@
 		background: var(--bg);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		max-height: 8rem;
 		overflow-y: auto;
-		margin: 0.4rem 0 0;
+		margin: var(--sp-6) 0 0;
 		scrollbar-width: none;
 	}
 	.upd pre::-webkit-scrollbar {
 		display: none;
 	}
 	.upd .btn-primary {
-		margin-top: 0.5rem;
-		padding: 0.4rem 0.9rem;
+		margin-top: var(--sp-8);
+		padding: var(--sp-6) var(--sp-16);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.upd .btn-primary:hover {
@@ -424,26 +424,26 @@
 	.schema {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.85rem 2rem 0.85rem 1rem;
+		gap: var(--sp-8);
+		padding: var(--sp-12) var(--sp-32) var(--sp-12) var(--sp-16);
 		border-left: 3px solid var(--orange);
 	}
 	.schema .msg {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.schema .msg strong {
 		font-weight: 600;
 		color: var(--orange);
 	}
 	.schema .detail {
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.schema .detail code {
 		background: color-mix(in srgb, var(--text) 10%, transparent);
-		padding: 0 0.25rem;
+		padding: 0 var(--sp-4);
 		border-radius: var(--r-xs);
 		font-size: 0.85em;
 		color: var(--text);
@@ -454,8 +454,8 @@
 		color: var(--bg);
 		border: none;
 		border-radius: var(--r-sm);
-		padding: 0.3rem 0.85rem;
-		font-size: 0.78rem;
+		padding: var(--sp-4) var(--sp-12);
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		cursor: pointer;
 	}

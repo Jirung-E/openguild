@@ -718,8 +718,8 @@
 	.input-wrap {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0 0.8rem;
+		gap: var(--sp-8);
+		padding: 0 var(--sp-12);
 		background: var(--bg-subtle);
 		border-bottom: var(--bw) solid var(--border);
 	}
@@ -729,12 +729,12 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0.1rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		cursor: pointer;
 	}
@@ -773,7 +773,7 @@
 	.pwhy {
 		display: flex;
 		align-items: baseline;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		min-width: 0;
 		flex-basis: 100%;
 		max-width: 100%;
@@ -782,11 +782,11 @@
 	}
 	.pwhy-f {
 		flex: none;
-		padding: 0 0.25rem;
+		padding: 0 var(--sp-4);
 		border-radius: var(--r-sm);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 		color: var(--accent);
-		font-size: 0.62rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 	}
 	.pwhy-x mark {
@@ -803,15 +803,15 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: var(--text-muted);
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 	}
 
 	.scope-chip {
 		flex: none;
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		border-radius: var(--r-sm);
-		padding: 0.1rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		color: var(--accent);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
@@ -830,8 +830,8 @@
 	input {
 		flex: 1;
 		width: 100%;
-		padding: 0.55rem 0;
-		font-size: 0.9rem;
+		padding: var(--sp-8) 0;
+		font-size: var(--fs-md);
 		border: none;
 		outline: none;
 		background: transparent;
@@ -856,9 +856,9 @@
 		display: none;
 	}
 	.empty {
-		padding: 0.9rem;
+		padding: var(--sp-16);
 		text-align: center;
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		color: var(--text-faint);
 	}
 	/* DEV-255: 행 = row-main(라벨, 기본 클릭 = 미리보기) + row-actions(열기 방식
@@ -882,15 +882,15 @@
 		   지금은 펼친 행이 `.row.expanded .row-main` 에서 따로 `center` 를 받으므로
 		   **두 상태가 모두 center** 다 — 기준이 바뀌지 않아 그 문제가 없고,
 		   접힌 행에서도 요소들이 세로 가운데에 온다. */
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		/* 발췌(.pwhy)가 flex-basis:100% 로 다음 줄에 놓이게 — 다른 항목은 폭이
 		   남는 한 첫 줄에 그대로 있다. row-gap 은 두 줄 사이 간격. */
 		flex-wrap: wrap;
-		row-gap: 0.2rem;
+		row-gap: var(--sp-4);
 		flex: 1;
 		min-width: 0;
-		padding: 0.45rem 0.8rem;
-		font-size: 0.85rem;
+		padding: var(--sp-8) var(--sp-12);
+		font-size: var(--fs-md);
 		background: transparent;
 		border: none;
 		cursor: pointer;
@@ -900,8 +900,8 @@
 		flex: none;
 		display: flex;
 		align-items: center;
-		gap: 0.1rem;
-		padding: 0 0.5rem 0 0;
+		gap: var(--sp-2);
+		padding: 0 var(--sp-8) 0 0;
 	}
 	/* DEV-417: 버튼 자체의 모양은 DocRowActions 안에 있다 — 여기서는 자리만 잡는다. */
 	.ptype {
@@ -914,7 +914,7 @@
 		/* BUG-244: 제목(0.85rem)에 비해 너무 작아 읽히지 않는다는 보고 —
 		   0.68 → 0.78rem. 상자 높이도 제목 한 줄(line-height 21.76px)에 맞춰
 		   20px 로 키워, 칩 가운데와 제목 글자 가운데가 같은 선에 오게 한다. */
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		border-radius: var(--r-sm);
 		/* 나란히 놓이는 칩이라 **상자 높이는** slug 칩과 같아야 한다. 모양(각진
@@ -925,7 +925,7 @@
 		/* BUG-244: 접힌 행에서 우측 액션 버튼과 같은 상자 높이(22px = 1.375rem).
 		   UI 크기 조절(DEV-101)을 따라가도록 rem. */
 		height: 1.375rem;
-		padding: 0 0.35rem;
+		padding: 0 var(--sp-6);
 		box-sizing: border-box;
 		line-height: 1;
 		border: var(--bw) solid transparent;
@@ -941,7 +941,7 @@
 		/* BUG-244: 두 칩은 높이가 다르다(종류 22px / slug 1.7em) — 서로 가운데를
 		   맞춘다. 높이는 각자 유지. */
 		align-items: center;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 		flex: none;
 	}
 	.row.expanded .pills,
@@ -1084,7 +1084,7 @@
 
 	.ptags {
 		flex: none;
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1095,13 +1095,13 @@
 	.dp-head {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.55rem 0.8rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-12);
 		border-bottom: var(--bw) solid var(--border);
 	}
 	.dp-title {
 		flex: 1;
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		font-weight: 600;
 		color: var(--text-strong);
 		overflow: hidden;
@@ -1111,11 +1111,11 @@
 	.dp-x {
 		flex: none;
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		background: none;
 		border: none;
 		cursor: pointer;
-		padding: 0.2rem 0.35rem;
+		padding: var(--sp-4) var(--sp-6);
 		border-radius: var(--r-sm);
 	}
 	.dp-x:hover {
@@ -1124,9 +1124,9 @@
 	}
 	.dp-meta {
 		display: flex;
-		gap: 0.9rem;
-		padding: 0.4rem 0.8rem;
-		font-size: 0.72rem;
+		gap: var(--sp-16);
+		padding: var(--sp-6) var(--sp-12);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		border-bottom: var(--bw) solid var(--border);
 	}
@@ -1134,7 +1134,7 @@
 		color: var(--accent);
 	}
 	.dp-body {
-		padding: 0.5rem 0.8rem;
+		padding: var(--sp-8) var(--sp-12);
 		overflow-y: auto;
 		/* BUG-157: 예전 주석은 "global.css 커스텀 스크롤바로 충분"이라 했지만,
 		   그건 native scrollbar 를 얇게 칠한 것일 뿐 컨텐츠 폭을 차지한다.
@@ -1147,13 +1147,13 @@
 	.dp-foot {
 		display: flex;
 		justify-content: flex-end;
-		gap: 0.5rem;
-		padding: 0.5rem 0.8rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-12);
 		border-top: var(--bw) solid var(--border);
 	}
 	.dp-btn {
-		font-size: 0.78rem;
-		padding: 0.3rem 0.7rem;
+		font-size: var(--fs-sm);
+		padding: var(--sp-4) var(--sp-12);
 		border-radius: var(--r-md);
 		border: var(--bw) solid var(--border);
 		background: transparent;

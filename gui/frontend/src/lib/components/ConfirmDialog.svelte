@@ -131,7 +131,7 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 	}
 	.modal {
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
@@ -141,47 +141,47 @@
 		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: 1.1rem 1.4rem 1.2rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-16);
 		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 		color: var(--text);
 	}
 	.modal-title {
-		margin: 0 0 0.5rem;
-		font-size: 1rem;
+		margin: 0 0 var(--sp-8);
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
 	.modal-msg {
-		margin: 0 0 1rem;
-		font-size: 0.875rem;
+		margin: 0 0 var(--sp-16);
+		font-size: var(--fs-md);
 		color: var(--text);
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
 	.modal-actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
 	.btn-no {
-		padding: 0.4rem 1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-no:hover {
 		background: var(--bg-subtle);
 	}
 	.btn-yes {
-		padding: 0.4rem 1.1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-yes:hover {

@@ -226,13 +226,13 @@
 	.datefield {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.125rem;
+		gap: var(--sp-2);
 		position: relative;
 	}
 	.df-text {
 		width: 6.6rem;
-		padding: 0.2rem 0.4rem;
-		font-size: 0.8rem;
+		padding: var(--sp-4) var(--sp-6);
+		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
@@ -274,7 +274,7 @@
 		top: calc(100% + 4px);
 		left: 0;
 		z-index: 1300;
-		padding: 0.5rem;
+		padding: var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -285,11 +285,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.4rem;
-		margin-bottom: 0.4rem;
+		gap: var(--sp-6);
+		margin-bottom: var(--sp-6);
 	}
 	.df-head {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-strong);
 		white-space: nowrap;
@@ -301,7 +301,7 @@
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.df-nav-btn:hover {
@@ -316,13 +316,13 @@
 	.df-grid.months {
 		display: grid;
 		grid-template-columns: repeat(4, 3rem);
-		gap: 0.125rem;
+		gap: var(--sp-2);
 	}
 	.df-wd {
-		font-size: 0.62rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		text-align: center;
-		padding-bottom: 0.125rem;
+		padding-bottom: var(--sp-2);
 	}
 	.df-wd.sun {
 		color: var(--danger);
@@ -336,7 +336,7 @@
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.df-cell:hover {
@@ -352,15 +352,15 @@
 	.df-foot {
 		display: flex;
 		justify-content: flex-end;
-		margin-top: 0.35rem;
+		margin-top: var(--sp-6);
 	}
 	.df-today {
 		border: none;
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--accent);
-		font-size: 0.7rem;
-		padding: 0.15rem 0.4rem;
+		font-size: var(--fs-xs);
+		padding: var(--sp-2) var(--sp-6);
 		cursor: pointer;
 	}
 	.df-today:hover {

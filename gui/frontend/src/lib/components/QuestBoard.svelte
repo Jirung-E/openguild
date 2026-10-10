@@ -4469,8 +4469,8 @@
 		height: 38px;
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0 0.5rem 0 0.875rem;
+		gap: var(--sp-6);
+		padding: 0 var(--sp-8) 0 var(--sp-12);
 		border-right: var(--bw) solid var(--bg-subtle);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 		box-sizing: border-box;
@@ -4481,8 +4481,8 @@
 		border-right: var(--bw) solid var(--bg-subtle);
 		flex-direction: column;
 		justify-content: center;
-		gap: 0.25rem;
-		padding: 0.375rem 0;
+		gap: var(--sp-4);
+		padding: var(--sp-6) 0;
 	}
 	/* DEV-105 fix2: 접혔을 때 label 만 표시 — 다른 컨트롤 (cols-sel, arrange-group)
 	   은 좁은 폭에서 시각적으로 깨지고 label 을 가려서 다시 펼치기가 어려워짐. */
@@ -4498,7 +4498,7 @@
 	}
 	:global(.lane-label) {
 		flex: 1;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		font-weight: bold;
 		white-space: nowrap;
 		overflow: hidden;
@@ -4519,7 +4519,7 @@
 		flex: 1 1 auto;
 		width: 100%;
 		min-height: 0;
-		padding: 0.25rem 0;
+		padding: var(--sp-4) 0;
 		text-align: start;
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
@@ -4570,7 +4570,7 @@
 		border: var(--bw) solid transparent;
 		border-radius: var(--r-sm);
 		color: var(--text-faint);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		padding: 0 4px;
 		cursor: pointer;
 		line-height: 1.2;
@@ -4618,7 +4618,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		padding: 1px 3px;
 		cursor: pointer;
 		outline: none;
@@ -4634,7 +4634,7 @@
 		border: var(--bw) solid transparent;
 		border-radius: var(--r-sm);
 		color: var(--text-faint);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		padding: 1px 5px;
 		cursor: pointer;
 		line-height: 1.4;
@@ -4657,7 +4657,7 @@
 		border: none;
 		border-radius: var(--r-sm);
 		color: var(--text-faint);
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		padding: 0 4px;
 		cursor: pointer;
 		line-height: 1;
@@ -4682,7 +4682,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		padding: 1px 3px;
 		cursor: pointer;
 		outline: none;
@@ -4763,7 +4763,7 @@
 	.drag-hint {
 		flex-shrink: 0;
 		color: var(--border);
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		line-height: 1.4;
 		padding: 1px 2px;
 		transition: color 0.1s;
@@ -4796,7 +4796,7 @@
 	.card-title {
 		margin: 0;
 		padding: 10px 12px 6px;
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		font-weight: 600;
 		color: var(--text-strong);
 		line-height: 1.45;
@@ -4813,12 +4813,12 @@
 		border-radius: var(--r-sm);
 	}
 	.blabel {
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 	}
 	.bname {
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--accent-secondary);
 	}
 
@@ -4829,7 +4829,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--accent);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		text-align: left;
 		transition:
@@ -4848,14 +4848,14 @@
 
 	.card-sec-label {
 		margin: 10px 12px 4px;
-		font-size: 0.67rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		color: var(--text-faint);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 	}
 	.hl-multi-hint {
-		font-size: 0.62rem;
+		font-size: var(--fs-xs);
 		color: var(--border);
 		text-transform: none;
 		letter-spacing: 0;
@@ -4876,7 +4876,7 @@
 	.hl-btn {
 		padding: 5px 8px;
 		border-radius: var(--r-sm);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 		text-align: left;
 		transition: all 0.12s;
@@ -4947,7 +4947,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
 			background 0.1s,
@@ -4984,7 +4984,7 @@
 
 	.card-note {
 		margin: 6px 12px 10px;
-		font-size: 0.67rem;
+		font-size: var(--fs-xs);
 		color: var(--border);
 		line-height: 1.4;
 	}
@@ -5001,12 +5001,12 @@
 		pointer-events: auto;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.3rem 0.7rem;
+		gap: var(--sp-8);
+		padding: var(--sp-4) var(--sp-12);
 		background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
 		border-radius: var(--r-pill);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text);
 	}
 	.fc-label {
@@ -5018,7 +5018,7 @@
 		border: none;
 		cursor: pointer;
 		color: var(--text-muted);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		padding: 0;
 	}
 	.fc-clear:hover {
@@ -5031,8 +5031,8 @@
 		z-index: 10;
 		display: grid;
 		grid-template-columns: auto auto;
-		gap: 0.1875rem 0.75rem;
-		padding: 0.5rem 0.625rem;
+		gap: var(--sp-2) var(--sp-12);
+		padding: var(--sp-8) var(--sp-8);
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
 		border-radius: var(--r-md);
 		background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
@@ -5064,7 +5064,7 @@
 		z-index: 10;
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		/* DEV-352: 레인 위에 버튼이 낱개로 떠 보이지 않도록 실제 컨트롤 크기의
 		   불투명 surface로 묶는다. width:max-content를 쓰되 max-width로 좁은
 		   화면에서는 기존처럼 줄바꿈한다. 화면 전체 폭의 클릭 띠를 만들지 않으므로
@@ -5072,7 +5072,7 @@
 		left: auto;
 		width: max-content;
 		max-width: calc(100% - 28px);
-		padding: 0.25rem;
+		padding: var(--sp-4);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -5080,7 +5080,7 @@
 		pointer-events: auto;
 		flex-wrap: wrap;
 		justify-content: flex-end;
-		row-gap: 0.25rem;
+		row-gap: var(--sp-4);
 	}
 	/* BUG-226: 버튼·셀렉트 등 실제 컨트롤만 클릭을 받는다. */
 	.toolbar > * {
@@ -5101,19 +5101,19 @@
 	}
 	/* DEV-073: 접기 토글 — 항상 표시. */
 	.tb-btn.tb-collapse {
-		padding: 0.25rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		opacity: 1;
 	}
 	.tb-btn {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.25rem 0.625rem;
+		gap: var(--sp-4);
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
 			background 0.1s,
@@ -5147,7 +5147,7 @@
 		line-height: 1;
 	}
 	.tb-btn .count {
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		min-width: 0.625rem;
 		text-align: right;
@@ -5172,15 +5172,15 @@
 		width: var(--bw);
 		background: var(--border);
 		align-self: stretch;
-		margin: 0.125rem 0;
+		margin: var(--sp-2) 0;
 	}
 	.tb-select {
-		padding: 0.1875rem 0.375rem;
+		padding: var(--sp-2) var(--sp-6);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		outline: none;
 	}
@@ -5203,7 +5203,7 @@
 	.tb-arrange-group .tb-mode {
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
-		padding-left: 0.25rem;
+		padding-left: var(--sp-4);
 	}
 
 	.overlay {
@@ -5214,7 +5214,7 @@
 		align-items: center;
 		justify-content: center;
 		color: var(--text-faint);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		pointer-events: none;
 		z-index: 2;
 	}
@@ -5236,33 +5236,33 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
-		padding: 1.25rem 1.5rem 1rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-16);
 		min-width: calc(17.5rem * var(--popup-scale, 1));
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--sp-16);
 	}
 	.dialog-msg {
 		margin: 0;
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		line-height: 1.5;
 		white-space: pre-wrap;
 	}
 	.dialog-btns {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
 	.dialog-ok {
-		padding: 0.4rem 1.1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
 			background 0.1s,
@@ -5273,12 +5273,12 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.dialog-cancel {
-		padding: 0.4rem 1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.dialog-cancel:hover {
@@ -5290,7 +5290,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
-		padding: 1.25rem 1.5rem 1.25rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-16);
 		/* 모바일: 30~40rem 고정폭이 좁은 화면에서 밖으로 삐져나감 — 뷰포트 폭 안으로 clamp. */
 		width: min(calc(40rem * var(--popup-scale, 1)), calc(100vw - 2rem));
 		min-width: min(calc(30rem * var(--popup-scale, 1)), calc(100vw - 2rem));
@@ -5298,7 +5298,7 @@
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		color: var(--text);
 		box-sizing: border-box;
 		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
@@ -5319,30 +5319,30 @@
 	.lane-tint-toggle {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.85rem;
+		gap: var(--sp-6);
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.bf-section {
 		border-top: var(--bw) solid var(--bg-subtle);
-		padding-top: 0.75rem;
+		padding-top: var(--sp-12);
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.bf-head {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 	}
 	.bf-title {
 		margin: 0;
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
 	.bf-count {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--accent);
 		font-weight: 600;
 	}
@@ -5352,8 +5352,8 @@
 		border: var(--bw) solid color-mix(in srgb, var(--danger) 35%, transparent);
 		color: var(--danger);
 		border-radius: var(--r-md);
-		padding: 0.15rem 0.5rem;
-		font-size: 0.78rem;
+		padding: var(--sp-2) var(--sp-8);
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.bf-clear:hover {
@@ -5362,7 +5362,7 @@
 	/* QuestListFilter 는 본래 가로 바 — 모달 안에선 우측 130px 예약 padding 불필요. */
 	.bf-filter :global(.filter-bar),
 	.bf-filter :global(.xfilter-panel) {
-		padding-right: 1rem;
+		padding-right: var(--sp-16);
 		background: transparent;
 		border-bottom: none;
 	}
@@ -5375,14 +5375,14 @@
 		position: sticky;
 		top: -1.25rem;
 		margin-top: -1.25rem;
-		padding-top: 1.25rem;
-		padding-bottom: 0.35rem;
+		padding-top: var(--sp-16);
+		padding-bottom: var(--sp-6);
 		background: var(--bg-elevated);
 		z-index: 1;
 	}
 	.hide-title {
 		margin: 0;
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
@@ -5393,14 +5393,14 @@
 		font-size: 1.4rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 0.3rem;
+		padding: 0 var(--sp-4);
 	}
 	.hide-close:hover {
 		color: var(--text);
 	}
 	.hide-help {
 		margin: 0;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		line-height: 1.45;
 	}
@@ -5413,18 +5413,18 @@
 		width: 100%;
 		min-width: 26rem;
 		border-collapse: collapse;
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.hide-table th,
 	.hide-table td {
 		text-align: left;
-		padding: 0.5rem 0.6rem;
+		padding: var(--sp-8) var(--sp-8);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.hide-table th {
 		color: var(--text-muted);
 		font-weight: 500;
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.hide-table tr.lane-off .hide-lane-name {
 		opacity: 0.45;
@@ -5442,11 +5442,11 @@
 		white-space: nowrap;
 	}
 	.hide-table .reorder-cell button + button {
-		margin-left: 0.2rem;
+		margin-left: var(--sp-4);
 	}
 	.hide-table .reorder-btn {
-		padding: 0.1rem 0.4rem;
-		font-size: 0.75rem;
+		padding: var(--sp-2) var(--sp-6);
+		font-size: var(--fs-xs);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);

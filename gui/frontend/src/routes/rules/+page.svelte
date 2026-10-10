@@ -612,7 +612,7 @@
 
 <style>
 	.page {
-		padding: 1.25rem 1.5rem 2rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-32);
 		max-width: var(--content-max-width, 1200px);
 		margin: 0 auto;
 	}
@@ -630,10 +630,10 @@
 	}
 	.sidebar {
 		border-right: var(--bw) solid var(--bg-subtle);
-		padding-right: 1rem;
+		padding-right: var(--sp-16);
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 
 	/* BUG-200 후속 감사: 이 미디어 블록이 기본 `.sidebar` 규칙보다 **앞**에 있어
@@ -654,7 +654,7 @@
 			border-right: none;
 			border-bottom: var(--bw) solid var(--bg-subtle);
 			padding-right: 0;
-			padding-bottom: 0.75rem;
+			padding-bottom: var(--sp-12);
 			max-height: 40vh;
 			max-height: 40dvh;
 			overflow-y: auto;
@@ -663,11 +663,11 @@
 	.sidebar-head {
 		display: flex;
 		align-items: baseline;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-8);
 	}
 	.sidebar-head h2 {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -676,12 +676,12 @@
 	}
 	.btn-new {
 		margin-left: auto;
-		padding: 0.15rem 0.55rem;
+		padding: var(--sp-2) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.btn-new:hover {
@@ -690,8 +690,8 @@
 	}
 	.empty-list {
 		color: var(--text-muted);
-		font-size: 0.78rem;
-		padding: 0.5rem 0;
+		font-size: var(--fs-sm);
+		padding: var(--sp-8) 0;
 	}
 	.rule-list {
 		list-style: none;
@@ -699,18 +699,18 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
+		gap: var(--sp-2);
 	}
 
 	.rule-item {
 		width: 100%;
 		text-align: left;
-		padding: 0.35rem 0.5rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		/* REQ-015 후속(admin 보고): 긴 slug 가 사이드바 경계를 넘어갔다.
 		   `global.css` 가 버튼을 `white-space: nowrap` 으로 두는데(BUG-143 —
@@ -730,13 +730,13 @@
 	/* REQ-013: 검색 입력 — 도서관(.search-input)과 같은 치수·색. */
 	.rule-search {
 		width: 100%;
-		padding: 0.3rem 0.55rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.82rem;
-		margin: 0.4rem 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-6) 0;
 		box-sizing: border-box;
 	}
 	.rule-slug {
@@ -748,12 +748,12 @@
 	/* slug 가 아닌 곳에서 맞았을 때만 보이는 이유 표시. */
 	.rule-why {
 		display: inline-block;
-		margin-top: 0.15rem;
-		padding: 0 0.3rem;
+		margin-top: var(--sp-2);
+		padding: 0 var(--sp-4);
 		border-radius: var(--r-xs);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 		color: var(--accent-secondary);
-		font-size: 0.62rem;
+		font-size: var(--fs-xs);
 	}
 	.rule-excerpt mark {
 		/* REQ-014: 검색 일치 표시. 기본 mark 의 노란 배경은 다크 테마에서 튀므로
@@ -770,9 +770,9 @@
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
-		margin-top: 0.1rem;
+		margin-top: var(--sp-2);
 		color: var(--text-muted);
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		line-height: 1.35;
 	}
 	.rule-item.active {
@@ -787,11 +787,11 @@
 	.top-bar {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-16);
 	}
 	.slug-title {
-		font-size: 1.1rem;
+		font-size: var(--fs-xl);
 		font-weight: 600;
 		color: var(--text);
 		margin: 0;
@@ -801,14 +801,14 @@
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.4rem;
-		font-size: 0.72rem;
+		gap: var(--sp-6);
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--sp-12);
 	}
 	.meta-item {
 		display: inline-flex;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		align-items: baseline;
 	}
 	.meta-label {
@@ -826,15 +826,15 @@
 	.top-actions {
 		margin-left: auto;
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 	}
 	.btn-edit {
-		padding: 0.3rem 0.7rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.btn-edit:hover {
@@ -851,39 +851,39 @@
 	.modal-inline {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		padding: 0.6rem;
+		gap: var(--sp-6);
+		padding: var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) dashed var(--border);
 		border-radius: var(--r-md);
-		margin: 0.5rem 0;
+		margin: var(--sp-8) 0;
 	}
 	.text-input {
-		padding: 0.35rem 0.55rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 
 	.state {
 		color: var(--text-muted);
-		padding: 1rem 0;
-		font-size: 0.875rem;
+		padding: var(--sp-16) 0;
+		font-size: var(--fs-md);
 	}
 	.state.err {
 		color: var(--danger);
 	}
 	.err {
 		color: var(--danger);
-		font-size: 0.825rem;
-		margin: 0.25rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0 0;
 	}
 	.empty {
 		color: var(--text-muted);
-		font-size: 0.9rem;
-		padding: 2rem 0;
+		font-size: var(--fs-md);
+		padding: var(--sp-32) 0;
 		text-align: center;
 	}
 	.empty .link {
@@ -898,32 +898,32 @@
 	.edit-form {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.field-label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.field-label > span {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	.actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.btn-save {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-save:disabled {
 		opacity: 0.5;
@@ -934,13 +934,13 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.btn-cancel {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-cancel:hover:not(:disabled) {
 		background: var(--bg-subtle);

@@ -191,37 +191,37 @@
 		   삐져나감 — rem 으로 같이 스케일. 화면보다 커지지 않게 안전망. */
 		width: 17.5rem;
 		max-width: calc(100vw - 2rem);
-		padding: 0.75rem;
+		padding: var(--sp-12);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
 		box-shadow: 0 10px 30px var(--shadow);
 		display: flex;
 		flex-direction: column;
-		gap: 0.7rem;
+		gap: var(--sp-12);
 	}
 	.qm-row {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.qm-label {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	.qm-seg {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 	}
 	.qm-seg-btn {
 		flex: 1;
 		min-width: 0; /* DEV-138 fix3: flex 자식이 내용 폭으로 안 밀려나게. */
-		padding: 0.3rem 0;
+		padding: var(--sp-4) 0;
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		white-space: nowrap;
 		overflow: hidden;
@@ -238,12 +238,12 @@
 	}
 	/* DEV-114: 커스텀 프리셋 버튼 — 좁은 메뉴라 최소 폭만 확보, 이름은 ellipsis. */
 	.qm-seg-btn.qm-custom {
-		padding: 0.3rem 0.35rem;
+		padding: var(--sp-4) var(--sp-6);
 	}
 	.qm-slider {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.qm-slider :global(.slider) {
 		flex: 1;
@@ -253,17 +253,17 @@
 		flex-shrink: 0;
 		white-space: nowrap;
 		text-align: right;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text);
 		font-variant-numeric: tabular-nums;
 	}
 	.qm-all {
-		margin-top: 0.1rem;
-		padding: 0.4rem 0;
+		margin-top: var(--sp-2);
+		padding: var(--sp-6) 0;
 		text-align: center;
 		border-top: var(--bw) solid var(--bg-subtle);
 		color: var(--accent);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		text-decoration: none;
 	}
 	.qm-all:hover {

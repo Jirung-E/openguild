@@ -637,15 +637,15 @@
 
 <style>
 	.page {
-		padding: 1.25rem 1.5rem 2rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-32);
 		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
 	}
 	.hdr {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		margin-bottom: 1rem;
+		gap: var(--sp-16);
+		margin-bottom: var(--sp-16);
 		flex-wrap: wrap;
 	}
 	.hdr h1 {
@@ -653,7 +653,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.35em;
-		font-size: 1.15rem;
+		font-size: var(--fs-xl);
 		font-weight: 600;
 		margin: 0;
 	}
@@ -661,11 +661,11 @@
 		margin-left: auto;
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		/* DEV-257: 모바일 폭에서 단위 토글/기간 이동 묶음이 화면 밖으로
 		   밀리지 않게 줄바꿈 허용. */
 		flex-wrap: wrap;
-		row-gap: 0.4rem;
+		row-gap: var(--sp-6);
 	}
 	.unit {
 		display: inline-flex;
@@ -677,8 +677,8 @@
 		border: none;
 		background: transparent;
 		color: var(--text-muted);
-		padding: 0.25rem 0.75rem;
-		font-size: 0.78rem;
+		padding: var(--sp-4) var(--sp-12);
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.unit button + button {
@@ -691,46 +691,46 @@
 	.nav {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.nav button {
 		border: var(--bw) solid var(--border);
 		background: transparent;
 		color: var(--text);
 		border-radius: var(--r-md);
-		padding: 0.2rem 0.55rem;
-		font-size: 0.78rem;
+		padding: var(--sp-4) var(--sp-8);
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.nav button:hover {
 		background: var(--bg-subtle);
 	}
 	.range-label {
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-weight: 600;
 		min-width: 7.5rem;
 		text-align: center;
 	}
 	.range-tilde {
 		color: var(--text-muted);
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 	}
 
 	.note {
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		background: var(--bg-elevated);
-		margin-bottom: 1rem;
+		margin-bottom: var(--sp-16);
 	}
 	.note-head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		/* DEV-302: 라벨 앞 아이콘 정렬 — span 안에서 함께 흐르게. */
-		gap: 0.5rem;
-		padding: 0.5rem 0.75rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-12);
 		border-bottom: var(--bw) solid var(--border);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.note-head > span {
@@ -739,8 +739,8 @@
 		gap: 0.35em;
 	}
 	.note-body {
-		padding: 0.6rem 0.75rem;
-		font-size: 0.85rem;
+		padding: var(--sp-8) var(--sp-12);
+		font-size: var(--fs-md);
 	}
 	.note-body.muted {
 		color: var(--text-muted);
@@ -754,12 +754,12 @@
 	.note-date {
 		display: block;
 		color: var(--text-muted);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
-		padding: 0.5rem 0.75rem 0;
+		padding: var(--sp-8) var(--sp-12) 0;
 	}
 	.note-edit {
-		padding: 0.6rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 	}
 	.editor-wrap {
 		border: var(--bw) solid var(--border);
@@ -769,20 +769,20 @@
 	}
 
 	.count {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		margin: 0 0 0.35rem;
+		margin: 0 0 var(--sp-6);
 	}
 	.timeline {
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		background: var(--bg-elevated);
-		padding: 0.25rem 0.75rem;
+		padding: var(--sp-4) var(--sp-12);
 	}
 	.day-sep {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		padding: 0.5rem 0 0.2rem;
+		padding: var(--sp-8) 0 var(--sp-4);
 	}
 	/* REQ-006: compact 뷰 — 문서 단위 묶음. */
 	.docgroup {
@@ -790,10 +790,10 @@
 	}
 	.docrow {
 		display: flex;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		align-items: baseline;
-		padding: 0.4rem 0;
-		font-size: 0.83rem;
+		padding: var(--sp-6) 0;
+		font-size: var(--fs-sm);
 		min-width: 0;
 	}
 	/* 묶음 헤더의 시각은 `01:22–01:26` 처럼 범위라 단일 시각(.ts 기본 2.8rem)보다
@@ -814,7 +814,7 @@
 		line-height: 1;
 	}
 	.toggle-icon {
-		font-size: 0.6rem;
+		font-size: var(--fs-xs);
 		display: inline-block;
 		transition: transform 0.12s;
 	}
@@ -829,32 +829,32 @@
 	}
 	.kinds {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		flex: none;
 	}
 	.cnt {
 		flex: none;
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	/* 펼친 개별 조작은 한 단계 들여쓴다 — 묶음에 속한 것이 보이도록. */
 	.row.sub {
 		border-bottom: none;
-		padding-left: 1.5rem;
+		padding-left: var(--sp-24);
 		opacity: 0.85;
 	}
 	.row.sub:last-child {
-		padding-bottom: 0.5rem;
+		padding-bottom: var(--sp-8);
 	}
 	.row {
 		display: flex;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		align-items: baseline;
-		padding: 0.4rem 0;
+		padding: var(--sp-6) 0;
 		border-bottom: var(--bw) solid var(--border);
 		text-decoration: none;
 		color: var(--text);
-		font-size: 0.83rem;
+		font-size: var(--fs-sm);
 		min-width: 0;
 	}
 	.row:last-child {
@@ -865,15 +865,15 @@
 	}
 	.ts {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		flex: none;
 		width: 2.8rem;
 	}
 	.badge {
 		flex: none;
-		font-size: 0.68rem;
-		padding: 0.05rem 0.5rem;
+		font-size: var(--fs-xs);
+		padding: 0.05rem var(--sp-8);
 		border-radius: var(--r-pill);
 	}
 	.b-status {
@@ -900,7 +900,7 @@
 	.slug {
 		flex: none;
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--accent);
 	}
 	.summary {
@@ -916,9 +916,9 @@
 		   숫자와 라벨이 따로 흩어졌다. 항목 단위로 줄을 넘기고, 항목 내부는
 		   붙여 둔다. */
 		flex-wrap: wrap;
-		gap: 0.35rem 1rem;
-		padding: 0.6rem 0.2rem;
-		font-size: 0.75rem;
+		gap: var(--sp-6) var(--sp-16);
+		padding: var(--sp-8) var(--sp-4);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	.totals > span {
@@ -940,8 +940,8 @@
 
 	.state {
 		color: var(--text-muted);
-		padding: 1rem 0;
-		font-size: 0.875rem;
+		padding: var(--sp-16) 0;
+		font-size: var(--fs-md);
 	}
 	.state.err,
 	.err {
@@ -949,12 +949,12 @@
 	}
 
 	.btn {
-		padding: 0.25rem 0.65rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.btn:hover:not(:disabled) {
@@ -974,7 +974,7 @@
 	}
 	.actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 </style>

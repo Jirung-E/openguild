@@ -1584,13 +1584,13 @@
 	.container {
 		max-width: var(--content-max-width, 800px);
 		margin: 0 auto;
-		padding: 1.5rem;
+		padding: var(--sp-24);
 	}
 
 	.top-actions {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		/* DEV-370 후속: pill 줄의 오른쪽 끝으로 민다. `.header` 가
 		   `flex-wrap: wrap` 이라 pill 이 많아 줄이 넘어가면 버튼도 따라
 		   내려가는데, 그때도 오른쪽 끝에 붙는다. */
@@ -1598,12 +1598,12 @@
 	}
 
 	.btn-edit {
-		padding: 0.3rem 0.9rem;
+		padding: var(--sp-4) var(--sp-16);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		background: var(--bg-subtle);
 		color: var(--text-muted);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
 			background 0.1s,
@@ -1622,12 +1622,12 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3em;
-		padding: 0.3rem 0.9rem;
+		padding: var(--sp-4) var(--sp-16);
 		border: var(--bw) solid color-mix(in srgb, var(--danger) 35%, transparent);
 		border-radius: var(--r-md);
 		background: transparent;
 		color: var(--danger);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition: background 0.1s;
 	}
@@ -1642,7 +1642,7 @@
 		height: 60vh;
 		height: 60dvh;
 		color: var(--text-faint);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 	}
 	.state-msg.error {
 		color: var(--danger);
@@ -1657,23 +1657,23 @@
 		   위로 튄다(실측 32 → 26). 예전 `.top-bar` 가 min-height 로 잡아 주던
 		   것을 그대로 옮긴다 — 값은 버튼 높이. */
 		min-height: 2rem;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		flex-wrap: wrap;
-		margin-bottom: 0.75rem;
+		margin-bottom: var(--sp-12);
 	}
 
 	.meta-times {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.4rem;
-		font-size: 0.72rem;
+		gap: var(--sp-6);
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--sp-12);
 	}
 	.meta-item {
 		display: inline-flex;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		align-items: baseline;
 	}
 	.meta-label {
@@ -1690,15 +1690,15 @@
 	}
 
 	.title {
-		font-size: 1.4rem;
+		font-size: var(--fs-xl);
 		font-weight: 600;
 		color: var(--text-strong);
-		margin: 0 0 1rem;
+		margin: 0 0 var(--sp-16);
 		line-height: 1.4;
 	}
 
 	.branch-label {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		flex-shrink: 0;
 	}
@@ -1706,26 +1706,26 @@
 	.status-row {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		flex-wrap: wrap;
-		margin-bottom: 1.25rem;
-		padding: 0.5rem 0.75rem;
+		margin-bottom: var(--sp-16);
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
 	}
 	.status-btns {
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		flex-wrap: wrap;
 	}
 	.status-btn {
-		padding: 0.15rem 0.7rem;
+		padding: var(--sp-2) var(--sp-12);
 		border-radius: var(--r-pill);
 		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
 		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
 			background 0.12s,
@@ -1774,14 +1774,14 @@
 
 	.no-desc {
 		color: var(--text-faint);
-		font-size: 0.9rem;
-		margin: 0 0 1.5rem;
+		font-size: var(--fs-md);
+		margin: 0 0 var(--sp-24);
 	}
 	.link-btn {
 		background: none;
 		border: none;
 		color: var(--accent);
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		padding: 0;
 		text-decoration: underline;
@@ -1790,29 +1790,29 @@
 	.edit-form {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-24);
 	}
 	/* BUG-010: text-transform / letter-spacing 을 label 전체가 아닌 라벨 텍스트
 	   span 에만 적용 — 그렇지 않으면 자식 input / CodeMirror 까지 캐스케이드
 	   되어 입력값이 대문자로 보임. */
 	.field-label {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		color: var(--text-muted);
-		margin-top: 0.5rem;
+		margin-top: var(--sp-8);
 	}
 	.field-label > span:first-child {
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
 	.edit-title {
-		padding: 0.5rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-strong);
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		outline: none;
 		width: 100%;
 		box-sizing: border-box;
@@ -1821,12 +1821,12 @@
 		border-color: var(--accent);
 	}
 	.edit-select {
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		outline: none;
 		width: 10rem;
 	}
@@ -1836,19 +1836,19 @@
 	/* DEV-076: 기한 입력. select 와 동일 스타일. */
 	.due-row {
 		display: flex;
-		gap: 1rem;
+		gap: var(--sp-16);
 		flex-wrap: wrap;
 	}
 	.due-row .field-label {
 		flex: 1 1 12.5rem;
 	}
 	.edit-date {
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		outline: none;
 		font-family: inherit;
 		/* BUG-031: color-scheme: dark 를 추가하면 picker icon 이 흰색 렌더 →
@@ -1881,21 +1881,21 @@
 	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 	.save-error {
 		color: var(--danger);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		margin: 0;
 	}
 	.edit-actions {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-8);
+		margin-top: var(--sp-8);
 	}
 	.btn-save {
-		padding: 0.4rem 1.2rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-save:hover:not(:disabled) {
@@ -1907,12 +1907,12 @@
 		cursor: default;
 	}
 	.btn-cancel {
-		padding: 0.4rem 1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-cancel:hover:not(:disabled) {
@@ -1922,11 +1922,11 @@
 	.section-head {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-8);
 	}
 	.section-title {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-muted);
 		text-transform: uppercase;
@@ -1950,7 +1950,7 @@
 	}
 	/* DEV-070: section header 옆의 부가 설명 hint. */
 	.sec-hint {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		font-style: italic;
 	}
@@ -1965,17 +1965,17 @@
 		margin: 0;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.tag-pill {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.15rem 0.6rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		background: rgba(198, 144, 38, 0.12);
 		border: var(--bw) solid rgba(198, 144, 38, 0.4);
 		border-radius: var(--r-pill);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--warning);
 		font-family: var(--font-mono);
 		letter-spacing: 0.02em;
@@ -1987,32 +1987,32 @@
 		cursor: pointer;
 		font-size: 1rem;
 		line-height: 1;
-		padding: 0 0 0 0.125rem;
+		padding: 0 0 0 var(--sp-2);
 	}
 	.tag-rm:hover {
 		color: var(--danger);
 	}
 	.tag-add-form {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.tag-add-form input {
 		flex: 1;
-		padding: 0.3rem 0.6rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	.tag-add-form button {
-		padding: 0.3rem 0.85rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.tag-add-form button:disabled {
@@ -2042,10 +2042,10 @@
 	/* DEV-279: 연관 추가 진입점 + 종류 선택 드롭다운. */
 	.rel-add {
 		position: relative;
-		margin: 0.25rem 0 1.25rem;
+		margin: var(--sp-4) 0 var(--sp-16);
 	}
 	.rel-add-btn {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	/* 바깥 클릭 감지용 투명 오버레이 — 메뉴보다 아래(z-index) */
 	.rel-menu-ov {
@@ -2062,33 +2062,33 @@
 		left: 0;
 		z-index: 41;
 		min-width: 20rem;
-		padding: 0.5rem;
+		padding: var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 	}
 	.rel-menu-title {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		padding: 0.1rem 0.35rem 0.35rem;
+		padding: var(--sp-2) var(--sp-6) var(--sp-6);
 	}
 	.rel-menu-row {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		padding: 0.25rem 0.35rem;
+		gap: var(--sp-6);
+		padding: var(--sp-4) var(--sp-6);
 	}
 	.rel-menu-kind {
 		flex: 1;
 		min-width: 0;
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		color: var(--text);
 	}
 	.rel-menu-act {
 		flex: none;
-		padding: 0.2rem 0.5rem;
-		font-size: 0.76rem;
+		padding: var(--sp-4) var(--sp-8);
+		font-size: var(--fs-xs);
 		border-radius: var(--r-sm);
 		border: var(--bw) solid var(--border);
 		background: transparent;
@@ -2101,12 +2101,12 @@
 	}
 
 	.sec-add-btn {
-		padding: 0.15rem 0.6rem;
+		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.sec-add-btn:hover {
@@ -2115,7 +2115,7 @@
 	}
 
 	section {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--sp-24);
 	}
 	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
 	   좁다는 피드백. margin → padding 으로 변경 (collapse 회피) + border-top
@@ -2123,7 +2123,7 @@
 	/* BUG-031 후속: 본문 아래에 첨부 섹션이 들어오며 이 큰 padding 이 본문↔첨부
 	   간격만 과하게 벌렸음. 첨부 섹션이 자체 구분선/여백을 가지므로 본문 아래는 좁게. */
 	.description-block {
-		padding-bottom: 0.5rem;
+		padding-bottom: var(--sp-8);
 		margin-bottom: 0;
 	}
 	.description-block + section,
@@ -2153,9 +2153,9 @@
 	.prereq-row :global(.prereq-link) {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		flex: 1;
-		padding: 0.55rem 1rem;
+		padding: var(--sp-8) var(--sp-16);
 		text-decoration: none;
 		transition: background 0.1s;
 	}
@@ -2163,7 +2163,7 @@
 		background: var(--bg-elevated);
 	}
 	.prereq-rm {
-		padding: 0.35rem 0.75rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: none;
 		border: none;
 		color: var(--text-faint);
@@ -2178,7 +2178,7 @@
 
 	.ql-title {
 		flex: 1;
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
@@ -2191,10 +2191,10 @@
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.2rem;
-		padding: 0.15rem 0.55rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		color: var(--danger);
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
@@ -2216,7 +2216,7 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 	}
 	.modal-sm {
 		/* BUG-199 후속(admin 보고: "지나치게 위로 치우쳐져 있음"): 오버레이
@@ -2239,7 +2239,7 @@
 		max-height: 92vh;
 		max-height: 92dvh;
 		overflow-y: auto;
-		padding: 1rem 1.25rem 1rem;
+		padding: var(--sp-16) var(--sp-16) var(--sp-16);
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
 	/* BUG-160: 콤보박스 팝업은 "목록"이 본문이라 확인 모달용 30rem 로는 좁다 —
@@ -2252,11 +2252,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--sp-12);
 	}
 	.modal-head h3 {
 		margin: 0;
-		font-size: 0.95rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text-strong);
 	}
@@ -2267,7 +2267,7 @@
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 0.25rem;
+		padding: 0 var(--sp-4);
 	}
 	.x:hover {
 		color: var(--text);
@@ -2275,13 +2275,13 @@
 
 	.combo-state {
 		color: var(--text-faint);
-		font-size: 0.85rem;
-		padding: 0.6rem 0;
+		font-size: var(--fs-md);
+		padding: var(--sp-8) 0;
 	}
 	.combo-err {
 		color: var(--danger);
-		font-size: 0.8rem;
-		margin: 0.5rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-8) 0 0;
 	}
 
 	.del-title {
@@ -2289,28 +2289,28 @@
 	}
 	.del-msg {
 		color: var(--text);
-		font-size: 0.875rem;
-		margin: 0 0 0.85rem;
+		font-size: var(--fs-md);
+		margin: 0 0 var(--sp-12);
 	}
 	.del-sub {
 		background: var(--bg);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
-		padding: 0.6rem 0.8rem;
-		margin-bottom: 0.85rem;
+		padding: var(--sp-8) var(--sp-12);
+		margin-bottom: var(--sp-12);
 	}
 	.del-sub-head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
-		margin-bottom: 0.3rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-4);
 	}
 	.del-sub-all {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		font-size: 0.75rem;
+		gap: var(--sp-4);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -2319,13 +2319,13 @@
 	}
 	.del-sub-title {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text);
 		font-weight: 600;
 	}
 	.del-sub-help {
-		margin: 0 0 0.5rem;
-		font-size: 0.75rem;
+		margin: 0 0 var(--sp-8);
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
@@ -2341,14 +2341,14 @@
 		display: none;
 	}
 	.del-sub-list li {
-		padding: 0.25rem 0;
+		padding: var(--sp-4) 0;
 	}
 	.del-sub-list label {
 		display: flex;
 		align-items: center;
-		gap: 0.45rem;
+		gap: var(--sp-8);
 		cursor: pointer;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 	}
 	/* DEV-364: 삭제 확인 목록은 조밀하다 — 모양을 다시 적지 않고 `.pill` 이
@@ -2365,23 +2365,23 @@
 		text-overflow: ellipsis;
 	}
 	.del-prereq {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		margin: 0 0 0.85rem;
+		margin: 0 0 var(--sp-12);
 		font-style: italic;
 	}
 	.del-actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
 	.btn-del-yes {
-		padding: 0.4rem 1.1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: rgba(233, 79, 79, 0.15);
 		border: var(--bw) solid var(--danger);
 		border-radius: var(--r-md);
 		color: var(--danger);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-del-yes:hover:not(:disabled) {
@@ -2392,12 +2392,12 @@
 		cursor: default;
 	}
 	.btn-del-no {
-		padding: 0.4rem 1rem;
+		padding: var(--sp-6) var(--sp-16);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-del-no:hover:not(:disabled) {
@@ -2414,19 +2414,19 @@
 		z-index: 80;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: flex-end;
 	}
 	.jump-btn {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		padding: 0.55rem 1rem;
+		gap: var(--sp-6);
+		padding: var(--sp-8) var(--sp-16);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		font-weight: 500;
 		cursor: pointer;
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
@@ -2458,7 +2458,7 @@
 	@media (max-width: 640px) {
 		.prereq-row :global(.prereq-link) {
 			flex-wrap: wrap;
-			row-gap: 0.15rem;
+			row-gap: var(--sp-2);
 		}
 		.ql-title {
 			order: 10;

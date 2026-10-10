@@ -25,6 +25,6 @@
 	/* 실제 호출부의 버튼 줄과 같은 모양 — 붙었을 때 접히는 것이 이 줄이다. */
 	.actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 </style>

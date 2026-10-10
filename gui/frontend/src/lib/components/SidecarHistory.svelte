@@ -99,16 +99,16 @@
 
 <style>
 	.ch-section {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--sp-24);
 	}
 	.section-head {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-8);
 	}
 	.section-title {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-muted);
 		text-transform: uppercase;
@@ -116,17 +116,17 @@
 		margin: 0;
 	}
 	.ch-count {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		padding: 0.05rem 0.4rem;
+		padding: 0.05rem var(--sp-6);
 		border-radius: var(--r-xl);
 		background: var(--bg-subtle);
 	}
 	.ch-state {
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text-faint);
 		margin: 0;
-		padding: 0.6rem 0.8rem;
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
@@ -145,10 +145,10 @@
 	.ch-item {
 		display: grid;
 		grid-template-columns: auto auto 1fr;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		align-items: baseline;
-		padding: 0.55rem 0.85rem;
-		font-size: 0.82rem;
+		padding: var(--sp-8) var(--sp-12);
+		font-size: var(--fs-sm);
 		color: var(--text);
 	}
 	.ch-item + .ch-item {
@@ -157,15 +157,15 @@
 	.ch-ts {
 		font-variant-numeric: tabular-nums;
 		color: var(--text-faint);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		min-width: 5rem;
 	}
 	.ch-op {
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		padding: 0.05rem 0.45rem;
+		padding: 0.05rem var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-xl);
@@ -176,7 +176,7 @@
 	.ch-change {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.45rem;
+		gap: var(--sp-8);
 		flex-wrap: wrap;
 	}
 	.ch-arrow {
@@ -187,7 +187,7 @@
 	.section-toggle {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		background: none;
 		border: none;
 		padding: 0;
@@ -196,7 +196,7 @@
 		font: inherit;
 	}
 	.toggle-icon {
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		transition: transform 0.12s;
 		display: inline-block;

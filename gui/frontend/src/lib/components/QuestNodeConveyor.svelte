@@ -274,7 +274,7 @@
 		   안 일어났다(admin 보고). 가로는 우리가 처리하니 세로만 브라우저에
 		   넘긴다. */
 		touch-action: pan-y;
-		padding: 0.25rem 0 0.5rem 0;
+		padding: var(--sp-4) 0 var(--sp-8) 0;
 		user-select: none;
 	}
 	/* BUG-036: fade mask / cursor 는 인라인 style 로 직접 적용 (위 div 참조).
@@ -286,7 +286,7 @@
 	.track {
 		display: flex;
 		align-items: flex-start;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		width: max-content;
 		will-change: transform;
 	}
@@ -318,7 +318,7 @@
 	.controls {
 		display: flex;
 		justify-content: center;
-		margin-top: 0.25rem;
+		margin-top: var(--sp-4);
 	}
 	.play-pause {
 		/* BUG-254: 원형 버튼 안의 아이콘/글자가 중앙에 안 맞던 문제.
@@ -334,7 +334,7 @@
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		line-height: 1;
 		cursor: pointer;
 		transition: background 0.15s;

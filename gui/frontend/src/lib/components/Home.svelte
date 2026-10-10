@@ -381,33 +381,33 @@
 
 <style>
 	.home {
-		padding: 1.25rem 1.5rem 2rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-32);
 		max-width: var(--content-max-width, 1100px);
 		margin: 0 auto;
 	}
 	.state {
-		padding: 2rem 0;
+		padding: var(--sp-32) 0;
 		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.state.error {
 		color: var(--danger);
 	}
 
 	.block {
-		margin-bottom: 2rem;
+		margin-bottom: var(--sp-32);
 	}
 	.block h2 {
-		font-size: 1.05rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text);
-		margin: 0 0 0.4rem 0;
+		margin: 0 0 var(--sp-6) 0;
 	}
 	.block h3 {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 500;
 		color: var(--text-muted);
-		margin: 1rem 0 0.2rem 0;
+		margin: var(--sp-16) 0 var(--sp-4) 0;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -416,7 +416,7 @@
 		color: var(--text-faint);
 		font-weight: 400;
 		font-size: 0.85em;
-		margin-left: 0.25rem;
+		margin-left: var(--sp-4);
 	}
 	/* DEV-076: overdue 개수는 빨간색으로 강조 (시급한 시각 경고). */
 	.count.overdue {
@@ -426,28 +426,28 @@
 
 	.actions {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-8);
+		margin-top: var(--sp-8);
 	}
 	.btn-link {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.btn-link:hover {
 		background: var(--bg-subtle);
 	}
 	.btn-primary {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.btn-primary:hover {
@@ -457,23 +457,23 @@
 
 	.empty {
 		color: var(--text-faint);
-		font-size: 0.875rem;
-		padding: 0.75rem 0;
+		font-size: var(--fs-md);
+		padding: var(--sp-12) 0;
 	}
 
 	.quest-list {
 		list-style: none;
 		padding: 0;
-		margin: 0.4rem 0 0 0;
+		margin: var(--sp-6) 0 0 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: var(--sp-2);
 	}
 	.quest-row {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.5rem 0.75rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
@@ -494,7 +494,7 @@
 	}
 	.title {
 		flex: 1;
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -510,7 +510,7 @@
 	@media (max-width: 640px) {
 		.quest-row {
 			flex-wrap: wrap;
-			row-gap: 0.15rem;
+			row-gap: var(--sp-2);
 		}
 		.title {
 			order: 10;

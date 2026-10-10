@@ -142,7 +142,7 @@
 		display: flex;
 		align-items: flex-start;
 		justify-content: center;
-		padding: 1rem;
+		padding: var(--sp-16);
 		overflow-y: auto;
 		overscroll-behavior: contain;
 	}
@@ -171,12 +171,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.9rem 1.1rem;
+		padding: var(--sp-16) var(--sp-16);
 		border-bottom: var(--bw) solid var(--border);
 	}
 	.modal-title {
 		margin: 0;
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		color: var(--text-strong);
 	}
 	.close-btn {
@@ -194,16 +194,16 @@
 	form {
 		display: flex;
 		flex-direction: column;
-		gap: 0.85rem;
-		padding: 1.1rem;
+		gap: var(--sp-12);
+		padding: var(--sp-16);
 	}
 	label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.lab {
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	input,
@@ -212,8 +212,8 @@
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
-		padding: 0.45rem 0.6rem;
-		font-size: 0.9rem;
+		padding: var(--sp-8) var(--sp-8);
+		font-size: var(--fs-md);
 		font-family: inherit;
 	}
 	input:focus,
@@ -229,7 +229,7 @@
 	.period-row {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 	}
 	/* 좁은 화면에서는 두 날짜가 한 칸씩 — 나란히 두면 입력기가 눌린다. */
 	@media (max-width: 480px) {
@@ -241,21 +241,21 @@
 		background: color-mix(in srgb, var(--danger) 18%, transparent);
 		border: var(--bw) solid var(--danger);
 		color: var(--danger);
-		padding: 0.4rem 0.65rem;
+		padding: var(--sp-6) var(--sp-12);
 		border-radius: var(--r-sm);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.btn-create {
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 		border-radius: var(--r-md);
-		padding: 0.4rem 1rem;
-		font-size: 0.875rem;
+		padding: var(--sp-6) var(--sp-16);
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-create:hover:not(:disabled) {
@@ -267,8 +267,8 @@
 		border: var(--bw) solid var(--border);
 		color: var(--text-muted);
 		border-radius: var(--r-md);
-		padding: 0.4rem 1rem;
-		font-size: 0.875rem;
+		padding: var(--sp-6) var(--sp-16);
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.btn-cancel:hover:not(:disabled) {

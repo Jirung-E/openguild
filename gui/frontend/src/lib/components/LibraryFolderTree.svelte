@@ -151,11 +151,11 @@
 	.folder-row {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		padding-top: 0.3rem;
-		padding-bottom: 0.15rem;
+		gap: var(--sp-4);
+		padding-top: var(--sp-4);
+		padding-bottom: var(--sp-2);
 		color: var(--text-muted);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		border-radius: var(--r-sm);
 	}
 	/* BUG-129: 드롭 대상 강조. */
@@ -168,9 +168,9 @@
 		border: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 0.6rem;
+		font-size: var(--fs-xs);
 		line-height: 1;
-		padding: 0.15rem;
+		padding: var(--sp-2);
 		width: 1rem;
 		text-align: center;
 		flex-shrink: 0;
@@ -183,7 +183,7 @@
 		cursor: default;
 	}
 	.folder-icon {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.folder-name {
 		flex: 1;
@@ -218,8 +218,8 @@
 		border: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 0.7rem;
-		padding: 0 0.2rem;
+		font-size: var(--fs-xs);
+		padding: 0 var(--sp-4);
 		opacity: 0.5;
 	}
 	.folder-ren:hover {
@@ -231,8 +231,8 @@
 		border: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 0.7rem;
-		padding: 0 0.2rem;
+		font-size: var(--fs-xs);
+		padding: 0 var(--sp-4);
 		opacity: 0.5;
 	}
 	.folder-del:hover {
@@ -242,18 +242,18 @@
 	.book-item {
 		width: 100%;
 		text-align: left;
-		padding-top: 0.35rem;
-		padding-bottom: 0.35rem;
-		padding-right: 0.5rem;
+		padding-top: var(--sp-6);
+		padding-bottom: var(--sp-6);
+		padding-right: var(--sp-8);
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: var(--sp-2);
 	}
 	.book-item:hover {
 		background: var(--bg-elevated);
@@ -263,7 +263,7 @@
 	}
 	.book-id {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--accent);
 	}
 	.book-title {

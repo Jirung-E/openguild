@@ -815,35 +815,35 @@
 
 <style>
 	h2 {
-		font-size: 1rem;
+		font-size: var(--fs-lg);
 		color: var(--text);
-		margin: 0 0 1rem;
+		margin: 0 0 var(--sp-16);
 	}
 	.scale-hint {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		margin: 0.5rem 0 0;
+		margin: var(--sp-8) 0 0;
 	}
 	/* DEV-379: 플러그인 목록. 동의 전인 것이 눈에 띄어야 한다 — 조용히 안 도는
 	   것이 제일 나쁘다. */
 	.plugin-list {
 		list-style: none;
-		margin: 0.75rem 0;
+		margin: var(--sp-12) 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		/* DEV-383: 설정의 다른 절은 `.info-grid` 안이라 0.875rem 이다. 여기만
 		   `.info-grid` 밖이라 1rem 으로 튀었다. */
-		font-size: 0.875rem;
+		font-size: var(--fs-md);
 	}
 	.plugin {
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 0.6rem 0.75rem;
+		padding: var(--sp-8) var(--sp-12);
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.plugin.pending {
 		border-color: var(--warning);
@@ -854,7 +854,7 @@
 		/* DEV-383: 전달 실패 메시지에 URL 이 들어가면 줄이 카드를 넘어가 잘렸다 —
 		   정작 이유가 URL **뒤에** 오는데 그게 안 보였다. */
 		flex-wrap: wrap;
-		gap: 0.75rem;
+		gap: var(--sp-12);
 		align-items: baseline;
 	}
 	.plugin.broken span {
@@ -863,14 +863,14 @@
 	}
 	.plugin-head {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: baseline;
 		flex-wrap: wrap;
 	}
 	.plugin-target {
 		/* DEV-383: 코드 글꼴 설정을 따른다 — 앱의 모든 mono 표면이 그렇다. */
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		word-break: break-all;
 	}
@@ -878,7 +878,7 @@
 		/* 사람이 읽는 유일한 줄이다 — 목적지·패턴보다 눈에 먼저 들어와야 하므로
 		   muted 로 죽이지 않는다. */
 		margin: 0;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		line-height: 1.45;
 		/* 500자까지 허용하는데 그 안에 공백 없는 긴 토큰(주소 등)이 있으면 상자를
@@ -890,9 +890,9 @@
 		/* MarkdownView 의 `.md :global(code)` 와 같은 값 — 본문에서 경로·코드를
 		   보던 모양 그대로다. */
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		background: var(--bg-elevated);
-		padding: 0.1rem 0.3rem;
+		padding: var(--sp-2) var(--sp-4);
 		border-radius: var(--r-xs);
 		color: var(--text);
 		/* 경로에는 공백이 없어 줄바꿈 기회가 없다 — 좁은 화면에서 상자를 넘는다. */
@@ -904,16 +904,16 @@
 		   (admin: "엔터가 하나 있는 느낌"). flex 대신 그냥 글로 흘린다 —
 		   경로는 라벨 바로 뒤에 이어 붙고 넘칠 때만 다음 줄로 간다. */
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		line-height: 1.5;
 	}
 	.plugin-inputs {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
-		margin: 0.15rem 0 0.1rem;
-		padding: 0.6rem 0.7rem;
+		gap: var(--sp-8);
+		margin: var(--sp-2) 0 var(--sp-2);
+		padding: var(--sp-8) var(--sp-12);
 		background: var(--bg-subtle);
 		border-radius: var(--r-sm);
 	}
@@ -922,7 +922,7 @@
 		/* 첫 칸은 라벨. 최대를 두는 이유는 짧은 라벨들이 제각각 폭을 갖지
 		   않게 하려는 것이고, 넘치는 라벨은 위에서 줄바꿈한다. */
 		grid-template-columns: minmax(6rem, 11rem) minmax(0, 1fr) auto;
-		gap: 0.4rem 0.6rem;
+		gap: var(--sp-6) var(--sp-8);
 		align-items: center;
 	}
 	/* 체크박스는 라벨이 위젯에 붙어 있어 첫 칸을 안 쓴다. */
@@ -932,14 +932,14 @@
 	.pi-check {
 		display: flex;
 		align-items: center;
-		gap: 0.45rem;
-		font-size: 0.85rem;
+		gap: var(--sp-8);
+		font-size: var(--fs-md);
 	}
 	/* BUG-325: 소스 머리줄 — 눌러서 접고 편다. */
 	.src-head {
 		display: flex;
 		align-items: baseline;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		width: 100%;
 		padding: 0;
 		border: none;
@@ -951,10 +951,10 @@
 	}
 	.src-caret {
 		color: var(--text-faint);
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.src-count {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.examples-link {
@@ -964,12 +964,12 @@
 	.examples-url {
 		display: block;
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		overflow-wrap: anywhere;
 	}
 	.pi-label {
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		/* 선언에 label 이 없으면 키가 그대로 라벨이 된다
 		   (`SOME_WEBHOOK_TOKEN` 같은 것). 공백이 없어서 줄바꿈 기회가 없고,
@@ -979,8 +979,8 @@
 	}
 	.pi-field {
 		min-width: 0;
-		font-size: 0.85rem;
-		padding: 0.3rem 0.45rem;
+		font-size: var(--fs-md);
+		padding: var(--sp-4) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: var(--bg);
@@ -988,7 +988,7 @@
 	}
 	.pi-actions {
 		display: flex;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		/* 버튼이 없을 때 칸이 무너지지 않게 — 저장 버튼이 나타났다 사라질 때마다
 		   위젯이 좌우로 흔들리면 읽기 어렵다. */
 		min-width: 3.5rem;
@@ -997,7 +997,7 @@
 	.pi-help {
 		grid-column: 1 / -1;
 		margin: 0;
-		font-size: 0.76rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		line-height: 1.4;
 		overflow-wrap: anywhere;
@@ -1014,18 +1014,18 @@
 	}
 	.pi-note {
 		margin: 0;
-		font-size: 0.74rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 	/* DEV-403: 줄 목록과 내보내는 곳. 기계가 읽는 값이라 작게, 줄바꿈은 자유롭게. */
 	.plugin-lines,
 	.plugin-dests {
 		margin: 0;
-		padding-left: 1.1rem;
+		padding-left: var(--sp-16);
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
-		font-size: 0.8rem;
+		gap: var(--sp-2);
+		font-size: var(--fs-sm);
 	}
 	.plugin-dests {
 		list-style: none;
@@ -1035,7 +1035,7 @@
 	.plugin-dests li {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.2rem 0.45rem;
+		gap: var(--sp-4) var(--sp-8);
 		align-items: baseline;
 		min-width: 0;
 	}
@@ -1045,28 +1045,28 @@
 	}
 	.line-label {
 		color: var(--text-muted);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 	}
 	.plugin-meta {
 		display: flex;
-		gap: 1rem;
-		font-size: 0.78rem;
+		gap: var(--sp-16);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		flex-wrap: wrap;
 	}
 	.plugin-state {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 	}
 	.plugin.pending .plugin-state {
 		color: var(--warning);
 	}
 	.plugin-script {
-		margin: 0.25rem 0 0;
-		padding: 0.5rem;
+		margin: var(--sp-4) 0 0;
+		padding: var(--sp-8);
 		background: var(--bg-subtle);
 		border-radius: var(--r-sm);
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		overflow-x: auto;
 		/* DEV-383: 상한이 없으면 긴 스크립트가 허용 버튼을 화면 밖으로 밀어낸다
 		   — 읽고 나서 동의하려면 스크립트 전체를 지나쳐 내려가야 했다.
@@ -1077,8 +1077,8 @@
 	}
 	.plugin-actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.15rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-2);
 	}
 	/* DEV-382: 앱의 버튼 관용구를 따른다. 처음엔 `ghost` / `primary` 라고 썼는데
 	   이 저장소에 그런 클래스가 **없어서** 브라우저 기본 버튼이 그대로 나왔다 —
@@ -1086,9 +1086,9 @@
 	   와 전역 `--btn-*` 토큰에 맞춘다. */
 	.btn-plain,
 	.btn-go {
-		padding: 0.25rem 0.7rem;
+		padding: var(--sp-4) var(--sp-12);
 		border-radius: var(--r-md);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
 			background 0.15s,
@@ -1120,10 +1120,10 @@
 	}
 	.plugin-error {
 		color: var(--danger);
-		font-size: 0.8rem;
-		margin: 0.3rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0 0;
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 		align-items: center;
 		flex-wrap: wrap;
 	}
@@ -1138,30 +1138,30 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.4rem 0.75rem;
-		margin: 0.75rem 0 0.25rem;
-		font-size: 0.85rem;
+		gap: var(--sp-6) var(--sp-12);
+		margin: var(--sp-12) 0 var(--sp-4);
+		font-size: var(--fs-md);
 	}
 	.source-plugins {
 		list-style: none;
-		margin: 0.2rem 0 0;
+		margin: var(--sp-4) 0 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 	}
 	.source-plugins li {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.sp-name {
 		font-weight: 600;
 		overflow-wrap: anywhere;
 	}
 	.sp-used {
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--success);
 	}
 	.plugin-bulk {
@@ -1169,30 +1169,30 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.4rem 0.75rem;
-		margin: 0.5rem 0;
-		font-size: 0.85rem;
+		gap: var(--sp-6) var(--sp-12);
+		margin: var(--sp-8) 0;
+		font-size: var(--fs-md);
 	}
 	.plugin-auto {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		cursor: pointer;
 	}
 	.plugin-auto-hint {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.plugin-broken-h {
-		font-size: 0.9rem;
-		margin: 1rem 0 0;
+		font-size: var(--fs-md);
+		margin: var(--sp-16) 0 0;
 	}
 	.link-btn {
 		align-self: flex-start;
 		background: none;
 		border: none;
 		padding: 0;
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--accent);
 		cursor: pointer;
 		text-decoration: underline;

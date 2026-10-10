@@ -807,7 +807,7 @@
 	.tb-appicon {
 		width: 1rem;
 		height: 1rem;
-		margin: 0 0.375rem 0 0.625rem;
+		margin: 0 var(--sp-6) 0 var(--sp-8);
 		flex: none;
 		-webkit-user-drag: none;
 		user-select: none;
@@ -815,7 +815,7 @@
 	.tb-left {
 		display: flex;
 		align-items: center;
-		gap: 0.125rem;
+		gap: var(--sp-2);
 		flex: none;
 	}
 	.tb-icon-btn {
@@ -851,17 +851,17 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
-		padding: 0.3rem;
+		padding: var(--sp-4);
 		z-index: 1200;
 	}
 	.tb-menu button {
 		display: flex;
 		align-items: center;
-		gap: 0.55rem;
+		gap: var(--sp-8);
 		width: 100%;
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 		border-radius: var(--r-sm);
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		color: var(--text);
 		background: transparent;
 		border: none;
@@ -885,7 +885,7 @@
 	}
 	.tb-menu-sep {
 		height: var(--bw);
-		margin: 0.25rem 0.3rem;
+		margin: var(--sp-4) var(--sp-4);
 		background: var(--border);
 	}
 
@@ -939,7 +939,7 @@
 		height: 1.375rem;
 		min-width: 16.25rem;
 		max-width: 42vw;
-		padding: 0 0.75rem;
+		padding: 0 var(--sp-12);
 		/* 폭 0 앵커 안에서 자기 폭만큼 좌우로 균등하게 삐져나오도록. */
 		flex: none;
 		background: rgba(255, 255, 255, 0.05);
@@ -954,7 +954,7 @@
 		color: var(--text);
 	}
 	.tb-search-name {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		letter-spacing: 0.02em;
 		overflow: hidden;
 		text-overflow: ellipsis;

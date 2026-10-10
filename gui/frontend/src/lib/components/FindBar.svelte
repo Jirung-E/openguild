@@ -281,8 +281,8 @@
 		z-index: 60;
 		display: flex;
 		align-items: center;
-		gap: 0.35rem;
-		padding: 0.35rem 0.5rem;
+		gap: var(--sp-6);
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -290,13 +290,13 @@
 	}
 	.find-input {
 		width: 12rem;
-		padding: 0.2rem 0.4rem;
+		padding: var(--sp-4) var(--sp-6);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text);
 		font: inherit;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		outline: none;
 	}
 	.find-input:focus-visible {
@@ -306,17 +306,17 @@
 		min-width: 4.5ch;
 		text-align: center;
 		color: var(--text-muted);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		font-variant-numeric: tabular-nums;
 	}
 	.find-btn {
-		padding: 0.15rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		background: transparent;
 		border: var(--bw) solid transparent;
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font: inherit;
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.find-btn:hover:not(:disabled) {

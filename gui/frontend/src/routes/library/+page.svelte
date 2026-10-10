@@ -1998,10 +1998,10 @@
 <style>
 	/* DEV-397: 이름 바꾸기 폼은 목록 위에 뜬다 — 트리·탐색기 어느 쪽에서 열어도 같은 자리. */
 	.rename-folder {
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--sp-8);
 	}
 	.page {
-		padding: 1.25rem 1.5rem 2rem;
+		padding: var(--sp-16) var(--sp-24) var(--sp-32);
 		max-width: var(--content-max-width, 1200px);
 		margin: 0 auto;
 	}
@@ -2028,10 +2028,10 @@
 	   영역으로 높이를 제한해 컨텐츠가 화면 아래로 밀려나지 않게 한다. */
 	.sidebar {
 		border-right: var(--bw) solid var(--bg-subtle);
-		padding-right: 1rem;
+		padding-right: var(--sp-16);
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 
 	/* BUG-200 후속 감사(규칙 페이지와 동일): 이 블록이 기본 `.sidebar` 규칙보다
@@ -2051,7 +2051,7 @@
 			border-right: none;
 			border-bottom: var(--bw) solid var(--bg-subtle);
 			padding-right: 0;
-			padding-bottom: 0.75rem;
+			padding-bottom: var(--sp-12);
 			max-height: 45vh;
 			max-height: 45dvh;
 			overflow-y: auto;
@@ -2060,10 +2060,10 @@
 	.sidebar-head {
 		display: flex;
 		align-items: baseline;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.sidebar-head h2 {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -2079,8 +2079,8 @@
 	}
 	.sidebar-actions {
 		display: flex;
-		gap: 0.35rem;
-		margin-bottom: 0.25rem;
+		gap: var(--sp-6);
+		margin-bottom: var(--sp-4);
 	}
 	.view-toggle {
 		margin-left: auto;
@@ -2090,24 +2090,24 @@
 		overflow: hidden;
 	}
 	.view-toggle button {
-		padding: 0.15rem 0.4rem;
+		padding: var(--sp-2) var(--sp-6);
 		background: transparent;
 		border: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 	}
 	.view-toggle button.on {
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		color: var(--text);
 	}
 	.btn-new {
-		padding: 0.15rem 0.55rem;
+		padding: var(--sp-2) var(--sp-8);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		cursor: pointer;
 	}
 	.btn-new:hover {
@@ -2116,27 +2116,27 @@
 	}
 	.empty-list {
 		color: var(--text-muted);
-		font-size: 0.78rem;
-		padding: 0.5rem 0;
+		font-size: var(--fs-sm);
+		padding: var(--sp-8) 0;
 	}
 	.book-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
+		gap: var(--sp-2);
 	}
 	.book-item {
 		width: 100%;
 		text-align: left;
-		padding: 0.35rem 0.5rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);
 		color: var(--text);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: var(--sp-2);
 	}
 	.book-item:hover {
 		background: var(--bg-elevated);
@@ -2151,7 +2151,7 @@
 	}
 	.book-id {
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--accent);
 	}
 	.book-title {
@@ -2167,11 +2167,11 @@
 	.explorer-toolbar {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		margin-bottom: 0.75rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-12);
 	}
 	.page-title {
-		font-size: 1.1rem;
+		font-size: var(--fs-xl);
 		font-weight: 600;
 		margin: 0;
 	}
@@ -2187,17 +2187,17 @@
 		z-index: 1100; /* 검색 팔레트(1200)보다 아래. */
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		padding: 0.4rem 0.6rem;
+		gap: var(--sp-6);
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		box-shadow: 0 8px 28px var(--shadow);
 	}
 	.picked-count {
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--text-muted);
-		margin-right: 0.25rem;
+		margin-right: var(--sp-4);
 	}
 	/* 고른 타일 — 드래그 강조(drag-over)와 구분되게 테두리로. */
 	.tile.picked {
@@ -2210,28 +2210,28 @@
 		margin-left: auto;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		flex: none;
 	}
 	.crumbs {
 		display: flex;
 		align-items: center;
-		gap: 0.35rem;
-		margin-bottom: 1rem;
-		font-size: 0.82rem;
+		gap: var(--sp-6);
+		margin-bottom: var(--sp-16);
+		font-size: var(--fs-sm);
 		/* BUG-321: 좁은 화면에서 오른쪽 버튼들이 화면 밖으로 잘려 나갔다(admin). 가로
 		   스크롤도 없어서 아예 누를 수 없었다. 자리가 모자라면 **다음 줄로 내린다** —
 		   버튼 덩이는 `flex: none` 이라 통째로 내려가고, `margin-left: auto` 덕에 그
 		   줄에서도 오른쪽에 붙는다. */
 		flex-wrap: wrap;
-		row-gap: 0.35rem;
+		row-gap: var(--sp-6);
 	}
 	.crumb {
 		background: transparent;
 		border: none;
 		color: var(--text-accent, var(--accent));
 		cursor: pointer;
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		padding: 0;
 		/* 이름이 길면 경로 조각이 줄어든다 — 그래야 버튼이 먼저 밀려나지 않는다. */
 		min-width: 0;
@@ -2248,9 +2248,9 @@
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		line-height: 1;
-		padding: 0.2rem 0.4rem;
+		padding: var(--sp-4) var(--sp-6);
 	}
 	.btn-up:hover:not(:disabled) {
 		color: var(--text);
@@ -2274,9 +2274,9 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		line-height: 1.4;
-		padding: 0.1rem 0.5rem;
+		padding: var(--sp-2) var(--sp-8);
 		cursor: pointer;
 		white-space: nowrap;
 	}
@@ -2299,7 +2299,7 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, 5.75rem);
 		justify-content: start;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		/* DEV-419 후속: 타일 아래 빈 자리도 이 영역이다 — 거기를 눌러 선택을 푼다.
 		   격자가 한 줄뿐이어도 누를 곳이 있어야 한다. */
 		align-content: start;
@@ -2323,8 +2323,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.35rem;
-		padding: 0.6rem 0.25rem;
+		gap: var(--sp-6);
+		padding: var(--sp-8) var(--sp-4);
 		border-radius: var(--r-md);
 		border: var(--bw) solid transparent;
 		background: transparent;
@@ -2354,7 +2354,7 @@
 		border-radius: var(--r-sm);
 		background: var(--bg-elevated);
 		color: var(--text-muted);
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		line-height: 1;
 		cursor: pointer;
 	}
@@ -2374,7 +2374,7 @@
 		font-size: 2rem;
 	}
 	.tile-label {
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		text-align: center;
 		line-height: 1.3;
 		/* ★ BUG-153 (진짜 원인, 사용자 검증 완료): global.css 의
@@ -2399,7 +2399,7 @@
 	}
 	.tile-sub {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		/* BUG-153: 폴더 타일은 내용이 빈 자리표시자 — 빈 인라인 요소는 높이가
 		   0 이라 문서/폴더 아이콘 높이가 어긋난다. 한 줄 높이를 확보. */
@@ -2409,15 +2409,15 @@
 	.top-bar {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+		gap: var(--sp-12);
+		margin-bottom: var(--sp-16);
 		/* BUG-197: 좁은 화면에서 제목과 버튼 4개가 한 줄을 다투면 제목이 0 폭까지
 		   눌려 **글자마다 줄바꿈**됐다(세로 한 줄로 보임). 줄바꿈을 허용하고
 		   제목에 최소 폭을 줘서, 자리가 모자라면 버튼이 다음 줄로 내려가게 한다. */
 		flex-wrap: wrap;
 	}
 	.doc-title {
-		font-size: 1.1rem;
+		font-size: var(--fs-lg);
 		font-weight: 600;
 		color: var(--text);
 		margin: 0;
@@ -2425,7 +2425,7 @@
 		/* admin 요청: slug 위 / 제목 아래. 화면 폭과 무관하게 항상 2단. */
 		flex-direction: column;
 		align-items: flex-start;
-		gap: 0.1rem;
+		gap: var(--sp-2);
 		/* BUG-197: min-width:0 만 있으면 "얼마든지 줄어도 된다"는 뜻이라 한 글자
 		   폭까지 눌린다. 최소 폭 + 늘어남으로 바꿔 버튼 쪽이 밀려나게. */
 		flex: 1 1 14rem;
@@ -2437,28 +2437,28 @@
 	}
 	.doc-id {
 		font-family: var(--font-mono);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		color: var(--accent);
 		flex: none;
 	}
 	.doc-path {
 		color: var(--text-muted);
-		font-size: 0.78rem;
-		margin: -0.5rem 0 0.75rem;
+		font-size: var(--fs-sm);
+		margin: -0.5rem 0 var(--sp-12);
 	}
 	/* DEV-182: 생성/변경 시각 — quest 상세 페이지와 동일 스타일. */
 	.meta-times {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.4rem;
-		font-size: 0.72rem;
+		gap: var(--sp-6);
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--sp-12);
 	}
 	.meta-item {
 		display: inline-flex;
-		gap: 0.3rem;
+		gap: var(--sp-4);
 		align-items: baseline;
 	}
 	.meta-label {
@@ -2476,16 +2476,16 @@
 	.top-actions {
 		margin-left: auto;
 		display: flex;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		flex: none;
 	}
 	.btn-edit {
-		padding: 0.3rem 0.7rem;
+		padding: var(--sp-4) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.btn-edit:hover {
@@ -2502,34 +2502,34 @@
 	.modal-inline {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		padding: 0.6rem;
+		gap: var(--sp-6);
+		padding: var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) dashed var(--border);
 		border-radius: var(--r-md);
-		margin: 0.5rem 0;
+		margin: var(--sp-8) 0;
 	}
 	.text-input {
-		padding: 0.35rem 0.55rem;
+		padding: var(--sp-6) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 	}
 	/* DEV-238: 검색창 — sidebar/explorer 툴바 양쪽에서 재사용. */
 	.search-input {
 		width: 100%;
-		padding: 0.3rem 0.55rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-sm);
-		font-size: 0.82rem;
-		margin: 0.4rem 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-6) 0;
 	}
 	.book-path {
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
 
@@ -2540,7 +2540,7 @@
 	.search-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 		align-items: center;
 	}
 	/* BUG-266: 탐색기 보기에서 이 줄과 바로 뒤 태그 필터 줄이 딱 붙어 있었다
@@ -2555,7 +2555,7 @@
 	   걸리지 않는다. 값은 사이드바의 `gap` 과 같게 맞춰 두 보기의 간격이
 	   같아 보이게 한다. */
 	.page > .search-row {
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--sp-8);
 	}
 	.search-row .search-input {
 		/* flex-basis 100% → 항상 자기 줄을 독차지하고 뒤 요소를 밀어낸다. */
@@ -2570,16 +2570,16 @@
 	.sort-group {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		flex: none;
 	}
 	.sort-sel {
-		padding: 0.25rem 0.5rem;
+		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text);
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		cursor: pointer;
 	}
 	.sort-dir {
@@ -2589,7 +2589,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		cursor: pointer;
 	}
 	.sort-dir:hover {
@@ -2599,21 +2599,21 @@
 
 	.state {
 		color: var(--text-muted);
-		padding: 1rem 0;
-		font-size: 0.875rem;
+		padding: var(--sp-16) 0;
+		font-size: var(--fs-md);
 	}
 	.state.err {
 		color: var(--danger);
 	}
 	.err {
 		color: var(--danger);
-		font-size: 0.825rem;
-		margin: 0.25rem 0 0;
+		font-size: var(--fs-sm);
+		margin: var(--sp-4) 0 0;
 	}
 	.empty {
 		color: var(--text-muted);
-		font-size: 0.9rem;
-		padding: 2rem 0;
+		font-size: var(--fs-md);
+		padding: var(--sp-32) 0;
 		text-align: center;
 	}
 	.empty .link {
@@ -2628,32 +2628,32 @@
 	.edit-form {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--sp-8);
 	}
 	.field-label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: var(--sp-6);
 	}
 	.field-label > span {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	.actions {
 		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
+		gap: var(--sp-6);
+		margin-top: var(--sp-8);
 	}
 	.btn-save {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-save:disabled {
 		opacity: 0.5;
@@ -2664,13 +2664,13 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.btn-cancel {
-		padding: 0.35rem 0.85rem;
+		padding: var(--sp-6) var(--sp-12);
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: var(--r-md);
 		cursor: pointer;
-		font-size: 0.825rem;
+		font-size: var(--fs-sm);
 	}
 	.btn-cancel:hover:not(:disabled) {
 		background: var(--bg-subtle);
@@ -2680,9 +2680,9 @@
 	.search-opt {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--sp-4);
 		flex: none;
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		white-space: nowrap;
 		cursor: pointer;

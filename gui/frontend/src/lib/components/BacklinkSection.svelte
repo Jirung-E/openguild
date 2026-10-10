@@ -110,20 +110,20 @@
 
 <style>
 	.bl {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--sp-24);
 	}
 	/* REQ-008 후속: 헤더 구조를 변경 이력 섹션과 맞춘다 — 토글 버튼(아이콘+제목)
 	   + 카운트 뱃지. 같은 상세 페이지의 형제 섹션이라 모양이 달라지면 안 된다. */
 	.section-head {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		gap: var(--sp-8);
+		margin-bottom: var(--sp-8);
 	}
 	.section-toggle {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: var(--sp-6);
 		background: none;
 		border: none;
 		padding: 0;
@@ -132,7 +132,7 @@
 		font: inherit;
 	}
 	.toggle-icon {
-		font-size: 0.65rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		transition: transform 0.12s;
 		display: inline-block;
@@ -141,7 +141,7 @@
 		transform: rotate(-90deg);
 	}
 	.bl-title {
-		font-size: 0.8rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-muted);
 		text-transform: uppercase;
@@ -150,9 +150,9 @@
 	/* 변경 이력 섹션의 `.qh-count` 와 **같은 공식** — 두 섹션이 나란히 있어
 	   카운트 모양이 다르면 바로 눈에 띈다. */
 	.bl-count {
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-faint);
-		padding: 0.05rem 0.4rem;
+		padding: 0.05rem var(--sp-6);
 		border-radius: var(--r-xl);
 		background: var(--bg-subtle);
 	}
@@ -173,12 +173,12 @@
 	   이 모양(한 줄 차지 · 글자색)을 받았다. 줄의 링크 — DocLink 의 `.doc-row` 바로 아래 — 에만 건다. */
 	.bl-item :global(.doc-row > a) {
 		display: flex;
-		gap: 0.6rem;
+		gap: var(--sp-8);
 		align-items: baseline;
-		padding: 0.35rem 0;
+		padding: var(--sp-6) 0;
 		text-decoration: none;
 		color: var(--text);
-		font-size: 0.83rem;
+		font-size: var(--fs-sm);
 		min-width: 0;
 	}
 	.bl-item :global(.doc-row > a:hover .bl-t) {
@@ -186,10 +186,10 @@
 	}
 	.bl-kind {
 		flex: none;
-		font-size: 0.68rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		border-radius: var(--r-sm);
-		padding: 0.1rem 0.35rem;
+		padding: var(--sp-2) var(--sp-6);
 		color: var(--text-muted);
 		background: color-mix(in srgb, var(--text-muted) 12%, transparent);
 	}
@@ -233,11 +233,11 @@
 		display: inline-flex;
 		align-items: center;
 		height: 1.0625rem;
-		padding: 0 0.4375rem;
+		padding: 0 var(--sp-6);
 		box-sizing: border-box;
 		border-radius: var(--r-pill);
 		font-family: var(--font-mono);
-		font-size: 0.625rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		line-height: 1;
 		white-space: nowrap;
@@ -252,7 +252,7 @@
 		white-space: nowrap;
 	}
 	.bl-state {
-		font-size: 0.83rem;
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
 	}
 	.bl-state.error {

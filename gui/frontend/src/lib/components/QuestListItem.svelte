@@ -106,10 +106,10 @@
 	.item {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding-top: 0.55rem;
-		padding-bottom: 0.55rem;
-		padding-right: 1.5rem;
+		gap: var(--sp-8);
+		padding-top: var(--sp-8);
+		padding-bottom: var(--sp-8);
+		padding-right: var(--sp-24);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 		cursor: pointer;
 		transition: background 0.1s;
@@ -125,7 +125,7 @@
 		background: none;
 		border: none;
 		color: var(--text-muted);
-		font-size: 0.75rem;
+		font-size: var(--fs-xs);
 		padding: 0;
 		cursor: pointer;
 	}
@@ -136,7 +136,7 @@
 
 	.title {
 		flex: 1;
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
@@ -148,16 +148,16 @@
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.2rem;
-		padding: 0.1rem 0.45rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 	}
 	.cc-icon {
-		font-size: 0.7rem;
+		font-size: var(--fs-xs);
 		line-height: 1;
 	}
 	/* DEV-142 후속: 토론 댓글 pill — 일반 댓글과 색으로 구분. */
@@ -165,10 +165,10 @@
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.2rem;
-		padding: 0.1rem 0.45rem;
+		gap: var(--sp-4);
+		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
-		font-size: 0.72rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 	}
 	.discussion-count.unresolved {
@@ -182,7 +182,7 @@
 		border: var(--bw) solid color-mix(in srgb, var(--success) 40%, transparent);
 	}
 	.dc-icon {
-		font-size: 0.9rem;
+		font-size: var(--fs-md);
 		line-height: 1;
 		font-weight: 700;
 	}
@@ -190,7 +190,7 @@
 	.urgency-warn {
 		flex-shrink: 0;
 		color: var(--danger);
-		font-size: 0.85rem;
+		font-size: var(--fs-md);
 		line-height: 1;
 		cursor: help;
 	}
@@ -204,7 +204,7 @@
 	@media (max-width: 640px) {
 		.item {
 			flex-wrap: wrap;
-			row-gap: 0.15rem;
+			row-gap: var(--sp-2);
 		}
 		.title {
 			order: 10;

@@ -176,16 +176,16 @@
 	.lp-head {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.45rem 0.7rem;
+		gap: var(--sp-8);
+		padding: var(--sp-8) var(--sp-12);
 		border-bottom: var(--bw) solid var(--border);
 	}
 	.lp-kind {
 		flex: none;
-		font-size: 0.66rem;
+		font-size: var(--fs-xs);
 		font-weight: 600;
 		border-radius: var(--r-sm);
-		padding: 0.08rem 0.34rem;
+		padding: 0.08rem var(--sp-6);
 		color: var(--accent);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
@@ -204,7 +204,7 @@
 	}
 	.lp-title {
 		flex: 1;
-		font-size: 0.82rem;
+		font-size: var(--fs-sm);
 		font-weight: 600;
 		color: var(--text-strong);
 		overflow: hidden;
@@ -214,24 +214,24 @@
 	.lp-body {
 		max-height: 16.25rem;
 		overflow-y: auto;
-		padding: 0.4rem 0.6rem;
+		padding: var(--sp-6) var(--sp-8);
 	}
 	.lp-loading {
-		padding: 0.7rem;
+		padding: var(--sp-12);
 		text-align: center;
-		font-size: 0.78rem;
+		font-size: var(--fs-sm);
 		color: var(--text-faint);
 	}
 	.lp-foot {
 		display: flex;
 		justify-content: flex-end;
-		gap: 0.4rem;
-		padding: 0.4rem 0.6rem;
+		gap: var(--sp-6);
+		padding: var(--sp-6) var(--sp-8);
 		border-top: var(--bw) solid var(--border);
 	}
 	.lp-btn {
-		font-size: 0.72rem;
-		padding: 0.24rem 0.55rem;
+		font-size: var(--fs-xs);
+		padding: var(--sp-4) var(--sp-8);
 		border-radius: var(--r-sm);
 		border: var(--bw) solid var(--border);
 		background: transparent;
