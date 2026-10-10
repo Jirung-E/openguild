@@ -2911,8 +2911,17 @@ fn copy_files_to_clipboard(paths: &[std::path::PathBuf]) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn run_tool(cmd: &str, args: &[&str]) -> Result<(), String> {
-    let out = std::process::Command::new(cmd)
-        .args(args)
+    let mut command = std::process::Command::new(cmd);
+    command.args(args);
+    // BUG-356: 콘솔 없는 데스크톱 앱이 콘솔 프로그램(powershell)을 띄우면 **새 콘솔 창이 뜬다** —
+    // 도서관에서 복사할 때마다 검은 창이 번쩍였다. 플러그인 쪽은 BUG-294 가 같은 방법으로 막았다.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = command
         .output()
         .map_err(|e| format!("{cmd} 를 띄우지 못했습니다: {e}"))?;
     if out.status.success() {
