@@ -358,7 +358,7 @@ describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
 		expect(rowOf(s, 2)).toBeLessThan(rowOf(s, 1));
 	});
 
-	it('왼쪽 레인으로 가는 선은 아래로 내려간다', () => {
+	it('왼쪽 레인으로 가는 선도 옆으로 누울 수 있다 — "아래 또는 옆"', () => {
 		const members = [
 			{ id: 1, status_id: 20 }, // 오른쪽 레인
 			{ id: 2, status_id: 10 } // 왼쪽 레인
@@ -368,7 +368,7 @@ describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
 			[20, 1]
 		]);
 		const s = clusterSlots(members, [{ quest_id: 2, prerequisite_id: 1 }], lanes, 3, slug, geom);
-		expect(rowOf(s, 2)).toBeGreaterThan(rowOf(s, 1));
+		expect(rowOf(s, 2)).toBe(rowOf(s, 1));
 	});
 
 	it('오른쪽 레인으로 가는 선은 옆으로 누울 수 있다 (같은 줄)', () => {

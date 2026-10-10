@@ -296,7 +296,7 @@ export function clusterSlots(
 	/** 같은 레인 안의 순서 — 보통 슬러그. 결과가 실행마다 같게 한다. */
 	tieBreak: (id: number) => string,
 	geom: ClusterGeometry,
-	/** 참이면 모든 선이 **아래**로. 거짓이면 오른쪽 레인으로 가는 선은 **옆**(같은 줄)도 된다. */
+	/** 참이면 모든 선이 **아래**로. 거짓이면 다른 레인으로 가는 선은 **옆**(같은 줄)도 된다. */
 	strictDown = false
 ): Map<number, ClusterSlot> {
 	const C = Math.max(1, cols);
@@ -316,17 +316,22 @@ export function clusterSlots(
 	});
 
 	// 줄은 **띠**로 잡는다 — 레인을 가로질러 하나. 이게 "화살표가 위로 안 간다" 를 보장한다.
-	let depth = rankOf(members, edges, laneOf, strictDown);
-	let bands = [...new Set(members.map((m) => depth.get(m.id) ?? 0))].sort((a, b) => a - b);
+	const baseRank = rankOf(members, edges, laneOf, strictDown);
+	// 무조건 아래 순위 — 모든 선이 더 높은 띠로 가므로 띠 안에서 위로 갈 일이 없다. 최후의 안전판.
+	const strictRank = strictDown ? baseRank : rankOf(members, edges, laneOf, true);
 
-	const build = (choice: readonly { lane: number; c: number; s: number }[]) => {
+	const place = (
+		rank: ReadonlyMap<number, number>,
+		choice: readonly { lane: number; c: number; s: number }[]
+	) => {
 		const slots = new Map<number, ClusterSlot>();
 		const colsOfLane = new Map(choice.map((o) => [o.lane, o]));
+		const bands = [...new Set(members.map((m) => rank.get(m.id) ?? 0))].sort((a, b) => a - b);
 		let row = 0;
 		for (const d of bands) {
 			let bandRows = 1;
 			for (const [lane, ids] of byLane) {
-				const here = ids.filter((id) => (depth.get(id) ?? 0) === d);
+				const here = ids.filter((id) => (rank.get(id) ?? 0) === d);
 				if (here.length === 0) continue;
 				const { c, s } = colsOfLane.get(lane)!;
 				here.forEach((id, i) => {
@@ -338,22 +343,32 @@ export function clusterSlots(
 		}
 		return slots;
 	};
-
-	// 같은 띠라도 **같은 줄은 아니다** — 띠가 여러 줄이면 그 안에서 위로 올라갈 수 있다.
-	// (실측에서 DEV-184 → DEV-097 하나가 그랬다: 오른쪽 레인이라 같은 띠에 뒀는데 2줄 위였다.)
-	// 올라간 선의 **도착 노드만** 한 띠 내린 뒤 다시 센다. 몇 번이면 수렴한다.
-	const flat = laneList.map((lane) => ({ lane, c: C, s: 0 }));
-	for (let pass = 0; pass < 4; pass++) {
-		const probe = build(flat);
-		const up = edges.filter((e) => {
-			const a = probe.get(e.prerequisite_id);
-			const b = probe.get(e.quest_id);
+	const upEdges = (slots: ReadonlyMap<number, ClusterSlot>) =>
+		edges.filter((e) => {
+			const a = slots.get(e.prerequisite_id);
+			const b = slots.get(e.quest_id);
 			return a && b && b.row < a.row;
 		});
-		if (up.length === 0) break;
-		for (const e of up) depth.set(e.quest_id, (depth.get(e.quest_id) ?? 0) + 1);
-		bands = [...new Set(members.map((m) => depth.get(m.id) ?? 0))].sort((a, b) => a - b);
-	}
+
+	// 같은 띠라도 **같은 줄은 아니다** — 띠가 여러 줄이면 그 안에서 옆으로 둔 선이 위로 갈 수 있다.
+	// 몇 줄이 되는지는 레인마다 고른 열 수에 달려 있으므로 **열 선택마다** 검사한다(예전엔 3열
+	// 배치로 한 번만 봐서, 열을 적게 고른 그룹에서 위로 가는 선이 3개 남았다). 올라간 선의 도착
+	// 노드를 출발 노드보다 한 띠 아래로 내리고 다시 놓는다. 그래도 남으면 무조건 아래 순위로 —
+	// 그 순위에서는 위로 가는 선이 생길 수 없다.
+	const build = (choice: readonly { lane: number; c: number; s: number }[]) => {
+		const rank = new Map(baseRank);
+		let slots = place(rank, choice);
+		for (let pass = 0; pass < 8; pass++) {
+			const up = upEdges(slots);
+			if (up.length === 0) return slots;
+			for (const e of up) {
+				const need = (rank.get(e.prerequisite_id) ?? 0) + 1;
+				rank.set(e.quest_id, Math.max(rank.get(e.quest_id) ?? 0, need));
+			}
+			slots = place(rank, choice);
+		}
+		return upEdges(slots).length === 0 ? slots : place(strictRank, choice);
+	};
 
 	const combos = options.reduce((n, o) => n * o.length, 1);
 	if (combos > MAX_COMBOS) {
@@ -388,14 +403,15 @@ export function clusterSlots(
 /**
  * DEV-421: 각 노드가 몇 번째 **띠**에 설지 — "화살표가 위로 안 간다" 를 보장하는 순위.
  *
- * admin 이 정한 규칙: *"'아래 우선' 이 아니라 '아래 또는 오른쪽 우선'"*.
- * 레인은 왼쪽에서 오른쪽으로 상태가 진행하므로, **오른쪽 레인으로 가는 선은 옆으로 누워도**
- * 흐름이 읽힌다. 같은 레인 안이거나 왼쪽 레인으로 가는 선만 아래로 내려야 한다.
+ * admin 이 정한 규칙: **"아래 또는 옆"**. 처음엔 "아래 또는 오른쪽" 으로 했다가(레인이 오른쪽으로
+ * 상태가 진행하니까) admin 이 **옆이면 왼쪽도 된다**로 정했다(2026-10-10). 선이 레인을 건너가면
+ * 같은 줄에 옆으로 누워도 흐름이 읽힌다. **같은 레인 안**의 선만 아래로 내려야 한다 — 같은 레인에서
+ * 같은 줄이면 두 노드가 나란히 붙어 선이 거의 안 보인다.
  *
  * 그래서 간선마다 비용을 달리 준 최장경로다:
  *
- * - 오른쪽 레인으로 → 0 (같은 띠에 설 수 있다 = 옆)
- * - 같은 레인 · 왼쪽 레인으로 → 1 (반드시 다음 띠 = 아래)
+ * - 다른 레인으로(왼쪽이든 오른쪽이든) → 0 (같은 띠에 설 수 있다 = 옆)
+ * - 같은 레인 안 → 1 (반드시 다음 띠 = 아래)
  *
  * `strictDown` 이면 전부 1 — 모든 선이 아래를 향한다([[DEV-438]] 의 옵션 켠 상태).
  *
@@ -419,8 +435,8 @@ function rankOf(
 		const a = e.prerequisite_id;
 		const b = e.quest_id;
 		if (a === b || !ids.has(a) || !ids.has(b)) continue;
-		const rightward = (laneById.get(b) ?? 0) > (laneById.get(a) ?? 0);
-		out.get(a)!.push({ to: b, w: strictDown || !rightward ? 1 : 0 });
+		const otherLane = (laneById.get(b) ?? 0) !== (laneById.get(a) ?? 0);
+		out.get(a)!.push({ to: b, w: strictDown || !otherLane ? 1 : 0 });
 		indeg.set(b, (indeg.get(b) ?? 0) + 1);
 	}
 	const rank = new Map<number, number>();
