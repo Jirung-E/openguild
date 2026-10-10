@@ -305,7 +305,11 @@ export function clusterSlots(
 		const lane = laneOf.get(m.status_id) ?? 0;
 		(byLane.get(lane) ?? byLane.set(lane, []).get(lane)!).push(m.id);
 	}
-	for (const ids of byLane.values()) ids.sort((a, b) => tieBreak(a).localeCompare(tieBreak(b)));
+	// 레인 안 채우는 순서 — **선행 · 부모가 먼저**(위상 순서), 같은 차례면 슬러그. 레인 안은 왼쪽→오른쪽,
+	// 위→아래로 채우므로 먼저 놓인 쪽이 같은 줄 왼쪽이거나 윗줄이다. 그래서 같은 레인 안의 선은
+	// 저절로 "아래 또는 옆" 이 된다.
+	const order = topoOrder(members, edges, tieBreak);
+	for (const ids of byLane.values()) ids.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
 	const laneList = [...byLane.keys()].sort((a, b) => a - b);
 
 	// 레인마다 고를 수 있는 (열 수, 시작 열).
@@ -353,12 +357,12 @@ export function clusterSlots(
 	// 같은 띠라도 **같은 줄은 아니다** — 띠가 여러 줄이면 그 안에서 옆으로 둔 선이 위로 갈 수 있다.
 	// 몇 줄이 되는지는 레인마다 고른 열 수에 달려 있으므로 **열 선택마다** 검사한다(예전엔 3열
 	// 배치로 한 번만 봐서, 열을 적게 고른 그룹에서 위로 가는 선이 3개 남았다). 올라간 선의 도착
-	// 노드를 출발 노드보다 한 띠 아래로 내리고 다시 놓는다. 그래도 남으면 무조건 아래 순위로 —
+	// 노드를 출발 노드보다 한 띠 아래로 내리고 다시 놓는다. 멤버 수만큼 해도 남으면 무조건 아래 순위로 —
 	// 그 순위에서는 위로 가는 선이 생길 수 없다.
 	const build = (choice: readonly { lane: number; c: number; s: number }[]) => {
 		const rank = new Map(baseRank);
 		let slots = place(rank, choice);
-		for (let pass = 0; pass < 8; pass++) {
+		for (let pass = 0; pass <= members.length; pass++) {
 			const up = upEdges(slots);
 			if (up.length === 0) return slots;
 			for (const e of up) {
@@ -403,15 +407,16 @@ export function clusterSlots(
 /**
  * DEV-421: 각 노드가 몇 번째 **띠**에 설지 — "화살표가 위로 안 간다" 를 보장하는 순위.
  *
- * admin 이 정한 규칙: **"아래 또는 옆"**. 처음엔 "아래 또는 오른쪽" 으로 했다가(레인이 오른쪽으로
- * 상태가 진행하니까) admin 이 **옆이면 왼쪽도 된다**로 정했다(2026-10-10). 선이 레인을 건너가면
- * 같은 줄에 옆으로 누워도 흐름이 읽힌다. **같은 레인 안**의 선만 아래로 내려야 한다 — 같은 레인에서
- * 같은 줄이면 두 노드가 나란히 붙어 선이 거의 안 보인다.
+ * admin 이 정한 규칙: **"아래 또는 옆"** — 같은 레인 안이든 레인을 건너가든, 자식 · 후행은 부모 ·
+ * 선행과 **같은 줄(옆)이거나 아래**에 선다. 위로만 안 가면 된다.
  *
- * 그래서 간선마다 비용을 달리 준 최장경로다:
+ * (중간에 "같은 레인 안은 무조건 아래" 로 넣었었다. 같은 줄에 붙으면 선이 짧아 안 보일 거라는 내
+ * 짐작이었고 admin 에게 묻지 않았다. 그래서 부모 · 자식이 같은 레인인 묶음은 옆이 하나도 안 나왔다.
+ * admin 이 같은 레인 안에서도 옆을 허용하기로 정했다, 2026-10-10.)
  *
- * - 다른 레인으로(왼쪽이든 오른쪽이든) → 0 (같은 띠에 설 수 있다 = 옆)
- * - 같은 레인 안 → 1 (반드시 다음 띠 = 아래)
+ * 그래서 기본은 모든 간선 비용이 0 — 모두 같은 띠에서 시작한다. 같은 레인 안은 위상 순서로 채우므로
+ * 저절로 아래 또는 옆이 되고, 레인을 건너가다 위로 간 선만 `clusterSlots` 의 바로잡기가 한 띠씩
+ * 내린다.
  *
  * `strictDown` 이면 전부 1 — 모든 선이 아래를 향한다([[DEV-438]] 의 옵션 켠 상태).
  *
@@ -435,8 +440,7 @@ function rankOf(
 		const a = e.prerequisite_id;
 		const b = e.quest_id;
 		if (a === b || !ids.has(a) || !ids.has(b)) continue;
-		const otherLane = (laneById.get(b) ?? 0) !== (laneById.get(a) ?? 0);
-		out.get(a)!.push({ to: b, w: strictDown || !otherLane ? 1 : 0 });
+		out.get(a)!.push({ to: b, w: strictDown ? 1 : 0 });
 		indeg.set(b, (indeg.get(b) ?? 0) + 1);
 	}
 	const rank = new Map<number, number>();
@@ -461,6 +465,48 @@ function rankOf(
 		for (const id of leftover) rank.set(id, mx + 1);
 	}
 	return rank;
+}
+
+/**
+ * 위상 순서 — 선행 · 부모가 먼저. 같은 차례에서는 `tieBreak`(슬러그) 순. 고리에 걸린 것은 맨 뒤에
+ * 슬러그 순으로 붙인다.
+ */
+function topoOrder(
+	members: readonly ClusterMember[],
+	edges: readonly PlacementEdge[],
+	tieBreak: (id: number) => string
+): Map<number, number> {
+	const ids = new Set(members.map((m) => m.id));
+	const out = new Map<number, number[]>();
+	const indeg = new Map<number, number>();
+	for (const id of ids) {
+		out.set(id, []);
+		indeg.set(id, 0);
+	}
+	for (const e of edges) {
+		const a = e.prerequisite_id;
+		const b = e.quest_id;
+		if (a === b || !ids.has(a) || !ids.has(b)) continue;
+		out.get(a)!.push(b);
+		indeg.set(b, (indeg.get(b) ?? 0) + 1);
+	}
+	const bySlug = (a: number, b: number) => tieBreak(a).localeCompare(tieBreak(b));
+	const ready = [...ids].filter((id) => indeg.get(id) === 0).sort(bySlug);
+	const order = new Map<number, number>();
+	while (ready.length > 0) {
+		const id = ready.shift()!;
+		order.set(id, order.size);
+		for (const b of out.get(id) ?? []) {
+			const left = (indeg.get(b) ?? 0) - 1;
+			indeg.set(b, left);
+			if (left === 0) {
+				ready.push(b);
+				ready.sort(bySlug);
+			}
+		}
+	}
+	for (const id of [...ids].filter((x) => !order.has(x)).sort(bySlug)) order.set(id, order.size);
+	return order;
 }
 
 /** 사각형 넓이 + 교차 벌점. 작을수록 좋다. */

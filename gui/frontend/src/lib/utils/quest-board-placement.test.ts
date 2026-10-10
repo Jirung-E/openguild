@@ -346,7 +346,7 @@ describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
 	const rowOf = (slots: Map<number, { lane: number; col: number; row: number }>, id: number) =>
 		slots.get(id)!.row;
 
-	it('같은 레인 안이면 선행이 위 — 슬러그 순서와 반대여도', () => {
+	it('같은 레인 안이면 선행이 먼저 — 같은 줄 왼쪽이거나 윗줄 (슬러그 순서와 반대여도)', () => {
 		// 슬러그순은 1,2,3 이지만 관계는 3 → 2 → 1 이다.
 		const members = [1, 2, 3].map((id) => ({ id, status_id: 10 }));
 		const edges = [
@@ -354,8 +354,23 @@ describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
 			{ quest_id: 1, prerequisite_id: 2 }
 		];
 		const s = clusterSlots(members, edges, new Map([[10, 0]]), 3, slug, geom);
-		expect(rowOf(s, 3)).toBeLessThan(rowOf(s, 2));
-		expect(rowOf(s, 2)).toBeLessThan(rowOf(s, 1));
+		const before = (a: number, b: number) => {
+			const p = s.get(a)!, q = s.get(b)!;
+			return q.row > p.row || (q.row === p.row && q.col > p.col);
+		};
+		expect(before(3, 2)).toBe(true);
+		expect(before(2, 1)).toBe(true);
+	});
+
+	it('같은 레인 안에서도 자식이 부모 옆에 설 수 있다 — "아래 또는 옆"', () => {
+		// 부모 하나, 자식 넷, 레인 하나, 3열. 부모 옆에 자식 둘, 나머지 둘은 아래 줄.
+		const members = [1, 2, 3, 4, 5].map((id) => ({ id, status_id: 10 }));
+		const edges = [2, 3, 4, 5].map((c) => ({ quest_id: c, prerequisite_id: 1 }));
+		const flat = { ...geom };
+		const s = clusterSlots(members, edges, new Map([[10, 0]]), 3, slug, flat);
+		const side = [2, 3, 4, 5].filter((c) => rowOf(s, c) === rowOf(s, 1)).length;
+		for (const c of [2, 3, 4, 5]) expect(rowOf(s, c)).toBeGreaterThanOrEqual(rowOf(s, 1));
+		expect(side).toBeGreaterThan(0);
 	});
 
 	it('왼쪽 레인으로 가는 선도 옆으로 누울 수 있다 — "아래 또는 옆"', () => {
