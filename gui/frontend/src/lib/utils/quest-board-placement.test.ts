@@ -339,3 +339,105 @@ describe('clusterSlots — 레인 안 열 고르기 (DEV-421)', () => {
 		for (const id of [1, 2, 3]) expect(a.get(id)).toEqual(b.get(id));
 	});
 });
+
+describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
+	const geom = { cellW: 324, cellH: 120, laneStride: 1012, nodeW: 284, nodeH: 80 };
+	const slug = (id: number) => `Q-${String(id).padStart(3, '0')}`;
+	const rowOf = (slots: Map<number, { lane: number; col: number; row: number }>, id: number) =>
+		slots.get(id)!.row;
+
+	it('같은 레인 안이면 선행이 위 — 슬러그 순서와 반대여도', () => {
+		// 슬러그순은 1,2,3 이지만 관계는 3 → 2 → 1 이다.
+		const members = [1, 2, 3].map((id) => ({ id, status_id: 10 }));
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 3 },
+			{ quest_id: 1, prerequisite_id: 2 }
+		];
+		const s = clusterSlots(members, edges, new Map([[10, 0]]), 3, slug, geom);
+		expect(rowOf(s, 3)).toBeLessThan(rowOf(s, 2));
+		expect(rowOf(s, 2)).toBeLessThan(rowOf(s, 1));
+	});
+
+	it('왼쪽 레인으로 가는 선은 아래로 내려간다', () => {
+		const members = [
+			{ id: 1, status_id: 20 }, // 오른쪽 레인
+			{ id: 2, status_id: 10 } // 왼쪽 레인
+		];
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const s = clusterSlots(members, [{ quest_id: 2, prerequisite_id: 1 }], lanes, 3, slug, geom);
+		expect(rowOf(s, 2)).toBeGreaterThan(rowOf(s, 1));
+	});
+
+	it('오른쪽 레인으로 가는 선은 옆으로 누울 수 있다 (같은 줄)', () => {
+		const members = [
+			{ id: 1, status_id: 10 },
+			{ id: 2, status_id: 20 }
+		];
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const s = clusterSlots(members, [{ quest_id: 2, prerequisite_id: 1 }], lanes, 3, slug, geom);
+		expect(rowOf(s, 2)).toBe(rowOf(s, 1));
+	});
+
+	it('strictDown 이면 오른쪽으로 가는 선도 아래로', () => {
+		const members = [
+			{ id: 1, status_id: 10 },
+			{ id: 2, status_id: 20 }
+		];
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const s = clusterSlots(
+			members,
+			[{ quest_id: 2, prerequisite_id: 1 }],
+			lanes,
+			3,
+			slug,
+			geom,
+			true
+		);
+		expect(rowOf(s, 2)).toBeGreaterThan(rowOf(s, 1));
+	});
+
+	it('어떤 선도 위로 가지 않는다 — 얽힌 그룹에서도', () => {
+		const members = [1, 2, 3, 4, 5, 6, 7, 8].map((id) => ({
+			id,
+			status_id: [10, 20, 30][id % 3]
+		}));
+		const lanes = new Map([
+			[10, 0],
+			[20, 1],
+			[30, 2]
+		]);
+		const edges = [
+			{ quest_id: 4, prerequisite_id: 1 },
+			{ quest_id: 5, prerequisite_id: 4 },
+			{ quest_id: 2, prerequisite_id: 5 },
+			{ quest_id: 6, prerequisite_id: 2 },
+			{ quest_id: 7, prerequisite_id: 3 },
+			{ quest_id: 8, prerequisite_id: 7 },
+			{ quest_id: 3, prerequisite_id: 6 }
+		];
+		const s = clusterSlots(members, edges, lanes, 3, slug, geom);
+		for (const e of edges) {
+			expect(rowOf(s, e.quest_id)).toBeGreaterThanOrEqual(rowOf(s, e.prerequisite_id));
+		}
+	});
+
+	it('고리가 있어도 자리를 잃지 않는다', () => {
+		const members = [1, 2, 3].map((id) => ({ id, status_id: 10 }));
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 1 },
+			{ quest_id: 1, prerequisite_id: 2 },
+			{ quest_id: 3, prerequisite_id: 1 }
+		];
+		const s = clusterSlots(members, edges, new Map([[10, 0]]), 3, slug, geom);
+		expect(s.size).toBe(3);
+	});
+});
