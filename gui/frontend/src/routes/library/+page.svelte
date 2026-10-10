@@ -2371,7 +2371,7 @@
 		border-color: var(--accent);
 	}
 	.tile-icon {
-		font-size: 2rem;
+		font-size: 2rem; /* token-ok: 타일 아이콘 크기 */
 	}
 	.tile-label {
 		font-size: var(--fs-xs);

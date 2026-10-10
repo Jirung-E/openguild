@@ -316,7 +316,7 @@
 		background: none;
 		border: none;
 		color: var(--text-faint);
-		font-size: 1.1rem;
+		font-size: 1.1rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);

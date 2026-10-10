@@ -364,7 +364,7 @@
 		border-radius: var(--r-pill);
 		background: transparent;
 		color: var(--text-faint);
-		font-size: 1rem;
+		font-size: 1rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 	}

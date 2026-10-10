@@ -87,6 +87,7 @@ test-frontend:
     cd gui/frontend && npm run check:radius
     cd gui/frontend && npm run check:spacing
     cd gui/frontend && npm run check:font
+    cd gui/frontend && npm run check:tokens
     cd gui/frontend && npm run check:viewport
     cd gui/frontend && npm run check:classes
     cd gui/frontend && npm run check:guards

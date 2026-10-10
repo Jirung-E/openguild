@@ -156,7 +156,7 @@
 		background: none;
 		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 1rem;
+		font-size: 1rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		padding: 0 0 0 var(--sp-2);
 	}

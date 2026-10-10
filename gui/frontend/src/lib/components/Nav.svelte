@@ -606,7 +606,7 @@
 		width: 1.9rem;
 		height: 1.9rem;
 		border-radius: var(--r-md);
-		font-size: 1rem;
+		font-size: 1rem; /* token-ok: 아이콘 글리프 크기 */
 		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		background: transparent;
@@ -679,7 +679,7 @@
 		width: 2rem;
 		height: 2rem;
 		border-radius: var(--r-md);
-		font-size: 1.1rem;
+		font-size: 1.1rem; /* token-ok: ⚙ 글리프 크기 */
 		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		background: transparent;
@@ -821,7 +821,7 @@
 		width: 2rem;
 		height: 2rem;
 		border-radius: var(--r-md);
-		font-size: 1.05rem;
+		font-size: 1.05rem; /* token-ok: 아이콘 글리프 크기 */
 		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		background: transparent;

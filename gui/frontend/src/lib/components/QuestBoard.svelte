@@ -4722,7 +4722,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
 		box-shadow:
-			0 8px 32px rgba(0, 0, 0, 0.55),
+			var(--shadow-lg),
 			0 0 0 1px rgba(255, 255, 255, 0.04);
 		display: flex;
 		flex-direction: column;
@@ -4783,7 +4783,7 @@
 		background: none;
 		border: none;
 		color: var(--text-faint);
-		font-size: 1.1rem;
+		font-size: 1.1rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		padding: 0 2px;
 		cursor: pointer;
@@ -5076,7 +5076,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 4px 14px color-mix(in srgb, var(--text) 16%, transparent);
+		box-shadow: var(--shadow-sm);
 		pointer-events: auto;
 		flex-wrap: wrap;
 		justify-content: flex-end;
@@ -5143,7 +5143,7 @@
 		color: var(--orange);
 	}
 	.tb-btn .icon {
-		font-size: 0.95rem;
+		font-size: 0.95rem; /* token-ok: 아이콘 글리프 크기 */
 		line-height: var(--lh-tight);
 	}
 	.tb-btn .count {
@@ -5390,7 +5390,7 @@
 		background: transparent;
 		border: none;
 		color: var(--text-muted);
-		font-size: 1.4rem;
+		font-size: 1.4rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);

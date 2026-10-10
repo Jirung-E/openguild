@@ -1294,7 +1294,7 @@
 		background: none;
 		border: none;
 		color: var(--text-faint);
-		font-size: 1.2rem;
+		font-size: 1.2rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);
@@ -1426,7 +1426,7 @@
 		transform: translateY(-2px);
 	}
 	.jump-btn .jb-icon {
-		font-size: 1rem;
+		font-size: 1rem; /* token-ok: 아이콘 글리프 크기 */
 		line-height: var(--lh-tight);
 		color: var(--accent);
 	}

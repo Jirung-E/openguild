@@ -244,6 +244,11 @@ jobs:
       - name: check no raw font stacks
         run: npm run check:font
 
+      # DEV-427: 글자 크기 · 간격 · 그림자 · 움직임 · 굵기 · 줄 간격을 리터럴로 적으면 실패
+      # (토큰만). 토큰이 맞지 않는 자리는 그 줄에 `/* token-ok: 이유 */`.
+      - name: check design tokens
+        run: npm run check:tokens
+
       # BUG-264: 높이의 `vh` 는 모바일에서 주소창이 접힌 높이라 실제 화면보다
       # 크다 — 그만큼 아래가 잘린다. `dvh` 폴백 쌍을 강제한다.
       - name: check viewport height units

@@ -731,7 +731,7 @@
 		dynamic-range-limit: var(--hdr-limit, no-limit);
 	}
 	.file-ico {
-		font-size: 1.8rem;
+		font-size: 1.8rem; /* token-ok: 파일 아이콘 크기 */
 	}
 	/* BUG-291: 앞 조각만 줄어들게 — 가운데가 잘리고 확장자가 남는다. */
 	.name {
@@ -800,7 +800,7 @@
 		background: color-mix(in srgb, var(--danger) 85%, transparent);
 		color: white;
 		cursor: pointer;
-		font-size: 0.95rem;
+		font-size: 0.95rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 	}
 </style>

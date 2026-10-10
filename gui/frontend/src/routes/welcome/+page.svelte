@@ -646,7 +646,7 @@
 	}
 	header h1 {
 		margin: 0;
-		font-size: 2rem;
+		font-size: 2rem; /* token-ok: 환영 화면 큰 제목 — 한 곳뿐 */
 		color: var(--accent);
 	}
 	header .sub {
@@ -715,7 +715,7 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
-		font-size: 1.2rem;
+		font-size: 1.2rem; /* token-ok: × 글리프 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 		transition:

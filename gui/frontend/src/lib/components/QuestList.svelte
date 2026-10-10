@@ -695,7 +695,7 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.qb-new-icon {
-		font-size: 0.95rem;
+		font-size: 0.95rem; /* token-ok: 아이콘 글리프 크기 */
 		line-height: var(--lh-tight);
 	}
 
@@ -806,7 +806,7 @@
 		color: var(--text);
 	}
 	.vt-icon {
-		font-size: 0.95rem;
+		font-size: 0.95rem; /* token-ok: 아이콘 글리프 크기 */
 		line-height: var(--lh-tight);
 	}
 </style>

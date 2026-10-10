@@ -204,7 +204,7 @@
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
-		font-size: 1rem;
+		font-size: 1rem; /* token-ok: ‹ › 글리프 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 		transition: background var(--dur-fast);
