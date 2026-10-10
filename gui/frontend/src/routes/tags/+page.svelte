@@ -212,7 +212,7 @@
 	<div class="editor">
 		{#if editing === ''}
 			<input
-				class="slug"
+				class="input slug"
 				type="text"
 				bind:value={editSlug}
 				placeholder={t('tags.slugPlaceholder', $locale)}
@@ -229,7 +229,7 @@
 			disabled={busy}
 		/>
 		<input
-			class="desc-input"
+			class="input desc-input"
 			type="text"
 			bind:value={editDescription}
 			placeholder={t('tags.descPlaceholder', $locale)}
@@ -476,13 +476,7 @@
 		padding-top: var(--sp-12);
 	}
 	.editor input[type='text'] {
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
 		font: inherit;
-		font-size: var(--fs-md);
 	}
 	.editor .slug {
 		width: 12rem;

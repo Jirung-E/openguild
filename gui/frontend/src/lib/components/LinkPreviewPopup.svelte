@@ -131,7 +131,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="lp"
+	class="popup lp"
 	style:left="{pos.left}px"
 	style:top={pos.top !== null ? `${pos.top}px` : undefined}
 	style:bottom={pos.bottom !== null ? `${pos.bottom}px` : undefined}
@@ -166,9 +166,6 @@
 		width: min(25rem, 90vw);
 		z-index: 1300; /* 검색 팔레트(1200)보다 위 — 팔레트 미리보기 안에서도 뜸. */
 		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-md);
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;

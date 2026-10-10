@@ -92,7 +92,7 @@
 	{/if}
 	{#if tagInputOpen && editable}
 		<form class="tag-add-form" onsubmit={addTagFromInput}>
-			<input
+			<input class="input"
 				type="text"
 				bind:value={newTagText}
 				placeholder={t('tagPills.newPlaceholder', $locale)}
@@ -170,12 +170,6 @@
 	}
 	.tag-add-form input {
 		flex: 1;
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-md);
 	}
 	.tag-add-form button {
 		padding: var(--sp-4) var(--sp-12);

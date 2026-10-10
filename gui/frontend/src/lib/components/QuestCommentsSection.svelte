@@ -1070,7 +1070,7 @@
 		<div class="reply-form">
 			<div class="reply-author">
 				<input
-					class="author-input"
+					class="input author-input"
 					type="text"
 					placeholder={t('comment.authorOpt', $locale)}
 					bind:value={replyAuthor}
@@ -1099,7 +1099,7 @@
 						onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
 						mediaOnly: true
 					}}
-					class="body-input"
+					class="input body-input"
 					bind:this={replyBodyEl}
 					bind:value={replyBody}
 					oninput={onWikiInput}
@@ -1236,7 +1236,7 @@
 						onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`),
 						mediaOnly: true
 					}}
-					class="body-input"
+					class="input body-input"
 					bind:this={editBodyEl}
 					bind:value={editBody}
 					oninput={onWikiInput}
@@ -1338,7 +1338,7 @@
 								}}
 							></div>
 							<div
-								class="reaction-picker"
+								class="popup reaction-picker"
 								role="menu"
 								style:left="{reactionPickerPos.left}px"
 								style:top={reactionPickerPos.top != null ? `${reactionPickerPos.top}px` : null}
@@ -1374,7 +1374,7 @@
 								     들어갈 수 있던 문제 — 이모지 1개만 허용(addCustomReaction 검증). -->
 								<div class="picker-add-row">
 									<input
-										class="picker-add-input"
+										class="input picker-add-input"
 										type="text"
 										placeholder={t('comment.oneEmoji', $locale)}
 										maxlength="16"
@@ -1560,7 +1560,7 @@
 				<div class="new-form">
 					<div class="new-row">
 						<input
-							class="author-input"
+							class="input author-input"
 							type="text"
 							placeholder={t('comment.authorOpt', $locale)}
 							bind:value={newAuthor}
@@ -1589,7 +1589,7 @@
 								onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`),
 								mediaOnly: true
 							}}
-							class="body-input"
+							class="input body-input"
 							bind:this={newBodyEl}
 							bind:value={newBody}
 							oninput={onWikiInput}
@@ -2116,10 +2116,6 @@
 		flex-direction: column;
 		gap: var(--sp-4);
 		padding: var(--sp-4) var(--sp-6);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-md);
 		min-width: 9rem;
 	}
 	.picker-row {
@@ -2176,12 +2172,6 @@
 	.picker-add-input {
 		flex: 1;
 		min-width: 0;
-		padding: var(--sp-4) var(--sp-6);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		font-size: var(--fs-sm);
 	}
 	.picker-add-btn {
 		padding: var(--sp-4) var(--sp-8);
@@ -2277,21 +2267,9 @@
 	}
 	.author-input {
 		flex: 0 0 14rem;
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		font-size: var(--fs-sm);
 	}
 	.body-input {
 		width: 100%;
-		padding: var(--sp-8) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		/* BUG-320: 브라우저가 구석에 그려 주던 손잡이는 끈다 — 바로 아래 [[SizeGrip]] 이
 		   같은 일을 하고, 그건 휴대폰에서도 된다. 둘을 같이 두면 손잡이가 두 개다(admin).

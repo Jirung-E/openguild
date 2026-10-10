@@ -384,7 +384,7 @@
 				<!-- REQ-013: slug 뿐 아니라 본문까지 — 규칙이 늘어나면 slug 만으로는
 				     원하는 문서를 못 찾는다. 본문은 이미 목록에 실려 와 즉시 필터된다. -->
 				<input
-					class="rule-search"
+					class="input rule-search"
 					type="search"
 					placeholder={t('rules.searchPlaceholder', $locale)}
 					bind:value={searchQuery}
@@ -434,7 +434,7 @@
 				{#if creating}
 					<div class="modal-inline">
 						<input
-							class="text-input"
+							class="input"
 							type="text"
 							placeholder={t('rules.slugPlaceholder', $locale)}
 							bind:value={createSlug}
@@ -512,7 +512,7 @@
 					{#if renaming}
 						<div class="modal-inline">
 							<input
-								class="text-input"
+								class="input"
 								type="text"
 								placeholder={t('rules.newSlugPlaceholder', $locale)}
 								bind:value={renameSlug}
@@ -827,14 +827,6 @@
 		border: var(--bw) dashed var(--border);
 		border-radius: var(--r-md);
 		margin: var(--sp-8) 0;
-	}
-	.text-input {
-		padding: var(--sp-6) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		font-size: var(--fs-md);
 	}
 
 	.state {

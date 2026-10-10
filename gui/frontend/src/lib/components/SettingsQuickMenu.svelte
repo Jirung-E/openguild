@@ -91,7 +91,7 @@
 <!-- 바깥 클릭 닫기 — 투명 오버레이. 타이틀바처럼 이 위에 오는 것은 아래 capture 가 받는다. -->
 <div class="qm-ov" role="presentation" onclick={onclose}></div>
 
-<div class="qm" role="menu" aria-label={t('nav.settingsQuickMenu', $locale)}>
+<div class="popup qm" role="menu" aria-label={t('nav.settingsQuickMenu', $locale)}>
 	<div class="qm-row">
 		<span class="qm-label">{t('settings.theme', $locale)}</span>
 		<div class="qm-seg" role="group" aria-label={t('settings.theme', $locale)}>
@@ -192,10 +192,6 @@
 		width: 17.5rem;
 		max-width: calc(100vw - 2rem);
 		padding: var(--sp-12);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
-		box-shadow: var(--shadow-md);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);

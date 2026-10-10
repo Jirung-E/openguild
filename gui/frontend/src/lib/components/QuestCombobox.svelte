@@ -83,7 +83,7 @@
 	<input
 		bind:this={inputEl}
 		bind:value={query}
-		class="cb-input"
+		class="input"
 		type="text"
 		placeholder={effectivePlaceholder}
 		onkeydown={onKeydown}
@@ -121,18 +121,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-6);
-	}
-	.cb-input {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-strong);
-		font-size: var(--fs-md);
-		outline: none;
-	}
-	.cb-input:focus {
-		border-color: var(--accent);
 	}
 
 	.cb-empty {

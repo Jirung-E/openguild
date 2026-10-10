@@ -438,7 +438,7 @@
 		     읽기 전용 표시. -->
 		<section class="picker remote-picker">
 			<div class="remote-input-row">
-				<input
+				<input class="input"
 					type="text"
 					placeholder={t('welcome.remotePlaceholder', $locale)}
 					bind:value={remoteInput}
@@ -480,7 +480,7 @@
 			</p>
 			<label class="uninit-name">
 				<span>{t('welcome.guildName', $locale)}</span>
-				<input type="text" bind:value={initName} placeholder="guild" disabled={initRunning} />
+				<input class="input" type="text" bind:value={initName} placeholder="guild" disabled={initRunning} />
 			</label>
 			{#if initErr}
 				<p class="err">{initErr}</p>
@@ -592,7 +592,7 @@
 {#if confirmOpen}
 	<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 스타일 모달. -->
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
 			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
 			<div class="modal-actions">
@@ -606,7 +606,7 @@
 {#if confirmRemove}
 	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('welcome.removeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmRemove.name}</strong>{t('welcome.removeSuffix', $locale)}
@@ -871,12 +871,6 @@
 	.remote-input-row input {
 		flex: 1 1 auto;
 		min-width: 12.5rem;
-		padding: var(--sp-8) var(--sp-8);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		background: var(--bg);
-		color: var(--text);
-		font-size: var(--fs-md);
 	}
 	.remote-check {
 		flex: 1 0 100%;
@@ -932,17 +926,8 @@
 	}
 	.uninit-name input {
 		flex: 1 1 auto;
-		padding: var(--sp-6) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
 		font: inherit;
 		font-family: var(--font-mono);
-	}
-	.uninit-name input:focus {
-		outline: none;
-		border-color: var(--accent);
 	}
 	.uninit-actions {
 		display: flex;
@@ -954,7 +939,7 @@
 	.ov {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
+		background: var(--backdrop);
 		z-index: 100;
 		display: flex;
 		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
@@ -969,14 +954,9 @@
 	.modal {
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: var(--sp-16) var(--sp-24);
-		box-shadow: var(--shadow-lg);
-		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-8);

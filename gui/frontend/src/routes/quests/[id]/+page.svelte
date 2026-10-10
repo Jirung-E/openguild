@@ -1184,7 +1184,7 @@
 						aria-label={t('common.close', $locale)}
 						onclick={() => (relMenuOpen = false)}
 					></button>
-					<div class="rel-menu" role="menu">
+					<div class="popup rel-menu" role="menu">
 						<div class="rel-menu-title">{t('qd.addRelationTitle', $locale)}</div>
 						{#each [...(detail.parent ? [] : [{ mode: 'parent' as ComboMode, label: t('quest.section.parent', $locale) }]), { mode: 'sub' as ComboMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as ComboMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as ComboMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
 							<div class="rel-menu-row">
@@ -1294,7 +1294,7 @@
 			{/if}
 			{#if tagInputOpen && !editMode}
 				<form class="tag-add-form" onsubmit={addTagFromInput}>
-					<input
+					<input class="input"
 						type="text"
 						bind:value={newTagText}
 						placeholder={t('quest.tags.placeholder', $locale)}
@@ -1341,7 +1341,7 @@
 			if (e.target === e.currentTarget) closeCombo();
 		}}
 	>
-		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
 					{#if comboMode === 'parent'}{t(
@@ -1382,7 +1382,7 @@
 			if (e.target === e.currentTarget) closeCampaignCombo();
 		}}
 	>
-		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
 				<button class="x" onclick={closeCampaignCombo}>×</button>
@@ -1421,7 +1421,7 @@
 			if (e.target === e.currentTarget && !changingType) confirmTypeChange = null;
 		}}
 	>
-		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
 				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
@@ -1477,7 +1477,7 @@
 			if (e.target === e.currentTarget && !deleting) deleteModal = false;
 		}}
 	>
-		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
 				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}>×</button>
@@ -1932,12 +1932,6 @@
 	}
 	.tag-add-form input {
 		flex: 1;
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-md);
 	}
 	.tag-add-form button {
 		padding: var(--sp-4) var(--sp-12);
@@ -1996,10 +1990,6 @@
 		z-index: 41;
 		min-width: 20rem;
 		padding: var(--sp-8);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-md);
 	}
 	.rel-menu-title {
 		font-size: var(--fs-xs);
@@ -2139,7 +2129,7 @@
 	.ov {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
+		background: var(--backdrop);
 		z-index: 100;
 		display: flex;
 		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
@@ -2162,9 +2152,6 @@
 		   **길어서 넘치면** flex-start 가 이겨 위부터 보인다. 그래서 긴 팝업의
 		   제목·닫기 버튼이 잘리지 않는다. */
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한 —
 		   작은 창에서 팝업이 그대로 커서 화면에 꽉 차던 문제. */
@@ -2173,7 +2160,6 @@
 		max-height: 92dvh;
 		overflow-y: auto;
 		padding: var(--sp-16) var(--sp-16) var(--sp-16);
-		box-shadow: var(--shadow-lg);
 	}
 	/* BUG-160: 콤보박스 팝업은 "목록"이 본문이라 확인 모달용 30rem 로는 좁다 —
 	   퀘스트 제목이 잘리고 후보가 스크롤 뒤로 숨었다(사용자 지적). 넓은 변형을

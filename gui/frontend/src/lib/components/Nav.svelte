@@ -338,7 +338,7 @@
 					aria-expanded={moreOpen}>☰</button
 				>
 				{#if moreOpen}
-					<div class="more-menu">
+					<div class="popup more-menu">
 						{#each overflowItems as it (it.href)}
 							<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}
 								>{it.label}</a
@@ -628,10 +628,6 @@
 		display: flex;
 		flex-direction: column;
 		padding: var(--sp-4);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-md);
 		z-index: 300;
 	}
 	.more-menu a {

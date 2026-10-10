@@ -540,7 +540,7 @@
 												     선택은 안 바뀐다 — 그래서 두 번 저장해야 맞아 보였다(admin). -->
 												<select
 													id={`pi-${p.name}-${i.key}`}
-													class="pi-field"
+													class="input pi-field"
 													disabled={busy || !canManage}
 													value={draftOf(p.name, i)}
 													onchange={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
@@ -552,7 +552,7 @@
 											{:else}
 												<input
 													id={`pi-${p.name}-${i.key}`}
-													class="pi-field"
+													class="input pi-field"
 													type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
 													autocomplete="off"
 													placeholder={i.secret && i.has_value
@@ -979,12 +979,6 @@
 	}
 	.pi-field {
 		min-width: 0;
-		font-size: var(--fs-md);
-		padding: var(--sp-4) var(--sp-8);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		background: var(--bg);
-		color: var(--text);
 	}
 	.pi-actions {
 		display: flex;

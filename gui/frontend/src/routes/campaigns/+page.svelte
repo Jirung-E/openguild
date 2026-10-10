@@ -131,7 +131,7 @@
 	<div class="controls">
 		<label>
 			{t('campaignList.statusLabel', $locale)}
-			<select bind:value={statusFilter}>
+			<select class="input" bind:value={statusFilter}>
 				<option value="all">{t('campaignList.statusAll', $locale)}</option>
 				<option value="active">{t('campaignList.statusActive', $locale)}</option>
 				<option value="done">{t('campaignList.statusDone', $locale)}</option>
@@ -139,7 +139,7 @@
 		</label>
 		<label>
 			{t('campaignList.sortLabel', $locale)}
-			<select bind:value={sort}>
+			<select class="input" bind:value={sort}>
 				<option value="recent">{t('campaignList.sortRecent', $locale)}</option>
 				<option value="remaining">{t('campaignList.sortRemaining', $locale)}</option>
 				<option value="manual">{t('campaignList.sortManual', $locale)}</option>
@@ -243,14 +243,6 @@
 		display: flex;
 		align-items: center;
 		gap: var(--sp-6);
-	}
-	.controls select {
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		padding: var(--sp-4) var(--sp-8);
-		font-size: var(--fs-sm);
 	}
 
 	.state {

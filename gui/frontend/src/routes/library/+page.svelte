@@ -1130,7 +1130,7 @@
 	{#if renamingFolder}
 		<div class="modal-inline rename-folder">
 			<input
-				class="text-input"
+				class="input"
 				type="text"
 				aria-label={t('library.folderRenameTitle', $locale)}
 				bind:value={renameFolderName}
@@ -1151,7 +1151,7 @@
 	{#if renamingDoc}
 		<div class="modal-inline rename-folder">
 			<input
-				class="text-input"
+				class="input"
 				type="text"
 				aria-label={t('library.retitle', $locale)}
 				bind:value={renameDocTitle}
@@ -1193,7 +1193,7 @@
 		</div>
 		<div class="search-row">
 			<input
-				class="search-input"
+				class="input search-input"
 				type="search"
 				placeholder={t('library.searchPlaceholder', $locale)}
 				bind:value={searchQuery}
@@ -1315,7 +1315,7 @@
 {#if creatingFolder}
 			<div class="modal-inline">
 				<input
-					class="text-input"
+					class="input"
 					type="text"
 					placeholder={t('library.newFolderPlaceholder', $locale)}
 					bind:value={createFolderPath}
@@ -1335,7 +1335,7 @@
 		{#if creating}
 			<div class="modal-inline">
 				<input
-					class="text-input"
+					class="input"
 					type="text"
 					placeholder={t('library.docTitlePlaceholder', $locale)}
 					bind:value={createTitle}
@@ -1533,7 +1533,7 @@
 					</div>
 					<div class="search-row">
 						<input
-							class="search-input"
+							class="input search-input"
 							type="search"
 							placeholder={t('library.searchPlaceholder', $locale)}
 							bind:value={searchQuery}
@@ -1645,7 +1645,7 @@
 					{#if creatingFolder}
 						<div class="modal-inline">
 							<input
-								class="text-input"
+								class="input"
 								type="text"
 								placeholder={t('library.newFolderPathPlaceholder', $locale)}
 								bind:value={createFolderPath}
@@ -1665,13 +1665,13 @@
 					{#if creating}
 						<div class="modal-inline">
 							<input
-								class="text-input"
+								class="input"
 								type="text"
 								placeholder={t('library.docTitlePlaceholder', $locale)}
 								bind:value={createTitle}
 								onkeydown={(e) => e.key === 'Enter' && submitCreate()}
 							/>
-							<select class="text-input" bind:value={createPath}>
+							<select class="input" bind:value={createPath}>
 								<option value="">{t('library.topLevel', $locale)}</option>
 								{#each flattenFolderPaths(tree) as p (p)}
 									<option value={p}>{p}</option>
@@ -1787,7 +1787,7 @@
 					{#if retitling}
 						<div class="modal-inline">
 							<input
-								class="text-input"
+								class="input"
 								type="text"
 								placeholder={t('library.newTitlePlaceholder', $locale)}
 								bind:value={retitleText}
@@ -1807,7 +1807,7 @@
 
 					{#if moving}
 						<div class="modal-inline">
-							<select class="text-input" bind:value={movePath}>
+							<select class="input" bind:value={movePath}>
 								<option value="">{t('library.topLevel', $locale)}</option>
 								{#each flattenFolderPaths(tree) as p (p)}
 									<option value={p}>{p}</option>
@@ -1942,7 +1942,7 @@
 		{#if movingPicked}
 			<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
 			<div class="modal-inline">
-				<select class="text-input" bind:value={movePickedPath}>
+				<select class="input" bind:value={movePickedPath}>
 					<option value="">{t('library.topLevel', $locale)}</option>
 					{#each flattenFolderPaths(tree) as p (p)}
 						<option value={p}>{p}</option>
@@ -2458,14 +2458,6 @@
 		border: var(--bw) dashed var(--border);
 		border-radius: var(--r-md);
 		margin: var(--sp-8) 0;
-	}
-	.text-input {
-		padding: var(--sp-6) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		font-size: var(--fs-md);
 	}
 	/* DEV-238: 검색창 — sidebar/explorer 툴바 양쪽에서 재사용. */
 	.search-input {

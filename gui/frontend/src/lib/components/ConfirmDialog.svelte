@@ -94,7 +94,7 @@
 		}}
 	>
 		<div
-			class="modal"
+			class="modal-box modal"
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="{uid}-title"
@@ -121,7 +121,7 @@
 	.ov {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.55);
+		background: var(--backdrop);
 		z-index: 200;
 		display: flex;
 		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
@@ -136,14 +136,9 @@
 	.modal {
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);
-		box-shadow: var(--shadow-lg);
-		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-8);

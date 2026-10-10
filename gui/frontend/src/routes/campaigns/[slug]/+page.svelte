@@ -551,7 +551,7 @@
 			<div class="title-row">
 				<span class="slug">{detail.campaign_slug}</span>
 				{#if editMode}
-					<input class="title-input" bind:value={titleEdit} disabled={saving} />
+					<input class="input title-input" bind:value={titleEdit} disabled={saving} />
 				{:else}
 					<h1>{detail.title}</h1>
 				{/if}
@@ -680,7 +680,7 @@
 				</ul>
 			{/if}
 			<div class="add-row">
-				<input
+				<input class="input"
 					type="text"
 					bind:value={newChecklistText}
 					placeholder={t('campaign.newChecklistItem', $locale)}
@@ -861,7 +861,7 @@
 			if (e.target === e.currentTarget) comboOpen = false;
 		}}
 	>
-		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
 				<button class="x" onclick={() => (comboOpen = false)}>×</button>
@@ -1051,11 +1051,6 @@
 	}
 
 	.title-input {
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		padding: var(--sp-6) var(--sp-8);
 		font-size: var(--fs-lg);
 		width: 100%;
 		margin-bottom: var(--sp-8);
@@ -1158,12 +1153,6 @@
 	}
 	.add-row input {
 		flex: 1;
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		padding: var(--sp-6) var(--sp-8);
-		font-size: var(--fs-md);
 	}
 	.add-row button {
 		padding: var(--sp-6) var(--sp-12);
@@ -1186,7 +1175,7 @@
 	.ov {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
+		background: var(--backdrop);
 		z-index: 100;
 		display: flex;
 		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
@@ -1209,9 +1198,6 @@
 		   **길어서 넘치면** flex-start 가 이겨 위부터 보인다. 그래서 긴 팝업의
 		   제목·닫기 버튼이 잘리지 않는다. */
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한. */
 		max-width: min(calc(30rem * var(--popup-scale, 1)), 92vw); /* BUG-064 */
@@ -1219,7 +1205,6 @@
 		max-height: 92dvh;
 		overflow-y: auto;
 		padding: var(--sp-16) var(--sp-16) var(--sp-16);
-		box-shadow: var(--shadow-lg);
 	}
 	/* BUG-160: 콤보박스 팝업 넓은 변형 — quests/[id] 와 동일 수치. */
 	.modal-combo {

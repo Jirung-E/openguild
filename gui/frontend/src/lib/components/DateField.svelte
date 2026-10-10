@@ -136,7 +136,7 @@
 
 <span class="datefield" class:disabled bind:this={rootEl} onkeydown={onKeydown} role="presentation">
 	<input
-		class="df-text"
+		class="input df-text"
 		class:month={mode === 'month'}
 		type="text"
 		inputmode="numeric"
@@ -164,7 +164,7 @@
 	</button>
 
 	{#if open}
-		<div class="df-pop" role="dialog" aria-label={t('common.pickDate', $locale)}>
+		<div class="popup df-pop" role="dialog" aria-label={t('common.pickDate', $locale)}>
 			<div class="df-nav">
 				<button type="button" class="df-nav-btn" onclick={() => (mode === 'month' ? (viewYear -= 1) : stepMonth(-1))} aria-label="◀">◀</button>
 				<span class="df-head">{headerLabel}</span>
@@ -231,20 +231,10 @@
 	}
 	.df-text {
 		width: 6.6rem;
-		padding: var(--sp-4) var(--sp-6);
-		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
 	}
 	.df-text.month {
 		width: 5rem;
-	}
-	.df-text:focus {
-		outline: none;
-		border-color: var(--accent);
 	}
 	.df-btn {
 		display: inline-flex;
@@ -275,10 +265,6 @@
 		left: 0;
 		z-index: 1300;
 		padding: var(--sp-8);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-md);
 		user-select: none;
 	}
 	.df-nav {

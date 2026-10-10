@@ -489,7 +489,7 @@
 
 <!-- 배경 오버레이 -->
 <div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
-	<div class="modal" role="document">
+	<div class="modal-box modal" role="document">
 		<div class="modal-head">
 			<h2 class="modal-title">
 				{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}
@@ -545,7 +545,7 @@
 						<label class="field-label">
 							<span>{t('nqm.template', $locale)}</span>
 							<select
-								class="sel"
+								class="input sel"
 								bind:value={selectedTemplate}
 								onchange={() => applyTemplate(selectedTemplate)}
 							>
@@ -605,7 +605,7 @@
 						<span>{t('nqm.title', $locale)}</span>
 						<input
 							bind:this={titleInput}
-							class="inp"
+							class="input inp"
 							type="text"
 							placeholder={t('nqm.titlePlaceholder', $locale)}
 							bind:value={title}
@@ -618,7 +618,7 @@
 						<span>{t('nqm.descOptional', $locale)}</span>
 						<textarea
 							use:tabInsert
-							class="ta"
+							class="input ta"
 							rows="5"
 							placeholder={t('nqm.descPlaceholder', $locale)}
 							bind:value={description}
@@ -708,7 +708,7 @@
 					<!-- DEV-158: 현재 입력(타입/긴급도/제목/설명/템플릿 tags)을 템플릿으로 저장. -->
 					<div class="tpl-save">
 						<input
-							class="inp"
+							class="input inp"
 							type="text"
 							placeholder={t('nqm.tplNamePlaceholder', $locale)}
 							bind:value={tplName}
@@ -764,7 +764,7 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.65);
+		background: var(--backdrop);
 		z-index: 200;
 		display: flex;
 		/* BUG-199: 화면보다 긴 팝업은 오버레이 자체가 스크롤을 맡는다. 가운데
@@ -780,14 +780,10 @@
 	.modal {
 		/* BUG-199: 짧으면 세로 가운데처럼 보이도록(위 flex-start 와 짝). */
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(
 			35rem * var(--popup-scale, 1)
 		); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
-		box-shadow: var(--shadow-lg);
 		animation: modal-in var(--dur-mid) cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;
 	}
@@ -985,17 +981,7 @@
 	}
 
 	.sel {
-		padding: var(--sp-6) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-md);
-		outline: none;
 		min-width: 5rem;
-	}
-	.sel:focus {
-		border-color: var(--accent);
 	}
 
 	.status-fixed {
@@ -1014,36 +1000,16 @@
 	}
 
 	.inp {
-		padding: var(--sp-8) var(--sp-12);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-strong);
-		font-size: var(--fs-md);
-		outline: none;
 		width: 100%;
 		box-sizing: border-box;
 	}
-	.inp:focus {
-		border-color: var(--accent);
-	}
 
 	.ta {
-		padding: var(--sp-8) var(--sp-12);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-md);
-		outline: none;
 		width: 100%;
 		box-sizing: border-box;
 		resize: vertical;
 		font-family: var(--font-mono);
 		line-height: var(--lh-body);
-	}
-	.ta:focus {
-		border-color: var(--accent);
 	}
 
 	.save-error {

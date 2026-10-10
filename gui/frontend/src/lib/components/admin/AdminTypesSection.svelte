@@ -205,14 +205,14 @@
 										pattern="[A-Z0-9]+"
 										title={t('adminTypes.prefixTitle', $locale)}
 										disabled={busy}
-										class="prefix-input"
+										class="input prefix-input"
 									/>
 								</td>
 								<td>
 									<input type="color" bind:value={editColor} disabled={busy} />
 								</td>
 								<td>
-									<input
+									<input class="input"
 										type="text"
 										bind:value={editDesc}
 										placeholder={t('adminTypes.descPlaceholder', $locale)}
@@ -262,12 +262,12 @@
 
 {#if creating}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('adminTypes.newTypeTitle', $locale)}</h3>
 			<div class="form">
 				<label>
 					<span>prefix</span>
-					<input
+					<input class="input"
 						type="text"
 						bind:value={newPrefix}
 						placeholder={t('adminTypes.prefixPlaceholder', $locale)}
@@ -282,7 +282,7 @@
 				</label>
 				<label>
 					<span>{t('adminTypes.colDesc', $locale)}</span>
-					<input
+					<input class="input"
 						type="text"
 						bind:value={newDesc}
 						placeholder={t('adminTypes.descShortPlaceholder', $locale)}
@@ -304,7 +304,7 @@
 
 {#if confirmDelete}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('adminTypes.deleteTypeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />
@@ -463,16 +463,7 @@
 	}
 	input[type='text'] {
 		width: 100%;
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
 		font: inherit;
-	}
-	input[type='text']:focus {
-		outline: none;
-		border-color: var(--accent);
 	}
 	input[type='text'].prefix-input {
 		width: 7ch;
@@ -502,7 +493,7 @@
 	.ov {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
+		background: var(--backdrop);
 		z-index: 100;
 		display: flex;
 		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
@@ -517,14 +508,9 @@
 	.modal {
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: var(--sp-16) var(--sp-24);
-		box-shadow: var(--shadow-lg);
-		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-12);

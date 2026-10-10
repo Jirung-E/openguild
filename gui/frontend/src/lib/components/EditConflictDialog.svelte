@@ -91,7 +91,7 @@
 {#if conflict}
 	<div class="ov" use:modalScrollLock role="presentation">
 		<div
-			class="modal"
+			class="modal-box modal"
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="ec-title"
@@ -167,7 +167,7 @@
 	.ov {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.55);
+		background: var(--backdrop);
 		z-index: 200;
 		display: flex;
 		align-items: flex-start;
@@ -178,14 +178,9 @@
 	}
 	.modal {
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(52rem * var(--popup-scale, 1));
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);
-		box-shadow: var(--shadow-lg);
-		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-8);

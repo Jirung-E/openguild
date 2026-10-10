@@ -698,7 +698,7 @@
 					{#if creatingPreset}
 						<div class="ct-create">
 							<input
-								class="ct-name"
+								class="input"
 								type="text"
 								placeholder={t('settings.presetNamePlaceholder', $locale)}
 								bind:value={newPresetName}
@@ -738,7 +738,7 @@
 					{#if importing}
 						<div class="ct-import">
 							<textarea
-								class="ct-import-text"
+								class="input ct-import-text"
 								rows="4"
 								placeholder={t('settings.importJsonPlaceholder', $locale)}
 								bind:value={importText}
@@ -1115,14 +1115,6 @@
 		align-items: center;
 		margin-top: var(--sp-8);
 	}
-	.ct-name {
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-md);
-	}
 	.ct-error {
 		color: var(--danger);
 		font-size: var(--fs-sm);
@@ -1136,12 +1128,6 @@
 	}
 	.ct-import-text {
 		width: 100%;
-		padding: var(--sp-6) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
 		font-family: var(--font-mono);
 		resize: vertical;
 	}

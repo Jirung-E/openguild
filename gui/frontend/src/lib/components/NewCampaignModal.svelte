@@ -70,7 +70,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
-	<div class="modal" role="document">
+	<div class="modal-box modal" role="document">
 		<div class="modal-head">
 			<h2 class="modal-title">{t('ncm.newCampaign', $locale)}</h2>
 			<button class="close-btn" onclick={onclose} aria-label={t('common.cancel', $locale)}
@@ -87,7 +87,7 @@
 			<label>
 				<span class="lab">{t('ncm.title', $locale)}</span>
 				<!-- svelte-ignore a11y_autofocus -->
-				<input
+				<input class="input"
 					type="text"
 					bind:value={title}
 					placeholder={t('ncm.titlePlaceholder', $locale)}
@@ -109,7 +109,7 @@
 
 			<label>
 				<span class="lab">{t('ncm.body', $locale)}</span>
-				<textarea
+				<textarea class="input"
 					use:tabInsert
 					bind:value={description}
 					rows="8"
@@ -137,7 +137,7 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.65);
+		background: var(--backdrop);
 		z-index: 200;
 		display: flex;
 		align-items: flex-start;
@@ -148,12 +148,8 @@
 	}
 	.modal {
 		margin: auto;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(35rem * var(--popup-scale, 1));
-		box-shadow: var(--shadow-lg);
 		animation: modal-in var(--dur-mid) cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;
 	}
@@ -208,18 +204,7 @@
 	}
 	input,
 	textarea {
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-md);
-		padding: var(--sp-8) var(--sp-8);
-		font-size: var(--fs-md);
 		font-family: inherit;
-	}
-	input:focus,
-	textarea:focus {
-		outline: none;
-		border-color: var(--accent);
 	}
 	textarea {
 		font-family: var(--font-mono);

@@ -38,6 +38,8 @@
 	--shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
 	--shadow-md: 0 8px 28px rgba(0, 0, 0, 0.45);
 	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+	/* DEV-440: 모달 뒤 어두운 막 — 0.55 · 0.6 · 0.65 세 가지였다. */
+	--backdrop: rgba(0, 0, 0, 0.6);
 	/* REQ-014: 검색 발췌에서 걸린 부분 표시(<mark>).
 	   브라우저 기본 mark 는 노란 배경 + **검정 글자** 고정이라 다크에서 튄다.
 	   `--warning` 을 재사용하지 않는다 — 경고가 아니라 검색 일치라 의미가 다르고,
@@ -183,6 +185,8 @@
 	--shadow-sm: 0 4px 14px rgba(31, 35, 40, 0.12);
 	--shadow-md: 0 8px 28px rgba(31, 35, 40, 0.16);
 	--shadow-lg: 0 16px 48px rgba(31, 35, 40, 0.22);
+	/* 라이트는 흰 화면 위라 같은 진하기면 지나치게 어둡다. */
+	--backdrop: rgba(31, 35, 40, 0.4);
 	/* REQ-014: 라이트는 흰 바탕이라 형광펜에 가까운 밝은 노랑 + 진한 글자. */
 	--search-hit-bg: #fff3c4;
 	--search-hit-text: #4a3800;
@@ -675,4 +679,49 @@ input[type='checkbox']:disabled {
 	padding: var(--sp-2) var(--sp-8);
 	font-size: var(--fs-xs);
 	border-radius: var(--r-sm);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DEV-440: 입력칸 · 팝업 · 모달 — 공통 부품.
+
+   [[DEV-428]] 버튼과 같은 방식이다. 화면마다 따로 정의돼 있던 것(입력칸 25가지, 팝업 · 모달 23가지)을
+   하나씩으로 묶었다. 이 클래스들은 **모양만** 정한다 — 폭 · 높이 · 위치 · 안쪽 배치는 각 화면이 정한다.
+
+     <input class="input">  <textarea class="input">  <select class="input">
+         입력칸. 글자 크기 · 높이가 `.btn` 과 같아서 나란히 놓아도 줄이 맞는다.
+     <div class="popup">      메뉴 · 팝오버 · 자동완성 — 화면 위에 잠깐 뜨는 작은 창
+     <div class="modal-box">  모달 · 확인 창 · 명령 팔레트 — 뒤를 막는 창 (막은 var(--backdrop))
+
+   설명은 도서관 [[BOOK-009]] 디자인 언어.
+   ───────────────────────────────────────────────────────────── */
+.input {
+	padding: var(--sp-6) var(--sp-8);
+	font-size: var(--fs-sm);
+	color: var(--text);
+	background: var(--bg);
+	border: var(--bw) solid var(--border);
+	border-radius: var(--r-md);
+	transition: border-color var(--dur-fast);
+}
+.input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+.input:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.popup {
+	color: var(--text);
+	background: var(--bg-elevated);
+	border: var(--bw) solid var(--border);
+	border-radius: var(--r-lg);
+	box-shadow: var(--shadow-md);
+}
+.modal-box {
+	color: var(--text);
+	background: var(--bg-elevated);
+	border: var(--bw) solid var(--border);
+	border-radius: var(--r-xl);
+	box-shadow: var(--shadow-lg);
 }

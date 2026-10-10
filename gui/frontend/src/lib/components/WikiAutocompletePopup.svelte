@@ -66,7 +66,7 @@
 </script>
 
 <ul
-	class="wiki-pop"
+	class="popup wiki-pop"
 	bind:this={popupEl}
 	onwheel={markUserScroll}
 	ontouchmove={markUserScroll}
@@ -142,10 +142,6 @@
 		overflow-y: auto;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
 		scrollbar-width: none;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-md);
 	}
 	.wiki-pop::-webkit-scrollbar {
 		display: none;

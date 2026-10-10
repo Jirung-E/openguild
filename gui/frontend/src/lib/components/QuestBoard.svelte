@@ -3017,7 +3017,7 @@
 			// lane 폭(zoom 에 비례, 모바일에서 매우 좁아짐)이 실제 필요폭보다 작을 때
 			// 옆 lane 헤더 밑으로 잘려서 안 보임 — 헤더 아래로 뜨는 팝오버로 분리.
 			const pop = document.createElement('div');
-			pop.className = 'lane-settings-pop';
+			pop.className = 'popup lane-settings-pop';
 			// 헤더 밖 레이어에 살기 때문에 어느 레인 것인지 표시가 필요하다.
 			pop.dataset.laneSlug = s.slug;
 			pop.appendChild(sel);
@@ -3893,7 +3893,7 @@
 
 {#if confirmDialog}
 	<div class="dialog-backdrop" role="presentation">
-		<div class="dialog" role="alertdialog" tabindex="-1">
+		<div class="modal-box dialog" role="alertdialog" tabindex="-1">
 			<p class="dialog-msg">{confirmDialog.msg}</p>
 			<div class="dialog-btns">
 				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}
@@ -3916,7 +3916,7 @@
 			if (e.target === e.currentTarget) showHideModal = false;
 		}}
 	>
-		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="modal-box hide-modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="hide-head">
 				<h3 class="hide-title">{t('board.settings', $locale)}</h3>
 				<button
@@ -5226,20 +5226,16 @@
 	.dialog-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.55);
+		background: var(--backdrop);
 		z-index: 500;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 	}
 	.dialog {
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);
 		min-width: calc(17.5rem * var(--popup-scale, 1));
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-16);
@@ -5287,19 +5283,14 @@
 
 	/* DEV-056: 숨김 설정 모달 */
 	.hide-modal {
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-xl);
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);
 		/* 모바일: 30~40rem 고정폭이 좁은 화면에서 밖으로 삐져나감 — 뷰포트 폭 안으로 clamp. */
 		width: min(calc(40rem * var(--popup-scale, 1)), calc(100vw - 2rem));
 		min-width: min(calc(30rem * var(--popup-scale, 1)), calc(100vw - 2rem));
 		max-width: calc(100vw - 2rem);
-		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);
-		color: var(--text);
 		box-sizing: border-box;
 		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
 		/* BUG-264: 위와 같은 이유 — 폴백 후 `dvh`. */

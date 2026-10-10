@@ -151,7 +151,7 @@
 			<span class="sr-only">{t('filter.search', $locale)}</span>
 			<input
 				type="search"
-				class="search-input"
+				class="input search-input"
 				placeholder={t('filter.searchPlaceholder', $locale)}
 				bind:value={search}
 				data-testid="quest-search-input"
@@ -341,17 +341,8 @@
 	}
 	.search-input {
 		padding: var(--sp-4) var(--sp-32) var(--sp-4) var(--sp-12);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		min-width: 12.5rem; /* BUG-064 */
-		outline: none;
+		min-width: 12.5rem;
 		transition: border-color var(--dur-fast);
-	}
-	.search-input:focus {
-		border-color: var(--accent);
 	}
 	.search-input::-webkit-search-cancel-button {
 		display: none;

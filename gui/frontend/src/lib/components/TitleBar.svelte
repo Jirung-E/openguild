@@ -373,7 +373,7 @@
 					</svg>
 				</button>
 				{#if menuOpen}
-					<div class="tb-menu">
+					<div class="popup tb-menu">
 						<!-- DEV-260: Nav 에서 넘친 페이지 링크 — 상시 항목과 구분선으로 구획. -->
 						{#if $navOverflowItems.length > 0}
 							{#each $navOverflowItems as it (it.href)}
@@ -847,10 +847,6 @@
 		top: 1.875rem;
 		left: 0;
 		width: 10.75rem;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-lg);
-		box-shadow: var(--shadow-lg);
 		padding: var(--sp-4);
 		z-index: 1200;
 	}

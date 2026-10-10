@@ -236,7 +236,7 @@
 		value={query}
 		oninput={onInput}
 		type="text"
-		class="find-input"
+		class="input find-input"
 		placeholder={t('find.placeholder', $locale)}
 		aria-label={t('find.placeholder', $locale)}
 		spellcheck="false"
@@ -290,17 +290,7 @@
 	}
 	.find-input {
 		width: 12rem;
-		padding: var(--sp-4) var(--sp-6);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
 		font: inherit;
-		font-size: var(--fs-md);
-		outline: none;
-	}
-	.find-input:focus-visible {
-		border-color: var(--accent);
 	}
 	.find-count {
 		min-width: 4.5ch;
