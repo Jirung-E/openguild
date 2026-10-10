@@ -176,7 +176,7 @@
 	.track {
 		display: flex;
 		width: 100%;
-		transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+		transition: transform var(--dur-slow) cubic-bezier(0.4, 0, 0.2, 1);
 	}
 	.slot {
 		flex: 0 0 100%;
@@ -205,9 +205,9 @@
 		width: 1.8rem;
 		height: 1.8rem;
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
-		transition: background 0.15s;
+		transition: background var(--dur-fast);
 	}
 	.arrow:hover {
 		background: var(--bg-subtle);
@@ -224,8 +224,8 @@
 		border-radius: 50%;
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			transform 0.15s;
+			background var(--dur-fast),
+			transform var(--dur-fast);
 		padding: 0;
 	}
 	.dot:hover {
@@ -252,9 +252,9 @@
 		width: 1.8rem;
 		height: 1.8rem;
 		font-size: var(--fs-md);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
-		transition: background 0.15s;
+		transition: background var(--dur-fast);
 		margin-left: var(--sp-6);
 	}
 	.play-pause:hover {

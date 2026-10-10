@@ -523,7 +523,7 @@
 		visibility: hidden;
 	}
 	.dock-box {
-		transition: transform 0.18s ease-out;
+		transition: transform var(--dur-mid) ease-out;
 	}
 	.dock-box.docked {
 		position: fixed;
@@ -532,7 +532,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 8px 28px var(--shadow);
+		box-shadow: var(--shadow-md);
 		padding: var(--sp-8) var(--sp-8) var(--sp-8);
 	}
 	/* admin: 보내기 버튼이 머리줄로 올라갔으니 아래 버튼 줄은 자리만 먹는다 — 접는다. */
@@ -636,7 +636,7 @@
 		border-radius: var(--r-pill);
 		background: var(--bg);
 		color: var(--text-muted);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 	}
 	/* `display: block` 이 아니면 svg 가 글자처럼 놓여 기준선만큼 아래로 내려간다 —

@@ -109,7 +109,7 @@
 	}
 	.section-title {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -198,7 +198,7 @@
 	.toggle-icon {
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		transition: transform 0.12s;
+		transition: transform var(--dur-fast);
 		display: inline-block;
 	}
 	.toggle-icon.collapsed {

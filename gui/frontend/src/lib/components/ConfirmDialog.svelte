@@ -142,13 +142,13 @@
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);
-		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+		box-shadow: var(--shadow-lg);
 		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-8);
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.modal-msg {

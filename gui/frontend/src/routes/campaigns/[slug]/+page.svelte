@@ -956,7 +956,7 @@
 	   것을 알약으로 우겨넣은' 상태였다. 공용 규칙에서 뺐다. */
 	.status-badge {
 		text-transform: uppercase;
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.status-badge.status-active {
 		--c: var(--success);
@@ -998,7 +998,7 @@
 		color: var(--success);
 	}
 	h2 .done-mark {
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		color: var(--success);
 		font-size: var(--fs-md);
 		margin-left: var(--sp-4);
@@ -1022,7 +1022,7 @@
 	/* DEV-079: 종료 기한 지난 캠페인 (status != done) 의 period 빨강 강조. */
 	.period.overdue {
 		color: var(--danger);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 
 	/* BUG-033: 생성 / 변경 시각 표시 — Quest Detail 의 .meta-times 와 동일 톤. */
@@ -1272,7 +1272,7 @@
 		max-height: 92dvh;
 		overflow-y: auto;
 		padding: var(--sp-16) var(--sp-16) var(--sp-16);
-		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		box-shadow: var(--shadow-lg);
 	}
 	/* BUG-160: 콤보박스 팝업 넓은 변형 — quests/[id] 와 동일 수치. */
 	.modal-combo {
@@ -1287,7 +1287,7 @@
 	.modal-head h3 {
 		margin: 0;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.x {
@@ -1295,7 +1295,7 @@
 		border: none;
 		color: var(--text-faint);
 		font-size: 1.2rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);
 	}
@@ -1321,7 +1321,7 @@
 		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
 		font-size: var(--fs-xs);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
@@ -1344,8 +1344,8 @@
 		height: 100%;
 		background: var(--accent);
 		transition:
-			width 0.2s,
-			background 0.2s;
+			width var(--dur-mid),
+			background var(--dur-mid);
 	}
 	.quest-progress-fill.done {
 		background: var(--success-strong);
@@ -1363,7 +1363,7 @@
 		padding: var(--sp-6) var(--sp-8);
 		font-size: var(--fs-xs);
 		z-index: 50;
-		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
+		box-shadow: var(--shadow-sm);
 		pointer-events: none;
 		display: flex;
 		flex-direction: column;
@@ -1383,7 +1383,7 @@
 	}
 	.tooltip-name {
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.tooltip-count {
 		color: var(--text-muted);
@@ -1412,13 +1412,13 @@
 		border-radius: var(--r-pill);
 		color: var(--text);
 		font-size: var(--fs-md);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		cursor: pointer;
-		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+		box-shadow: var(--shadow-sm);
 		transition:
-			background 0.12s,
-			border-color 0.12s,
-			transform 0.12s;
+			background var(--dur-fast),
+			border-color var(--dur-fast),
+			transform var(--dur-fast);
 	}
 	.jump-btn:hover {
 		background: var(--bg-subtle);
@@ -1427,11 +1427,11 @@
 	}
 	.jump-btn .jb-icon {
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--accent);
 	}
 	.jump-btn .jb-label {
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 
 	/* admin 요청: 좁은 화면에서 `SLUG 배지들` / `제목` 2단으로.

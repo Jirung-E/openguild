@@ -706,7 +706,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+		box-shadow: var(--shadow-lg);
 		overflow: hidden;
 	}
 	/* DEV-257: 모바일 폭에선 62vw 가 너무 좁음(375px 기준 232px) — 거의 전폭. */
@@ -735,7 +735,7 @@
 		background: transparent;
 		color: var(--text-muted);
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		cursor: pointer;
 	}
 	.wide-toggle:hover {
@@ -778,7 +778,7 @@
 		flex-basis: 100%;
 		max-width: 100%;
 		/* 접힌 높이 추정치(.row.has-why)가 정확하려면 이 줄 높이가 확정돼야 한다. */
-		line-height: 1.25;
+		line-height: var(--lh-snug);
 	}
 	.pwhy-f {
 		flex: none;
@@ -787,7 +787,7 @@
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 		color: var(--accent);
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.pwhy-x mark {
 		/* REQ-014: 검색 일치 표시. 기본 mark 의 노란 배경은 다크 테마에서 튀므로
@@ -809,7 +809,7 @@
 	.scope-chip {
 		flex: none;
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		border-radius: var(--r-sm);
 		padding: var(--sp-2) var(--sp-6);
 		color: var(--accent);
@@ -915,7 +915,7 @@
 		   0.68 → 0.78rem. 상자 높이도 제목 한 줄(line-height 21.76px)에 맞춰
 		   20px 로 키워, 칩 가운데와 제목 글자 가운데가 같은 선에 오게 한다. */
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		border-radius: var(--r-sm);
 		/* 나란히 놓이는 칩이라 **상자 높이는** slug 칩과 같아야 한다. 모양(각진
 		   4px, sans)은 일부러 다르게 둔다 — 이건 식별자가 아니라 분류 라벨이다. */
@@ -927,7 +927,7 @@
 		height: 1.375rem;
 		padding: 0 var(--sp-6);
 		box-sizing: border-box;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		border: var(--bw) solid transparent;
 	}
 	/* 타입별 색 — QuestBoard / 문서 톤과 맞춤. */
@@ -1102,7 +1102,7 @@
 	.dp-title {
 		flex: 1;
 		font-size: var(--fs-md);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 		overflow: hidden;
 		text-overflow: ellipsis;

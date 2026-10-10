@@ -134,7 +134,7 @@
 	.toggle-icon {
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		transition: transform 0.12s;
+		transition: transform var(--dur-fast);
 		display: inline-block;
 	}
 	.toggle-icon.collapsed {
@@ -142,7 +142,7 @@
 	}
 	.bl-title {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -187,7 +187,7 @@
 	.bl-kind {
 		flex: none;
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		border-radius: var(--r-sm);
 		padding: var(--sp-2) var(--sp-6);
 		color: var(--text-muted);
@@ -238,8 +238,8 @@
 		border-radius: var(--r-pill);
 		font-family: var(--font-mono);
 		font-size: var(--fs-xs);
-		font-weight: 600;
-		line-height: 1;
+		font-weight: var(--fw-semibold);
+		line-height: var(--lh-tight);
 		white-space: nowrap;
 		color: var(--bl-c, var(--accent));
 		background: color-mix(in srgb, var(--bl-c, var(--accent)) 16%, transparent);

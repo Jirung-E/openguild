@@ -684,11 +684,11 @@
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.qb-new:hover {
 		background: var(--btn-primary-bg-hover);
@@ -696,7 +696,7 @@
 	}
 	.qb-new-icon {
 		font-size: 0.95rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 
 	.list {
@@ -795,8 +795,8 @@
 		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.vt-btn:hover {
 		color: var(--text);
@@ -807,6 +807,6 @@
 	}
 	.vt-icon {
 		font-size: 0.95rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 </style>

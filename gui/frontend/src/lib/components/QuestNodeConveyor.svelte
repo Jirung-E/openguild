@@ -335,9 +335,9 @@
 		width: 1.8rem;
 		height: 1.8rem;
 		font-size: var(--fs-md);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
-		transition: background 0.15s;
+		transition: background var(--dur-fast);
 	}
 	.play-pause:hover {
 		background: var(--bg-subtle);

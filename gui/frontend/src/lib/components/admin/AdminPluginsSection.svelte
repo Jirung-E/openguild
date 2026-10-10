@@ -880,7 +880,7 @@
 		margin: 0;
 		font-size: var(--fs-md);
 		color: var(--text);
-		line-height: 1.45;
+		line-height: var(--lh-snug);
 		/* 500자까지 허용하는데 그 안에 공백 없는 긴 토큰(주소 등)이 있으면 상자를
 		   넘는다 — `.plugin-target` 이 같은 이유로 break-all 을 쓴다. 이쪽은 산문
 		   이므로 어절을 먼저 지키는 anywhere 를 쓴다. */
@@ -906,7 +906,7 @@
 		margin: 0;
 		font-size: var(--fs-sm);
 		color: var(--text-muted);
-		line-height: 1.5;
+		line-height: var(--lh-body);
 	}
 	.plugin-inputs {
 		display: flex;
@@ -999,7 +999,7 @@
 		margin: 0;
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 		overflow-wrap: anywhere;
 	}
 	/* BUG-335: `help` 에 처방(명령 한 줄)을 그대로 싣는 것이 낫다는 결론이 났다 — README 를
@@ -1091,9 +1091,9 @@
 		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			color 0.15s,
-			border-color 0.15s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.btn-plain {
 		background: transparent;
@@ -1129,7 +1129,7 @@
 	}
 	.plugin.fresh {
 		/* DEV-400: 방금 더한 것 — 여기서 읽고 허용하라는 표시. */
-		box-shadow: 0 0 0 calc(var(--bw) * 2) var(--accent);
+		box-shadow: var(--ring);
 	}
 	.plugin.broken-src {
 		border-color: var(--danger);
@@ -1157,7 +1157,7 @@
 		gap: var(--sp-8);
 	}
 	.sp-name {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		overflow-wrap: anywhere;
 	}
 	.sp-used {

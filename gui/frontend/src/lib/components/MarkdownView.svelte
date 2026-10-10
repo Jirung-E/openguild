@@ -431,7 +431,7 @@
 		padding: var(--sp-12) var(--sp-16);
 		color: var(--text);
 		font-size: var(--fs-md);
-		line-height: 1.55;
+		line-height: var(--lh-body);
 		/* BUG-039: 자식 (긴 링크 / inline code 등) 이 컨테이너 폭을 못 넘게. */
 		max-width: 100%;
 		overflow-wrap: anywhere;
@@ -514,7 +514,7 @@
 		font-style: italic;
 	}
 	.md :global(.hljs-strong) {
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 	}
 	.md :global(blockquote) {
 		border-left: 3px solid var(--border);
@@ -532,7 +532,7 @@
 	}
 	/* DEV-140: cross-link 칩 — 인라인 ID 링크. 미존재 ID 는 빨강. */
 	.md :global(a.xlink) {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		text-decoration: none;
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 30%, transparent);

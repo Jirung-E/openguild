@@ -47,7 +47,7 @@ function createPopup(text: string, anchor: HTMLElement) {
 		'background:var(--bg-elevated)',
 		'color:var(--text)',
 		'border:var(--bw) solid var(--border)',
-		'box-shadow:0 6px 20px rgba(0,0,0,0.35)',
+		'box-shadow:var(--shadow-md)',
 		'font-size:0.78rem',
 		'line-height:1.4',
 		'white-space:pre-wrap',

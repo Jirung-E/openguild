@@ -586,8 +586,8 @@
 		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			color 0.15s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.tab:hover {
 		background: var(--bg-elevated);
@@ -596,7 +596,7 @@
 	.tab.active {
 		background: var(--bg-subtle);
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.panel {
 		flex: 1;
@@ -674,7 +674,7 @@
 		color: var(--text);
 		font-size: var(--fs-md);
 		cursor: pointer;
-		transition: background 0.15s;
+		transition: background var(--dur-fast);
 	}
 	button:hover:not(:disabled) {
 		background: var(--border);
@@ -725,7 +725,7 @@
 	}
 	th {
 		color: var(--text-muted);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		font-size: var(--fs-md);
 	}
 	td code {
@@ -739,7 +739,7 @@
 	}
 	.ok {
 		color: var(--success-strong);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 	.hint {
 		color: var(--text-muted);
@@ -749,7 +749,7 @@
 	/* BUG-188: 백업 범위 안내는 목록 위에 오므로 아래 여백으로 목록과 띄운다. */
 	.hint.scope {
 		margin: 0 0 var(--sp-12);
-		line-height: 1.5;
+		line-height: var(--lh-body);
 	}
 	.drift-report ul {
 		margin: var(--sp-4) 0 var(--sp-12) var(--sp-16);

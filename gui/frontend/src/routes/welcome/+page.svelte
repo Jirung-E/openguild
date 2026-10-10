@@ -680,9 +680,9 @@
 		border: var(--bw) solid var(--border);
 		font-size: var(--fs-lg);
 		transition:
-			background 0.1s,
-			color 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	/* BUG-275: 빠른 메뉴가 열려 있으면 눌린 모양 — 표시는 있었는데 스타일이 없었다. */
 	.settings-link:hover,
@@ -716,12 +716,12 @@
 		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 1.2rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 		transition:
-			border-color 0.12s,
-			color 0.12s,
-			background 0.12s;
+			border-color var(--dur-fast),
+			color var(--dur-fast),
+			background var(--dur-fast);
 	}
 	.recent-remove:hover {
 		border-color: var(--danger);
@@ -754,8 +754,8 @@
 		grid-template-columns: 1fr;
 		gap: var(--sp-4);
 		transition:
-			border-color 0.12s,
-			background 0.12s;
+			border-color var(--dur-fast),
+			background var(--dur-fast);
 	}
 	.recent-list .recent-row:not(.missing) .recent-btn:hover:not(:disabled) {
 		border-color: var(--accent);
@@ -772,7 +772,7 @@
 		gap: var(--sp-16);
 	}
 	.recent-btn .name {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		font-size: var(--fs-lg);
 	}
 	.recent-btn .last {
@@ -854,9 +854,9 @@
 		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: var(--fs-md);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		cursor: pointer;
-		transition: background 0.12s;
+		transition: background var(--dur-fast);
 		flex: 0 0 auto;
 	}
 	.btn-pick:hover:not(:disabled) {
@@ -1003,13 +1003,13 @@
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: var(--sp-16) var(--sp-24);
-		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		box-shadow: var(--shadow-lg);
 		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-8);
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.modal-msg {

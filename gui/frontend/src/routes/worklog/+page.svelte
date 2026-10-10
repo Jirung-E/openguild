@@ -654,7 +654,7 @@
 		align-items: center;
 		gap: 0.35em;
 		font-size: var(--fs-xl);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		margin: 0;
 	}
 	.controls {
@@ -707,7 +707,7 @@
 	}
 	.range-label {
 		font-size: var(--fs-md);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		min-width: 7.5rem;
 		text-align: center;
 	}
@@ -811,12 +811,12 @@
 		padding: 0;
 		cursor: pointer;
 		color: var(--text-muted);
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 	.toggle-icon {
 		font-size: var(--fs-xs);
 		display: inline-block;
-		transition: transform 0.12s;
+		transition: transform var(--dur-fast);
 	}
 	.toggle-icon.collapsed {
 		transform: rotate(-90deg);
@@ -926,7 +926,7 @@
 	}
 	.totals b {
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.totals .right {
 		margin-left: auto;

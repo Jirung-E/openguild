@@ -850,7 +850,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+		box-shadow: var(--shadow-lg);
 		padding: var(--sp-4);
 		z-index: 1200;
 	}
@@ -1016,9 +1016,9 @@
 	.tb-winicon {
 		font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', sans-serif;
 		font-size: 10px;
-		font-weight: 400;
+		font-weight: var(--fw-regular);
 		font-style: normal;
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 	/* Linux: 백엔드가 조회해 온 실제 시스템 심볼릭 SVG 를 CSS mask 로 그림 —
 	   background:currentColor 라 버튼 텍스트색(= 앱 다크/라이트 테마)을 그대로

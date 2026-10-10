@@ -112,7 +112,7 @@
 		padding-right: var(--sp-24);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 		cursor: pointer;
-		transition: background 0.1s;
+		transition: background var(--dur-fast);
 	}
 
 	.item:hover {
@@ -158,7 +158,7 @@
 	}
 	.cc-icon {
 		font-size: var(--fs-xs);
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 	/* DEV-142 후속: 토론 댓글 pill — 일반 댓글과 색으로 구분. */
 	.discussion-count {
@@ -169,7 +169,7 @@
 		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.discussion-count.unresolved {
 		color: var(--danger);
@@ -183,15 +183,15 @@
 	}
 	.dc-icon {
 		font-size: var(--fs-md);
-		line-height: 1;
-		font-weight: 700;
+		line-height: var(--lh-tight);
+		font-weight: var(--fw-bold);
 	}
 	/* BUG-060 후속: 범위 밖 urgency 경고 — 빨간 ⚠. */
 	.urgency-warn {
 		flex-shrink: 0;
 		color: var(--danger);
 		font-size: var(--fs-md);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: help;
 	}
 

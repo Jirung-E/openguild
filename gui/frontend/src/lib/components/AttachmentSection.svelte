@@ -573,7 +573,7 @@
 		border: none;
 		padding: 0 var(--sp-4);
 		font-size: var(--fs-sm);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -626,7 +626,7 @@
 	.up-fill.determinate {
 		width: 0;
 		animation: none;
-		transition: width 0.15s linear;
+		transition: width var(--dur-fast) linear;
 	}
 	.up-pct {
 		flex: 0 0 auto;
@@ -653,7 +653,7 @@
 	}
 	.count {
 		color: var(--text-muted);
-		font-weight: 400;
+		font-weight: var(--fw-regular);
 	}
 	.head-actions {
 		display: flex;
@@ -759,7 +759,7 @@
 		background: color-mix(in srgb, var(--bg) 78%, transparent);
 		color: var(--text-muted);
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		letter-spacing: 0.02em;
 		pointer-events: none;
 	}
@@ -780,7 +780,7 @@
 		color: white;
 		cursor: pointer;
 		font-size: var(--fs-md);
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 	.dl:hover {
 		background: var(--accent);
@@ -801,6 +801,6 @@
 		color: white;
 		cursor: pointer;
 		font-size: 0.95rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 </style>

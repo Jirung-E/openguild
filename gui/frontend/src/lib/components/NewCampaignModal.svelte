@@ -153,8 +153,8 @@
 		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(35rem * var(--popup-scale, 1));
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
-		animation: modal-in 0.18s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
+		box-shadow: var(--shadow-lg);
+		animation: modal-in var(--dur-mid) cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;
 	}
 	@keyframes modal-in {
@@ -184,7 +184,7 @@
 		border: none;
 		color: var(--text-muted);
 		font-size: 1.2rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 	}
 	.close-btn:hover {

@@ -354,7 +354,7 @@
 	}
 	h1 {
 		font-size: var(--fs-xl);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		color: var(--text-strong);
 	}
 	.count {
@@ -415,7 +415,7 @@
 	}
 	.chip {
 		font-size: var(--fs-md);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-sm);
@@ -436,7 +436,7 @@
 		flex: none;
 		width: 0.6rem;
 		color: var(--text-faint);
-		transition: transform 0.15s;
+		transition: transform var(--dur-fast);
 	}
 	.chev.open {
 		transform: rotate(90deg);
@@ -554,7 +554,7 @@
 		min-width: 3.4rem;
 		text-align: center;
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		border-radius: var(--r-sm);
 		padding: var(--sp-2) var(--sp-6);
 	}

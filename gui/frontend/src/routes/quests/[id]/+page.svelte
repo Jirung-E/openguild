@@ -1606,8 +1606,8 @@
 		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.btn-edit:hover {
 		background: var(--border);
@@ -1629,7 +1629,7 @@
 		color: var(--danger);
 		font-size: var(--fs-sm);
 		cursor: pointer;
-		transition: background 0.1s;
+		transition: background var(--dur-fast);
 	}
 	.btn-delete:hover {
 		background: rgba(233, 79, 79, 0.1);
@@ -1691,10 +1691,10 @@
 
 	.title {
 		font-size: var(--fs-xl);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 		margin: 0 0 var(--sp-16);
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 	}
 
 	.branch-label {
@@ -1728,9 +1728,9 @@
 		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
-			background 0.12s,
-			color 0.12s,
-			transform 0.12s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			transform var(--dur-fast);
 	}
 	.status-btn:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--c) 15%, transparent);
@@ -1739,7 +1739,7 @@
 	.status-btn.active {
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		cursor: default;
 	}
 	.status-btn:disabled:not(.active) {
@@ -1749,7 +1749,7 @@
 	.status-btn.flash {
 		background: color-mix(in srgb, var(--c) 32%, transparent);
 		color: var(--c);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		transform: scale(1.04);
 	}
 
@@ -1798,7 +1798,7 @@
 	   되어 입력값이 대문자로 보임. */
 	.field-label {
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 		margin-top: var(--sp-8);
 	}
@@ -1861,22 +1861,22 @@
 	}
 	.field-label .hint {
 		color: var(--text-faint);
-		font-weight: 400;
+		font-weight: var(--fw-regular);
 		font-size: 0.8em;
 	}
 	.due-required {
 		color: var(--orange);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.due-desired {
 		color: var(--accent);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
 	.due-required.overdue,
 	.due-desired.overdue {
 		color: var(--danger);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 	}
 	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 	.save-error {
@@ -1927,7 +1927,7 @@
 	}
 	.section-title {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -1986,7 +1986,7 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		padding: 0 0 0 var(--sp-2);
 	}
 	.tag-rm:hover {
@@ -2066,7 +2066,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-md);
 	}
 	.rel-menu-title {
 		font-size: var(--fs-xs);
@@ -2157,7 +2157,7 @@
 		flex: 1;
 		padding: var(--sp-8) var(--sp-16);
 		text-decoration: none;
-		transition: background 0.1s;
+		transition: background var(--dur-fast);
 	}
 	.prereq-row :global(.prereq-link:hover) {
 		background: var(--bg-elevated);
@@ -2169,7 +2169,7 @@
 		color: var(--text-faint);
 		font-size: 1rem;
 		cursor: pointer;
-		transition: color 0.1s;
+		transition: color var(--dur-fast);
 		flex-shrink: 0;
 	}
 	.prereq-rm:hover {
@@ -2195,7 +2195,7 @@
 		padding: var(--sp-2) var(--sp-8);
 		border-radius: var(--r-pill);
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--danger);
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
 		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
@@ -2240,7 +2240,7 @@
 		max-height: 92dvh;
 		overflow-y: auto;
 		padding: var(--sp-16) var(--sp-16) var(--sp-16);
-		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		box-shadow: var(--shadow-lg);
 	}
 	/* BUG-160: 콤보박스 팝업은 "목록"이 본문이라 확인 모달용 30rem 로는 좁다 —
 	   퀘스트 제목이 잘리고 후보가 스크롤 뒤로 숨었다(사용자 지적). 넓은 변형을
@@ -2257,7 +2257,7 @@
 	.modal-head h3 {
 		margin: 0;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.x {
@@ -2265,7 +2265,7 @@
 		border: none;
 		color: var(--text-faint);
 		font-size: 1.2rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);
 	}
@@ -2321,7 +2321,7 @@
 		margin: 0;
 		font-size: var(--fs-sm);
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.del-sub-help {
 		margin: 0 0 var(--sp-8);
@@ -2427,13 +2427,13 @@
 		border-radius: var(--r-pill);
 		color: var(--text);
 		font-size: var(--fs-md);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		cursor: pointer;
-		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+		box-shadow: var(--shadow-sm);
 		transition:
-			background 0.12s,
-			border-color 0.12s,
-			transform 0.12s;
+			background var(--dur-fast),
+			border-color var(--dur-fast),
+			transform var(--dur-fast);
 	}
 	.jump-btn:hover {
 		background: var(--bg-subtle);
@@ -2442,11 +2442,11 @@
 	}
 	.jump-btn .jb-icon {
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--accent);
 	}
 	.jump-btn .jb-label {
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 
 	/* admin 요청: 좁은 화면에서 `SLUG 배지들` / `제목` 2단으로.

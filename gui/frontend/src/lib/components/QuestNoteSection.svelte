@@ -302,7 +302,7 @@
 	.toggle-icon {
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		transition: transform 0.12s;
+		transition: transform var(--dur-fast);
 		display: inline-block;
 	}
 	.toggle-icon.collapsed {
@@ -310,11 +310,11 @@
 	}
 	.section-title {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		margin: 0;
-		transition: color 0.12s;
+		transition: color var(--dur-fast);
 	}
 	.section-title.note-memo {
 		color: var(--warning);

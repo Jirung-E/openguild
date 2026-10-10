@@ -864,8 +864,8 @@
 		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			color 0.15s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.tab:hover {
 		background: var(--bg-elevated);
@@ -874,7 +874,7 @@
 	.tab.active {
 		background: var(--bg-subtle);
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 
 	.panel {
@@ -949,8 +949,8 @@
 		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			color 0.15s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.btn-check-upd:hover:not(:disabled) {
 		background: var(--bg-subtle);
@@ -964,7 +964,7 @@
 	/* DEV-207: '정보' 탭의 원격 서버 주소 강조. */
 	.remote-active {
 		color: var(--accent);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 
 	/* DEV-101 fix6: 탭 분리 후 h2.section 구분선 불필요 — 비워둠. */
@@ -1051,7 +1051,7 @@
 		min-width: 7ch;
 		color: var(--accent);
 		font-size: var(--fs-md);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.ui-scale .btn-reset {
 		padding: var(--sp-4) var(--sp-8);
@@ -1107,8 +1107,8 @@
 		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.th-btn:hover {
 		color: var(--text);
@@ -1124,7 +1124,7 @@
 	.th-btn.custom.active {
 		background: var(--bg-subtle);
 		color: var(--accent);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.th-btn.danger {
 		color: var(--danger);

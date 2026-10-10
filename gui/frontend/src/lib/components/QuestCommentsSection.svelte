@@ -1690,7 +1690,7 @@
 	.toggle-icon {
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
-		transition: transform 0.12s;
+		transition: transform var(--dur-fast);
 		display: inline-block;
 	}
 	.toggle-icon.collapsed {
@@ -1698,12 +1698,12 @@
 	}
 	.section-title {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		margin: 0;
 		color: var(--accent);
-		transition: color 0.12s;
+		transition: color var(--dur-fast);
 	}
 	.count {
 		font-size: var(--fs-sm);
@@ -1748,7 +1748,7 @@
 	/* DEV-214: 접힘 지점(스레드/본문/섹션)의 토론 상태 글리프 — DEV-150 글리프 재사용. */
 	.disc-flag {
 		font-size: var(--fs-xs);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 	}
 	.disc-flag.unresolved {
 		color: var(--danger);
@@ -1826,7 +1826,7 @@
 		0%,
 		35% {
 			background: color-mix(in srgb, var(--accent) 18%, transparent);
-			box-shadow: 0 0 0 2px var(--accent);
+			box-shadow: var(--ring);
 		}
 		100% {
 			background: transparent;
@@ -1836,7 +1836,7 @@
 	@media (prefers-reduced-motion: reduce) {
 		.entry:global(.jump-target) {
 			animation: none;
-			box-shadow: 0 0 0 2px var(--accent);
+			box-shadow: var(--ring);
 		}
 	}
 	/* DEV-234 후속(admin 요청): 답글도 고정 가능 — root 는 entry-card.pinned 로
@@ -1919,7 +1919,7 @@
 	}
 
 	.author {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text);
 	}
 	.sep {
@@ -2002,7 +2002,7 @@
 		border: none;
 		cursor: pointer;
 		font-size: var(--fs-md);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text);
 		padding: var(--sp-2) var(--sp-4);
 	}
@@ -2031,7 +2031,7 @@
 	/* DEV-234: 상단 고정 버튼 — 꺼짐 상태는 흐리게, 켜지면 강조색 채움. */
 	.pin-btn {
 		font-size: var(--fs-xs);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text-faint);
 		background: transparent;
 		cursor: pointer;
@@ -2081,7 +2081,7 @@
 	.reaction-pill .rc {
 		margin-left: var(--sp-4);
 		font-size: var(--fs-xs);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		color: var(--text-muted);
 	}
 	.picker-wrap {
@@ -2119,7 +2119,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 6px 18px var(--shadow);
+		box-shadow: var(--shadow-md);
 		min-width: 9rem;
 	}
 	.picker-row {
@@ -2161,7 +2161,7 @@
 		background: color-mix(in srgb, var(--danger) 85%, transparent);
 		color: white;
 		font-size: var(--fs-xs);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 	}
 	.picker-item-wrap:hover .picker-item-rm {
@@ -2232,7 +2232,7 @@
 	/* DEV-142: '토론' 토글 활성 표시. */
 	.link-btn.on {
 		color: var(--warning);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 	}
 
 	/* DEV-142: 토론 상태 배지 — 미해결(빨강) / 해결(초록). */
@@ -2244,7 +2244,7 @@
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
 		color: var(--danger);
 		font-size: var(--fs-xs);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		cursor: pointer;
 		white-space: nowrap;
 	}

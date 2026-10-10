@@ -145,7 +145,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-md);
 	}
 	.wiki-pop::-webkit-scrollbar {
 		display: none;

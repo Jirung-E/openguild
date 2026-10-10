@@ -282,8 +282,8 @@
 		text-align: left;
 		cursor: pointer;
 		transition:
-			border-color 0.15s,
-			background 0.15s;
+			border-color var(--dur-fast),
+			background var(--dur-fast);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-8);
@@ -377,15 +377,15 @@
 	}
 	.done-mark {
 		font-size: var(--fs-xs);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		color: var(--success);
 		letter-spacing: 0.02em;
 	}
 	.title {
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text);
-		line-height: 1.3;
+		line-height: var(--lh-snug);
 	}
 	.title.small {
 		font-size: var(--fs-md);
@@ -393,7 +393,7 @@
 	/* BUG-027: active 카드의 title 도 더 크게. */
 	.card.active .title {
 		font-size: var(--fs-lg);
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 	}
 
 	.meta {
@@ -414,15 +414,15 @@
 	   modifier 로 빨강. upcoming 의 accent 는 종전대로 파랑. */
 	.remaining {
 		color: var(--text-muted);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 	.remaining.urgent {
 		color: var(--danger);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.remaining.accent {
 		color: var(--accent);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.start-date {
 		color: var(--text-faint);
@@ -457,8 +457,8 @@
 		height: 100%;
 		background: var(--accent);
 		transition:
-			width 0.2s,
-			background 0.2s;
+			width var(--dur-mid),
+			background var(--dur-mid);
 	}
 	/* BUG-025: 100% 시 초록 */
 	.progress-fill.done {
@@ -478,7 +478,7 @@
 		padding: var(--sp-6) var(--sp-8);
 		font-size: var(--fs-xs);
 		z-index: 50;
-		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
+		box-shadow: var(--shadow-sm);
 		pointer-events: none;
 		display: flex;
 		flex-direction: column;
@@ -498,7 +498,7 @@
 	}
 	.tooltip-name {
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.tooltip-count {
 		color: var(--text-muted);
@@ -510,6 +510,6 @@
 	}
 	.progress-text.done-text {
 		color: var(--success);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 </style>

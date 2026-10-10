@@ -168,7 +168,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-md);
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
@@ -183,7 +183,7 @@
 	.lp-kind {
 		flex: none;
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		border-radius: var(--r-sm);
 		padding: 0.08rem var(--sp-6);
 		color: var(--accent);
@@ -205,7 +205,7 @@
 	.lp-title {
 		flex: 1;
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 		overflow: hidden;
 		text-overflow: ellipsis;

@@ -296,7 +296,7 @@
 		color: var(--text-muted);
 		font-size: var(--fs-sm);
 		cursor: pointer;
-		transition: all 0.15s;
+		transition: all var(--dur-fast);
 	}
 
 	button:hover {
@@ -348,7 +348,7 @@
 		font-size: var(--fs-sm);
 		min-width: 12.5rem; /* BUG-064 */
 		outline: none;
-		transition: border-color 0.15s;
+		transition: border-color var(--dur-fast);
 	}
 	.search-input:focus {
 		border-color: var(--accent);
@@ -365,7 +365,7 @@
 		background: transparent;
 		color: var(--text-faint);
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 	}
 	.search-clear:hover {

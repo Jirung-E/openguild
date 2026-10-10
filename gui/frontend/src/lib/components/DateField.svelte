@@ -278,7 +278,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+		box-shadow: var(--shadow-md);
 		user-select: none;
 	}
 	.df-nav {
@@ -290,7 +290,7 @@
 	}
 	.df-head {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 		white-space: nowrap;
 	}

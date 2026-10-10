@@ -203,7 +203,7 @@
 
 	   글꼴 굵기는 모양 공식이 아니라 화면 사정이라 `check:pill` 이 막지 않는다. */
 	.pill.sm {
-		font-weight: 400;
+		font-weight: var(--fw-regular);
 	}
 	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본. */
 	.title {

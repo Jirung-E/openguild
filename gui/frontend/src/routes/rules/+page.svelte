@@ -668,7 +668,7 @@
 	}
 	.sidebar-head h2 {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--text-muted);
@@ -773,7 +773,7 @@
 		margin-top: var(--sp-2);
 		color: var(--text-muted);
 		font-size: var(--fs-xs);
-		line-height: 1.35;
+		line-height: var(--lh-snug);
 	}
 	.rule-item.active {
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -792,7 +792,7 @@
 	}
 	.slug-title {
 		font-size: var(--fs-xl);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text);
 		margin: 0;
 	}

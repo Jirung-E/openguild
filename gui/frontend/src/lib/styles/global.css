@@ -32,6 +32,12 @@
 	--warning: #f5a623;
 	--danger: #f85149;
 	--shadow: rgba(0, 0, 0, 0.5);
+	/* DEV-427: 떠 있는 것의 그림자 3단계 — 38가지를 흐림 정도로 묶었다(≤16px sm, ≤30px md, 그 위 lg).
+	   예전엔 라이트에서도 rgba(0,0,0,0.6) 을 그대로 써서 라이트 팝업 그림자가 지나치게 진했다 —
+	   테마마다 진하기를 따로 둔다. 보드의 강조 빛 · 안쪽 테두리(inset)는 표시라서 대상이 아니다. */
+	--shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
+	--shadow-md: 0 8px 28px rgba(0, 0, 0, 0.45);
+	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
 	/* REQ-014: 검색 발췌에서 걸린 부분 표시(<mark>).
 	   브라우저 기본 mark 는 노란 배경 + **검정 글자** 고정이라 다크에서 튄다.
 	   `--warning` 을 재사용하지 않는다 — 경고가 아니라 검색 일치라 의미가 다르고,
@@ -75,6 +81,21 @@
 	--sp-16: 1rem;
 	--sp-24: 1.5rem;
 	--sp-32: 2rem;
+	/* DEV-427: 초점 · 고른 것 테두리 링. 두께는 배율을 따라간다. */
+	--ring: 0 0 0 calc(var(--bw) * 2) var(--accent);
+	/* DEV-427: 움직임 — 시간 3개. 0.1 ~ 0.15s 는 fast, 0.18 ~ 0.2s 는 mid. 무한 반복 애니메이션은 대상 아님.
+	   동작 줄이기 설정이면 0 (아래 prefers-reduced-motion). */
+	--dur-fast: 0.12s; /* 마우스 올림 · 색 · 배경 · 테두리 */
+	--dur-mid: 0.2s; /* 펼치기 · 폭 · 모달 등장 */
+	--dur-slow: 0.4s; /* 눈에 띄게 할 때만 */
+	/* DEV-427: 굵기 4단계(800 · bold 는 bold 로), 줄 간격 3단계. */
+	--fw-regular: 400;
+	--fw-medium: 500;
+	--fw-semibold: 600;
+	--fw-bold: 700;
+	--lh-tight: 1; /* 한 줄짜리 버튼 · 알약 */
+	--lh-snug: 1.35; /* 목록 · 카드 · 설명 (1.2 ~ 1.45) */
+	--lh-body: 1.6; /* 긴 글 · 문서 본문 (1.5 ~ 1.6) */
 	/* 글꼴 단일 출처. 컴포넌트는 `var(--font-sans)` / `var(--font-mono)` 만 쓰고
 	   스택을 직접 적지 않는다 — `check:font` 가 막는다.
 
@@ -159,6 +180,9 @@
 	--warning: #9a6700;
 	--danger: #cf222e;
 	--shadow: rgba(140, 149, 159, 0.3);
+	--shadow-sm: 0 4px 14px rgba(31, 35, 40, 0.12);
+	--shadow-md: 0 8px 28px rgba(31, 35, 40, 0.16);
+	--shadow-lg: 0 16px 48px rgba(31, 35, 40, 0.22);
 	/* REQ-014: 라이트는 흰 바탕이라 형광펜에 가까운 밝은 노랑 + 진한 글자. */
 	--search-hit-bg: #fff3c4;
 	--search-hit-text: #4a3800;
@@ -237,7 +261,7 @@ body {
 	/* BUG-257: html 과 같이 고정 — 안쪽 `main` 만 스크롤한다. */
 	height: 100%;
 	overflow: hidden;
-	line-height: 1.6;
+	line-height: var(--lh-body);
 }
 
 /* BUG-264: 터치 기기에서는 **문서가 다시 스크롤한다.**
@@ -542,6 +566,11 @@ input[type='checkbox']:disabled {
 /* 모션을 줄이도록 설정한 사용자에겐 페이드 없이 즉시 — 대신 균일하게 즉시라
    시간차 문제는 그대로 해결된다. */
 @media (prefers-reduced-motion: reduce) {
+	:root {
+		--dur-fast: 0s;
+		--dur-mid: 0s;
+		--dur-slow: 0s;
+	}
 	:root.theme-switching *,
 	:root.theme-switching *::before,
 	:root.theme-switching *::after {

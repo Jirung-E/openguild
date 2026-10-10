@@ -293,11 +293,11 @@
 		border-radius: var(--r-lg);
 		border: var(--bw) solid var(--border);
 		background: var(--bg-elevated);
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+		box-shadow: var(--shadow-md);
 		color: var(--text);
 		font-size: var(--fs-md);
 		pointer-events: auto;
-		animation: notif-in 0.18s ease-out;
+		animation: notif-in var(--dur-mid) ease-out;
 	}
 	@keyframes notif-in {
 		from {
@@ -317,7 +317,7 @@
 		border: none;
 		color: var(--text-faint);
 		font-size: 1.1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);
 	}
@@ -329,7 +329,7 @@
 	.toast {
 		padding: var(--sp-12) var(--sp-16);
 		border-left: 3px solid var(--accent);
-		line-height: 1.45;
+		line-height: var(--lh-snug);
 		cursor: pointer;
 		white-space: pre-wrap;
 	}
@@ -345,7 +345,7 @@
 	.toast .count {
 		margin-left: var(--sp-6);
 		font-size: var(--fs-xs);
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		color: var(--text-muted);
 		background: color-mix(in srgb, var(--text) 10%, transparent);
 		border-radius: var(--r-pill);
@@ -373,7 +373,7 @@
 	}
 	.upd .t-title {
 		margin: 0;
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.upd .t-title.ok {
 		color: var(--success);
@@ -434,7 +434,7 @@
 		gap: var(--sp-4);
 	}
 	.schema .msg strong {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--orange);
 	}
 	.schema .detail {
@@ -456,7 +456,7 @@
 		border-radius: var(--r-sm);
 		padding: var(--sp-4) var(--sp-12);
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		cursor: pointer;
 	}
 	.schema .btn-update:hover {

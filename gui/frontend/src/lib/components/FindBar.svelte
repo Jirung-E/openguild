@@ -286,7 +286,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+		box-shadow: var(--shadow-sm);
 	}
 	.find-input {
 		width: 12rem;

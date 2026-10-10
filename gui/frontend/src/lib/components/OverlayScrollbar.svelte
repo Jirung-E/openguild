@@ -256,9 +256,9 @@
 		cursor: pointer;
 		opacity: 0;
 		transition:
-			opacity 0.2s,
-			width 0.12s,
-			background 0.12s;
+			opacity var(--dur-mid),
+			width var(--dur-fast),
+			background var(--dur-fast);
 		touch-action: none;
 	}
 	.overlay-thumb.visible,

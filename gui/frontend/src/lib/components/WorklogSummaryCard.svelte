@@ -185,7 +185,7 @@
 		align-items: center;
 		gap: 0.35em;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		margin: 0;
 	}
 	.range {
@@ -257,7 +257,7 @@
 	}
 	.today b {
 		color: var(--text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.today .lbl {
 		color: var(--text-muted);

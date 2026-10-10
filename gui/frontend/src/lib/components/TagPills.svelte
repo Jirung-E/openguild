@@ -116,7 +116,7 @@
 	}
 	.section-title {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -157,7 +157,7 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		padding: 0 0 0 var(--sp-2);
 	}
 	.tag-rm:hover {

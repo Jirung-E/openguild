@@ -2064,7 +2064,7 @@
 	}
 	.sidebar-head h2 {
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--text-muted);
@@ -2172,7 +2172,7 @@
 	}
 	.page-title {
 		font-size: var(--fs-xl);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		margin: 0;
 	}
 	/* DEV-419 → BUG-305: 고른 것이 있을 때 뜨는 줄.
@@ -2192,7 +2192,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 8px 28px var(--shadow);
+		box-shadow: var(--shadow-md);
 	}
 	.picked-count {
 		font-size: var(--fs-md);
@@ -2249,7 +2249,7 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		font-size: var(--fs-sm);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		padding: var(--sp-4) var(--sp-6);
 	}
 	.btn-up:hover:not(:disabled) {
@@ -2275,7 +2275,7 @@
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: var(--fs-xs);
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 		padding: var(--sp-2) var(--sp-8);
 		cursor: pointer;
 		white-space: nowrap;
@@ -2355,7 +2355,7 @@
 		background: var(--bg-elevated);
 		color: var(--text-muted);
 		font-size: var(--fs-xs);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 	}
 	.tile-wrap:hover .tile-act,
@@ -2376,7 +2376,7 @@
 	.tile-label {
 		font-size: var(--fs-xs);
 		text-align: center;
-		line-height: 1.3;
+		line-height: var(--lh-snug);
 		/* ★ BUG-153 (진짜 원인, 사용자 검증 완료): global.css 의
 		   `button { white-space: nowrap }`(BUG-143 — CJK 버튼 라벨이 두 줄 되는
 		   것 방지)이 `.tile`(=<button>)에서 이 라벨로 **상속**돼 줄바꿈이 원천
@@ -2418,7 +2418,7 @@
 	}
 	.doc-title {
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text);
 		margin: 0;
 		display: flex;
@@ -2433,7 +2433,7 @@
 		overflow-wrap: anywhere;
 	}
 	.doc-title-text {
-		line-height: 1.3;
+		line-height: var(--lh-snug);
 	}
 	.doc-id {
 		font-family: var(--font-mono);

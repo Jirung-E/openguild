@@ -169,7 +169,7 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		font-size: var(--fs-xs);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		padding: var(--sp-2);
 		width: 1rem;
 		text-align: center;

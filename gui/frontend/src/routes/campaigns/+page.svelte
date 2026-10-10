@@ -337,7 +337,7 @@
 		height: 100%;
 		border-radius: var(--r-xs);
 		background: var(--accent);
-		transition: width 0.2s;
+		transition: width var(--dur-mid);
 	}
 	.prog-fill.done {
 		background: var(--success);
@@ -387,7 +387,7 @@
 	/* DEV-079: 기한 지남 + status != done — 빨강. */
 	.period.overdue {
 		color: var(--danger);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 
 	.reorder {

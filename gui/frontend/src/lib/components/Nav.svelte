@@ -577,8 +577,8 @@
 		flex: none;
 		white-space: nowrap;
 		transition:
-			background 0.15s,
-			color 0.15s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 
 	/* DEV-260: 측정 전용 숨김 사본 — 흐름/화면 밖, 폭만 정확하게. */
@@ -607,7 +607,7 @@
 		height: 1.9rem;
 		border-radius: var(--r-md);
 		font-size: 1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		background: transparent;
 		border: none;
@@ -631,7 +631,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-md);
 		z-index: 300;
 	}
 	.more-menu a {
@@ -680,16 +680,16 @@
 		height: 2rem;
 		border-radius: var(--r-md);
 		font-size: 1.1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		text-decoration: none;
 		transition:
-			background 0.15s,
-			color 0.15s,
-			transform 0.2s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			transform var(--dur-mid);
 	}
 	.btn-settings:hover {
 		background: var(--nav-hover-bg);
@@ -795,8 +795,8 @@
 		border: none;
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			color 0.15s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	/* 아이콘 크기는 마크업의 width/height 속성(px)이라 배율을 안 탄다 — CSS 로 덮는다. */
 	.nav-icon-btn svg {
@@ -822,15 +822,15 @@
 		height: 2rem;
 		border-radius: var(--r-md);
 		font-size: 1.05rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text-muted);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		transition:
-			background 0.15s,
-			color 0.15s,
-			transform 0.4s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			transform var(--dur-slow);
 	}
 	.btn-reindex:hover:not(:disabled) {
 		background: var(--nav-hover-bg);

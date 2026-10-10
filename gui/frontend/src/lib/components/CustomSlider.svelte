@@ -266,7 +266,7 @@
 		background: var(--accent);
 		border: 2px solid var(--bg);
 		transform: translate(-50%, -50%);
-		transition: box-shadow 0.1s;
+		transition: box-shadow var(--dur-fast);
 	}
 	.slider.dragging .thumb {
 		box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);

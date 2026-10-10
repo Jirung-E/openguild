@@ -124,7 +124,7 @@
 	.tag-toggle-icon {
 		display: inline-block;
 		font-size: var(--fs-xs);
-		transition: transform 0.12s;
+		transition: transform var(--dur-fast);
 	}
 	.tag-toggle-icon.collapsed {
 		transform: rotate(-90deg);

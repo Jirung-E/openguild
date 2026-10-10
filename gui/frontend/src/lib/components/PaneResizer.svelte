@@ -138,7 +138,7 @@
 		height: 2.5rem;
 		border-radius: var(--r-pill);
 		background: transparent;
-		transition: background 0.12s;
+		transition: background var(--dur-fast);
 	}
 	.pane-resizer:hover::before {
 		background: var(--text-faint);

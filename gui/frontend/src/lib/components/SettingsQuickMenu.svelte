@@ -195,7 +195,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
-		box-shadow: 0 10px 30px var(--shadow);
+		box-shadow: var(--shadow-md);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);

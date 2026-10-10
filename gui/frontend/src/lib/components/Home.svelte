@@ -399,13 +399,13 @@
 	}
 	.block h2 {
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text);
 		margin: 0 0 var(--sp-6) 0;
 	}
 	.block h3 {
 		font-size: var(--fs-sm);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		color: var(--text-muted);
 		margin: var(--sp-16) 0 var(--sp-4) 0;
 		text-transform: uppercase;
@@ -414,14 +414,14 @@
 	/* BUG-028: 섹션 제목의 (n) 개수 — 흐릿한 회색. */
 	.count {
 		color: var(--text-faint);
-		font-weight: 400;
+		font-weight: var(--fw-regular);
 		font-size: 0.85em;
 		margin-left: var(--sp-4);
 	}
 	/* DEV-076: overdue 개수는 빨간색으로 강조 (시급한 시각 경고). */
 	.count.overdue {
 		color: var(--danger);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 
 	.actions {
@@ -480,8 +480,8 @@
 		color: inherit;
 		text-decoration: none;
 		transition:
-			border-color 0.15s,
-			background 0.15s;
+			border-color var(--dur-fast),
+			background var(--dur-fast);
 	}
 	.quest-row:hover {
 		border-color: var(--text-faint);

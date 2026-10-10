@@ -787,8 +787,8 @@
 		max-width: calc(
 			35rem * var(--popup-scale, 1)
 		); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
-		animation: modal-in 0.18s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
+		box-shadow: var(--shadow-lg);
+		animation: modal-in var(--dur-mid) cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;
 	}
 	@keyframes modal-in {
@@ -812,7 +812,7 @@
 	.modal-title {
 		margin: 0;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.close-btn {
@@ -820,10 +820,10 @@
 		border: none;
 		color: var(--text-faint);
 		font-size: 1.3rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);
-		transition: color 0.1s;
+		transition: color var(--dur-fast);
 	}
 	.close-btn:hover {
 		color: var(--text);
@@ -858,7 +858,7 @@
 		cursor: pointer;
 		color: var(--text);
 		font-size: var(--fs-sm);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.relations-hint {
 		margin: var(--sp-8) 0 var(--sp-12);
@@ -876,7 +876,7 @@
 		gap: var(--sp-8);
 		color: var(--text-muted);
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.relation-add {
 		border: var(--bw) solid var(--border);
@@ -937,7 +937,7 @@
 	   label 전체에 두면 자식 input / textarea / select 까지 대문자로 표시됨. */
 	.field-label {
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-muted);
 	}
 	.field-label > span:first-child,
@@ -970,8 +970,8 @@
 		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
-			background 0.12s,
-			color 0.12s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.pill-btn:hover {
 		background: color-mix(in srgb, var(--c) 15%, transparent);
@@ -980,7 +980,7 @@
 	.pill-btn.active {
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		cursor: default;
 	}
 
@@ -1040,7 +1040,7 @@
 		box-sizing: border-box;
 		resize: vertical;
 		font-family: var(--font-mono);
-		line-height: 1.5;
+		line-height: var(--lh-body);
 	}
 	.ta:focus {
 		border-color: var(--accent);
@@ -1066,8 +1066,8 @@
 		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.btn-create:hover:not(:disabled) {
 		background: var(--btn-primary-bg-hover);
@@ -1145,13 +1145,13 @@
 	.empty-title {
 		margin: 0;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.empty-msg {
 		margin: 0;
 		font-size: var(--fs-md);
-		line-height: 1.5;
+		line-height: var(--lh-body);
 		color: var(--text);
 	}
 	.empty-msg strong {

@@ -422,7 +422,7 @@
 	}
 	th {
 		color: var(--text-muted);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		font-size: var(--fs-sm);
 	}
 	code {
@@ -523,13 +523,13 @@
 		width: 100%;
 		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: var(--sp-16) var(--sp-24);
-		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		box-shadow: var(--shadow-lg);
 		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 var(--sp-12);
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.modal-msg {

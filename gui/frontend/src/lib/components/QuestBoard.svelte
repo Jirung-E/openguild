@@ -4221,7 +4221,7 @@
 	}
 	.board-edge {
 		fill: none;
-		transition: opacity 0.12s;
+		transition: opacity var(--dur-fast);
 	}
 	.board-edge.pre {
 		stroke: var(--edge-pre);
@@ -4257,10 +4257,10 @@
 		cursor: grab;
 		user-select: none;
 		transition:
-			opacity 0.12s,
-			border-color 0.12s,
-			box-shadow 0.12s,
-			background 0.12s;
+			opacity var(--dur-fast),
+			border-color var(--dur-fast),
+			box-shadow var(--dur-fast),
+			background var(--dur-fast);
 	}
 	.board-node:active {
 		cursor: grabbing;
@@ -4297,7 +4297,7 @@
 	.urgency-warning {
 		color: var(--danger);
 		font-size: 12px;
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 	}
 	.node-metrics {
 		margin-left: auto;
@@ -4308,7 +4308,7 @@
 		font-size: 10px;
 	}
 	.discussion-count {
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	/* BUG-275: 해결 쪽 색도 이름에 붙인다 — 예전엔 기본값으로 초록이라 `.resolved` 가 빈 이름이었다. */
 	.discussion-count.resolved {
@@ -4347,7 +4347,7 @@
 		bottom: 6px;
 		color: var(--text-muted);
 		font-size: 10px;
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 	.node-due.soon {
 		color: var(--orange);
@@ -4373,7 +4373,7 @@
 		place-items: center;
 		color: var(--node-border);
 		font-size: 32px;
-		font-weight: 800;
+		font-weight: var(--fw-bold);
 		white-space: nowrap;
 	}
 	/* 전체 보기에서는 카드 하나를 단순한 색 marker 하나로 축약한다. */
@@ -4440,8 +4440,8 @@
 		box-sizing: border-box;
 		pointer-events: none;
 		transition:
-			background 0.12s,
-			box-shadow 0.12s;
+			background var(--dur-fast),
+			box-shadow var(--dur-fast);
 		overflow: hidden;
 	}
 	.orientation-rows :global(.lane-col) {
@@ -4499,7 +4499,7 @@
 	:global(.lane-label) {
 		flex: 1;
 		font-size: var(--fs-xs);
-		font-weight: bold;
+		font-weight: var(--fw-bold);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -4510,7 +4510,7 @@
 		cursor: pointer;
 		text-align: left;
 		pointer-events: auto;
-		transition: opacity 0.15s;
+		transition: opacity var(--dur-fast);
 	}
 	:global(.lane-label:hover) {
 		opacity: 0.75;
@@ -4573,11 +4573,11 @@
 		font-size: var(--fs-md);
 		padding: 0 4px;
 		cursor: pointer;
-		line-height: 1.2;
+		line-height: var(--lh-snug);
 		transition:
-			background 0.1s,
-			color 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	:global(.lane-settings-btn:hover) {
 		background: var(--bg-subtle);
@@ -4605,7 +4605,7 @@
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-md);
 		pointer-events: auto;
 	}
 	:global(.lane-settings-pop.open) {
@@ -4637,11 +4637,11 @@
 		font-size: var(--fs-md);
 		padding: 1px 5px;
 		cursor: pointer;
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 		transition:
-			background 0.1s,
-			color 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	:global(.lane-arrange-btn:hover) {
 		background: var(--bg-subtle);
@@ -4660,10 +4660,10 @@
 		font-size: var(--fs-xs);
 		padding: 0 4px;
 		cursor: pointer;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		transition:
-			background 0.1s,
-			color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	:global(.lane-move-btn:hover:not(:disabled)) {
 		background: var(--bg-subtle);
@@ -4727,7 +4727,7 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		animation: card-expand 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+		animation: card-expand var(--dur-mid) cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
 		transform-origin: top center;
 		cursor: default;
 		user-select: none;
@@ -4737,7 +4737,7 @@
 	}
 	.node-card.card-dragging {
 		cursor: grabbing;
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+		box-shadow: var(--shadow-lg);
 	}
 	@keyframes card-expand {
 		from {
@@ -4764,9 +4764,9 @@
 		flex-shrink: 0;
 		color: var(--border);
 		font-size: var(--fs-lg);
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 		padding: 1px 2px;
-		transition: color 0.1s;
+		transition: color var(--dur-fast);
 	}
 	.card-head:hover .drag-hint {
 		color: var(--text-faint);
@@ -4784,10 +4784,10 @@
 		border: none;
 		color: var(--text-faint);
 		font-size: 1.1rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		padding: 0 2px;
 		cursor: pointer;
-		transition: color 0.1s;
+		transition: color var(--dur-fast);
 	}
 	.card-close:hover {
 		color: var(--text);
@@ -4797,9 +4797,9 @@
 		margin: 0;
 		padding: 10px 12px 6px;
 		font-size: var(--fs-md);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
-		line-height: 1.45;
+		line-height: var(--lh-snug);
 		word-break: break-word;
 	}
 	.card-branch {
@@ -4833,8 +4833,8 @@
 		cursor: pointer;
 		text-align: left;
 		transition:
-			background 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.card-goto:hover {
 		background: var(--border);
@@ -4849,7 +4849,7 @@
 	.card-sec-label {
 		margin: 10px 12px 4px;
 		font-size: var(--fs-xs);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-faint);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -4859,7 +4859,7 @@
 		color: var(--border);
 		text-transform: none;
 		letter-spacing: 0;
-		font-weight: 400;
+		font-weight: var(--fw-regular);
 	}
 
 	.card-hl-grid {
@@ -4879,7 +4879,7 @@
 		font-size: var(--fs-xs);
 		cursor: pointer;
 		text-align: left;
-		transition: all 0.12s;
+		transition: all var(--dur-fast);
 		border: var(--bw) solid transparent;
 		background: var(--bg);
 	}
@@ -4950,9 +4950,9 @@
 		font-size: var(--fs-xs);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			color 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.hl-act:hover:not(:disabled) {
 		background: var(--bg-subtle);
@@ -4986,7 +4986,7 @@
 		margin: 6px 12px 10px;
 		font-size: var(--fs-xs);
 		color: var(--border);
-		line-height: 1.4;
+		line-height: var(--lh-snug);
 	}
 	/* check-spacing:on */
 
@@ -5011,7 +5011,7 @@
 	}
 	.fc-label {
 		color: var(--accent);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 	.fc-clear {
 		background: none;
@@ -5036,12 +5036,12 @@
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
 		border-radius: var(--r-md);
 		background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+		box-shadow: var(--shadow-md);
 		color: var(--text-muted);
 		font-family: var(--font-mono);
 		font-size: 11px;
 		font-variant-numeric: tabular-nums;
-		line-height: 1.35;
+		line-height: var(--lh-snug);
 		pointer-events: none;
 		backdrop-filter: blur(8px);
 	}
@@ -5116,9 +5116,9 @@
 		font-size: var(--fs-sm);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			color 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.tb-btn:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--accent) 8%, var(--bg-subtle));
@@ -5144,7 +5144,7 @@
 	}
 	.tb-btn .icon {
 		font-size: 0.95rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 	}
 	.tb-btn .count {
 		font-size: var(--fs-xs);
@@ -5161,7 +5161,7 @@
 		background: var(--btn-primary-bg);
 		border-color: var(--btn-primary-border);
 		color: var(--btn-primary-text);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.tb-btn.tb-new:hover:not(:disabled) {
 		background: var(--btn-primary-bg-hover);
@@ -5239,7 +5239,7 @@
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);
 		min-width: calc(17.5rem * var(--popup-scale, 1));
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-16);
@@ -5248,7 +5248,7 @@
 		margin: 0;
 		font-size: var(--fs-md);
 		color: var(--text);
-		line-height: 1.5;
+		line-height: var(--lh-body);
 		white-space: pre-wrap;
 	}
 	.dialog-btns {
@@ -5265,8 +5265,8 @@
 		font-size: var(--fs-md);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			border-color 0.1s;
+			background var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.dialog-ok:hover {
 		background: var(--btn-primary-bg-hover);
@@ -5295,7 +5295,7 @@
 		width: min(calc(40rem * var(--popup-scale, 1)), calc(100vw - 2rem));
 		min-width: min(calc(30rem * var(--popup-scale, 1)), calc(100vw - 2rem));
 		max-width: calc(100vw - 2rem);
-		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);
@@ -5338,13 +5338,13 @@
 	.bf-title {
 		margin: 0;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.bf-count {
 		font-size: var(--fs-sm);
 		color: var(--accent);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 	}
 	.bf-clear {
 		margin-left: auto;
@@ -5383,7 +5383,7 @@
 	.hide-title {
 		margin: 0;
 		font-size: var(--fs-lg);
-		font-weight: 600;
+		font-weight: var(--fw-semibold);
 		color: var(--text-strong);
 	}
 	.hide-close {
@@ -5391,7 +5391,7 @@
 		border: none;
 		color: var(--text-muted);
 		font-size: 1.4rem;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		cursor: pointer;
 		padding: 0 var(--sp-4);
 	}
@@ -5402,7 +5402,7 @@
 		margin: 0;
 		font-size: var(--fs-sm);
 		color: var(--text-muted);
-		line-height: 1.45;
+		line-height: var(--lh-snug);
 	}
 	.hide-table-wrap {
 		/* 모바일: 컬럼 최소폭 합이 모달폭을 넘으면 테이블만 가로 스크롤 (모달 자체는 안 넘침). */
@@ -5423,7 +5423,7 @@
 	}
 	.hide-table th {
 		color: var(--text-muted);
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 		font-size: var(--fs-sm);
 	}
 	.hide-table tr.lane-off .hide-lane-name {
@@ -5431,7 +5431,7 @@
 		text-decoration: line-through;
 	}
 	.hide-lane-name {
-		font-weight: 500;
+		font-weight: var(--fw-medium);
 	}
 	/* DEV-074 fix11: 체크박스 기본 스타일은 global.css 로 통일.
 	   hide-table 만의 override 는 없음. */
@@ -5453,8 +5453,8 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		transition:
-			background 0.1s,
-			color 0.1s;
+			background var(--dur-fast),
+			color var(--dur-fast);
 	}
 	.hide-table .reorder-btn:hover:not(:disabled) {
 		background: var(--border);
