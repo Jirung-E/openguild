@@ -24,7 +24,7 @@
 	} from '$lib/utils/library-view';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
@@ -384,9 +384,11 @@
 		// 하듯 고른 것을 그대로 복사한다. **글을 치는 중에는 안 가로챈다** — 이름 바꾸기
 		// 입력칸에서 ⌘C 를 누르면 평소대로 글자가 복사되어야 한다.
 		window.addEventListener('keydown', onCopyKey);
+		window.addEventListener('keydown', onPickKey);
 		return () => {
 			window.removeEventListener('focus', onFocus);
 			window.removeEventListener('keydown', onCopyKey);
+			window.removeEventListener('keydown', onPickKey);
 		};
 	});
 
@@ -693,6 +695,121 @@
 			pickOrder
 		);
 	}
+	// ─── DEV-422: 키보드와 사각형으로 고르기 (아이콘 보기) ───
+	let gridEl = $state<HTMLElement | null>(null);
+	/** 아이콘 격자가 지금 화면에 있나 — 상세·검색 결과·트리에서는 키를 가로채지 않는다. */
+	const gridShown = $derived(viewMode === 'explorer' && !selected && !searchResults);
+
+	/** 격자 한 줄의 칸 수 — 첫 칸과 같은 높이에 놓인 칸을 센다(창 너비에 따라 바뀐다). */
+	function gridCols(): number {
+		const cells = gridEl ? [...gridEl.children].filter((c) => !c.classList.contains('band')) : [];
+		if (cells.length === 0) return 1;
+		const top = (cells[0] as HTMLElement).offsetTop;
+		return Math.max(1, cells.filter((c) => (c as HTMLElement).offsetTop === top).length);
+	}
+
+	function onPickKey(e: KeyboardEvent) {
+		if (!gridShown || e.defaultPrevented || typingSomewhere()) return;
+		// 확인 창 · 이름 바꾸기 창이 떠 있으면 그쪽 키다.
+		if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+		const mod = e.metaKey || e.ctrlKey;
+		if (mod && !e.altKey && !e.shiftKey && (e.key === 'a' || e.key === 'A')) {
+			e.preventDefault();
+			picked = msel.all(pickOrder);
+			return;
+		}
+		if (mod || e.altKey) return;
+		const dir = ({ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const)[
+			e.key as 'ArrowLeft'
+		];
+		if (dir) {
+			e.preventDefault();
+			picked = msel.arrow(picked, pickOrder, gridCols(), dir, e.shiftKey);
+			void tick().then(() => {
+				const lead = picked.lead ?? picked.anchor;
+				const el = lead ? gridEl?.querySelector(`[data-key="${CSS.escape(lead)}"]`) : null;
+				if (el instanceof HTMLElement) {
+					el.scrollIntoView({ block: 'nearest' });
+					// 포커스도 따라가야 Tab · 스크린리더가 같은 자리를 본다.
+					el.focus({ preventScroll: true });
+				}
+			});
+			return;
+		}
+		if (e.shiftKey) return;
+		// Enter 는 하나만 골랐을 때만 연다 — 여럿을 한꺼번에 여는 동작은 없다.
+		if (e.key === 'Enter' && pickedOne) {
+			e.preventDefault();
+			tileOpen(pickedOne);
+		} else if ((e.key === 'Delete' || e.key === 'Backspace') && picked.ids.size > 0) {
+			e.preventDefault();
+			confirmDeletePicked = true;
+		} else if (e.key === 'Escape' && picked.ids.size > 0) {
+			picked = msel.clear();
+		}
+	}
+
+	// 사각형 선택. 좌표는 **격자 기준**으로 들고 있는다 — 끄는 도중 화면이 스크롤돼도 시작점이
+	// 같은 자리에 붙어 있게.
+	let band = $state<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+	let bandBase: msel.Picked = msel.EMPTY;
+	let bandMode: 'replace' | 'add' | 'toggle' = 'replace';
+	let bandMoved = $state(false);
+	/** 끌기가 끝난 직후의 click 은 "빈 곳 누름 = 선택 해제" 가 아니다. */
+	let swallowClick = false;
+	/** 이만큼은 움직여야 끌기로 본다 — 손 떨림으로 클릭이 끌기가 되지 않게. */
+	const BAND_MIN = 4;
+
+	function bandStart(e: PointerEvent) {
+		swallowClick = false;
+		if (e.button !== 0 || e.target !== e.currentTarget || !gridEl) return;
+		const r = gridEl.getBoundingClientRect();
+		const x = e.clientX - r.left;
+		const y = e.clientY - r.top;
+		band = { x0: x, y0: y, x1: x, y1: y };
+		bandMoved = false;
+		bandBase = picked;
+		// 수식키는 **시작할 때** 것으로 정한다 — 도중에 눌렀다 떼도 결과가 흔들리지 않는다.
+		bandMode = e.metaKey || e.ctrlKey ? 'toggle' : e.shiftKey ? 'add' : 'replace';
+		gridEl.setPointerCapture(e.pointerId);
+		e.preventDefault(); // 글자 긁어 고르기가 같이 일어나지 않게.
+		// preventDefault 로 포커스가 안 옮겨지므로, 방향키로 남긴 포커스 테두리를 직접 거둔다.
+		if (document.activeElement instanceof HTMLElement && gridEl.contains(document.activeElement))
+			document.activeElement.blur();
+	}
+	function bandMove(e: PointerEvent) {
+		if (!band || !gridEl) return;
+		const r = gridEl.getBoundingClientRect();
+		band = { ...band, x1: e.clientX - r.left, y1: e.clientY - r.top };
+		if (!bandMoved && Math.hypot(band.x1 - band.x0, band.y1 - band.y0) < BAND_MIN) return;
+		bandMoved = true;
+		const box = bandBox(band);
+		const items = [...gridEl.querySelectorAll<HTMLElement>('[data-key]')].map((el) => {
+			const t = el.getBoundingClientRect();
+			return {
+				id: el.dataset.key!,
+				left: t.left - r.left,
+				top: t.top - r.top,
+				right: t.right - r.left,
+				bottom: t.bottom - r.top
+			};
+		});
+		picked = msel.marquee(bandBase, msel.hitsIn(items, box), bandMode);
+	}
+	function bandEnd() {
+		if (!band) return;
+		swallowClick = bandMoved;
+		band = null;
+	}
+	function bandBox(b: { x0: number; y0: number; x1: number; y1: number }): msel.Box {
+		return {
+			left: Math.min(b.x0, b.x1),
+			top: Math.min(b.y0, b.y1),
+			right: Math.max(b.x0, b.x1),
+			bottom: Math.max(b.y0, b.y1)
+		};
+	}
+
 	/** 두 번 누름 = 연다. 폴더면 들어가고, 문서면 상세로. */
 	function tileOpen(key: string) {
 		picked = msel.clear();
@@ -1284,9 +1401,20 @@
 			     여백까지 이 영역이 받도록 최소 높이를 준다. -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- DEV-422: 빈 곳에서 끌면 사각형 선택. -->
 			<div
 				class="tile-grid"
+				class:banding={band !== null}
+				bind:this={gridEl}
+				onpointerdown={bandStart}
+				onpointermove={bandMove}
+				onpointerup={bandEnd}
+				onpointercancel={bandEnd}
 				onclick={(e) => {
+					if (swallowClick) {
+						swallowClick = false;
+						return;
+					}
 					if (e.target === e.currentTarget) picked = msel.clear();
 				}}
 			>
@@ -1298,6 +1426,7 @@
 						class="tile"
 						class:drag-over={dragOverFolder === f.path}
 						class:picked={picked.ids.has(`folder:${f.path}`)}
+						data-key={`folder:${f.path}`}
 						draggable="true"
 						ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${f.path}`)}
 						onclick={(e) => tileClick(e, `folder:${f.path}`)}
@@ -1329,6 +1458,7 @@
 					<button
 						class="tile"
 						class:picked={picked.ids.has(b.book_id)}
+						data-key={b.book_id}
 						draggable="true"
 						ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 						onclick={(e) => tileClick(e, b.book_id)}
@@ -1340,6 +1470,17 @@
 						<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 					</button>
 				{/each}
+				{#if band && bandMoved}
+					{@const bx = bandBox(band)}
+					<div
+						class="band"
+						aria-hidden="true"
+						style:left="{bx.left}px"
+						style:top="{bx.top}px"
+						style:width="{bx.right - bx.left}px"
+						style:height="{bx.bottom - bx.top}px"
+					></div>
+				{/if}
 			</div>
 		{/if}
 	{:else}
@@ -2164,6 +2305,19 @@
 		align-content: start;
 		min-height: 60vh; /* 미지원 브라우저 폴백 — 먼저 */
 		min-height: 60dvh;
+		/* DEV-422: 사각형 선택(.band)의 기준. */
+		position: relative;
+	}
+	.tile-grid.banding {
+		user-select: none;
+		-webkit-user-select: none;
+	}
+	.band {
+		position: absolute;
+		pointer-events: none;
+		border: var(--bw) solid var(--accent);
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border-radius: var(--r-sm);
 	}
 	.tile {
 		display: flex;
