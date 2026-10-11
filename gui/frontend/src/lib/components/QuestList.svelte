@@ -364,7 +364,9 @@
 	// DEV-095: Nav 의 Reindex 버튼이 bump 한 store 를 subscribe — 값 변할 때마다
 	// loadData() 재호출 → quest 목록 갱신.
 	import { reindexBump } from '$lib/stores/reindex';
-	let lastBump = $state(0);
+	// BUG-357: 들어올 때의 값에서 시작한다 — 0 에서 시작하면, 앱을 켠 뒤 한 번이라도 다시 색인했을 때 이 화면에
+	// 들어올 때마다 "새로 색인됐다" 로 보고 한 번 더 불러왔다(보드는 그 첫 그림이 접은 레인을 무시해 잠깐 펼쳐 보였다).
+	let lastBump = $state(get(reindexBump));
 	$effect(() => {
 		const bump = $reindexBump;
 		if (bump !== lastBump && bump > 0) {
