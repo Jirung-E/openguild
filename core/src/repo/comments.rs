@@ -419,7 +419,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("og-comments-{label}-{ns}"));
+        let root = std::env::temp_dir().join(format!("og-comments-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(root.join(".guild/quests")).unwrap();
         (root.clone(), GuildPaths::new(root))
     }

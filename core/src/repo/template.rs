@@ -254,7 +254,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-tpl-save-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-tpl-save-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         let paths = super::super::GuildPaths::new(&dir);
         let t = TemplateFile {
@@ -276,7 +276,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-tpl-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-tpl-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         let paths = super::super::GuildPaths::new(&dir);
         assert!(list_templates(&paths).unwrap().is_empty());
@@ -289,7 +289,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-tpl-list-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-tpl-list-{ns}-{}", crate::test_seq()));
         let paths = super::super::GuildPaths::new(&dir);
         std::fs::create_dir_all(paths.templates_dir()).unwrap();
         std::fs::write(paths.template_path("b-two"), "body b").unwrap();

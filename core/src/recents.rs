@@ -251,7 +251,7 @@ pub(crate) mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-recents-{label}-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-recents-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         // 각 test 가 자기 dir 사용 (unique ns prefix). 단 env::set_var 는
         // process-global 이라 with_env 의 static Mutex 가 직렬화 — BUG-048.

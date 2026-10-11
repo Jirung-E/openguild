@@ -692,7 +692,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-attach-{label}-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-attach-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();

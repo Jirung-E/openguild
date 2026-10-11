@@ -62,7 +62,7 @@ fn fresh_tmp(label: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let p = std::env::temp_dir().join(format!("og-ev-{label}-{ns}"));
+    let p = std::env::temp_dir().join(format!("og-ev-{label}-{ns}-{}", crate::test_seq()));
     std::fs::create_dir_all(&p).unwrap();
     p
 }

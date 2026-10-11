@@ -1294,7 +1294,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-reindex-{label}-{ns}"));
+        let p = std::env::temp_dir().join(format!("og-reindex-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
@@ -2515,7 +2515,7 @@ mod tests {
     async fn reindex_waits_for_a_change_and_restore_does_not_wait_for_itself() {
         use std::time::Duration;
         let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-reindex-lock-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-reindex-lock-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();

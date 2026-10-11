@@ -227,7 +227,7 @@ mod doc_lock_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-doclock-{label}-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-doclock-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -364,7 +364,7 @@ mod edit_merge_tests {
 
     async fn guild(label: &str) -> (std::path::PathBuf, Store) {
         let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-editmerge-{label}-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-editmerge-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();

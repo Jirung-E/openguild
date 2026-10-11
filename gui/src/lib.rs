@@ -942,7 +942,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-opened-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-opened-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
         let inner = dir.join("내 길드");
         std::fs::create_dir_all(&inner).unwrap();
         let marker = inner.join("내 길드.guild");
@@ -1109,7 +1109,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-gui-{label}-{ns}"));
+        let p = std::env::temp_dir().join(format!("og-gui-{label}-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
         std::fs::create_dir_all(&p).unwrap();
         p
     }

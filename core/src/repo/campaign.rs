@@ -298,11 +298,12 @@ updated_at = "2026-05-25T15:00:00Z"
     #[test]
     fn write_and_read_roundtrip() {
         let dir = std::env::temp_dir().join(format!(
-            "og-camp-{}",
+            "og-camp-{}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            crate::test_seq()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("C-001.md");

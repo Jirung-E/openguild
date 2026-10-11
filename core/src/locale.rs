@@ -125,7 +125,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-locale-{label}-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-locale-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

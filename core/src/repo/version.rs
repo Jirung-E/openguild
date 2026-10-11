@@ -146,7 +146,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let d = std::env::temp_dir().join(format!("og-version-{label}-{ns}"));
+        let d = std::env::temp_dir().join(format!("og-version-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&d).unwrap();
         d
     }

@@ -131,7 +131,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-hist-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-hist-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(dir.join(".guild/history")).unwrap();
         let paths = GuildPaths::new(&dir);
 

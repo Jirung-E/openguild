@@ -226,7 +226,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let g = std::env::temp_dir().join(format!("og-sum-{label}-{ns}"));
+        let g = std::env::temp_dir().join(format!("og-sum-{label}-{ns}-{}", crate::test_seq()));
         let dir = plugins_dir(&g).join("p");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(MANIFEST), manifest).unwrap();

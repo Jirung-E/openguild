@@ -301,7 +301,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let g = std::env::temp_dir().join(format!("og-test-{label}-{ns}"));
+        let g = std::env::temp_dir().join(format!("og-test-{label}-{ns}-{}", crate::test_seq()));
         let dir = plugins_dir(&g).join("p");
         std::fs::create_dir_all(&dir).unwrap();
         for (name, body) in files {

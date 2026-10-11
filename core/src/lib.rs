@@ -39,3 +39,14 @@ pub mod user_dirs;
 
 pub use error::{AppError, AppResult};
 pub use store::Store;
+
+/// BUG-358: 시험이 만드는 임시 폴더 이름 뒤에 붙이는 번호 — 프로세스 안에서 하나씩 올라간다.
+///
+/// 예전엔 `og-<이름표>-<시각 ns>` 로만 구분했다. macOS 의 시각은 마이크로초 단위라, 같은 이름표를 쓰는 두 시험이
+/// 병렬로 같은 마이크로초에 시작하면 같은 폴더를 받아 같은 `index.db` 를 함께 열고 잠겼다(CI 에서 가끔
+/// `database is locked`). 서버 시험은 같은 이유로 이미 카운터를 붙여 두었다.
+#[cfg(test)]
+pub(crate) fn test_seq() -> u64 {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}

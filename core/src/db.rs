@@ -159,8 +159,9 @@ mod tests {
     #[tokio::test]
     async fn overlapping_write_transactions_wait_instead_of_failing() {
         let dir = std::env::temp_dir().join(format!(
-            "og-db-immediate-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            "og-db-immediate-{}-{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            crate::test_seq()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let pool = create_pool_from_path(&dir.join("t.db"), false).await.unwrap();

@@ -391,7 +391,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("og-rules-{label}-{ns}"));
+        let root = std::env::temp_dir().join(format!("og-rules-{label}-{ns}-{}", crate::test_seq()));
         let dot = root.join(".guild");
         std::fs::create_dir_all(&dot).unwrap();
         (root.clone(), GuildPaths::new(root))

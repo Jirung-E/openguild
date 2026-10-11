@@ -762,7 +762,7 @@ mod cli_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-srv-cfg-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-srv-cfg-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join("openguild-server.toml");
         std::fs::write(&cfg_path, "[server]\nfrontend_dist = \"C:/from/config\"\n").unwrap();
@@ -800,7 +800,7 @@ mod cli_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let home = std::env::temp_dir().join(format!("og-srv-cfg-none-{ns}"));
+        let home = std::env::temp_dir().join(format!("og-srv-cfg-none-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
         std::fs::create_dir_all(&home).unwrap();
 
         let prev = std::env::var("OPENGUILD_HOME").ok();
@@ -825,7 +825,7 @@ mod cli_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-srv-cfg-bad-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-srv-cfg-bad-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join("bad.toml");
         std::fs::write(&cfg_path, "not = [valid toml").unwrap();
@@ -947,7 +947,7 @@ mod helper_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-server-{label}-{ns}"));
+        let dir = std::env::temp_dir().join(format!("og-server-{label}-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("test.guild"),
