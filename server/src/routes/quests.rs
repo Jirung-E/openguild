@@ -218,6 +218,16 @@ pub async fn change_status(
     Ok(Json(ops::change_status(&store, id, body).await?))
 }
 
+/// BUG-359: 타입 변경(DEV → BUG) — 번호(slug)가 바뀐다. 앱은 내부 호출(`change_quest_type`)로 하고 있었는데 서버에는
+/// 이 경로가 없어서, 웹 화면과 원격 길드에 붙은 앱에서는 "그런 API 가 없습니다" 였다.
+pub async fn change_type(
+    State(store): State<Store>,
+    Path(id): Path<i64>,
+    Json(body): Json<openguild_core::models::ChangeTypeRequest>,
+) -> AppResult<Json<QuestRow>> {
+    Ok(Json(ops::change_quest_type(&store, id, body).await?))
+}
+
 pub async fn add_prerequisite(
     State(store): State<Store>,
     Path(id): Path<i64>,

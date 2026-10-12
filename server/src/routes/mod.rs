@@ -317,6 +317,8 @@ pub fn create_router(store: Store) -> Router {
         )
         .route("/api/quests/{id}/status", patch(quests::change_status))
         .route("/api/quests/{id}/parent", patch(quests::change_parent))
+        // BUG-359: 타입 변경 — 앱(로컬)은 내부 호출로 했고 서버엔 없었다.
+        .route("/api/quests/{id}/type", patch(quests::change_type))
         // DEV-076: 희망 / 필수 기한 설정 / 해제.
         .route("/api/quests/{id}/due", patch(quests::set_due_dates))
         // DEV-068: 태그 전체 교체. body: { "tags": [...] }

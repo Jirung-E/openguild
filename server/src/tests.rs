@@ -4426,3 +4426,27 @@ fn urlencoding_min(s: &str) -> String {
         })
         .collect()
 }
+
+/// BUG-359: 타입 변경이 서버에도 있다 — 웹 · 원격 길드에서 "그런 API 가 없습니다" 였다.
+#[tokio::test]
+async fn test_change_quest_type_endpoint_renames_and_keeps_tags() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "옮길 것", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let old = q["slug"].as_str().map(str::to_string).unwrap_or_else(|| format!("DEV-{:03}", q["number"].as_i64().unwrap()));
+    assert!(old.starts_with("DEV-"), "{q}");
+    let (s, _) = patch(app.clone(), &format!("/api/quests/{id}/tags"), json!({ "tags": ["남을태그"] })).await;
+    assert!(s.is_success());
+
+    let (s, moved) = patch(app.clone(), &format!("/api/quests/{id}/type"), json!({ "new_type_prefix": "BUG" })).await;
+    assert_eq!(s, StatusCode::OK, "{moved}");
+    let new_slug = format!("{}-{:03}", moved["type_prefix"].as_str().unwrap(), moved["number"].as_i64().unwrap());
+    assert!(new_slug.starts_with("BUG-"), "{moved}");
+
+    // 새 번호로 열리고 태그는 그대로, 옛 번호로는 안 열린다.
+    let (s, got) = get(app.clone(), &format!("/api/quests/by/{new_slug}")).await;
+    assert_eq!(s, StatusCode::OK, "{got}");
+    assert_eq!(got["tags"], json!(["남을태그"]));
+    let (s, _) = get(app.clone(), &format!("/api/quests/by/{old}")).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
