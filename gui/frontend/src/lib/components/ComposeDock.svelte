@@ -553,6 +553,15 @@
 		max-height: min(var(--compose-cap, 40dvh), 78dvh);
 		overflow: auto;
 	}
+	/* BUG-360: 마크다운 편집기는 **바깥 상자**(`.editor-wrap`)에 높이가 박혀 있다 — 저장된 편집기 높이가
+	   인라인 `height` 로, 거기에 `min-height: 12.5rem`. 위 상한은 안쪽 스크롤 영역(`.cm-scroller`)에만 걸리므로,
+	   팝업에서는 글이 위쪽 몇 줄에만 보이고 그 아래가 바깥 상자의 흰 배경으로 남았다(admin: "위쪽 일부만 보이고
+	   아래쪽은 그냥 하얀색"). 붙어 있는 동안은 바깥 상자가 안쪽 크기를 따라가게 푼다 — 인라인 높이를 이기려면
+	   `!important` 가 필요하다. 떨어지면 인라인 높이(사용자가 정한 높이)가 그대로 돌아온다. */
+	.dock-box.docked :global(.editor-wrap) {
+		height: auto !important;
+		min-height: 0;
+	}
 	/* 좁게 보기 = **입력칸만**(admin: "댓글 입력창만 뜨는 것"). 작성자 칸과 편집기 토글은
 	   접는다 — 붙어 있는 동안 화면을 먹는 것이 그 줄이다. 입력칸 높이도 더 줄인다.
 

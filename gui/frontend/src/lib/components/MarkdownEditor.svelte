@@ -22,7 +22,7 @@
   `value` 읽기 (bind:value 로 항상 최신 동기화됨).
 -->
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { EditorView } from 'codemirror';
 	import { keymap, type ViewUpdate } from '@codemirror/view';
@@ -39,6 +39,7 @@
 	import { isCoarsePointer, markdownEditorExtensions } from '$lib/utils/editor-setup';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import SizeGrip from './SizeGrip.svelte';
+	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
 	// DEV-172: cross-link 자동완성 — 댓글(DEV-171)과 공유하는 caret 팝업.
 	import { wikiMatch, type WikiItem } from '$lib/utils/textarea-wikilink';
 	import { applyWikiLinkCM, applyWikiPrefixCM } from '$lib/utils/editor-wikilink';
@@ -260,6 +261,8 @@
 		}
 		return defaultHeight;
 	}
+	/** BUG-360: 댓글 · 메모 팝업([[ComposeDock]]) 안에 있으면 그 상태를 본다. */
+	const dock = getContext<ComposeDockContext | undefined>(COMPOSE_DOCK);
 	let heightSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	function scheduleHeightSave(px: number) {
 		if (heightSaveTimer) clearTimeout(heightSaveTimer);
@@ -330,6 +333,9 @@
 		// resize 핸들로 크기 바꿀 때마다 디바운스 영속화.
 		resizeObserver?.disconnect();
 		resizeObserver = new ResizeObserver((entries) => {
+			// BUG-360: 팝업으로 붙어 있는 동안 상자는 팝업 크기를 따른다 — 그 높이를 "사용자가 정한 편집기 높이" 로
+			// 저장하면 다음에 여는 편집기가 엉뚱하게 작아진다.
+			if (dock?.docked()) return;
 			for (const entry of entries) {
 				scheduleHeightSave(entry.contentRect.height);
 			}
