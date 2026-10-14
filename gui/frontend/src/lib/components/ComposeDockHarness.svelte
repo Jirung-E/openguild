@@ -2,11 +2,18 @@
      실제 호출부와 같은 모양으로(입력칸 + 아래 버튼 줄 + 머리줄 보내기) 둔다. -->
 <script lang="ts">
 	import ComposeDock from './ComposeDock.svelte';
+	import ComposeDockToggle from './ComposeDockToggle.svelte';
 	let {
 		hasContent = false,
 		withSubmit = false,
+		withToggle = false,
 		onsubmitSpy
-	}: { hasContent?: boolean; withSubmit?: boolean; onsubmitSpy?: () => void } = $props();
+	}: {
+		hasContent?: boolean;
+		withSubmit?: boolean;
+		withToggle?: boolean;
+		onsubmitSpy?: () => void;
+	} = $props();
 </script>
 
 <ComposeDock
@@ -15,6 +22,8 @@
 	submitTitle="보내기"
 	submitDisabled={false}
 >
+	<!-- DEV-442: 실제 호출부는 [M↓] 옆에 둔다. -->
+	{#if withToggle}<ComposeDockToggle />{/if}
 	<textarea value={hasContent ? '쓰던 글' : ''}></textarea>
 	<div class="actions">
 		<button>보내기</button>

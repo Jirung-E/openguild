@@ -13,6 +13,7 @@ async function settled() {
 	await tick();
 }
 import ComposeDockHarness from './ComposeDockHarness.svelte';
+import { composeDockEnabled } from '$lib/stores/composeDockEnabled';
 
 // jsdom 에는 IntersectionObserver 가 없다 — 시험이 직접 "얼마나 보이나" 를 흘려 넣는다.
 // 비율인 것이 중요하다: **한 귀퉁이라도 잘리면** 붙어야 한다(admin).
@@ -346,5 +347,58 @@ describe('DEV-416 붙었을 때의 모양', () => {
 		send.click();
 		await tick();
 		expect(sent).toEqual([1]);
+	});
+});
+
+// DEV-442(admin): 팝업을 켜고 끄는 버튼 — [M↓] 옆. 앱 전체에 하나뿐인 값이다.
+describe('DEV-442 팝업 켜기/끄기', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		localStorage.clear();
+		// 값은 모듈에 하나 — 시험끼리 새지 않게 켜짐으로 되돌린다.
+		composeDockEnabled.set(true);
+	});
+
+	function toggle() {
+		return document.querySelector('.dock-toggle') as HTMLButtonElement;
+	}
+
+	it('기본은 켜짐 — 버튼이 눌린 모양이다', async () => {
+		render(ComposeDockHarness, { withToggle: true });
+		await tick();
+		expect(toggle().getAttribute('aria-pressed')).toBe('true');
+		expect(toggle().classList.contains('active')).toBe(true);
+	});
+
+	it('끄면 화면 밖 + 포커스여도 안 붙는다', async () => {
+		const { getByRole } = render(ComposeDockHarness, { withToggle: true });
+		toggle().click();
+		await tick();
+		expect(toggle().getAttribute('aria-pressed')).toBe('false');
+		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		notify!(0);
+		await tick();
+		expect(isDocked()).toBe(false);
+	});
+
+	it('붙어 있을 때 끄면 제자리로 돌아간다 — 다시 켜면 다시 붙는다', async () => {
+		const { getByRole } = render(ComposeDockHarness, { withToggle: true, hasContent: true });
+		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		notify!(0);
+		await tick();
+		expect(isDocked()).toBe(true);
+		toggle().click();
+		await settled();
+		expect(isDocked()).toBe(false);
+		toggle().click();
+		await settled();
+		expect(isDocked()).toBe(true);
+	});
+
+	it('꺼 둔 것은 다시 켜도 남는다', async () => {
+		render(ComposeDockHarness, { withToggle: true });
+		toggle().click();
+		await tick();
+		expect(localStorage.getItem('openguild.composeDock')).toBe('false');
 	});
 });

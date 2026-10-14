@@ -11,6 +11,7 @@
   ## 언제 붙나
 
       붙는다 = **입력칸**이 조금이라도 가려짐 && (포커스가 있거나 쓴 글이 있다) && 닫기를 안 눌렀다
+             && 팝업을 꺼 두지 않았다(DEV-442 — [M↓] 옆 버튼, 앱 전체에 하나)
 
   처음에는 "완전히 화면 밖" 일 때만 붙였는데, 반쯤 걸친 상태가 제일 불편하다(admin) — 입력칸은
   보이는데 커서 줄이 안 보여서 결국 스크롤이 튄다. 그래서 **한 귀퉁이라도 잘리면** 붙인다.
@@ -41,6 +42,7 @@
 	import { setContext } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
+	import { composeDockEnabled } from '$lib/stores/composeDockEnabled';
 
 	let {
 		/** 쓰던 글이 있나 — 포커스를 잃어도 붙여 둘지 정한다. */
@@ -114,7 +116,10 @@
 	const SETTLE_MS = 250;
 	let lastFlip = 0;
 	let sticky = $state(false);
-	const want = $derived(!fullyVisible && !dismissed && (focused || hasContent));
+	// DEV-442: 꺼 두면(입력창의 팝업 버튼) 안 붙는다 — 붙어 있다가 끄면 제자리로 돌아간다.
+	const want = $derived(
+		$composeDockEnabled && !fullyVisible && !dismissed && (focused || hasContent)
+	);
 	$effect(() => {
 		const w = want;
 		if (w === sticky) return;

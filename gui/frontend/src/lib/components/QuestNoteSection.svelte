@@ -14,6 +14,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import ComposeDock from './ComposeDock.svelte';
+	import ComposeDockToggle from './ComposeDockToggle.svelte';
 	// DEV-153: 메모 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { saveShortcut } from '$lib/utils/save-shortcut';
@@ -229,7 +230,12 @@
 						<!-- BUG-318: 좁게 보기에서는 안 보인다(admin). 팝업에는 입력칸과 버튼만
 						     남아야 하는데 설명글까지 따라 올라왔다. 이름표는 [[ComposeDock]] 과의
 						     약속이다 — 붙어서 좁게 보일 때 접힌다. -->
-						<span class="compose-aside">{label.help} {t('note.helpAttach', $locale)}</span>
+						<!-- DEV-442: 팝업 켜기/끄기 — 메모에는 [M↓] 가 없어 설명줄 오른쪽에 둔다. 좁게 보기에서는
+						     설명줄째 접힌다(댓글의 [M↓] 줄과 같다). -->
+						<div class="compose-aside memo-help">
+							<span>{label.help} {t('note.helpAttach', $locale)}</span>
+							<ComposeDockToggle />
+						</div>
 						<MarkdownEditor
 							bind:value={editText}
 							mediaOnly
@@ -402,6 +408,12 @@
 	.field-label > .compose-aside {
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
+	}
+	.memo-help {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--sp-8);
 	}
 	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 

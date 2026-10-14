@@ -1200,6 +1200,15 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// BUG-316(admin): 팝업에서 **원래 자리로 화면을 옮긴다** — 닫기(원래 자리로 되돌리기)와
 	// 다르다. 이건 글을 계속 쓰면서 그 자리를 눈으로 보고 싶을 때 쓴다.
 	'compose.locate': { ko: '현재 위치로', en: 'Scroll to its place' },
+	// DEV-442: 팝업 켜기/끄기 — 버튼 제목은 **지금 상태**와 누르면 어떻게 되는지.
+	'compose.dockOn': {
+		ko: '입력창 팝업 켜짐 — 누르면 끕니다',
+		en: 'Pop-up input on — click to turn off'
+	},
+	'compose.dockOff': {
+		ko: '입력창 팝업 꺼짐 — 누르면 켭니다',
+		en: 'Pop-up input off — click to turn on'
+	},
 	'comment.toggleEditor': {
 		ko: '입력 방식 전환 (일반 ↔ 마크다운 편집기)',
 		en: 'Toggle input (plain ↔ markdown editor)'

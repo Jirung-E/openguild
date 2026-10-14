@@ -15,6 +15,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import ComposeDock from './ComposeDock.svelte';
+	import ComposeDockToggle from './ComposeDockToggle.svelte';
 	import { tick, onDestroy, onMount } from 'svelte';
 	// BUG-258: 딥링크 스크롤은 레이아웃이 잦아든 뒤에 시작해야 한다.
 	import { scrollIntoViewWhenSettled } from '$lib/utils/page-scroll';
@@ -1084,6 +1085,7 @@
 					title={t('comment.toggleEditor', $locale)}
 					aria-pressed={replyRich}>M↓</button
 				>
+				<ComposeDockToggle />
 			</div>
 			{#if replyRich}
 				<MarkdownEditor
@@ -1574,6 +1576,7 @@
 							title={t('comment.toggleEditor', $locale)}
 							aria-pressed={newRich}>M↓</button
 						>
+						<ComposeDockToggle />
 					</div>
 					{#if newRich}
 						<MarkdownEditor
