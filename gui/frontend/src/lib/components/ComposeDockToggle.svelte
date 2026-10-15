@@ -41,12 +41,14 @@
 	.dock-toggle {
 		flex-shrink: 0;
 		align-self: center;
+		/* [M↓](`.ce-toggle`)와 **같은 크기**로 박는다(admin) — 값은 둘이 같아야 한다. */
 		display: inline-flex;
 		align-items: center;
-		padding: var(--sp-2) var(--sp-6);
-		/* 높이를 [M↓] 의 글자 줄에 맞춘다 — 그림만 두면 줄 높이가 없어 4px 낮았다. */
-		font-size: var(--fs-xs);
-		font-family: var(--font-mono);
+		justify-content: center;
+		box-sizing: border-box;
+		width: 1.75rem;
+		height: 1.5rem;
+		padding: 0;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
@@ -66,6 +68,5 @@
 		display: block;
 		width: 0.875rem;
 		height: 0.875rem;
-		margin-block: calc((1lh - 0.875rem) / 2); /* token-ok: 그림 높이를 글자 줄 높이에 맞추는 계산 */
 	}
 </style>

@@ -2287,10 +2287,19 @@
 		display: none;
 	}
 	/* DEV-289: 댓글 입력창 마크다운 편집기 토글 버튼. */
+	/* DEV-442(admin): 옆의 팝업 버튼([[ComposeDockToggle]])과 **같은 크기**로 박는다. 글자 폭에 맡기면
+	   글꼴(설정의 고정폭 글꼴, 앱 · 브라우저)마다 [M↓] 폭이 달라 둘이 어긋났다. 값은 둘이 같아야 한다. */
 	.ce-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+		width: 1.75rem;
+		height: 1.5rem;
+		padding: 0;
 		font-size: var(--fs-xs);
 		font-family: var(--font-mono);
-		padding: var(--sp-2) var(--sp-6);
+		line-height: var(--lh-tight);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		background: transparent;
