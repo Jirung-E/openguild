@@ -700,6 +700,8 @@
 					if (s && collapsedLanes.has(s.slug)) shouldHide = true;
 				}
 				n.style('display', shouldHide ? 'none' : 'element');
+				// BUG-362: 숨기면 고른 것도 푼다 — 보이지 않는 채로 끌기 · 상태 바꾸기에 끼면 안 된다.
+				if (shouldHide && n.selected()) n.unselect();
 			});
 		});
 		// lane DIV: laneHidden true 인 lane 의 col + header 시각 처리.
@@ -1076,6 +1078,8 @@
 				if (s?.slug === slug) {
 					if (isCollapsed) {
 						n.style('display', 'none');
+						// BUG-362: 접어서 숨긴 노드는 고른 것도 푼다 — 안 보이는 채로 끌려가면 안 된다.
+						if (n.selected()) n.unselect();
 					} else {
 						const qid = n.data('questId') as number;
 						n.style('display', hidden!.has(qid) ? 'none' : 'element');
@@ -1391,6 +1395,11 @@
 
 	// ── 박스 선택 + Ctrl+클릭 ──────────────────────────────────
 
+	/** 화면에 안 그려진 노드인가 — 접힌 레인 · 숨김 설정([[applyHideSettings]]). */
+	function isHidden(node: BoardNode): boolean {
+		return node.style('display') === 'none';
+	}
+
 	function selectNodesInBox(sx1: number, sy1: number, sx2: number, sy2: number) {
 		if (!cy) return;
 		const zoom = cy.zoom(),
@@ -1400,6 +1409,9 @@
 		const mx2 = (sx2 - pan.x) / zoom,
 			my2 = (sy2 - pan.y) / zoom;
 		cy.nodes('[questId]').forEach((node) => {
+			// BUG-362: 숨은 노드(접힌 레인 · 숨김 설정)는 고르지 않는다. 화면에 없어도 자리는 남아 있고, 접힌 레인의
+			// 노드는 그 자리가 좁아진 레인 밖(다음 레인 위)에 있다 — 상자에 걸려 같이 끌려가 상태가 바뀌었다(admin).
+			if (isHidden(node)) return;
 			const pos = node.position();
 			if (pos.x >= mx1 && pos.x <= mx2 && pos.y >= my1 && pos.y <= my2) node.select();
 		});
@@ -1439,6 +1451,8 @@
 		});
 		cy.nodes('[questId]:selected').forEach((selected) => {
 			const id = selected.data<number>('questId');
+			// BUG-362: 골라 둔 뒤에 숨었을 수 있다(레인을 접는 등) — 보이지 않는 것은 끌지 않는다.
+			if (isHidden(selected)) return;
 			if (!dragStartMap.has(id)) {
 				dragStartMap.set(id, {
 					...selected.position(),
@@ -1873,7 +1887,8 @@
 		cy.nodes('[questId]:selected').unselect();
 		ids.forEach((id) => {
 			const node = cy!.getElementById(`q-${id}`);
-			if (node.length > 0) node.select();
+			// BUG-362: 숨은 노드는 고르지 않는다(상자 선택과 같다).
+			if (node.length > 0 && !isHidden(node)) node.select();
 		});
 	}
 
