@@ -564,8 +564,13 @@
 	   아래쪽은 그냥 하얀색"). 붙어 있는 동안은 바깥 상자가 안쪽 크기를 따라가게 푼다 — 인라인 높이를 이기려면
 	   `!important` 가 필요하다. 떨어지면 인라인 높이(사용자가 정한 높이)가 그대로 돌아온다. */
 	.dock-box.docked :global(.editor-wrap) {
-		height: auto !important;
+		/* BUG-360 다시 고침: 손잡이로 정한 높이(`--compose-cap`)가 있으면 그것을 쓴다. 예전에는 늘 `auto` 라 손잡이가
+		   안 먹고 줄 수만큼만 보였다(admin) — 상한은 안쪽 스크롤 영역의 **최대** 높이일 뿐이라 글이 적으면
+		   그대로 작다. 변수는 손잡이가 이 상자에 직접 적는다. */
+		height: var(--compose-cap, auto) !important;
 		min-height: 0;
+		max-height: 78vh;
+		max-height: 78dvh;
 	}
 	/* 좁게 보기 = **입력칸만**(admin: "댓글 입력창만 뜨는 것"). 작성자 칸과 편집기 토글은
 	   접는다 — 붙어 있는 동안 화면을 먹는 것이 그 줄이다. 입력칸 높이도 더 줄인다.

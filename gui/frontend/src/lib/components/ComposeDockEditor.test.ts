@@ -73,4 +73,31 @@ describe('BUG-360 팝업 안의 마크다운 편집기', () => {
 		await wait(320);
 		expect(localStorage.getItem(KEY)).toBe('380');
 	});
+
+	it('BUG-360 다시 고침: 팝업에서 손잡이로 끈 높이는 제자리로 돌아오면 저장된 높이로 되돌린다', async () => {
+		localStorage.setItem(KEY, '420');
+		render(Harness);
+		await tick();
+		await wait(50);
+		const box = document.querySelector('.dock-box') as HTMLElement;
+		const wrap = document.querySelector('.editor-wrap') as HTMLElement;
+		expect(wrap.style.height).toBe('420px');
+
+		showRatio!(0.4);
+		await wait(320);
+		await tick();
+		expect(box.classList.contains('docked')).toBe(true);
+		// 팝업에서 위쪽 손잡이를 키보드로 키운다(↑ = 키우기) — 손잡이가 인라인 높이와 상한을 같이 적는다.
+		const grip = document.querySelector('.size-grip') as HTMLElement;
+		grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+		await tick();
+		expect(wrap.style.getPropertyValue('--compose-cap'), '팝업 높이를 정하지 않았다').not.toBe('');
+		expect(wrap.style.height).not.toBe('420px');
+
+		showRatio!(1);
+		await wait(320);
+		await tick();
+		expect(box.classList.contains('docked')).toBe(false);
+		expect(wrap.style.height, '팝업 높이가 제자리 편집기에 남았다').toBe('420px');
+	});
 });

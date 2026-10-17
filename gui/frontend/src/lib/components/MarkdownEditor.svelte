@@ -276,6 +276,17 @@
 	}
 
 	let container: HTMLDivElement | undefined = $state(undefined);
+	/**
+	 * BUG-360 다시 고침: 팝업에서 손잡이로 끈 높이는 **팝업 안에서만** 쓴다. 손잡이는 상자의 인라인 높이도 같이 바꾸므로,
+	 * 제자리로 돌아오면 저장된 편집기 높이로 되돌린다 — 안 그러면 팝업에서 끈 높이가 제자리 편집기에 남고,
+	 * 위의 저장이 그것을 "사용자가 정한 높이" 로 적어 버린다.
+	 */
+	let wasDocked = false;
+	$effect(() => {
+		const now = dock?.docked() ?? false;
+		if (wasDocked && !now && container) container.style.height = `${loadHeight()}px`;
+		wasDocked = now;
+	});
 	let view: EditorView | null = null;
 	// DEV-074 fix15: `.cm-scroller` ref — OverlayScrollbar target.
 	let cmScroller: HTMLElement | null = $state(null);
@@ -401,7 +412,8 @@
 <div class="editor-wrap" bind:this={container}></div>
 <!-- BUG-318: 휴대폰에서는 브라우저가 주는 크기 손잡이를 못 쓴다 — 직접 둔다.
      높이를 바꾸면 위의 ResizeObserver 가 그대로 받아 영속화한다. -->
-<SizeGrip target={container} min={10} />
+<!-- BUG-360 다시 고침: 팝업에서는 좁게 보기(4.5rem)부터 시작한다 — 최소값이 10rem 이면 끄는 순간 튄다. -->
+<SizeGrip target={container} min={dock?.docked() ? 4 : 10} />
 <!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
 {#if cmScroller}
 	<OverlayScrollbar target={cmScroller} />
