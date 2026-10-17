@@ -52,7 +52,8 @@
 		onError,
 		onAttach = undefined,
 		mediaOnly = false,
-		defaultHeight = 480
+		defaultHeight = 480,
+		minHeightRem = undefined
 	}: {
 		/** 편집 내용 — CM 입력이 실시간 반영되므로 저장 시 이 값을 그대로 사용. */
 		value?: string;
@@ -67,6 +68,11 @@
 		mediaOnly?: boolean;
 		/** 저장된 높이가 없을 때 초기 높이(px). */
 		defaultHeight?: number;
+		/**
+		 * BUG-360 다시 고침: 최소 높이(rem). 댓글 · 메모는 일반 입력칸과 같게(4rem) 준다(admin) — 마크다운으로
+		 * 바꾸면 최소 높이가 12.5rem 으로 커졌다. 안 주면 예전 그대로(상자 12.5rem, 손잡이 10rem).
+		 */
+		minHeightRem?: number;
 	} = $props();
 
 	// DEV-172: cross-link 자동완성 상태 — QuestCommentsSection(DEV-171)과 동일한
@@ -252,10 +258,17 @@
 
 	// DEV-057: 편집창 사용자 크기 영속화 — 모든 마크다운 편집기가 공유(일관 UX).
 	const HEIGHT_KEY = 'openguild.questEditorHeight';
+	/** 지금 최소 높이(px) — UI 크기(루트 글꼴)를 따른다. */
+	function minPx(): number {
+		const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+		return (minHeightRem ?? 12.5) * rem;
+	}
 	function loadHeight(): number {
 		try {
 			const n = parseInt(localStorage.getItem(HEIGHT_KEY) ?? '', 10);
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
+			// 최소 높이보다 작게 저장된 값은 안 쓴다 — 높이는 모든 편집기가 같이 쓰므로, 댓글에서 줄인 높이가
+			// 본문 편집기로 오면 그쪽 최소보다 작다.
+			if (Number.isFinite(n) && n >= minPx() && n <= 2000) return n;
 		} catch {
 			/* ignore */
 		}
@@ -347,9 +360,9 @@
 			// BUG-360: 팝업으로 붙어 있는 동안 상자는 팝업 크기를 따른다 — 그 높이를 "사용자가 정한 편집기 높이" 로
 			// 저장하면 다음에 여는 편집기가 엉뚱하게 작아진다.
 			if (dock?.docked()) return;
-			for (const entry of entries) {
-				scheduleHeightSave(entry.contentRect.height);
-			}
+			// BUG-360 다시 고침: 바깥 높이(테두리 포함)를 적는다. 안쪽 높이(contentRect)를 적으면 다시 열 때 그 값이
+			// 바깥 높이로 들어가 테두리만큼(2px) 매번 줄었다.
+			if (entries.length > 0 && container) scheduleHeightSave(container.offsetHeight);
 		});
 		resizeObserver.observe(container);
 	}
@@ -409,11 +422,15 @@
 </script>
 
 <!-- CodeMirror 가 div 안에 편집 영역을 동적으로 생성. -->
-<div class="editor-wrap" bind:this={container}></div>
+<div
+	class="editor-wrap"
+	bind:this={container}
+	style:min-height={minHeightRem != null ? `${minHeightRem}rem` : undefined}
+></div>
 <!-- BUG-318: 휴대폰에서는 브라우저가 주는 크기 손잡이를 못 쓴다 — 직접 둔다.
      높이를 바꾸면 위의 ResizeObserver 가 그대로 받아 영속화한다. -->
 <!-- BUG-360 다시 고침: 팝업에서는 좁게 보기(4.5rem)부터 시작한다 — 최소값이 10rem 이면 끄는 순간 튄다. -->
-<SizeGrip target={container} min={dock?.docked() ? 4 : 10} />
+<SizeGrip target={container} min={dock?.docked() ? 4 : (minHeightRem ?? 10)} />
 <!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
 {#if cmScroller}
 	<OverlayScrollbar target={cmScroller} />

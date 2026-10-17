@@ -1092,6 +1092,7 @@
 					bind:value={replyBody}
 					onError={(m) => (replyError = m)}
 					mediaOnly
+					minHeightRem={4}
 					defaultHeight={160}
 				/>
 			{:else}
@@ -1229,6 +1230,7 @@
 					bind:value={editBody}
 					onError={(m) => (editError = m)}
 					mediaOnly
+					minHeightRem={4}
 					defaultHeight={200}
 				/>
 			{:else}
@@ -1583,6 +1585,7 @@
 							bind:value={newBody}
 							onError={(m) => (saveError = m)}
 							mediaOnly
+							minHeightRem={4}
 							defaultHeight={160}
 						/>
 					{:else}

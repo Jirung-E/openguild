@@ -27,7 +27,12 @@ vi.stubGlobal(
 	'ResizeObserver',
 	class {
 		constructor(private cb: (e: Array<{ contentRect: { height: number } }>) => void) {
-			resized.push((h) => this.cb([{ contentRect: { height: h } }]));
+			// 편집기는 상자의 바깥 높이(offsetHeight)를 적는다 — jsdom 은 늘 0 이라 시험이 넣어 준다.
+			resized.push((h) => {
+				const wrap = document.querySelector('.editor-wrap');
+				if (wrap) Object.defineProperty(wrap, 'offsetHeight', { value: h, configurable: true });
+				this.cb([{ contentRect: { height: h - 2 } }]);
+			});
 		}
 		observe() {}
 		unobserve() {}

@@ -100,11 +100,25 @@ describe('BUG-318 크기 손잡이', () => {
 	// 정한 높이가 그냥 덮어써져 "끌어도 안 움직인다" 가 된다(admin).
 	it('상한도 같이 풀어 준다', async () => {
 		const el = targetEl(200);
+		render(SizeGrip, {
+			props: { target: el },
+			context: new Map([[COMPOSE_DOCK, { docked: () => true }]])
+		});
+		await tick();
+		drag(-150); // 팝업에서는 손잡이가 위 — 올릴수록 커진다
+		expect(el.style.height).toBe('350px');
+		expect(el.style.getPropertyValue('--compose-cap')).toBe('350px');
+	});
+
+	// BUG-360 다시 고침(admin): 팝업은 제자리 높이로 뜨되 제 최대 높이를 넘지 않는다. 제자리에서 끈 높이까지
+	// 상한으로 적으면 그 높이가 팝업의 최대 높이를 이겨 팝업이 제자리만큼 커졌다.
+	it('제자리에서 끌면 상한은 안 건드린다', async () => {
+		const el = targetEl(200);
 		render(SizeGrip, { props: { target: el } });
 		await tick();
 		drag(150);
 		expect(el.style.height).toBe('350px');
-		expect(el.style.getPropertyValue('--compose-cap')).toBe('350px');
+		expect(el.style.getPropertyValue('--compose-cap')).toBe('');
 	});
 
 	// BUG-321(admin): "사이즈 조절 핸들은 ui 크기에 따라 달라져야한다." 이 앱은 UI 크기를

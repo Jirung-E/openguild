@@ -561,16 +561,19 @@
 	/* BUG-360: 마크다운 편집기는 **바깥 상자**(`.editor-wrap`)에 높이가 박혀 있다 — 저장된 편집기 높이가
 	   인라인 `height` 로, 거기에 `min-height: 12.5rem`. 위 상한은 안쪽 스크롤 영역(`.cm-scroller`)에만 걸리므로,
 	   팝업에서는 글이 위쪽 몇 줄에만 보이고 그 아래가 바깥 상자의 흰 배경으로 남았다(admin: "위쪽 일부만 보이고
-	   아래쪽은 그냥 하얀색"). 붙어 있는 동안은 바깥 상자가 안쪽 크기를 따라가게 푼다 — 인라인 높이를 이기려면
-	   `!important` 가 필요하다. 떨어지면 인라인 높이(사용자가 정한 높이)가 그대로 돌아온다. */
+	   아래쪽은 그냥 하얀색"). 그래서 상한을 바깥 상자에 건다(아래). */
 	.dock-box.docked :global(.editor-wrap) {
-		/* BUG-360 다시 고침: 손잡이로 정한 높이(`--compose-cap`)가 있으면 그것을 쓴다. 예전에는 늘 `auto` 라 손잡이가
-		   안 먹고 줄 수만큼만 보였다(admin) — 상한은 안쪽 스크롤 영역의 **최대** 높이일 뿐이라 글이 적으면
-		   그대로 작다. 변수는 손잡이가 이 상자에 직접 적는다. */
-		height: var(--compose-cap, auto) !important;
-		min-height: 0;
-		max-height: 78vh;
-		max-height: 78dvh;
+		/* BUG-360 다시 고침(admin): 팝업에서도 **제자리 높이 그대로** 뜬다 — 팝업 최대 높이를 넘을 때만 거기서
+		   자른다. 예전에는 `height: auto` 로 글 크기에 맞춰 1줄로 떴다. 높이는 건드리지 않고(제자리에서 정한 인라인
+		   높이 · 손잡이가 정한 높이) 상한만 건다 — 상한을 안쪽 스크롤 영역이 아니라 **바깥 상자**에 걸어야 아래에
+		   흰 공간이 안 남는다(처음 고침의 원인). 상한은 일반 입력칸과 같다(넓게 40vh, 좁게 4.5rem). */
+		min-height: 0 !important;
+		max-height: min(var(--compose-cap, 40vh), 78vh);
+		max-height: min(var(--compose-cap, 40dvh), 78dvh);
+	}
+	.dock-box.compact :global(.editor-wrap) {
+		max-height: min(var(--compose-cap, 4.5rem), 78vh);
+		max-height: min(var(--compose-cap, 4.5rem), 78dvh);
 	}
 	/* 좁게 보기 = **입력칸만**(admin: "댓글 입력창만 뜨는 것"). 작성자 칸과 편집기 토글은
 	   접는다 — 붙어 있는 동안 화면을 먹는 것이 그 줄이다. 입력칸 높이도 더 줄인다.

@@ -126,7 +126,10 @@
 		// 손잡이로 정한 높이가 그냥 덮어써져 끌어도 안 움직인다. 상한을 **여기서 정해 준다** —
 		// 변수는 물려받으므로 편집기 안쪽까지 같이 따라간다. 상한을 안 거는 곳에서는
 		// 아무 일도 안 일어난다.
-		target.style.setProperty('--compose-cap', `${px}px`);
+		//
+		// BUG-360 다시 고침: **팝업에 붙어 있을 때만** 정한다. 제자리에서 끈 높이까지 적으면 그 값이 팝업 상한이 되어,
+		// 팝업이 제 최대 높이(넓게 40vh · 좁게 4.5rem)를 넘어 제자리 높이 그대로 떴다.
+		if (atTop) target.style.setProperty('--compose-cap', `${px}px`);
 	}
 
 	function down(e: PointerEvent) {
