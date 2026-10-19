@@ -53,7 +53,9 @@
 		onAttach = undefined,
 		mediaOnly = false,
 		defaultHeight = 480,
-		minHeightRem = undefined
+		minHeightRem = undefined,
+		height = $bindable(undefined),
+		persistHeight = true
 	}: {
 		/** 편집 내용 — CM 입력이 실시간 반영되므로 저장 시 이 값을 그대로 사용. */
 		value?: string;
@@ -73,6 +75,14 @@
 		 * 바꾸면 최소 높이가 12.5rem 으로 커졌다. 안 주면 예전 그대로(상자 12.5rem, 손잡이 10rem).
 		 */
 		minHeightRem?: number;
+		/**
+		 * BUG-360 다시 고침: 제자리 높이(px) — 주면 그 높이로 열고, 사용자가 바꾸면 여기로 알린다(팝업 높이는 안 알린다).
+		 * 댓글 칸은 [M↓] 로 일반 입력칸과 오가므로 **그 칸의 높이를 그대로** 넘겨받는다(admin: 바꿀 때마다 높이가
+		 * 달라졌다). 안 주면 모든 편집기가 같이 쓰는 저장된 높이로 연다.
+		 */
+		height?: number;
+		/** 바꾼 높이를 "모든 편집기가 같이 쓰는 높이" 로 저장할지. 댓글처럼 잠깐 쓰는 칸은 끈다. */
+		persistHeight?: boolean;
 	} = $props();
 
 	// DEV-172: cross-link 자동완성 상태 — QuestCommentsSection(DEV-171)과 동일한
@@ -295,9 +305,13 @@
 	 * 위의 저장이 그것을 "사용자가 정한 높이" 로 적어 버린다.
 	 */
 	let wasDocked = false;
+	/** 제자리 높이 — 받은 높이가 있으면 그것, 없으면 저장된 높이. */
+	function restingHeight(): number {
+		return untrack(() => height) ?? loadHeight();
+	}
 	$effect(() => {
 		const now = dock?.docked() ?? false;
-		if (wasDocked && !now && container) container.style.height = `${loadHeight()}px`;
+		if (wasDocked && !now && container) container.style.height = `${restingHeight()}px`;
 		wasDocked = now;
 	});
 	let view: EditorView | null = null;
@@ -310,7 +324,7 @@
 		view?.destroy();
 		view = null;
 		wiki = null;
-		container.style.height = `${loadHeight()}px`;
+		container.style.height = `${restingHeight()}px`;
 		view = new EditorView({
 			// untrack — $effect 안에서 호출되므로 value 를 그대로 읽으면
 			// 키 입력마다(value 동기화) 편집기가 재생성되는 루프가 된다.
@@ -362,7 +376,10 @@
 			if (dock?.docked()) return;
 			// BUG-360 다시 고침: 바깥 높이(테두리 포함)를 적는다. 안쪽 높이(contentRect)를 적으면 다시 열 때 그 값이
 			// 바깥 높이로 들어가 테두리만큼(2px) 매번 줄었다.
-			if (entries.length > 0 && container) scheduleHeightSave(container.offsetHeight);
+			if (entries.length === 0 || !container) return;
+			const h = container.offsetHeight;
+			if (h > 0) height = h;
+			if (persistHeight) scheduleHeightSave(h);
 		});
 		resizeObserver.observe(container);
 	}

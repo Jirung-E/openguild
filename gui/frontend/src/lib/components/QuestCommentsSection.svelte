@@ -612,6 +612,13 @@
 	let newRich = $state(false);
 	let editRich = $state(false);
 	let replyRich = $state(false);
+	/**
+	 * BUG-360 다시 고침(admin): [M↓] 로 일반 입력칸 ↔ 마크다운 편집기를 오갈 때 **높이를 그대로** 넘긴다. 예전에는
+	 * 편집기가 모든 편집기가 같이 쓰는 저장 높이로 열려서, 바꿀 때마다 칸 높이가 달라졌다(팝업에서도 따라 달라졌다).
+	 */
+	let newH = $state<number | undefined>(undefined);
+	let editH = $state<number | undefined>(undefined);
+	let replyH = $state<number | undefined>(undefined);
 	// BUG-157: 댓글 textarea 도 overlay 스크롤바로 통일.
 	let newBodyEl = $state<HTMLTextAreaElement | null>(null);
 	let editBodyEl = $state<HTMLTextAreaElement | null>(null);
@@ -1081,7 +1088,10 @@
 					type="button"
 					class="ce-toggle"
 					class:active={replyRich}
-					onclick={() => (replyRich = !replyRich)}
+					onclick={() => {
+						if (!replyRich) replyH = replyBodyEl?.offsetHeight || replyH;
+						replyRich = !replyRich;
+					}}
 					title={t('comment.toggleEditor', $locale)}
 					aria-pressed={replyRich}>M↓</button
 				>
@@ -1093,6 +1103,8 @@
 					onError={(m) => (replyError = m)}
 					mediaOnly
 					minHeightRem={4}
+					bind:height={replyH}
+					persistHeight={false}
 					defaultHeight={160}
 				/>
 			{:else}
@@ -1104,6 +1116,7 @@
 					}}
 					class="input body-input"
 					bind:this={replyBodyEl}
+					style:height={replyH ? `${replyH}px` : undefined}
 					bind:value={replyBody}
 					oninput={onWikiInput}
 					onkeyup={onWikiInput}
@@ -1217,7 +1230,10 @@
 						type="button"
 						class="ce-toggle"
 						class:active={editRich}
-						onclick={() => (editRich = !editRich)}
+						onclick={() => {
+						if (!editRich) editH = editBodyEl?.offsetHeight || editH;
+						editRich = !editRich;
+					}}
 						title={t('comment.toggleEditor', $locale)}
 						aria-pressed={editRich}>M↓</button
 					>
@@ -1231,6 +1247,8 @@
 					onError={(m) => (editError = m)}
 					mediaOnly
 					minHeightRem={4}
+					bind:height={editH}
+					persistHeight={false}
 					defaultHeight={200}
 				/>
 			{:else}
@@ -1242,6 +1260,7 @@
 					}}
 					class="input body-input"
 					bind:this={editBodyEl}
+					style:height={editH ? `${editH}px` : undefined}
 					bind:value={editBody}
 					oninput={onWikiInput}
 					onkeyup={onWikiInput}
@@ -1574,7 +1593,10 @@
 							type="button"
 							class="ce-toggle"
 							class:active={newRich}
-							onclick={() => (newRich = !newRich)}
+							onclick={() => {
+						if (!newRich) newH = newBodyEl?.offsetHeight || newH;
+						newRich = !newRich;
+					}}
 							title={t('comment.toggleEditor', $locale)}
 							aria-pressed={newRich}>M↓</button
 						>
@@ -1586,6 +1608,8 @@
 							onError={(m) => (saveError = m)}
 							mediaOnly
 							minHeightRem={4}
+							bind:height={newH}
+							persistHeight={false}
 							defaultHeight={160}
 						/>
 					{:else}
@@ -1597,6 +1621,7 @@
 							}}
 							class="input body-input"
 							bind:this={newBodyEl}
+							style:height={newH ? `${newH}px` : undefined}
 							bind:value={newBody}
 							oninput={onWikiInput}
 							onkeyup={onWikiInput}
