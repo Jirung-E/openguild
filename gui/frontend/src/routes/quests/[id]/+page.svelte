@@ -460,6 +460,10 @@
 			const updated = await questsApi.changeType(detail.id, {
 				new_type_prefix: target.prefix
 			});
+			// BUG-363: 편집 모드를 먼저 끈다 — 확인 창이 이미 "저장 안 한 편집은 사라진다" 고 알렸는데, 켜 둔 채 가면
+			// 미저장 가드가 "버리고 이동할까요?" 를 한 번 더 물었다. 거기서 [취소] 하면 이미 없어진 옛 번호 화면에 남는다.
+			editMode = false;
+			setUnsaved('quest-edit', false);
 			// slug 바뀜 → 새 slug 의 URL 로 navigate. BUG-015 fix1: from 보존.
 			await goto(`/quests/${updated.quest_id}${fromSuffix}`, { replaceState: true });
 		} catch (e) {
