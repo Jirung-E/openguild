@@ -197,6 +197,34 @@ where
     Ok(LaunchMode::Welcome)
 }
 
+/// DEV-444: `openguild-gui <길드> <문서번호>` 의 문서번호 — 길드 뒤 두 번째 인자.
+///
+/// 앞뒤 공백과 `[[…]]` 는 벗긴다(복사해 온 링크를 그대로 붙여도 된다). 길드 없이
+/// 문서번호만 줄 수는 없다 — 첫 인자는 늘 길드 경로로 읽는다.
+pub(crate) fn launch_doc_arg<I, S>(args: I) -> Option<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let doc = args
+        .into_iter()
+        .skip(1)
+        .map(|s| s.as_ref().to_string_lossy().into_owned())
+        .filter(|s| !s.starts_with("--"))
+        .nth(1)?;
+    let doc = doc.trim();
+    let doc = doc
+        .strip_prefix("[[")
+        .and_then(|d| d.strip_suffix("]]"))
+        .unwrap_or(doc)
+        .trim();
+    (!doc.is_empty()).then(|| doc.to_string())
+}
+
+/// DEV-444: 시동 때 받은 문서번호. 화면이 한 번 꺼내 가면 비운다 — 홈으로 돌아올 때마다
+/// 다시 그 문서로 끌려가면 안 된다.
+pub struct LaunchDoc(pub std::sync::Mutex<Option<String>>);
+
 /// 상대 경로 (`.` / `..` / `foo` 등) → 절대 + Windows `\\?\` prefix 제거.
 /// `canonicalize` 실패 시 원본 그대로 (방어적).
 fn absolutize(p: &Path) -> PathBuf {
@@ -483,10 +511,12 @@ pub fn run() {
                     "openguild-gui — desktop GUI\n\
                      \n\
                      Usage:\n  \
-                       openguild-gui [GUILD_PATH]\n\
+                       openguild-gui [GUILD_PATH [DOC]]\n\
                      \n\
                      GUILD_PATH 가 디렉토리 / `.guild` 파일이면 해당 길드로 시동.\n\
                      미지정 시 welcome 화면.\n\
+                     DOC 를 주면 홈 대신 그 문서를 연다 — DEV-001 · C-001 · BOOK-001 ·\n\
+                     규칙 이름. `rule:이름` 처럼 종류를 붙여도 된다.\n\
                      \n\
                      Env:\n  \
                        OPENGUILD_GUILD=PATH  argv 대신 환경변수로 길드 지정.\n\
@@ -523,6 +553,12 @@ pub fn run() {
         LaunchMode::Uninit(p) => ("uninit", None, Some(p.clone())),
     };
     let launch_info = LaunchInfo { mode: mode_label, uninit_path };
+    // DEV-444: 길드를 열 때만 — 시작 화면 · 초기화 확인에는 열 문서가 없다.
+    let launch_doc = LaunchDoc(std::sync::Mutex::new(
+        store_path
+            .as_ref()
+            .and_then(|_| launch_doc_arg(std::env::args_os())),
+    ));
     eprintln!(
         "[openguild-gui] launch mode: {} (path: {})",
         launch_info.mode,
@@ -629,6 +665,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(store)
         .manage(launch_info)
+        .manage(launch_doc)
         .invoke_handler(tauri::generate_handler![
             // DEV-379: 플러그인 — 이 기계에서 남의 코드를 돌릴지 정한다.
             commands::plugin_status,
@@ -646,6 +683,7 @@ pub fn run() {
             commands::plugin_reload,
             commands::plugin_set_value,
             commands::launch_mode,
+            commands::take_launch_doc,
             commands::current_guild_path,
             commands::current_guild_name,
             // BUG-041: DB schema 가 binary 보다 새로운지 — banner 표시용.
@@ -1163,6 +1201,23 @@ mod tests {
     /// 디렉토리에 길드 마커 (`.guild` 디렉토리) 시드 — 테스트용 헬퍼.
     fn init_marker(dir: &Path) {
         std::fs::create_dir_all(dir.join(".guild")).unwrap();
+    }
+
+    #[test]
+    fn launch_doc_is_the_second_argument() {
+        let doc = |v: &[&str]| launch_doc_arg(v.iter().copied());
+        assert_eq!(doc(&["gui", "/g", "DEV-001"]).as_deref(), Some("DEV-001"));
+        assert_eq!(
+            doc(&["gui", "--x", "/g", "--y", "rule:코딩 규칙"]).as_deref(),
+            Some("rule:코딩 규칙")
+        );
+        assert_eq!(
+            doc(&["gui", "/g", " [[BOOK-3]] "]).as_deref(),
+            Some("BOOK-3")
+        );
+        assert_eq!(doc(&["gui", "/g"]), None);
+        assert_eq!(doc(&["gui", "/g", "  "]), None);
+        assert_eq!(doc(&["gui"]), None);
     }
 
     #[test]

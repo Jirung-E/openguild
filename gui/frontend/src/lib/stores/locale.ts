@@ -1209,6 +1209,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '입력창 팝업 꺼짐 — 누르면 켭니다',
 		en: 'Pop-up input off — click to turn on'
 	},
+	// DEV-444: 시동 인자로 받은 문서번호.
+	'launch.docNotFound': {
+		ko: '{id} 문서를 찾지 못했습니다',
+		en: 'Could not find the document {id}'
+	},
 	// DEV-443: 개인 형광펜.
 	'hl.add': { ko: '형광펜', en: 'Highlight' },
 	'hl.remove': { ko: '형광펜 지우기', en: 'Remove highlight' },

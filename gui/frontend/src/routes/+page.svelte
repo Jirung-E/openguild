@@ -11,6 +11,9 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
 	import { markGuildContextActive } from '$lib/stores/guildSession';
+	import { launchDocHref } from '$lib/utils/launch-doc';
+	import { showToast } from '$lib/stores/toast';
+	import { locale, t } from '$lib/stores/locale';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -82,6 +85,14 @@
 				goto('/welcome', { replaceState: true });
 			} else {
 				markGuildContextActive();
+				// DEV-444: `openguild-gui <길드> <문서번호>` — 홈 대신 그 문서로. 한 번만 꺼내지므로
+				// 홈으로 돌아와도 다시 끌려가지 않는다. 없는 번호면 홈에 남고 알린다.
+				const doc = await invoke<string | null>('take_launch_doc');
+				if (doc) {
+					const href = await launchDocHref(doc);
+					if (href) goto(href, { replaceState: true });
+					else showToast(t('launch.docNotFound', $locale).replace('{id}', doc), 'error');
+				}
 			}
 		} catch {
 			// invoke 실패 시 redirect 생략 (회귀 방지).

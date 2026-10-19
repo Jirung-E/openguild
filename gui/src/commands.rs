@@ -1160,6 +1160,12 @@ pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> LaunchInfoDto {
     }
 }
 
+/// DEV-444: 시동 인자로 받은 문서번호를 **한 번** 꺼낸다 — 두 번째부터는 `None`.
+#[tauri::command]
+pub fn take_launch_doc(state: State<'_, crate::LaunchDoc>) -> Option<String> {
+    state.0.lock().ok().and_then(|mut d| d.take())
+}
+
 /// BUG-019: 현재 활성 길드 경로 (절대 경로). frontend 의 localStorage
 /// namespace 분리 / 길드별 UI 상태 키 prefix 에 사용.
 ///
