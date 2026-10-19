@@ -145,8 +145,9 @@ ID 를 확인한다.
 
 ## 절대 금지
 
-- **커밋/푸시/빌드/테스트 명령을 시키지 않았는데 실행** (cargo build/test, npm test 포함 — 수정 후 자동 검증 금지, 검증 명령만 안내). **예외**: 퀘스트 수명주기 3번(Testing 전환 직후) 커밋 + merge, 그리고 그 커밋 **직전의 `just test`**(AGENTS.md — "`just test` 는 커밋 직전에 돌린다" 가 우선). 그 외의 커밋과 push/build/test 는 전부 이 금지 그대로 적용.
-- **develop 직접 커밋** (quest 없는 메타 변경도 chore 브랜치 경유)
+- **커밋/푸시를 시키지 않았는데 실행.** 예외는 퀘스트 수명주기 3번(Testing 전환 직후) 커밋 + merge 뿐.
+- **설치된 데스크톱 앱 교체**(`just build-desktop` 으로 설치본 덮어쓰기) — 먼저 묻는다.
+- **퀘스트 작업을 develop 에 직접 커밋** — 퀘스트 작업은 `{QUEST_ID}` 브랜치에서. **chore 커밋(퀘스트 등록 · 완료 처리 · 스킬/문서 메타 변경)은 develop 에 바로 해도 된다**(2026-10-20 admin). 커밋 자체는 여전히 먼저 묻는다.
 - **`.guild` frontmatter(status/urgency/parent/prereq/deleted) 직접 편집** — 반드시 CLI. 본문(description)만 직접 편집 가능(직후 `openguild reindex`)
 - **조회도 CLI 우선 — `.guild/**` 파일을 직접 열람/grep 으로 뒤지지 말 것**
   (사용자 지적, BUG-154): 도서관은 `openguild library list` / `library show
@@ -156,6 +157,24 @@ ID 를 확인한다.
   결과를 읽게 된다. (허용 예외: CLI 버그 자체를 조사할 때의 대조 확인)
 - **미커밋 변경 있는 채 `git reset --hard`** (실사고 이력 — .guild 는 tracked 인데 보통 미커밋)
 - 상태 변경에 deprecated `quest status <id> <status>` — **`quest move`** 사용
+
+## 테스트 · 빌드 — 묻지 말고 돌린다 (2026-10-20 admin)
+
+고친 것을 확인하는 테스트 · 빌드(cargo test/build, vitest, `npm run check`, 개발 빌드
+띄워 보기)는 시키지 않아도 돌린다. 커밋 직전에는 반드시 `just test`(AGENTS.md).
+설치본 교체만 예외로 먼저 묻는다(위 "절대 금지").
+
+출력이 길면 **[rtk](https://www.rtk-ai.app/)** 를 앞에 붙여 실패 · 요약만 받는다 —
+exit code 는 그대로 전달된다. 실패 원인을 자세히 봐야 할 때만 rtk 없이 다시 돌린다.
+
+```bash
+rtk test just test                 # 통과면 몇 줄, 실패면 실패만
+rtk cargo test -p openguild-core   # cargo 출력 압축
+rtk vitest run src/lib/utils/x.test.ts
+rtk err cargo build -p openguild-gui   # 오류 · 경고만
+```
+
+`rtk init -g`(Claude Code 설정에 훅을 까는 것)는 하지 않는다 — 필요한 곳에 직접 붙인다.
 
 ## 함정 (실사고 기반)
 
