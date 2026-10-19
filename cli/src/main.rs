@@ -10372,17 +10372,45 @@ fn main() {
     // 함수 분리가 불가능 — rustc 자신도 쓰는 관용구대로 넉넉한 스택의 별도
     // 스레드에서 실행한다. (release 는 슬롯 병합 + 인라이닝으로 프레임이 작아
     // 원래도 문제없음. Linux 는 메인 스택 8MB 라 드러나지 않았을 뿐.)
+    // BUG-367: `openguild … | head` 처럼 읽는 쪽이 먼저 닫으면 `println!` 이 panic 한다. 출력은
+    // 읽는 쪽이 원한 만큼 이미 나갔으니 조용히 끝낸다(ripgrep 처럼 exit 0). SIGPIPE 를 기본값으로
+    // 되돌리는 흔한 방법은 쓰지 않는다 — `run` 훅의 자식이 먼저 끝나면 그 stdin 에 쓰다가 CLI
+    // 가 통째로 죽는다. 이 panic 만 골라 메시지를 지우고, 나머지는 원래대로 보인다.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if !is_closed_stdout_panic(info.payload()) {
+            default_hook(info);
+        }
+    }));
     let result = std::thread::Builder::new()
         .name("run".into())
         .stack_size(8 * 1024 * 1024)
         .spawn(run)
         .expect("run 스레드 spawn 실패")
         .join()
-        .unwrap_or_else(|p| std::panic::resume_unwind(p));
+        .unwrap_or_else(|p| {
+            if is_closed_stdout_panic(p.as_ref()) {
+                std::process::exit(0);
+            }
+            std::panic::resume_unwind(p)
+        });
     if let Err(e) = result {
         eprintln!("error: {e:#}");
         std::process::exit(1);
     }
+}
+
+/// BUG-367: 닫힌 stdout 에 쓰다 난 panic 인가. 문구는 std 의 `print_to` 가 만드는 것이고, 오류
+/// 번호는 OS 문구가 번역돼도(윈도우 한국어) 그대로라 번호로 가린다 — 32 = EPIPE, 232 = 윈도우
+/// ERROR_NO_DATA("파이프를 닫는 중입니다").
+fn is_closed_stdout_panic(payload: &(dyn std::any::Any + Send)) -> bool {
+    let msg = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("");
+    msg.starts_with("failed printing to stdout")
+        && (msg.contains("(os error 32)") || msg.contains("(os error 232)"))
 }
 
 // ─────────────────────────── 테스트 ───────────────────────────
@@ -12227,6 +12255,16 @@ mod tests {
             }
             _ => panic!("expected QuestCmd::Move"),
         }
+    }
+
+    #[test]
+    fn only_a_closed_stdout_is_swallowed() {
+        let p = |s: &str| super::is_closed_stdout_panic(&s.to_string());
+        assert!(p("failed printing to stdout: Broken pipe (os error 32)"));
+        assert!(p("failed printing to stdout: 파이프를 닫는 중입니다. (os error 232)"));
+        assert!(!p("failed printing to stderr: Broken pipe (os error 32)"), "stdout 만");
+        assert!(!p("failed printing to stdout: No space left on device (os error 28)"));
+        assert!(!p("index out of bounds"));
     }
 
     #[test]
