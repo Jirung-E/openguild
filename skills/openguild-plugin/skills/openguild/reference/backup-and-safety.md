@@ -42,7 +42,7 @@ openguild plugin allow backup-archive --yes
 | `campaign delete` | Requires `--yes`; no `--dry-run` option |
 | `library delete` / `library folder delete` | Prompts interactively unless `--yes` is supplied |
 | `rule delete` / `comment remove` | Prompts interactively unless `--force` is supplied |
-| …with no terminal (agents, scripts, hooks) | The prompt cannot be answered, so the command **cancels and exits 0** — it prints `(취소)`/`cancelled`. Always pass the flag; read the output, not just the exit code |
+| …with no terminal (agents, scripts, hooks) | The prompt gets no answer, so the command **stops with an error (exit 1)** and deletes nothing. Always pass the flag. (A person answering N cancels with exit 0, like `rm -i`; `yes \| …` still works) |
 | `tag delete` / `backup remove` | Executes immediately; no confirmation flag |
 | Quest auto-snapshot | After quest mutations, the count/time policy may create a snapshot; this is not a per-delete confirmation or rollback guarantee |
 | Journal (AOF) | Every mutation is appended to a journal before the cache is updated, for crash recovery |

@@ -5138,23 +5138,18 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     }
                 }
                 CommentCmd::Rm { slug, id, force } => {
-                    if !force {
-                        eprint!(
-                            "{}",
-                            tf!(
+                    if !force
+                        && !confirm_delete(
+                            &tf!(
                                 "댓글 #{id} ({} {slug}) 을 삭제할까요? (y/N) ",
                                 "Delete comment #{id} ({} {slug})? (y/N) ",
                                 scope.noun()
-                            )
-                        );
-                        use std::io::Write;
-                        std::io::stderr().flush().ok();
-                        let mut buf = String::new();
-                        std::io::stdin().read_line(&mut buf)?;
-                        if !matches!(buf.trim(), "y" | "Y" | "yes") {
-                            println!("{}", tf!("(취소)", "(cancelled)"));
-                            return Ok(());
-                        }
+                            ),
+                            "--force",
+                        )?
+                    {
+                        println!("{}", tf!("(취소)", "(cancelled)"));
+                        return Ok(());
                     }
                     c.comments_delete_scoped(scope, &slug, id)?;
                     if json {
@@ -5358,6 +5353,35 @@ fn print_quest(q: &Quest, json: bool) {
 ///
 /// 대상: `quest status` / `quest start` / `quest done` / `quest reopen` —
 /// 모두 같은 패턴이라 한 곳에 묶음.
+/// BUG-366: 삭제 확인 (y/N). `true` 면 지운다.
+///
+/// **답이 아예 없으면(입력 끝 — 터미널 없이 부른 AI · 스크립트 · 훅) 오류로 끝낸다.** 예전엔
+/// 그것도 "취소" 로 보고 exit 0 이라, 부르는 쪽은 지운 줄 알았다. 사람이 `N` 을 누른 것은
+/// 그대로 취소(exit 0) — `rm -i` 와 같다. 파이프로 `y` 를 넣는 스크립트(`yes | …`)는 그대로 된다.
+fn confirm_delete(question: &str, flag: &str) -> Result<bool> {
+    let mut answer = String::new();
+    confirm_delete_from(question, flag, &mut std::io::stdin().lock(), &mut answer)
+}
+
+fn confirm_delete_from(
+    question: &str,
+    flag: &str,
+    input: &mut impl std::io::BufRead,
+    buf: &mut String,
+) -> Result<bool> {
+    use std::io::Write;
+    eprint!("{question}");
+    std::io::stderr().flush().ok();
+    if input.read_line(buf)? == 0 {
+        eprintln!();
+        return Err(anyhow!(tf!(
+            "확인할 답이 없어 지우지 않았습니다 — 터미널 없이 부를 때는 {flag} 를 붙이세요",
+            "nothing was deleted: no answer to the confirmation — pass {flag} when there is no terminal"
+        )));
+    }
+    Ok(matches!(buf.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+}
+
 fn change_status_with_noop_notice(
     c: &Backend,
     slug: &str,
@@ -8840,16 +8864,14 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             }
         }
         RulesCmd::Delete { slug, force } => {
-            if !force {
-                eprint!("{}", tf!("규칙 '{slug}' 을 삭제할까요? (y/N) ", "delete rule '{slug}'? (y/N) "));
-                use std::io::Write;
-                std::io::stderr().flush().ok();
-                let mut buf = String::new();
-                std::io::stdin().read_line(&mut buf)?;
-                if !matches!(buf.trim(), "y" | "Y" | "yes") {
-                    println!("{}", tf!("(취소)", "(cancelled)"));
-                    return Ok(());
-                }
+            if !force
+                && !confirm_delete(
+                    &tf!("규칙 '{slug}' 을 삭제할까요? (y/N) ", "delete rule '{slug}'? (y/N) "),
+                    "--force",
+                )?
+            {
+                println!("{}", tf!("(취소)", "(cancelled)"));
+                return Ok(());
             }
             c.rules_delete(&slug)?;
             if json {
@@ -9023,16 +9045,14 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             }
         }
         LibraryCmd::Delete { id, yes } => {
-            if !yes {
-                eprint!("{}", tf!("도서관 문서 '{id}' 을 삭제할까요? (y/N) ", "delete library doc '{id}'? (y/N) "));
-                use std::io::Write;
-                std::io::stderr().flush().ok();
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                if !input.trim().eq_ignore_ascii_case("y") {
-                    println!("{}", tf!("취소됨", "cancelled"));
-                    return Ok(());
-                }
+            if !yes
+                && !confirm_delete(
+                    &tf!("도서관 문서 '{id}' 을 삭제할까요? (y/N) ", "delete library doc '{id}'? (y/N) "),
+                    "--yes",
+                )?
+            {
+                println!("{}", tf!("취소됨", "cancelled"));
+                return Ok(());
             }
             c.library_delete(&id)?;
             if json {
@@ -9069,16 +9089,14 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 }
             }
             LibraryFolderCmd::Delete { path, yes } => {
-                if !yes {
-                    eprint!("{}", tf!("폴더 '{path}' 을 삭제할까요? (y/N) ", "delete folder '{path}'? (y/N) "));
-                    use std::io::Write;
-                    std::io::stderr().flush().ok();
-                    let mut input = String::new();
-                    std::io::stdin().read_line(&mut input)?;
-                    if !input.trim().eq_ignore_ascii_case("y") {
-                        println!("{}", tf!("취소됨", "cancelled"));
-                        return Ok(());
-                    }
+                if !yes
+                    && !confirm_delete(
+                        &tf!("폴더 '{path}' 을 삭제할까요? (y/N) ", "delete folder '{path}'? (y/N) "),
+                        "--yes",
+                    )?
+                {
+                    println!("{}", tf!("취소됨", "cancelled"));
+                    return Ok(());
                 }
                 let removed = c.library_folder_delete(&path)?;
                 if json {
@@ -12209,6 +12227,19 @@ mod tests {
             }
             _ => panic!("expected QuestCmd::Move"),
         }
+    }
+
+    #[test]
+    fn confirm_delete_refuses_when_there_is_no_answer() {
+        let ask = |input: &str| {
+            let mut buf = String::new();
+            confirm_delete_from("q? ", "--force", &mut input.as_bytes(), &mut buf)
+        };
+        assert!(ask("").is_err(), "입력 끝 — 답 없음은 오류");
+        assert!(ask("y\n").unwrap());
+        assert!(ask("YES\n").unwrap());
+        assert!(!ask("n\n").unwrap(), "사람이 N — 취소");
+        assert!(!ask("\n").unwrap(), "그냥 Enter — 취소");
     }
 
     #[test]
