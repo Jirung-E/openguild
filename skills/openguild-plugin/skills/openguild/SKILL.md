@@ -188,6 +188,7 @@ openguild quest show <slug> --full               # everything (body, relations, 
 openguild quest show <slug> --field title status parent   # only these (1 field = bare value)
 openguild quest update <slug> [--title ...] [--description-file <PATH>] [--urgency N] [--base-version N]
                                                  # --base-version: from `show --field version`; refuses (non-zero) if changed since
+openguild quest retype <slug> <PREFIX>          # change type → the quest gets a NEW id (prints old → new)
 openguild quest delete <slug> --yes             # soft delete, restorable
 openguild quest restore <slug>
 

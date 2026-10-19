@@ -151,6 +151,9 @@ openguild quest new --type DEV --title "API 추가"
 # 상태 변경
 openguild quest move DEV-001 in_progress
 
+# 타입 변경 — 새 타입의 다음 번호를 받는다(옛 → 새 번호를 출력). 댓글 · 메모 · 첨부가 따라간다
+openguild quest retype DEV-001 BUG
+
 # 댓글 추가 (stdin 으로 본문)
 echo "디자인 확정함." | openguild quest comment add DEV-001 --author alice
 

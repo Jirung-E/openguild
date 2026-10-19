@@ -32,8 +32,17 @@ open ──▶ in_progress ──▶ testing ──▶ done
 ```
 
 These are the default statuses; a guild can rename or add its own
-(`openguild status list`). A quest's **type** (the `DEV` in `DEV-001`) cannot be
-changed from the CLI — that is in the desktop app / web UI.
+(`openguild status list`).
+
+## Changing the type
+
+```bash
+openguild quest retype DEV-001 BUG     # DEV-001 becomes the next BUG number, e.g. BUG-012
+```
+
+The quest **gets a new ID** — comments, memo, attachments, board position and
+highlights follow it, but `[[DEV-001]]` written in other documents does not
+change. Use the new ID from the output afterwards. Same type → no change.
 
 ```bash
 openguild quest move <slug> <STATUS>   # case/spacing-insensitive: Open, in-progress, ...

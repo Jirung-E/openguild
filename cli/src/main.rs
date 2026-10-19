@@ -15,7 +15,8 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use openguild_core::models::{
-    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
+    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
+    CreateQuestRequest,
     ListQuery, QuestDetail, QuestRow as Quest, QuestStatus, QuestType, UpdateQuestRequest,
 };
 use openguild_core::services::{
@@ -674,6 +675,13 @@ enum QuestCmd {
     },
     #[command(about = tf!("상태 변경. status: name_en / slug / ID.", "Change status. status: name_en / slug / ID."))]
     Move { slug: String, status: String },
+    #[command(about = tf!("타입 변경 — 퀘스트가 새 타입의 다음 번호를 받는다(옛 → 새 번호를 출력). 댓글 · 메모 · 첨부 · 보드 위치가 따라간다.",
+                          "Change the type — the quest gets the next number of the new type (prints old → new). Comments, memo, attachments and board position follow."))]
+    Retype {
+        slug: String,
+        #[arg(help = tf!("새 타입 prefix (대소문자 무시). `openguild type list` 참고.", "New type prefix (case-insensitive). See `openguild type list`."))]
+        type_prefix: String,
+    },
     #[command(about = tf!("상태를 In Progress 로 변경", "Change status to In Progress"))]
     Start { slug: String },
     #[command(about = tf!("상태를 Done 으로 변경", "Change status to Done"))]
@@ -1672,6 +1680,13 @@ impl HttpClient {
         )
     }
 
+    fn change_type(&self, id: i64, type_prefix: &str) -> Result<Quest> {
+        self.patch(
+            &format!("/api/quests/{id}/type"),
+            &serde_json::json!({ "new_type_prefix": type_prefix }),
+        )
+    }
+
     fn change_parent(&self, id: i64, parent_id: Option<i64>) -> Result<Quest> {
         self.patch(
             &format!("/api/quests/{id}/parent"),
@@ -2661,6 +2676,19 @@ impl Backend {
                     &l.store,
                     id,
                     ChangeStatusRequest { status_slug: status_slug.to_string() },
+                ),
+            )),
+        }
+    }
+
+    fn change_type(&self, id: i64, type_prefix: &str) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.change_type(id, type_prefix),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::change_quest_type(
+                    &l.store,
+                    id,
+                    ChangeTypeRequest { new_type_prefix: type_prefix.to_string() },
                 ),
             )),
         }
@@ -10099,6 +10127,30 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             // DEV-044: 변경 전용. status 와 동일한 helper 사용.
             change_status_with_noop_notice(c, &slug, &status, json)?;
         }
+        QuestCmd::Retype { slug, type_prefix } => {
+            let detail = c.quest_by_slug(&slug)?;
+            if detail.quest.type_prefix.eq_ignore_ascii_case(type_prefix.trim()) {
+                if json {
+                    println!("{}", json_str(&detail.quest));
+                } else {
+                    println!(
+                        "{}",
+                        tf!(
+                            "(이미 {} 타입입니다 — 변경 없음)",
+                            "(already a {} quest — no change)",
+                            detail.quest.type_prefix
+                        )
+                    );
+                    print_quest_line(&detail.quest);
+                }
+            } else {
+                let q = c.change_type(detail.quest.id, type_prefix.trim())?;
+                if !json {
+                    println!("{} → {}", detail.quest.quest_id, q.quest_id);
+                }
+                print_quest(&q, json);
+            }
+        }
         QuestCmd::Start { slug } => {
             // REQ-005: 정규 slug 를 직접 넘긴다. 예전엔 표시명("In Progress")을
             // 넘기고 `resolve_status_slug` 의 정규화에 기댔는데, slug 를 rename
@@ -12157,6 +12209,19 @@ mod tests {
             }
             _ => panic!("expected QuestCmd::Move"),
         }
+    }
+
+    #[test]
+    fn retype_takes_slug_and_prefix() {
+        let cli = Cli::try_parse_from(["openguild", "quest", "retype", "DEV-001", "bug"]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Retype { slug, type_prefix } } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(type_prefix, "bug");
+            }
+            _ => panic!("expected QuestCmd::Retype"),
+        }
+        assert!(Cli::try_parse_from(["openguild", "quest", "retype", "DEV-001"]).is_err());
     }
 
     #[test]
