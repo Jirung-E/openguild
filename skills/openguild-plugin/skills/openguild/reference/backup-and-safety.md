@@ -42,6 +42,7 @@ openguild plugin allow backup-archive --yes
 | `campaign delete` | Requires `--yes`; no `--dry-run` option |
 | `library delete` / `library folder delete` | Prompts interactively unless `--yes` is supplied |
 | `rule delete` / `comment remove` | Prompts interactively unless `--force` is supplied |
+| …with no terminal (agents, scripts, hooks) | The prompt cannot be answered, so the command **cancels and exits 0** — it prints `(취소)`/`cancelled`. Always pass the flag; read the output, not just the exit code |
 | `tag delete` / `backup remove` | Executes immediately; no confirmation flag |
 | Quest auto-snapshot | After quest mutations, the count/time policy may create a snapshot; this is not a per-delete confirmation or rollback guarantee |
 | Journal (AOF) | Every mutation is appended to a journal before the cache is updated, for crash recovery |
@@ -98,7 +99,7 @@ openguild ping || echo "server unreachable"
 ```bash
 openguild quest list --json                       # pretty-printed
 id=$(openguild quest new ... --json --compact | jq -r .quest_id)
-openguild quest list --json --compact | jq -c '.[] | {id, status}'
+openguild quest list --json --compact | jq -c '.[] | {quest_id, status_slug}'
 openguild quest delete DEV-049 --dry-run --json --compact
 ```
 

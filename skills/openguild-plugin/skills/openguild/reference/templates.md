@@ -5,6 +5,8 @@ Templates live at `.guild/templates/<name>.md` and pre-fill new quests.
 ```bash
 openguild template list
 openguild template show <name>
+openguild template new <name> [--type DEV] [--title "..."] [--urgency N] [--tags a,b] --file <PATH>
+                              [--force]     # overwrite an existing template
 openguild quest new --type <PREFIX> --title "..." --template <name>
 ```
 

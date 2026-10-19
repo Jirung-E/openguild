@@ -21,8 +21,10 @@ chose.
 ## Ready-made examples
 
 `examples/plugins/` in the repo holds five working plugins to copy — a multi-line one
-(`telegram-quest-status`, with tests), a `run` one without a script (`desktop-notify`), one that
-blocks in the `pre` phase (`deleted-audit`), and one that archives backups (`backup-archive`).
+(`telegram-quest-status`, with tests), one that hands discussion comments to an AI or another
+program on this machine (`discussion-to-ai`, with tests), a `run` one without a script
+(`desktop-notify`), one that blocks in the `pre` phase (`deleted-audit`), and one that archives
+backups (`backup-archive`).
 Read `examples/plugins/README.md` before writing one from scratch.
 
 ## Definition
@@ -98,7 +100,7 @@ directory is deliberately outside the guild
 as **environment variables** of the child (`$ARCHIVE_DIR`) — a `run` hook has no url or
 header to put them in, and passing a token through `args` would show it in `ps`.
 
-`openguild plugin events` lists all 55 event names — quests, comments, campaigns,
+`openguild plugin events` lists every event name — quests, comments, campaigns,
 the library, rules, attachments, and the guild's own vocabulary (types, statuses, tag
 definitions) — with each event's subject kind and the `with` names it allows. Comments and
 attachments carry a subject of several possible kinds rather than having separate names per
@@ -246,7 +248,7 @@ from the CLI. Running is still limited to the matching component.
 
 ## Timing and failure
 
-Delivery does not block the mutation. `openguild comment add` returns
+Delivery does not block the mutation. `openguild quest comment add` returns
 immediately and the hook goes out on a separate thread; the CLI gives it a
 short grace period before exiting (`OPENGUILD_PLUGIN_DRAIN_MS`, default 2000).
 A hook that is slower than that is cut short, and you are told.

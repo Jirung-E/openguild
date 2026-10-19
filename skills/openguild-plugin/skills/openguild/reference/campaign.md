@@ -7,6 +7,8 @@ A campaign groups quests toward a milestone/release. Slugs look like
 openguild campaign list
 openguild campaign show <slug>
 openguild campaign new --title "..." [--start YYYY-MM-DD] [--end YYYY-MM-DD]
+openguild campaign update <slug> [--title ...] [--description-file <PATH>] [--start ...] [--end ...]
+openguild campaign history <slug>
 openguild campaign delete <slug> --yes
 openguild campaign start <slug>
 openguild campaign end <slug>
@@ -23,4 +25,5 @@ openguild campaign checklist remove <campaign-slug> <index>
 `<index>` is the item's current 1-based position, not a stable item ID.
 Removing an item renumbers every item after it.
 
-Campaigns also support comments/memos — see [comments.md](comments.md).
+Campaigns also support comments/memos — see [comments.md](comments.md) — and
+attachments (`openguild campaign attach list|add|remove`, same as `quest attach`).

@@ -228,7 +228,7 @@ If the plugin declares `inputs`, point them at Admin → Plugins instead of
 telling them to export anything. From a terminal the equivalent is:
 
 ```bash
-echo -n <value> | openguild plugin set <name> <KEY>   # stdin: stays out of history
+printf '%s' <value> | openguild plugin set <name> <KEY>   # stdin: stays out of history
 openguild plugin config <name>                        # what is set, secrets masked
 ```
 

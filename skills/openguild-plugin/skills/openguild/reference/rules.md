@@ -6,10 +6,11 @@ Rules are short project-convention/policy docs stored in the guild (e.g.
 ```bash
 openguild rule list
 openguild rule show <name>
-openguild rule new <name> --file <PATH>
-openguild rule set <name> --file <PATH>
-openguild rule delete <name>
+openguild rule new <name> --file <PATH>        # or --empty
+openguild rule set <name> --file <PATH>        # create or replace
+openguild rule delete <name> --force           # without --force it asks (and cancels with no terminal)
 openguild rule rename <name> <new-name>
+openguild rule history <name>
 ```
 
 ## Tags

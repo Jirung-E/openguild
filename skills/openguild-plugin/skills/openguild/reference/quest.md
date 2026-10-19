@@ -26,10 +26,14 @@ the merged result.
 
 ```
 open ──▶ in_progress ──▶ testing ──▶ done
-              │              ▲
-              └──────────────┘
+              ▲              │
+              └── returned ◀─┘   (the human sent it back — read the comments, fix, retest)
       (cancelled / on_hold reachable from most states)
 ```
+
+These are the default statuses; a guild can rename or add its own
+(`openguild status list`). A quest's **type** (the `DEV` in `DEV-001`) cannot be
+changed from the CLI — that is in the desktop app / web UI.
 
 ```bash
 openguild quest move <slug> <STATUS>   # case/spacing-insensitive: Open, in-progress, ...
@@ -55,8 +59,8 @@ needs a human to look at it (UI/UX, anything not automatable), move to
 
 ### Attachments — read what is already there
 
-`openguild quest show <slug>` lists attachments when the quest has any, and
-`openguild quest attach list <slug>` shows them on their own. They are files the
+`openguild quest show <slug>` only counts attachments (`attachments : 2`);
+`quest show <slug> --full` and `openguild quest attach list <slug>` list them. They are files the
 author added because the description does not carry them — specs, mockups, logs,
 data samples. Read the relevant ones before starting the work; the path in the
 listing is relative to `.guild/`.
@@ -136,7 +140,7 @@ openguild quest done "$id"
 openguild quest new --type BUG --title "Crash on empty query"
 
 # filter in-progress work
-openguild quest list --status in_progress --json | jq '.[] | .id'
+openguild quest list --status in_progress --json | jq -r '.[].quest_id'   # .id is the internal row number
 
 # express a prerequisite
 openguild quest prereq add DEV-049 DEV-048
@@ -150,7 +154,7 @@ object.
 
 ```
 id  title  status  status_ko  status_slug  urgency  description  type
-parent  sub_quests  prerequisites  successors  created_at  updated_at
+parent  sub_quests  prerequisites  successors  created_at  updated_at  version
 ```
 
 Relation fields print one slug per line — `--field sub_quests` is the way to

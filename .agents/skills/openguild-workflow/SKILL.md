@@ -45,15 +45,14 @@ openguild comments --unresolved                            # 미해결 토론 �
 
 ## 길드 위치 — 이름만 주어졌을 때
 
-cwd 에 `.guild` 가 없고 사용자가 길드 **이름**만 준 경우, `~/.openguild/
-recents.json` 을 읽어 위치를 알아낸다. 이 파일은 GUI/CLI 가 최근 연 길드
-목록으로, 배열 `[{ "name": ..., "path": ..., "last_opened": ... }]` 형식.
-`name` 이 일치(부분 일치 시 사용자 확인)하는 항목의 `path` 를 찾아
-`openguild --guild <path> ...` 로 실행한다.
+cwd 에 `.guild` 가 없고 사용자가 길드 **이름**만 준 경우, `openguild guild
+list` 로 이 기계에서 최근 연 길드(이름 + 경로)를 보고, 이름을 그대로
+`--guild` 에 넘긴다(부분 일치 · 애매하면 사용자 확인).
 
 ```bash
-# 예: 사용자가 "coco-ai 길드 상태 봐줘" → recents 에서 path 조회 후
-openguild --guild <recents 에서 찾은 path> quest list --status testing
+# 예: 사용자가 "coco-ai 길드 상태 봐줘"
+openguild guild list
+openguild --guild coco-ai quest list --status testing
 ```
 
 ## 퀘스트 수명주기 (필수 순서)
@@ -146,7 +145,7 @@ ID 를 확인한다.
 
 ## 절대 금지
 
-- **커밋/푸시/빌드/테스트 명령을 시키지 않았는데 실행** (cargo build/test, npm test 포함 — 수정 후 자동 검증 금지, 검증 명령만 안내). **유일한 예외**: 퀘스트 수명주기 3번(Testing 전환 직후) 커밋 — 그 외의 커밋과 push/build/test 는 전부 이 금지 그대로 적용.
+- **커밋/푸시/빌드/테스트 명령을 시키지 않았는데 실행** (cargo build/test, npm test 포함 — 수정 후 자동 검증 금지, 검증 명령만 안내). **예외**: 퀘스트 수명주기 3번(Testing 전환 직후) 커밋 + merge, 그리고 그 커밋 **직전의 `just test`**(AGENTS.md — "`just test` 는 커밋 직전에 돌린다" 가 우선). 그 외의 커밋과 push/build/test 는 전부 이 금지 그대로 적용.
 - **develop 직접 커밋** (quest 없는 메타 변경도 chore 브랜치 경유)
 - **`.guild` frontmatter(status/urgency/parent/prereq/deleted) 직접 편집** — 반드시 CLI. 본문(description)만 직접 편집 가능(직후 `openguild reindex`)
 - **조회도 CLI 우선 — `.guild/**` 파일을 직접 열람/grep 으로 뒤지지 말 것**

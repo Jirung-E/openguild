@@ -26,12 +26,11 @@ Global flags: `--guild <PATH>` (explicit guild path), `--json` (machine
 output), `--compact` (single-line JSON, requires `--json`).
 
 **Locating a guild by name.** If the current directory has no `.guild` and
-the user refers to a guild by name (e.g. "check my `foo` guild"), resolve its
-path from `~/.openguild/recents.json` — an array of recently opened guilds,
-`[{ "name": ..., "path": ..., "last_opened": ... }]`. Find the entry whose
-`name` matches (confirm with the user on a partial/ambiguous match), then run
-`openguild --guild <path> ...`. This is how the GUI/CLI remember guild
-locations, so you don't need the user to give a full path.
+the user refers to a guild by name (e.g. "check my `foo` guild"), run
+`openguild guild list` — the guilds recently opened on this machine, name and
+path — and pass the name straight to `--guild`: `openguild --guild foo quest
+list`. Confirm with the user on a partial or ambiguous match. You don't need
+the user to give a full path.
 
 ## Before you start (do this first, every time)
 
@@ -86,6 +85,12 @@ per-type triggers, and skip everything else (don't spam the guild):
 > - **When the implementation is done**, move it to **Testing**. Leave `done`
 >   to the human unless automated tests fully cover it (see step 3).
 >
+>
+> **Returned** (`returned`) means the human checked it and sent it back. Read
+> the newest comments for why, move it to In Progress, and fix it — it is the
+> same quest, not a new one. Check `openguild quest list --status returned`
+> when you start a session.
+>
 > **Exception — the guild renamed or removed these statuses.** Statuses are
 > per-guild configurable. Run `openguild status list` if unsure: if there is
 > no In Progress / Testing equivalent, this rule does not apply — use the
@@ -124,7 +129,8 @@ per-type triggers, and skip everything else (don't spam the guild):
 
 ## Attachments — open them before you start
 
-`show` lists a document's attachments when it has any:
+`quest show` only counts attachments (`attachments : 2`). `quest show --full`,
+`campaign show` and `library show` list them:
 
 ```
   attachments (2):
@@ -218,6 +224,7 @@ openguild backup new                             # manual snapshot
 | Using `comments` (guild-wide search) to read one quest's or campaign's comments | Use `quest comment list <slug>` / `campaign comment list <slug>`. `comments` is only for searching across the whole guild when you don't know which quest — it caps at 20 results and mixes in other quests |
 | Passing a title positionally (`library new "제목"`) → `unexpected argument` | Things that get an auto-assigned number (`quest new`, `campaign new`, `library new`) take the title as `--title "..."`. Only commands where the name you type **is** the ID take it positionally: `rule new <slug>`, `template new <name>`, `library folder new <path>`, `type add <PREFIX>`, `status add <name_en>`, `tag add <slug>` |
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
+| Forgetting `--force` / `--yes` on a delete that asks | `rule delete` and `comment remove` need `--force`, `library delete` needs `--yes`. Without them they ask (y/N); with no terminal they **cancel and still exit 0** — the output says "(취소)"/"cancelled", nothing was deleted. Check the output, not the exit code |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |
 
 ## Full reference

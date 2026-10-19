@@ -9,7 +9,14 @@ own `tag` subgroup.
 
 ```bash
 openguild type list
+openguild type add <PREFIX> --color "#4A90D9" [--description ...]
+openguild type update <PREFIX> [--prefix NEW] [--color ...] [--description ... | --clear-description]
+openguild type delete <PREFIX>                 # only when no quest uses it
+
 openguild status list
+openguild status add <name_en> --color "#..." [--name-ko ...] [--sort-order N]
+openguild status update <slug> [--slug NEW] [--name-en ...] [--name-ko ...] [--color ...] [--sort-order N]
+openguild status delete <slug>                 # only when no quest uses it
 
 openguild tag list
 openguild tag add <slug> [--color <HEX>] [--description <TEXT>]
@@ -28,6 +35,11 @@ reserved names (`CON`, `NUL`, `COM1`…), more than 64 characters, and a name
 that differs from an existing definition only by case (the files would
 collide on macOS/Windows).
 
+**Renaming is a cascade.** `type update --prefix ISSUE` renames every quest of
+that type (`BUG-001` → `ISSUE-001`: file names, frontmatter, the index), and
+`status update --slug` rewrites every quest's status and its history. Ask the
+user before doing either on a real guild.
+
 `tag update` requires at least one of `--color` or `--description`. Deleting a
 definition does not remove that tag from documents; it only removes its
 catalog color/description.
@@ -36,8 +48,8 @@ catalog color/description.
 
 ```bash
 openguild reindex                 # rebuild the SQL cache from .guild/**
-openguild check drift             # compare files vs. cache, report mismatches
-openguild check counters          # verify ID counters are consistent
+openguild check drift             # compare files vs. cache — and resync the cache if they differ
+openguild check counters          # verify ID counters — and correct them if behind
 openguild check sidecars          # comment/memo/attachment files whose document is missing (report only)
 openguild index rebuild
 openguild index vacuum
