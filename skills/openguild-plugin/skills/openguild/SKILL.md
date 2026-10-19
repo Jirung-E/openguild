@@ -188,7 +188,7 @@ openguild quest restore <slug>
 # Agent policy: always attribute comment add. Reaction syntax requires author;
 # memo has no author field.
 openguild quest comment add <slug> --author <name> --file <PATH>   # non-ASCII body → file
-openguild quest comment list <slug>
+openguild quest comment list <slug>              # read ONE quest's comments (campaign: campaign comment list)
 openguild quest comment react <slug> <id> <emoji> --author <name>
 openguild quest memo set <slug> --file <PATH>   # private note, no author field
 openguild quest tag add <slug> <tag...>
@@ -200,7 +200,7 @@ openguild campaign new --title "..." [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 openguild campaign link <campaign-slug> <quest-slug>
 openguild campaign checklist add <campaign-slug> "text"
 
-openguild comments --unresolved                  # selected guild: quest + campaign search
+openguild comments --unresolved                  # guild-wide search only — when you don't know which quest
 openguild backup new                             # manual snapshot
 ```
 
@@ -214,7 +214,8 @@ openguild backup new                             # manual snapshot
 | Piping non-ASCII text as a shell argument or via stdin can get mangled by console encoding | Always write the text to a UTF-8 file first and pass `--description-file` / `--file` |
 | A `--description`/body value that starts with `-` gets misread as a flag | Use `--description-file <PATH>` (or `--description=...` with an equals sign) |
 | Editing `.guild/**` frontmatter (status/urgency/parent/etc.) by hand | Always use the CLI — the frontmatter is derived state, not a plain file |
-| Reading/grepping `.guild/**` files directly to inspect data (library docs, comments, quests) | Use the CLI for reads too — `library list`/`library show <book-id>`, `quest comment list <slug>`, `comments`, `quest show <slug>`. Raw files bypass sidecars/cache, so you miss reactions, discussion state, and ordering the user actually sees |
+| Reading/grepping `.guild/**` files directly to inspect data (library docs, comments, quests) | Use the CLI for reads too — `library list`/`library show <book-id>`, `quest comment list <slug>`, `quest show <slug>`. Raw files bypass sidecars/cache, so you miss reactions, discussion state, and ordering the user actually sees |
+| Using `comments` (guild-wide search) to read one quest's or campaign's comments | Use `quest comment list <slug>` / `campaign comment list <slug>`. `comments` is only for searching across the whole guild when you don't know which quest — it caps at 20 results and mixes in other quests |
 | Passing a title positionally (`library new "제목"`) → `unexpected argument` | Things that get an auto-assigned number (`quest new`, `campaign new`, `library new`) take the title as `--title "..."`. Only commands where the name you type **is** the ID take it positionally: `rule new <slug>`, `template new <name>`, `library folder new <path>`, `type add <PREFIX>`, `status add <name_en>`, `tag add <slug>` |
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |

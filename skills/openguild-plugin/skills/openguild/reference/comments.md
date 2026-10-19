@@ -10,22 +10,9 @@ and therefore do not accept `--author`. For non-ASCII bodies, write the text
 to a UTF-8 file and use `--file`/`--description-file` rather than piping
 through stdin/shell args.
 
-## Guild-wide search
-
-Same filter/sort/tree option set as `quest comment list` below — `comments`
-spans every quest and campaign in the selected guild (not other guilds). It
-works in local and remote (`--remote`) mode.
-
-```bash
-openguild comments [--author <name>] [--since <ts>] [--until <ts>] [--grep "text"]
-                    [--discussion] [--unresolved]
-                    [--top-only | --reply-to <entry_id>] [--reverse] [--tree]
-                    [--limit N]      # default 20
-                    [--summary]      # default: full body; --summary = 60-char first line
-```
-
-`--tree` groups results by slug first, then renders each slug's replies as an
-indented tree.
+To read the comments on **one** quest or campaign, use `quest comment list <slug>`
+/ `campaign comment list <slug>`. The guild-wide `comments` command is a search
+tool for when you don't know which quest — see the last section.
 
 ## Quest comments
 
@@ -73,3 +60,24 @@ openguild campaign memo set <campaign-slug> --file <PATH>
 ```
 
 (Campaigns don't have a discussion/resolved flag — that's quest-only.)
+
+## Guild-wide search
+
+**Only for searching when you don't know which quest.** To read one quest's or
+campaign's comments, use `quest comment list` / `campaign comment list` above —
+`comments` mixes in every other quest and stops at 20 results by default.
+
+Same filter/sort/tree option set as `quest comment list` — `comments` spans
+every quest and campaign in the selected guild (not other guilds). It works in
+local and remote (`--remote`) mode.
+
+```bash
+openguild comments [--author <name>] [--since <ts>] [--until <ts>] [--grep "text"]
+                    [--discussion] [--unresolved]
+                    [--top-only | --reply-to <entry_id>] [--reverse] [--tree]
+                    [--limit N]      # default 20
+                    [--summary]      # default: full body; --summary = 60-char first line
+```
+
+`--tree` groups results by slug first, then renders each slug's replies as an
+indented tree.

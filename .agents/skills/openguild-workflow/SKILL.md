@@ -39,6 +39,10 @@ openguild comments --unresolved                            # 미해결 토론 �
 `comments` 기본 출력은 본문 **전체**(DEV-230, 요약만 보고 뒷줄 놓쳐 오답한
 사고 이후 변경) — 여러 건 훑어볼 땐 `--summary` 로 첫 줄만.
 
+`comments` 는 **길드 전체에서 찾을 때만** 쓴다(BUG-364). 퀘스트 · 캠페인 하나의
+댓글은 `openguild quest comment list {ID}` / `campaign comment list {ID}` —
+`comments` 로 읽으면 다른 퀘스트 댓글이 섞이고 기본 20건에서 끊긴다.
+
 ## 길드 위치 — 이름만 주어졌을 때
 
 cwd 에 `.guild` 가 없고 사용자가 길드 **이름**만 준 경우, `~/.openguild/
@@ -147,7 +151,7 @@ ID 를 확인한다.
 - **`.guild` frontmatter(status/urgency/parent/prereq/deleted) 직접 편집** — 반드시 CLI. 본문(description)만 직접 편집 가능(직후 `openguild reindex`)
 - **조회도 CLI 우선 — `.guild/**` 파일을 직접 열람/grep 으로 뒤지지 말 것**
   (사용자 지적, BUG-154): 도서관은 `openguild library list` / `library show
-  BOOK-N`, 댓글은 `openguild quest comment list {ID}` / 전역 `comments`,
+  BOOK-N`, 댓글은 `openguild quest comment list {ID}`(전역 `comments` 는 검색 전용),
   퀘스트는 `quest show {ID}`. 파일 직접 조회는 사이드카/캐시 구조를 우회해
   놓치는 정보(반응/토론 상태/정렬)가 생기고, 사용자에게 보이는 뷰와 다른
   결과를 읽게 된다. (허용 예외: CLI 버그 자체를 조사할 때의 대조 확인)
