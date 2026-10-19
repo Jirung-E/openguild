@@ -92,6 +92,8 @@ const SOURCE_SUBDIRS: &[&str] = &[
     // `LEGACY_DB_SUBDIRS` 를 건드리지 말 것: 그건 옛 스냅샷이 **실제로 담았던** 목록이다.
     "templates",
     "plugins",
+    // DEV-443: 개인 형광펜 — git 에는 안 올라가지만(폴더 안 `.gitignore`) 백업에는 담는다(admin: 메모처럼).
+    "highlights",
 ];
 
 /// BUG-337: `subdirs` 메타가 없는 DB 스냅샷이 담았던 목록. DEV-306 부터 이 변경 전까지

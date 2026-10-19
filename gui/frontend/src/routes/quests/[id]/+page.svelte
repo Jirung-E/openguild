@@ -970,7 +970,7 @@
 			     wrapper 로 명확한 간격 부여. -->
 			<div class="description-block">
 				{#if detail.description}
-					<MarkdownView source={detail.description} />
+					<MarkdownView source={detail.description} hlTarget={`quest:${detail.quest_id}`} hlPart="body" />
 				{:else}
 					<p class="no-desc">
 						{t('qd.noDescription', $locale)}

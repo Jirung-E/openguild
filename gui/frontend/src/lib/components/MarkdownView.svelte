@@ -11,6 +11,13 @@
 	import { markedHighlight } from 'marked-highlight';
 	import hljs from 'highlight.js';
 	import { tick } from 'svelte';
+	// DEV-443: 개인 형광펜 — 읽는 화면에서 칠한다. 본문은 안 건드린다.
+	import { locale, t } from '$lib/stores/locale';
+	import { highlightsOf, addHighlight, removeHighlight } from '$lib/stores/highlights';
+	import type { Highlight } from '$lib/api/highlights';
+	import { collectText, rangeOffsets, quoteAt, findQuote, rangeAt } from '$lib/utils/text-quote';
+	import { canPaint, paintRanges, clearRanges } from '$lib/utils/highlight-paint';
+	import { showToast } from '$lib/stores/toast';
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
 	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 구독 — system 모드에서
 	// OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라 재통지가 안 됨.
@@ -32,7 +39,16 @@
 	// BUG-338: `linkPreview` — 크로스링크에 마우스를 올리면 미리보기 팝업을 띄울지. **미리보기
 	// 안의 본문**(미리보기 팝업 · 검색 팔레트의 미리보기 칸)은 끈다: 미리보기 안에서 또 미리보기가
 	// 겹쳐 뜨면 무엇을 보고 있었는지 잃는다(admin). 링크 자체는 그대로 눌린다.
-	let { source, linkPreview = true }: { source: string; linkPreview?: boolean } = $props();
+	//
+	// DEV-443: `hlTarget` + `hlPart` 를 주면 **개인 형광펜**을 켠다 — 글을 고르면 [형광펜], 칠한 곳을 누르면
+	// [지우기]. 대상은 `quest:DEV-001` · `campaign:C-001` · `rule:{slug}` · `library:BOOK-001`, 부분은
+	// `body` · `memo` · `comment:{번호}`. 미리보기 · 검색 결과처럼 안 주는 곳에서는 꺼져 있다.
+	let {
+		source,
+		linkPreview = true,
+		hlTarget = undefined,
+		hlPart = undefined
+	}: { source: string; linkPreview?: boolean; hlTarget?: string; hlPart?: string } = $props();
 
 	// DEV-256: 크로스링크 호버 미리보기 — 실재하는 링크(a.xlink, missing 제외)에
 	// 마우스를 잠시(280ms) 올리면 검색 팔레트식 미리보기 팝업을 앵커 근처에
@@ -96,6 +112,7 @@
 	// hoverTarget 이 안 지워지고 팝업이 새 페이지까지 남아있었다. 클릭도
 	// 위임으로 잡아 즉시 정리.
 	function onContainerClick(e: MouseEvent) {
+		onMarkClick(e);
 		const a = (e.target as HTMLElement).closest?.('a.xlink') as HTMLAnchorElement | null;
 		if (!a || !container?.contains(a) || !a.dataset.xkind) return;
 		if (openTimer) {
@@ -206,10 +223,192 @@
 		void $effectiveTheme;
 		void $questIndex;
 		tick().then(() => {
-			renderMermaidBlocks();
-			rewriteLocalMedia();
+			const later = Promise.allSettled([renderMermaidBlocks(), rewriteLocalMedia()]);
 			rewriteCrossLinks();
+			// DEV-443: 글자가 다 놓인 뒤 칠한다. 다이어그램 · 그림이 늦게 바꾸는 자리가 있어 그 뒤에 한 번 더.
+			applyMarks();
+			later.then(applyMarks);
 		});
+	});
+
+	// ── DEV-443: 개인 형광펜 ──────────────────────────────────────────
+	const hlOn = $derived(!!hlTarget && !!hlPart && canPaint());
+	const paintOwner = Symbol('md-highlights');
+	/** 이 글(부분)의 형광펜. */
+	let marks = $state<Highlight[]>([]);
+	/** 칠한 자리 — 누른 곳이 어느 형광펜인지 가릴 때 쓴다. */
+	let placed: { h: Highlight; range: Range }[] = [];
+	/** 글이 바뀌어 못 찾은 형광펜 — 말없이 버리지 않고 알린다. */
+	let missing = $state<Highlight[]>([]);
+	/** 글을 고르면 뜨는 [형광펜] 버튼. */
+	let addAt = $state<{ x: number; y: number; s: number; e: number } | null>(null);
+	/** 칠한 곳을 누르면 뜨는 [지우기]. */
+	let removeAt = $state<{ x: number; y: number; h: Highlight } | null>(null);
+
+	$effect(() => {
+		if (!hlOn || !hlTarget) {
+			marks = [];
+			return;
+		}
+		const part = hlPart;
+		return highlightsOf(hlTarget).subscribe((list) => {
+			marks = list.filter((h) => h.part === part);
+		});
+	});
+	// 목록이 바뀌면(칠하기 · 지우기 · 처음 받기) 다시 칠한다.
+	$effect(() => {
+		void marks;
+		tick().then(applyMarks);
+	});
+	$effect(() => () => clearRanges(paintOwner));
+
+	function applyMarks() {
+		if (!hlOn || !container) {
+			placed = [];
+			missing = [];
+			clearRanges(paintOwner);
+			return;
+		}
+		const map = collectText(container);
+		const found: typeof placed = [];
+		const lost: Highlight[] = [];
+		for (const h of marks) {
+			const at = findQuote(map.text, h);
+			const r = at && rangeAt(map, at[0], at[1]);
+			if (r) found.push({ h, range: r });
+			else lost.push(h);
+		}
+		placed = found;
+		missing = lost;
+		paintRanges(
+			paintOwner,
+			found.map((p) => p.range)
+		);
+	}
+
+	/** 고른 글이 이 글 안이면 [형광펜] 을 띄운다. */
+	function onSelectEnd() {
+		if (!hlOn || !container) return;
+		// 마우스를 뗀 직후에는 선택이 아직 안 굳은 브라우저가 있다 — 한 틱 뒤에 본다.
+		setTimeout(() => {
+			const sel = window.getSelection();
+			if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !container) {
+				addAt = null;
+				return;
+			}
+			const range = sel.getRangeAt(0);
+			if (!container.contains(range.commonAncestorContainer)) {
+				addAt = null;
+				return;
+			}
+			const map = collectText(container);
+			const at = rangeOffsets(map, range);
+			if (!at || !map.text.slice(at[0], at[1]).trim()) {
+				addAt = null;
+				return;
+			}
+			const rects = range.getClientRects();
+			const last = rects[rects.length - 1] ?? range.getBoundingClientRect();
+			removeAt = null;
+			addAt = { x: last.right, y: last.bottom, s: at[0], e: at[1] };
+		}, 0);
+	}
+
+	async function doAdd() {
+		const at = addAt;
+		if (!at || !container || !hlTarget || !hlPart) return;
+		addAt = null;
+		const map = collectText(container);
+		try {
+			await addHighlight(hlTarget, { part: hlPart, ...quoteAt(map.text, at.s, at.e) });
+			window.getSelection()?.removeAllRanges();
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : t('hl.failed', $locale), 'error');
+		}
+	}
+
+	async function doRemove(h: Highlight) {
+		removeAt = null;
+		if (!hlTarget) return;
+		try {
+			await removeHighlight(hlTarget, h.id);
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : t('hl.failed', $locale), 'error');
+		}
+	}
+
+	async function removeMissing() {
+		for (const h of [...missing]) await doRemove(h);
+	}
+
+	/** 누른 곳이 칠한 자리면 그 형광펜. */
+	function markAtPoint(x: number, y: number): Highlight | null {
+		type CaretDoc = Document & {
+			caretRangeFromPoint?: (x: number, y: number) => Range | null;
+			caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+		};
+		const doc = document as CaretDoc;
+		let node: Node | null = null;
+		let offset = 0;
+		const r = doc.caretRangeFromPoint?.(x, y);
+		if (r) {
+			node = r.startContainer;
+			offset = r.startOffset;
+		} else {
+			const p = doc.caretPositionFromPoint?.(x, y);
+			if (p) {
+				node = p.offsetNode;
+				offset = p.offset;
+			}
+		}
+		if (!node) return null;
+		for (const p of placed) {
+			try {
+				if (p.range.isPointInRange(node, offset)) return p.h;
+			} catch {
+				/* 다른 문서의 노드 — 건너뛴다. */
+			}
+		}
+		return null;
+	}
+
+	function onMarkClick(e: MouseEvent) {
+		if (!hlOn || placed.length === 0) return;
+		// 링크는 링크로 — 칠한 링크를 눌러도 이동한다.
+		if ((e.target as HTMLElement).closest?.('a')) return;
+		const sel = window.getSelection();
+		if (sel && !sel.isCollapsed) return; // 고르는 중이다.
+		const h = markAtPoint(e.clientX, e.clientY);
+		removeAt = h ? { x: e.clientX, y: e.clientY, h } : null;
+		if (h) addAt = null;
+	}
+
+	// 바깥을 누르거나, Esc 거나, 화면이 움직이면 띄운 버튼을 닫는다 — 버튼은 화면 좌표에 붙어 있다.
+	$effect(() => {
+		if (!addAt && !removeAt) return;
+		const close = () => {
+			addAt = null;
+			removeAt = null;
+		};
+		const onDown = (e: MouseEvent) => {
+			if ((e.target as HTMLElement).closest?.('.hl-pop')) return;
+			// 글 안을 다시 누르는 것은 새로 고르거나 누르는 것 — 그쪽 처리가 다시 정한다.
+			if (container?.contains(e.target as Node)) return;
+			close();
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') close();
+		};
+		document.addEventListener('mousedown', onDown, true);
+		document.addEventListener('keydown', onKey);
+		window.addEventListener('scroll', close, true);
+		window.addEventListener('resize', close);
+		return () => {
+			document.removeEventListener('mousedown', onDown, true);
+			document.removeEventListener('keydown', onKey);
+			window.removeEventListener('scroll', close, true);
+			window.removeEventListener('resize', close);
+		};
 	});
 
 	// DEV-140: `[[DEV-033]]` / `[[C-001]]` / `[[규칙slug]]` → 내부 링크.
@@ -390,9 +589,46 @@
 	onmouseover={onContainerOver}
 	onmouseout={onContainerOut}
 	onclick={onContainerClick}
+	onmouseup={onSelectEnd}
+	onkeyup={(e) => {
+		if (e.shiftKey) onSelectEnd();
+	}}
 >
 	{@html html}
 </div>
+
+{#if hlOn && missing.length > 0}
+	<!-- DEV-443: 글이 바뀌어 못 찾은 형광펜 — 말없이 사라지면 칠했던 것을 잃은 줄도 모른다. -->
+	<p class="hl-missing" title={missing.map((h) => h.exact).join('\n')}>
+		{t('hl.missingPre', $locale)}{missing.length}{t('hl.missingPost', $locale)}
+		<button type="button" class="hl-missing-clear" onclick={removeMissing}
+			>{t('hl.clearMissing', $locale)}</button
+		>
+	</p>
+{/if}
+
+{#if addAt}
+	<!-- 누를 때 고른 글이 풀리지 않게 mousedown 을 막는다. -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="hl-pop"
+		style:left="{addAt.x}px"
+		style:top="{addAt.y}px"
+		onmousedown={(e) => e.preventDefault()}
+	>
+		<button type="button" class="hl-pop-btn" onclick={doAdd}>
+			<span class="hl-swatch" aria-hidden="true"></span>{t('hl.add', $locale)}
+		</button>
+	</div>
+{/if}
+{#if removeAt}
+	{@const target = removeAt.h}
+	<div class="hl-pop" style:left="{removeAt.x}px" style:top="{removeAt.y}px">
+		<button type="button" class="hl-pop-btn" onclick={() => doRemove(target)}>
+			{t('hl.remove', $locale)}
+		</button>
+	</div>
+{/if}
 
 {#if PopupComp && hoverTarget}
 	<PopupComp
@@ -404,6 +640,54 @@
 {/if}
 
 <style>
+	/* DEV-443: 형광펜 버튼 — 고른 글 끝(또는 누른 곳) 바로 아래에 뜬다. */
+	.hl-pop {
+		position: fixed;
+		z-index: 1150; /* 붙은 입력창(1100) 위, 검색 팔레트(1200) 아래. */
+		margin-top: var(--sp-4);
+		transform: translateX(-50%);
+	}
+	.hl-pop-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--sp-6);
+		padding: var(--sp-4) var(--sp-8);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
+		background: var(--bg-elevated);
+		color: var(--text);
+		box-shadow: var(--shadow-md);
+		font-size: var(--fs-sm);
+		cursor: pointer;
+	}
+	.hl-pop-btn:hover {
+		background: var(--nav-hover-bg);
+	}
+	.hl-swatch {
+		width: 0.75rem;
+		height: 0.75rem;
+		border-radius: var(--r-xs);
+		background: var(--search-hit-bg);
+		border: var(--bw) solid var(--border);
+	}
+	.hl-missing {
+		margin: var(--sp-6) 0 0;
+		font-size: var(--fs-xs);
+		color: var(--text-muted);
+	}
+	.hl-missing-clear {
+		margin-left: var(--sp-4);
+		padding: 0 var(--sp-6);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		background: transparent;
+		color: var(--text-muted);
+		font-size: var(--fs-xs);
+		cursor: pointer;
+	}
+	.hl-missing-clear:hover {
+		color: var(--text);
+	}
 	.md {
 		/* BUG-269: 선택 색이 상자를 넘어 창 끝까지 번지던 것(admin 보고).
 		   WebKit 전용 증상이다 — 크롬은 정상.

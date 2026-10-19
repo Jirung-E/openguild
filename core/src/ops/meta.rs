@@ -376,6 +376,12 @@ async fn rename_type_locked(
             .map(|n| (format!("{old_prefix}-{n:03}"), format!("{new_prefix}-{n:03}")))
             .collect();
         let _ = crate::repo::positions::rename_keys(&store.paths, &renames);
+        // DEV-443: 형광펜도 퀘스트 slug 로 키를 잡는다.
+        let hl: Vec<(String, String)> = renames
+            .iter()
+            .map(|(a, b)| (format!("quest:{a}"), format!("quest:{b}")))
+            .collect();
+        let _ = crate::repo::highlights::rename_targets(&store.paths, &hl);
     }
 
     // ── 파일 IO ──

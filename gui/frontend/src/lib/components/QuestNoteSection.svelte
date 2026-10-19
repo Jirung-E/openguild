@@ -264,7 +264,11 @@
 				bind:this={memoBodyEl}
 				style:height={heightMode === 'fixed' ? `${memoFixedHeight}px` : null}
 			>
-				<MarkdownView source={content} />
+				<MarkdownView
+					source={content}
+					hlTarget={`${scope}:${slug}`}
+					hlPart="memo"
+				/>
 			</div>
 			{#if heightMode === 'fixed'}
 				<!-- BUG-321: 휴대폰에서도 되는 크기 손잡이 — 바꾼 높이는 위 ResizeObserver 가

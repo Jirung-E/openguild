@@ -672,6 +672,10 @@ pub fn run() {
             commands::remove_book_attachment,
             commands::list_quest_candidates,
             commands::list_quest_positions,
+            // DEV-443: 개인 형광펜
+            commands::list_highlights,
+            commands::add_highlight,
+            commands::remove_highlight,
             commands::list_quest_dependencies,
             commands::list_quest_history,
             // quests (mutation)

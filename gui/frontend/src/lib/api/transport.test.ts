@@ -272,6 +272,22 @@ describe('TauriTransport', () => {
 		});
 	});
 
+	// DEV-443: 개인 형광펜 — 대상은 쿼리(공백 · 한글이 든 규칙 slug 도 그대로 풀려야 한다).
+	it('형광펜 목록 · 칠하기 · 지우기 → list/add/remove_highlight', async () => {
+		mockInvoke.mockResolvedValue([]);
+		const t = encodeURIComponent('rule:코딩 규칙');
+		await new TauriTransport().call({ method: 'GET', path: `/api/highlights?target=${t}` });
+		expect(mockInvoke).toHaveBeenCalledWith('list_highlights', { target: 'rule:코딩 규칙' });
+		const body = { part: 'body', exact: '글', prefix: '', suffix: '' };
+		await new TauriTransport().call({ method: 'POST', path: `/api/highlights?target=${t}`, body });
+		expect(mockInvoke).toHaveBeenCalledWith('add_highlight', { target: 'rule:코딩 규칙', body });
+		await new TauriTransport().call({ method: 'DELETE', path: `/api/highlights/abc1?target=${t}` });
+		expect(mockInvoke).toHaveBeenCalledWith('remove_highlight', {
+			target: 'rule:코딩 규칙',
+			id: 'abc1'
+		});
+	});
+
 	it('POST /api/admin/reindex → admin_reindex', async () => {
 		mockInvoke.mockResolvedValue({});
 		await new TauriTransport().call({ method: 'POST', path: '/api/admin/reindex' });

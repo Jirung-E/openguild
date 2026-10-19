@@ -1279,7 +1279,7 @@
 			</button>
 		{:else}
 			<div class="entry-body">
-				<MarkdownView source={e.body} />
+				<MarkdownView source={e.body} hlTarget={`${scope}:${slug}`} hlPart={`comment:${e.id}`} />
 			</div>
 		{/if}
 		{#if editingId !== e.id}

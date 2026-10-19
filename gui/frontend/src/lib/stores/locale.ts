@@ -1209,6 +1209,16 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '입력창 팝업 꺼짐 — 누르면 켭니다',
 		en: 'Pop-up input off — click to turn on'
 	},
+	// DEV-443: 개인 형광펜.
+	'hl.add': { ko: '형광펜', en: 'Highlight' },
+	'hl.remove': { ko: '형광펜 지우기', en: 'Remove highlight' },
+	'hl.failed': { ko: '형광펜을 저장하지 못했습니다', en: 'Could not save the highlight' },
+	'hl.missingPre': { ko: '형광펜 ', en: '' },
+	'hl.missingPost': {
+		ko: '개를 찾지 못했습니다 — 칠한 글이 바뀌었거나 지워졌습니다.',
+		en: ' highlight(s) not found — the text was changed or removed.'
+	},
+	'hl.clearMissing': { ko: '지우기', en: 'Remove' },
 	'comment.toggleEditor': {
 		ko: '입력 방식 전환 (일반 ↔ 마크다운 편집기)',
 		en: 'Toggle input (plain ↔ markdown editor)'

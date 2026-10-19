@@ -130,6 +130,22 @@ pub const CATALOG: &[Entry] = &[
              (BUG-284). 사람의 조작도 아니다.",
         ),
     ),
+    // DEV-443: 개인 형광펜.
+    e(
+        "add_highlight",
+        Status::Excluded(
+            "형광펜은 **개인 표시**다 — 메모처럼 남에게 안 보이고 본문도 안 바꾼다. \
+             플러그인으로 내보내면 그 전제가 깨진다.",
+        ),
+    ),
+    e(
+        "remove_highlight",
+        Status::Excluded("위 add_highlight 와 같은 이유 — 개인 표시."),
+    ),
+    e(
+        "list_highlights",
+        Status::Excluded("읽기다 — 바뀌는 것이 없다."),
+    ),
     e(
         "set_memo",
         Status::Excluded(

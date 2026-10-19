@@ -12,6 +12,7 @@ pub mod campaign;
 pub mod comments;
 pub mod crosslink;
 pub mod fs;
+pub mod highlights;
 pub mod history;
 pub mod library;
 pub mod positions;
@@ -80,6 +81,17 @@ impl GuildPaths {
 
     pub fn positions_json(&self) -> PathBuf {
         self.dot_guild().join("positions.json")
+    }
+
+    /// DEV-443: 개인 형광펜 폴더(`.guild/highlights/`). 안에 `*` 한 줄짜리 `.gitignore` 를 두어 폴더째
+    /// git 에서 빠진다 — 이미 있는 길드의 `.guild/.gitignore` 를 고치지 않아도 된다(`.locks/` 와 같다).
+    pub fn highlights_dir(&self) -> PathBuf {
+        self.dot_guild().join("highlights")
+    }
+
+    /// DEV-443: 형광펜 진리원 — 대상(`quest:DEV-001` …)마다 목록.
+    pub fn highlights_json(&self) -> PathBuf {
+        self.highlights_dir().join("highlights.json")
     }
 
     pub fn backups_dir(&self) -> PathBuf {

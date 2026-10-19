@@ -19,6 +19,7 @@ pub mod campaigns;
 pub mod comments;
 pub mod counter;
 pub mod doc_history;
+pub mod highlights;
 pub mod library;
 // REQ-028: 도서관 문서를 파일 시스템으로 펼친다(폴더 구조 그대로).
 pub mod library_export;

@@ -630,7 +630,11 @@
 					>
 				</div>
 			{:else if detail.description && detail.description.trim()}
-				<MarkdownView source={detail.description ?? ''} />
+				<MarkdownView
+					source={detail.description ?? ''}
+					hlTarget={`campaign:${detail.campaign_slug}`}
+					hlPart="body"
+				/>
 			{:else}
 				<div class="empty">
 					{t('campaign.noBody', $locale)}

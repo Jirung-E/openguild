@@ -1870,7 +1870,11 @@
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>
 					{:else if selected.body.trim()}
-						<MarkdownView source={selected.body} />
+						<MarkdownView
+							source={selected.body}
+							hlTarget={`library:${selected.book_id}`}
+							hlPart="body"
+						/>
 					{:else}
 						<div class="empty">
 							{t('library.noBodyYet', $locale)}

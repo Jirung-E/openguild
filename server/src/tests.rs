@@ -3301,6 +3301,47 @@ async fn test_quest_memo_get_set() {
     assert_eq!(got["content"], "private note");
 }
 
+// ═══════════════════ DEV-443: 개인 형광펜 ═══════════════════
+
+#[tokio::test]
+async fn test_highlights_add_list_remove() {
+    let app = setup().await;
+    // 규칙 slug 에는 공백 · 한글이 들어간다 — 쿼리로 넘긴다(인코딩해서).
+    let t = "target=rule%3A%EC%BD%94%EB%94%A9%20%EA%B7%9C%EC%B9%99";
+    let (status, empty) = get(app.clone(), &format!("/api/highlights?{t}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(empty, json!([]));
+
+    let (status, h) = post(
+        app.clone(),
+        &format!("/api/highlights?{t}"),
+        json!({ "part": "body", "exact": "중요", "prefix": "앞", "suffix": "뒤" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = h["id"].as_str().unwrap().to_string();
+
+    let (_, got) = get(app.clone(), &format!("/api/highlights?{t}")).await;
+    assert_eq!(got[0]["exact"], "중요");
+    assert_eq!(got[0]["part"], "body");
+
+    let status = delete(app.clone(), &format!("/api/highlights/{id}?{t}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, got) = get(app.clone(), &format!("/api/highlights?{t}")).await;
+    assert_eq!(got, json!([]));
+
+    // 잘못된 대상 · 위치는 400.
+    let (status, _) = get(app.clone(), "/api/highlights?target=board%3Ax").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = post(
+        app,
+        "/api/highlights?target=quest%3ADEV-001",
+        json!({ "part": "head", "exact": "x" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
 // ═══════════════════ DEV-196: comments (campaign) ═══════════════════
 
 #[tokio::test]

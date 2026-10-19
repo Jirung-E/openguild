@@ -803,6 +803,11 @@ pub async fn change_quest_type(
         &store.paths,
         &[(old_slug.clone(), new_slug.clone())],
     );
+    // DEV-443: 형광펜도 slug 로 키를 잡는다 — 같은 이유로 옮긴다.
+    let _ = crate::repo::highlights::rename_targets(
+        &store.paths,
+        &[(format!("quest:{old_slug}"), format!("quest:{new_slug}"))],
+    );
 
     // history INSERT — type 변경 자체를 audit.
     let ts = crate::time::now_local_iso8601();

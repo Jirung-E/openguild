@@ -2149,6 +2149,42 @@ pub fn worklog_notes(
         .collect())
 }
 
+// ─────────────────────── DEV-443: 개인 형광펜 ───────────────────────
+// 서버의 `/api/highlights` 와 짝 — 따지는 일과 저장은 core(`ops::highlights`).
+
+#[tauri::command]
+pub async fn list_highlights(
+    store: State<'_, Store>,
+    target: String,
+) -> Result<Vec<openguild_core::repo::highlights::Highlight>, String> {
+    openguild_core::ops::highlights::list_highlights(&store, &target)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn add_highlight(
+    store: State<'_, Store>,
+    target: String,
+    body: openguild_core::ops::highlights::NewHighlight,
+) -> Result<openguild_core::repo::highlights::Highlight, String> {
+    openguild_core::ops::highlights::add_highlight(&store, &target, body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn remove_highlight(
+    store: State<'_, Store>,
+    target: String,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let removed = openguild_core::ops::highlights::remove_highlight(&store, &target, &id)
+        .await
+        .map_err(err)?;
+    Ok(serde_json::json!({ "removed": removed }))
+}
+
 // ─────────────────────── DEV-012 / DEV-094: 댓글 / 메모 ───────────────────────
 
 // 메모는 단일 텍스트 그대로 (DEV-012).

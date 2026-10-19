@@ -475,6 +475,18 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	if (method === 'POST' && pathOnly === '/api/quests') {
 		return { cmd: 'create_quest', args: { body } };
 	}
+	// ───── DEV-443: 개인 형광펜 — 서버의 /api/highlights 와 짝 ─────
+	if (pathOnly === '/api/highlights') {
+		const target = query.get('target') ?? '';
+		if (method === 'GET') return { cmd: 'list_highlights', args: { target } };
+		if (method === 'POST') return { cmd: 'add_highlight', args: { target, body } };
+	}
+	if (method === 'DELETE' && parts[1] === 'highlights' && parts.length === 3) {
+		return {
+			cmd: 'remove_highlight',
+			args: { target: query.get('target') ?? '', id: decodeURIComponent(parts[2]) }
+		};
+	}
 	if (method === 'GET' && pathOnly === '/api/quest-positions') {
 		return { cmd: 'list_quest_positions', args: {} };
 	}

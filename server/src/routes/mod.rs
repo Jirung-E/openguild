@@ -2,6 +2,7 @@ pub mod admin;
 pub mod attachments;
 pub mod campaigns;
 pub mod comments;
+pub mod highlights;
 pub mod library;
 pub mod meta;
 pub mod quests;
@@ -341,6 +342,9 @@ pub fn create_router(store: Store) -> Router {
             get(quests::list_positions).put(quests::update_positions),
         )
         .route("/api/quest-dependencies", get(quests::list_dependencies))
+        // DEV-443: 개인 형광펜 — 대상은 `?target=quest:DEV-001` 처럼.
+        .route("/api/highlights", get(highlights::list).post(highlights::add))
+        .route("/api/highlights/{id}", delete(highlights::remove))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))
         // campaigns (DEV-011)
         .route(

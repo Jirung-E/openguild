@@ -595,6 +595,13 @@ input[type='checkbox']:disabled {
 	background: var(--accent);
 	color: var(--btn-primary-text);
 }
+/* DEV-443: 개인 형광펜 — 검색 발췌의 "걸린 부분" 과 같은 노랑(REQ-014: 라이트는 형광펜에 가까운
+   밝은 노랑, 다크는 어두운 호박색 + 밝은 글자). 찾기(og-find)가 겹치면 찾기가 위다 — 형광펜 쪽 우선순위를
+   낮춰 두었다(`highlight-paint.ts`). */
+::highlight(og-mark) {
+	background: var(--search-hit-bg);
+	color: var(--search-hit-text);
+}
 
 /* ─────────────────────────────────────────────────────────────
    DEV-428: 버튼 — 공통 부품 하나.

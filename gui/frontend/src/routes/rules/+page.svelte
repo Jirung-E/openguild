@@ -565,7 +565,11 @@
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>
 					{:else if selectedContent && selectedContent.trim()}
-						<MarkdownView source={selectedContent} />
+						<MarkdownView
+							source={selectedContent}
+							hlTarget={selectedSlug ? `rule:${selectedSlug}` : undefined}
+							hlPart="body"
+						/>
 					{:else}
 						<div class="empty">
 							{t('rules.noBodyYet', $locale)}

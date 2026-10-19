@@ -174,6 +174,11 @@ pub async fn rename_rule(
     repo::rename_rule(&store.paths, old_slug, new_slug).map_err(AppError::Internal)?;
     // DEV-288: 사이드카도 새 slug 로 옮기고 rename 이벤트 기록 (quest change_type 패턴).
     let _ = hist::rename(&store.paths, old_slug, new_slug);
+    // DEV-443: 형광펜도 규칙 slug 로 키를 잡는다.
+    let _ = crate::repo::highlights::rename_targets(
+        &store.paths,
+        &[(format!("rule:{old_slug}"), format!("rule:{new_slug}"))],
+    );
     // BUG-189: 캐시의 옛 slug 행도 함께 옮긴다 — 안 그러면 작업기록의 지난 항목이
     // 지금은 없는 slug 를 가리켜 클릭해도 안 열린다.
     doc_history::rename(store, old_slug, new_slug).await;
