@@ -186,6 +186,13 @@ openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대
 openguild quest list --tag backend
 openguild quest list --tag backend,api
 openguild library list --tag 설계
+
+# 쿼리로 거르기 — 같은 키의 쉼표 = 또는, 띄어 쓴 조건 = 그리고, 앞의 - = 아닌 것, 키 없는 낱말 = 검색
+#   키: status · type · tag · campaign(번호 · none) · urgency(2 · 1-3 · <=2) · due(overdue · none · <=날짜) · parent(번호 · none)
+#   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.
+openguild quest list -q 'status:open,in_progress -tag:wip urgency:<=2'
+openguild quest list -q 'campaign:C-001 due:overdue'
+openguild quest list -q 'parent:DEV-001 "로그인 화면"'
 ```
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.

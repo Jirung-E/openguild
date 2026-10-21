@@ -180,7 +180,8 @@ quests so the next reader (human or agent) can follow the trail.
 
 ```bash
 openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2]
-                      [--search "keyword"] [--sort urgency,id --reverse]
+                      [--search "keyword"] [-q 'status:open -tag:wip due:overdue']
+                      [--sort urgency,id --reverse]
                       [--table]                 # aligned table for humans
                       [--json]                  # machine-readable
 openguild quest show <slug>                      # summary: id/title/status/urgency + relations

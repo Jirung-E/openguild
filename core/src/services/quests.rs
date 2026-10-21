@@ -256,6 +256,13 @@ pub async fn list_with_attachment_matches(
         None
     };
 
+    // DEV-446: 쿼리 문법 — 맨 뒤에 붙이고 값도 맨 뒤에 끼운다.
+    let (query_sql, query_binds) = match trimmed_opt(&query.q) {
+        Some(text) => crate::query::parse(text)?.to_sql()?,
+        None => (String::new(), Vec::new()),
+    };
+    sql.push_str(&query_sql);
+
     // ── 정렬: 화이트리스트, 다중 키 지원, 방향 전체 토글 ──
     let sort_keys = split_csv(&query.sort);
     let resolved_keys: Vec<(&'static str, bool)> = if sort_keys.is_empty() {
@@ -367,6 +374,12 @@ pub async fn list_with_attachment_matches(
     // BUG-369: 부모 조건은 SQL 에서 검색 **뒤에** 붙는다 — 값도 검색 뒤에 끼운다.
     if let Some(pid) = parent_id {
         q = q.bind(pid);
+    }
+    for b in query_binds {
+        q = match b {
+            crate::query::Bind::Text(s) => q.bind(s),
+            crate::query::Bind::Int(n) => q.bind(n),
+        };
     }
     let mut quests = q.fetch_all(pool).await?;
     // DEV-068: tags 채움 — 한 query 로 quest_tags 전체 fetch 후 매핑.
@@ -1611,6 +1624,91 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ids(with_tag).await, vec![hit]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-446: 쿼리 문법이 목록을 거른다 — 키마다, 빼기, 다른 필터와 함께.
+    #[tokio::test]
+    async fn query_filters_the_list() {
+        let (dir, store) = fresh_store("query").await;
+        let pool = store.index_pool.clone();
+        let a = make_quest(&store).await; // 부모 · 캠페인 · 태그 ui · 지난 기한
+        let b = make_quest(&store).await; // a 의 자식 · urgency 1
+        let c = make_quest(&store).await; // 끝남 · 지난 기한
+        sqlx::query("UPDATE quests SET parent_quest_id = ?, urgency = 1, title = '로그인 화면' WHERE id = ?")
+            .bind(a)
+            .bind(b)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE quests SET required_due = '2000-01-01' WHERE id IN (?, ?)")
+            .bind(a)
+            .bind(c)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE quests SET status_id = (SELECT id FROM quest_statuses WHERE slug = 'done') WHERE id = ?")
+            .bind(c)
+            .execute(&pool)
+            .await
+            .unwrap();
+        // 진행 중 캠페인의 끝 날이 지났으면 b 도 기한이 지난 것이다(유효 기한).
+        sqlx::query(
+            "INSERT INTO campaigns (id, campaign_slug, title, status, ended_at, created_at, updated_at)
+             VALUES (7, 'C-007', 'c', 'active', '2000-02-01', '2026-01-01', '2026-01-01')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        for q in [a, b] {
+            sqlx::query("INSERT INTO campaign_quests (campaign_id, quest_id) VALUES (7, ?)")
+                .bind(q)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        crate::ops::quests::set_quest_tags(&store, a, vec!["ui".into()]).await.unwrap();
+        let slug_a: String = sqlx::query_scalar(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number) FROM quests q
+             JOIN quest_types qt ON q.quest_type_id = qt.id WHERE q.id = ?",
+        )
+        .bind(a)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        let ids = |text: String, extra: ListQuery| {
+            let pool = pool.clone();
+            async move {
+                let q = ListQuery { q: Some(text), ..extra };
+                let mut v: Vec<i64> = list(&pool, &q).await.unwrap().into_iter().map(|r| r.id).collect();
+                v.sort();
+                v
+            }
+        };
+        let d = ListQuery::default;
+        assert_eq!(ids("tag:ui".into(), d()).await, vec![a]);
+        assert_eq!(ids("-tag:ui".into(), d()).await, vec![b, c]);
+        assert_eq!(ids("status:done".into(), d()).await, vec![c]);
+        assert_eq!(ids("status:open,완료".into(), d()).await, vec![a, b, c]);
+        assert_eq!(ids("urgency:<=2".into(), d()).await, vec![b]);
+        assert_eq!(ids(format!("parent:{slug_a}"), d()).await, vec![b]);
+        assert_eq!(ids("parent:none".into(), d()).await, vec![a, c]);
+        assert_eq!(ids("campaign:c-7".into(), d()).await, vec![a, b]);
+        assert_eq!(ids("campaign:none".into(), d()).await, vec![c]);
+        assert_eq!(ids("due:overdue".into(), d()).await, vec![a, b]);
+        assert_eq!(ids("due:none".into(), d()).await, Vec::<i64>::new());
+        assert_eq!(ids("due:<=2000-01-15".into(), d()).await, vec![a, c]);
+        assert_eq!(ids("로그인".into(), d()).await, vec![b]);
+        let prefix_a = slug_a.split('-').next().unwrap().to_lowercase();
+        assert_eq!(ids(format!("-로그인 type:{prefix_a}"), d()).await, vec![a, c]);
+        assert_eq!(ids(format!("-type:{prefix_a}"), d()).await, Vec::<i64>::new());
+        // 다른 필터와는 그리고.
+        assert_eq!(ids("campaign:C-007".into(), ListQuery { tag: Some("ui".into()), ..d() }).await, vec![a]);
+        // 틀린 쿼리는 BadRequest.
+        let bad = ListQuery { q: Some("stauts:open".into()), ..d() };
+        assert!(matches!(list(&pool, &bad).await, Err(AppError::BadRequest(_))));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -211,6 +211,9 @@ pub struct ListQuery {
     pub sort: Option<String>,
     /// 정렬 방향 전체 토글 — 모든 sort 키의 기본 방향 뒤집음.
     pub reverse: bool,
+    /// DEV-446 (REQ-039): 쿼리 문법 — `status:open -tag:wip 로그인`. 해석은 [`crate::query`].
+    /// 위의 필터들과 **그리고**로 합친다.
+    pub q: Option<String>,
     /// 결과 최대 행 수.
     pub limit: Option<i64>,
     /// 페이지네이션 — `limit` 와 같이 사용.

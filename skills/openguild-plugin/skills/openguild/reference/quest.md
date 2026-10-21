@@ -4,7 +4,8 @@
 
 ```bash
 openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2]
-                      [--search "keyword"] [--sort urgency,id --reverse]
+                      [--search "keyword"] [-q 'status:open -tag:wip due:overdue']
+                      [--sort urgency,id --reverse]
                       [--table]     # aligned table for humans
                       [--json]      # machine-readable
 openguild quest show <slug>                # summary — id/title/status/urgency + relation counts
@@ -65,6 +66,25 @@ needs a human to look at it (UI/UX, anything not automatable), move to
 `openguild quest list --tag backend` — with several (`--tag a,b`), only quests that have
 **all** of them. Same rule as the tag row in the app, so the CLI and the screen agree.
 `openguild library list --tag <tag>` does the same for library docs.
+
+### Filtering with a query (`-q`)
+
+One string instead of many flags — same syntax as the server's `?q=`:
+
+```bash
+openguild quest list -q 'status:open,in_progress -tag:wip urgency:<=2 login'
+openguild quest list -q 'campaign:C-001 due:overdue'
+openguild quest list -q 'parent:none type:BUG'
+```
+
+- Commas inside one key = OR; separate terms = AND; a leading `-` = NOT; a bare word = the
+  same text search as `--search` (title, body, id). Quote values with spaces: `tag:"two words"`.
+- Keys: `status` (slug, English or Korean name), `type`, `tag`, `campaign` (id or `none`),
+  `urgency` (`2`, `1-3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, …), `parent` (id or `none`).
+- `due` is the effective due date: the earlier of the required due date and the end date of an
+  active campaign the quest is in. `overdue` skips quests whose status counts as done.
+- An unknown key (typo) is an error that names the character position — quote text that
+  contains a colon. `-q` is ANDed with the other flags.
 
 ### Attachments — read what is already there
 

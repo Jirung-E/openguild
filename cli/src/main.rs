@@ -533,6 +533,12 @@ enum QuestCmd {
               help = tf!("태그 필터 — 여러 개면 **모두 가진 것만**(AND). 다중 입력: --tag a,b 또는 --tag a --tag b.",
                          "Tag filter — with several, only quests having **all** of them (AND). Multiple: --tag a,b or --tag a --tag b."))]
         tag: Vec<String>,
+        // DEV-446 (REQ-039): 쿼리 문법 — 해석은 코어 한 곳(`openguild_core::query`).
+        // `-tag:wip` 처럼 `-` 로 시작하는 쿼리를 옵션으로 읽지 않게 한다.
+        #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
+              help = tf!("쿼리로 거르기 — 예: 'status:open,testing -tag:wip urgency:<=2 due:overdue 로그인'. 같은 키의 쉼표 = 또는, 띄어 쓴 조건 = 그리고, 앞의 - = 아닌 것, 키 없는 낱말 = 검색. 키: status · type · tag · campaign(번호 또는 none) · urgency(2 · 1-3 · <=2) · due(overdue · none · <=날짜) · parent(번호 또는 none). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'status:open,testing -tag:wip urgency:<=2 due:overdue login'. Commas within a key = OR, separate terms = AND, leading - = NOT, bare words = search. Keys: status, type, tag, campaign (id or none), urgency (2, 1-3, <=2), due (overdue, none, <=date), parent (id or none). ANDed with the other options."))]
+        query: Option<String>,
         #[arg(long, value_delimiter = ',', num_args = 1..,
               help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",
                          "Sort key — id (default) / urgency / status / updated / created. Multiple: --sort urgency,id or --sort urgency id. Case-insensitive."))]
@@ -4492,6 +4498,9 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     }
     if q.title_only {
         parts.push("title_only=true".into());
+    }
+    if let Some(v) = &q.q {
+        parts.push(format!("q={}", urlencode(v)));
     }
     if let Some(s) = &q.sort {
         parts.push(format!("sort={}", urlencode(s)));
@@ -9618,6 +9627,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             search_comments,
             search_attachments,
             tag,
+            query,
             sort,
             reverse,
             limit,
@@ -9646,6 +9656,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 search_comments,
                 search_attachments,
                 tag: vec_to_csv(tag),
+                q: query,
                 sort: vec_to_csv(sort),
                 reverse,
                 limit,
@@ -10839,6 +10850,7 @@ mod tests {
                     status,
                     urgency,
                     tag: _,
+                    query: _,
                     created_after,
                     created_before,
                     updated_after,
@@ -10994,7 +11006,7 @@ mod tests {
         match cli.command {
             Command::Quest {
                 sub: QuestCmd::List {
-                    type_prefix, status, urgency, tag: _,
+                    type_prefix, status, urgency, tag: _, query: _,
                     created_after, created_before, updated_after, updated_before,
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
@@ -11105,6 +11117,7 @@ mod tests {
             title_only: false,
             search_comments: false,
             search_attachments: false,
+            q: None,
             sort: Some("urgency".into()),
             reverse: true,
             limit: Some(5),
@@ -11132,6 +11145,13 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(list_query_to_querystring(&q), "status=In%20Progress");
+    }
+
+    /// DEV-446: 쿼리도 원격으로 실린다 — 빠지면 원격 모드만 거르지 않고 전부 낸다.
+    #[test]
+    fn querystring_carries_the_query() {
+        let q = ListQuery { q: Some("status:open -tag:wip".into()), ..Default::default() };
+        assert_eq!(list_query_to_querystring(&q), "q=status%3Aopen%20-tag%3Awip");
     }
 
     #[test]

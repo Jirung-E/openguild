@@ -529,6 +529,19 @@ async fn test_list_filter_by_type_prefix() {
     }
 }
 
+/// DEV-446: `?q=` 쿼리 문법 — 같은 코어 해석기. 틀리면 400 과 어디가 틀렸는지.
+#[tokio::test]
+async fn test_list_filter_by_query() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app.clone(), "/api/quests?q=-status%3Adone%20urgency%3A%3C%3D2").await;
+    let mut ids: Vec<&str> = body.as_array().unwrap().iter().map(|q| q["quest_id"].as_str().unwrap()).collect();
+    ids.sort();
+    assert_eq!(ids, vec!["BUG-001", "DEV-001"]);
+    let (status, body) = get(app, "/api/quests?q=stauts%3Aopen").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.to_string().contains("stauts"), "{body}");
+}
+
 #[tokio::test]
 async fn test_list_filter_type_case_insensitive() {
     let app = setup_with_mixed_quests().await;
