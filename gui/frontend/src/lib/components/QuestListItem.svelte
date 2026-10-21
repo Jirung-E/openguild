@@ -49,7 +49,7 @@
 			}}
 			aria-label={expanded ? 'collapse' : 'expand'}
 		>
-			{expanded ? '▾' : '▸'}
+			{expanded ? '▼' : '▶'}
 		</button>
 	{/if}
 
@@ -125,9 +125,15 @@
 		background: none;
 		border: none;
 		color: var(--text-muted);
-		font-size: var(--fs-xs);
+		/* BUG-368: 작은 삼각형(▸)을 가장 작은 글자로 그려 잘 안 보였다 — 도서관 폴더 트리와 같은
+		   ▶ 로 바꾸고 한 단계 키운다. 누르는 범위(폭)는 그대로. */
+		font-size: var(--fs-sm);
 		padding: 0;
 		cursor: pointer;
+	}
+
+	.toggle:hover {
+		color: var(--accent);
 	}
 
 	.toggle.invisible {
