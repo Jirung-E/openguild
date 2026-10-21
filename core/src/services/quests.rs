@@ -345,9 +345,6 @@ pub async fn list_with_attachment_matches(
     for t in &tags {
         q = q.bind(t);
     }
-    if let Some(pid) = parent_id {
-        q = q.bind(pid);
-    }
     // search tokens — 각 토큰마다 bind.
     // title_only=true → 2번 (title + slug), false → 3번 (title + description + slug).
     // 바인드 순서는 위에서 조립한 `alts` 순서와 **정확히** 같아야 한다.
@@ -366,6 +363,10 @@ pub async fn list_with_attachment_matches(
                 q = q.bind(sgl.clone()); // 첨부 이름이 맞은 quest slug
             }
         }
+    }
+    // BUG-369: 부모 조건은 SQL 에서 검색 **뒤에** 붙는다 — 값도 검색 뒤에 끼운다.
+    if let Some(pid) = parent_id {
+        q = q.bind(pid);
     }
     let mut quests = q.fetch_all(pool).await?;
     // DEV-068: tags 채움 — 한 query 로 quest_tags 전체 fetch 후 매핑.
@@ -1552,6 +1553,64 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ids(&with_date).await.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-369: 부모 조건과 검색을 같이 쓰면 늘 빈 목록이었다 — SQL 은 검색 뒤에 부모 조건을 붙이는데
+    /// 값은 부모 id 를 먼저 끼워, 부모 id 가 제목 LIKE 에 들어갔다.
+    #[tokio::test]
+    async fn child_of_and_search_together_bind_in_sql_order() {
+        let (dir, store) = fresh_store("child-search").await;
+        let parent = make_quest(&store).await;
+        let slug: String = sqlx::query_scalar(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number) FROM quests q
+             JOIN quest_types qt ON q.quest_type_id = qt.id WHERE q.id = ?",
+        )
+        .bind(parent)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        let child = |title: &'static str| {
+            let pool = store.index_pool.clone();
+            async move {
+                create(
+                    &pool,
+                    CreateQuestRequest {
+                        quest_type_id: 1,
+                        title: title.into(),
+                        description: None,
+                        status_slug: "open".into(),
+                        urgency: Some(3),
+                        parent_quest_id: Some(parent),
+                    },
+                )
+                .await
+                .unwrap()
+                .id
+            }
+        };
+        let hit = child("로그인 화면").await;
+        let _miss = child("다른 일").await;
+        crate::ops::quests::set_quest_tags(&store, hit, vec!["ui".into()]).await.unwrap();
+
+        let ids = |q: ListQuery| {
+            let pool = store.index_pool.clone();
+            async move { list(&pool, &q).await.unwrap().into_iter().map(|r| r.id).collect::<Vec<_>>() }
+        };
+        let both = ListQuery {
+            child_of: Some(slug.clone()),
+            search: Some("로그인".into()),
+            ..Default::default()
+        };
+        assert_eq!(ids(both).await, vec![hit]);
+        let with_tag = ListQuery {
+            child_of: Some(slug),
+            search: Some("로그인".into()),
+            tag: Some("ui".into()),
+            ..Default::default()
+        };
+        assert_eq!(ids(with_tag).await, vec![hit]);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
