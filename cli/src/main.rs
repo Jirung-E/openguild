@@ -4453,70 +4453,90 @@ fn vec_to_csv(v: Vec<String>) -> Option<String> {
 /// `ListQuery` → `?type=DEV,BUG&status=open&urgency=2&...` urlencoded querystring.
 /// 모든 필드 미지정이면 빈 문자열 반환.
 fn list_query_to_querystring(q: &ListQuery) -> String {
+    // BUG-370: 필드를 **빠짐없이 분해**한다 — 필드가 늘면 여기서 컴파일이 깨진다. 예전에는 하나씩
+    // 옮겨 적다가 태그 · 검색 범위를 빠뜨려, 원격 모드만 조용히 거르지 않고 전부를 냈다.
+    let ListQuery {
+        r#type,
+        status,
+        urgency,
+        created_after,
+        created_before,
+        updated_after,
+        updated_before,
+        has_prereq,
+        no_prereq,
+        has_sub,
+        no_sub,
+        search,
+        title_only,
+        search_comments,
+        search_attachments,
+        tag,
+        child_of,
+        no_parent,
+        q: query,
+        sort,
+        reverse,
+        limit,
+        offset,
+        slim,
+    } = q;
     let mut parts: Vec<String> = Vec::new();
-    if let Some(t) = &q.r#type {
-        parts.push(format!("type={}", urlencode(t)));
+    // 순서는 예전 그대로(시험이 문자열을 본다) — 새로 실은 것은 원래 자리 근처에.
+    for (key, v) in [
+        ("type", r#type),
+        ("status", status),
+        ("urgency", urgency),
+        ("created_after", created_after),
+        ("created_before", created_before),
+        ("updated_after", updated_after),
+        ("updated_before", updated_before),
+        ("child_of", child_of),
+    ] {
+        if let Some(v) = v {
+            parts.push(format!("{key}={}", urlencode(v)));
+        }
     }
-    if let Some(s) = &q.status {
-        parts.push(format!("status={}", urlencode(s)));
+    for (key, on) in [
+        ("no_parent", no_parent),
+        ("has_prereq", has_prereq),
+        ("no_prereq", no_prereq),
+        ("has_sub", has_sub),
+        ("no_sub", no_sub),
+    ] {
+        if *on {
+            parts.push(format!("{key}=true"));
+        }
     }
-    if let Some(u) = &q.urgency {
-        parts.push(format!("urgency={}", urlencode(u)));
+    if let Some(v) = search {
+        parts.push(format!("search={}", urlencode(v)));
     }
-    if let Some(v) = &q.created_after {
-        parts.push(format!("created_after={}", urlencode(v)));
+    for (key, on) in [
+        ("title_only", title_only),
+        ("search_comments", search_comments),
+        ("search_attachments", search_attachments),
+    ] {
+        if *on {
+            parts.push(format!("{key}=true"));
+        }
     }
-    if let Some(v) = &q.created_before {
-        parts.push(format!("created_before={}", urlencode(v)));
+    for (key, v) in [("tag", tag), ("q", query), ("sort", sort)] {
+        if let Some(v) = v {
+            parts.push(format!("{key}={}", urlencode(v)));
+        }
     }
-    if let Some(v) = &q.updated_after {
-        parts.push(format!("updated_after={}", urlencode(v)));
-    }
-    if let Some(v) = &q.updated_before {
-        parts.push(format!("updated_before={}", urlencode(v)));
-    }
-    if let Some(c) = &q.child_of {
-        parts.push(format!("child_of={}", urlencode(c)));
-    }
-    if q.no_parent {
-        parts.push("no_parent=true".into());
-    }
-    if q.has_prereq {
-        parts.push("has_prereq=true".into());
-    }
-    if q.no_prereq {
-        parts.push("no_prereq=true".into());
-    }
-    if q.has_sub {
-        parts.push("has_sub=true".into());
-    }
-    if q.no_sub {
-        parts.push("no_sub=true".into());
-    }
-    if let Some(s) = &q.search {
-        parts.push(format!("search={}", urlencode(s)));
-    }
-    if q.title_only {
-        parts.push("title_only=true".into());
-    }
-    if let Some(v) = &q.q {
-        parts.push(format!("q={}", urlencode(v)));
-    }
-    if let Some(s) = &q.sort {
-        parts.push(format!("sort={}", urlencode(s)));
-    }
-    if q.reverse {
+    if *reverse {
         parts.push("reverse=true".into());
     }
-    if let Some(l) = q.limit {
+    if let Some(l) = limit {
         parts.push(format!("limit={l}"));
     }
-    if let Some(o) = q.offset {
+    if let Some(o) = offset {
         parts.push(format!("offset={o}"));
     }
     // BUG-210: CLI 는 본문을 출력/검색에 쓰므로 보통 false 지만, 필드가 생기면
     // 여기도 같이 실어야 원격 모드가 로컬 모드와 어긋나지 않는다.
-    if q.slim {
+    if *slim {
         parts.push("slim=true".into());
     }
     parts.join("&")
@@ -11145,6 +11165,22 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(list_query_to_querystring(&q), "status=In%20Progress");
+    }
+
+    /// BUG-370: 태그 · 검색 범위가 원격으로 실린다 — 빠지면 원격 모드만 거르지 않고 전부를 낸다.
+    #[test]
+    fn querystring_carries_tag_and_search_scope() {
+        let q = ListQuery {
+            search: Some("x".into()),
+            search_comments: true,
+            search_attachments: true,
+            tag: Some("a,b".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            list_query_to_querystring(&q),
+            "search=x&search_comments=true&search_attachments=true&tag=a%2Cb"
+        );
     }
 
     /// DEV-446: 쿼리도 원격으로 실린다 — 빠지면 원격 모드만 거르지 않고 전부 낸다.
