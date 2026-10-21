@@ -1361,6 +1361,28 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// REQ-010: 검색 영역을 넓히는 옵션 — titleOnly 와 방향이 반대다(그쪽은 좁힘).
 	'filter.searchComments': { ko: '댓글 포함', en: 'Include comments' },
 	'filter.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },
+	// DEV-447 (REQ-039): 쿼리 문법 입력칸.
+	'filter.queryLabel': { ko: '쿼리', en: 'Query' },
+	'filter.queryPlaceholder': {
+		ko: '예: status:open,in_progress -tag:wip due:overdue',
+		en: 'e.g. status:open,in_progress -tag:wip due:overdue'
+	},
+	'filter.clearQuery': { ko: '쿼리 지우기', en: 'Clear query' },
+	'filter.queryHelpToggle': { ko: '쿼리 쓰는 법', en: 'How to write a query' },
+	'filter.queryHelpRules': {
+		ko: '같은 키의 쉼표 = 또는 · 띄어 쓴 조건 = 그리고 · 앞의 - = 아닌 것 · 키 없는 낱말 = 검색 · 띄어 쓴 값은 "따옴표"로. 위의 버튼 · 검색과는 그리고로 겹칩니다.',
+		en: 'Commas within a key = OR · separate terms = AND · leading - = NOT · bare words = search · quote values with spaces. Combined (AND) with the buttons and search above.'
+	},
+	'filter.queryHelpStatus': { ko: '상태 — slug · 영어 · 한국어 이름', en: 'status — slug, English or Korean name' },
+	'filter.queryHelpType': { ko: '타입 접두어', en: 'type prefix' },
+	'filter.queryHelpTag': { ko: '태그', en: 'tag' },
+	'filter.queryHelpCampaign': { ko: '캠페인 번호 · none(어디에도 없음)', en: 'campaign id · none (in no campaign)' },
+	'filter.queryHelpUrgency': { ko: '긴급도 1~4 · 범위 · 비교', en: 'urgency 1–4 · range · comparison' },
+	'filter.queryHelpDue': {
+		ko: '유효 기한(필수 기한 · 진행 중 캠페인의 끝 날 중 이른 것) — overdue · none · 날짜 비교',
+		en: 'effective due date (earlier of the required due date and an active campaign’s end) — overdue · none · date comparison'
+	},
+	'filter.queryHelpParent': { ko: '부모 번호 · none(최상위)', en: 'parent id · none (top level)' },
 	'filter.advanced': { ko: '고급', en: 'Advanced' },
 	// BUG-194: 좁은 화면에서 타입/상태 칩 줄을 접는 토글 라벨.
 	'filter.chips': { ko: '필터', en: 'Filters' },

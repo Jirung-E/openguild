@@ -53,6 +53,14 @@ export const questsApi = {
 		return api.get<Quest[]>(`/api/quests?${p.toString()}`);
 	},
 
+	/**
+	 * DEV-447 (REQ-039): 쿼리 문법(`status:open -tag:wip 로그인`)에 맞는 퀘스트. 해석과 거르기는
+	 * 코어 한 곳에서 한다 — 화면은 맞는 id 만 받아 지금 목록에 겹친다. 틀린 쿼리는
+	 * "쿼리 N번째 글자: …" 오류로 던진다.
+	 */
+	matchQuery: (q: string) =>
+		api.get<Quest[]>(`/api/quests?${new URLSearchParams({ q, slim: 'true' }).toString()}`),
+
 	get: (id: number) => api.get<QuestDetail>(`/api/quests/${id}`),
 
 	getBySlug: (slug: string) => api.get<QuestDetail>(`/api/quests/by/${slug}`),

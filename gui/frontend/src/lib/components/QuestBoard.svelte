@@ -2619,7 +2619,7 @@
 		saveFilterToStorage(EMPTY_FILTER);
 		if (boardFilterReady) initBoardFilterFromStore();
 		const url = new URL(window.location.href);
-		for (const k of ['search', 'title_only', 'tags']) {
+		for (const k of ['search', 'title_only', 'tags', 'q']) {
 			url.searchParams.delete(k);
 		}
 		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
@@ -2691,6 +2691,8 @@
 			// '댓글/첨부 이름 포함' 이 풀린다.
 			searchComments: get(questFilters).searchComments,
 			searchAttachments: get(questFilters).searchAttachments,
+			// DEV-447: 쿼리도 보드에서는 편집 안 함 — 들렀다 와도 목록의 쿼리가 남게.
+			query: get(questFilters).query,
 			urgencies: bfUrgencies,
 			prereq: bfPrereq,
 			sub: bfSub,

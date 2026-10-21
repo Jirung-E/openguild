@@ -62,6 +62,11 @@ export interface ExtraFilters {
 	 * AND 시맨틱으로 판정했으므로 두 번 거르면 댓글에만 있는 매치가 탈락한다.
 	 */
 	serverMatchIds?: Set<number>;
+	/**
+	 * DEV-447 (REQ-039): 쿼리 문법에 맞는 id(코어가 판정). `serverMatchIds` 와 달리 검색어 매칭을
+	 * 건너뛰지 않는다 — 쿼리는 검색칸과 따로 거는 조건이다.
+	 */
+	queryMatchIds?: Set<number>;
 	/** 자식이 1개 이상인 quest id 집합 (parent_quest_id 역산). */
 	parentIds?: Set<number>;
 }
@@ -93,6 +98,7 @@ export function filterQuests(
 
 	return quests.filter((q) => {
 		if (extra.serverMatchIds && !extra.serverMatchIds.has(q.id)) return false;
+		if (extra.queryMatchIds && !extra.queryMatchIds.has(q.id)) return false;
 		if (typeIds.size > 0 && !typeIds.has(q.quest_type_id)) return false;
 		if (statusIds.size > 0 && !statusIds.has(q.status_id)) return false;
 		// DEV-033: urgency 다중 선택.

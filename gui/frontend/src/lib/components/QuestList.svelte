@@ -161,6 +161,43 @@
 		}, 250);
 	});
 
+	// DEV-447 (REQ-039): 쿼리 문법 — 해석과 거르기는 코어가 한다(CLI `-q` · 서버 `?q=` 와 같은 결과).
+	// 화면은 맞는 id 만 받아 버튼 필터와 **그리고**로 겹친다. 틀린 동안은 거르지 않는다 — 고치는
+	// 중에 목록이 비었다 찼다 하면 무엇이 틀렸는지보다 목록이 먼저 눈에 들어온다.
+	let query = $state('');
+	/** 쿼리에 맞는 id. null = 쿼리 없음 · 틀림 · 아직 모름(거르지 않는다). */
+	let queryMatchIds = $state<Set<number> | null>(null);
+	let queryError = $state<string | null>(null);
+	let querySeq = 0;
+	let queryTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const q = query.trim();
+		// 다시 불러오면(새로 색인 · 목록 갱신) 맞는 것도 바뀔 수 있다.
+		void quests;
+		if (queryTimer) clearTimeout(queryTimer);
+		const seq = ++querySeq;
+		if (!q) {
+			queryMatchIds = null;
+			queryError = null;
+			return;
+		}
+		queryTimer = setTimeout(() => {
+			questsApi
+				.matchQuery(q)
+				.then((rows) => {
+					if (seq !== querySeq) return;
+					queryMatchIds = new Set(rows.map((r) => r.id));
+					queryError = null;
+				})
+				.catch((e) => {
+					if (seq !== querySeq) return;
+					queryMatchIds = null;
+					queryError = e instanceof Error ? e.message : String(e);
+				});
+		}, 250);
+	});
+
 	// DEV-065: 뷰 모드 — 'tree' (부모 그룹 + 들여쓰기, 기본) / 'list' (모든 quest
 	// 평면). URL ?mode= 와 localStorage 동시 영속.
 	type ViewMode = 'tree' | 'list';
@@ -202,7 +239,8 @@
 			createdAfter,
 			createdBefore,
 			updatedAfter,
-			updatedBefore
+			updatedBefore,
+			query
 		};
 	}
 	function applyFilter(f: QuestFilterState) {
@@ -220,6 +258,7 @@
 		createdBefore = f.createdBefore;
 		updatedAfter = f.updatedAfter;
 		updatedBefore = f.updatedBefore;
+		query = f.query;
 	}
 	function saveFilterToStorage() {
 		try {
@@ -289,6 +328,9 @@
 		if (urlSearchComments !== null) searchComments = urlSearchComments === 'true';
 		const urlSearchAttachments = params.get('search_attachments');
 		if (urlSearchAttachments !== null) searchAttachments = urlSearchAttachments === 'true';
+		// DEV-447: 쿼리도 주소에 실린다 — 공유한 링크가 같은 목록을 연다.
+		const urlQuery = params.get('q');
+		if (urlQuery !== null) query = urlQuery;
 		// DEV-065: URL 의 ?mode= 우선, 없으면 localStorage, 없으면 'tree'.
 		const urlMode = params.get('mode');
 		if (urlMode === 'list' || urlMode === 'tree') {
@@ -390,6 +432,8 @@
 		else url.searchParams.delete('search_comments');
 		if (searchAttachments) url.searchParams.set('search_attachments', 'true');
 		else url.searchParams.delete('search_attachments');
+		if (query.trim()) url.searchParams.set('q', query.trim());
+		else url.searchParams.delete('q');
 		// DEV-065: mode 동기화. 'tree' 는 기본이므로 URL 에서 생략.
 		if (viewMode === 'list') url.searchParams.set('mode', 'list');
 		else url.searchParams.delete('mode');
@@ -464,6 +508,7 @@
 			{
 				// REQ-010: 서버 판정이 있으면 그걸로 거른다(있을 때만).
 				serverMatchIds: serverMatchIds ?? undefined,
+				queryMatchIds: queryMatchIds ?? undefined,
 				urgencies: filterUrgencies,
 				prereq: filterPrereq,
 				sub: filterSub,
@@ -489,6 +534,7 @@
 		// 'tree' 모드.
 		const hasFilters =
 			search.trim().length > 0 ||
+			queryMatchIds !== null ||
 			filterTags.size > 0 ||
 			filterTypeIds.size > 0 ||
 			filterStatusIds.size > 0 ||
@@ -558,6 +604,8 @@
 		bind:titleOnly
 		bind:searchComments
 		bind:searchAttachments
+		bind:query
+		{queryError}
 		bind:urgencies={filterUrgencies}
 		bind:prereqState={filterPrereq}
 		bind:subState={filterSub}

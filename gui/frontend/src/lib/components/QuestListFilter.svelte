@@ -19,6 +19,9 @@
 		// REQ-010: 검색 영역 확장.
 		searchComments = $bindable(false),
 		searchAttachments = $bindable(false),
+		// DEV-447 (REQ-039): 쿼리 문법 — 판정은 부모(QuestList)가 코어에 맡긴다.
+		query = $bindable(''),
+		queryError = null,
 		// DEV-033: 고급 필터.
 		urgencies = $bindable(new Set<number>()),
 		prereqState = $bindable('any'),
@@ -36,6 +39,8 @@
 		titleOnly?: boolean;
 		searchComments?: boolean;
 		searchAttachments?: boolean;
+		query?: string;
+		queryError?: string | null;
 		urgencies?: Set<number>;
 		prereqState?: TriState;
 		subState?: TriState;
@@ -67,6 +72,18 @@
 	});
 	/** 접힘 상태에서 보여줄 '몇 개 걸려 있는지'. 0 이면 표시 안 함. */
 	const activeChipCount = $derived(typeIds.size + statusIds.size);
+
+	// DEV-447: 쿼리 도움말 — 키 목록. 값의 예는 CLI `quest list -q` 와 같다.
+	let queryHelpOpen = $state(false);
+	const QUERY_KEYS = [
+		['status', 'status:open,in_progress', 'filter.queryHelpStatus'],
+		['type', 'type:BUG', 'filter.queryHelpType'],
+		['tag', '-tag:wip', 'filter.queryHelpTag'],
+		['campaign', 'campaign:C-001', 'filter.queryHelpCampaign'],
+		['urgency', 'urgency:<=2', 'filter.queryHelpUrgency'],
+		['due', 'due:overdue', 'filter.queryHelpDue'],
+		['parent', 'parent:none', 'filter.queryHelpParent']
+	] as const;
 
 	// DEV-033: 고급 행 접기. 필터 활성이면 라벨에 표시.
 	let advancedOpen = $state(false);
@@ -198,6 +215,55 @@
 		aria-expanded={advancedOpen}
 		>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
 	>
+
+	<!-- DEV-447 (REQ-039): 쿼리 — 줄 하나를 다 쓴다(값이 길다). -->
+	<div class="query-row">
+		<label class="query-wrap">
+			<span class="query-label">{t('filter.queryLabel', $locale)}</span>
+			<input
+				type="search"
+				class="input query-input"
+				class:bad={queryError}
+				placeholder={t('filter.queryPlaceholder', $locale)}
+				bind:value={query}
+				spellcheck="false"
+				autocomplete="off"
+				aria-invalid={queryError ? 'true' : undefined}
+				data-testid="quest-query-input"
+			/>
+			{#if query}
+				<button
+					type="button"
+					class="search-clear"
+					title={t('filter.clearQuery', $locale)}
+					onclick={() => (query = '')}
+					data-testid="quest-query-clear">×</button
+				>
+			{/if}
+		</label>
+		<button
+			type="button"
+			class="query-help-btn"
+			class:active={queryHelpOpen}
+			aria-expanded={queryHelpOpen}
+			title={t('filter.queryHelpToggle', $locale)}
+			onclick={() => (queryHelpOpen = !queryHelpOpen)}>?</button
+		>
+	</div>
+	{#if queryError}
+		<p class="query-error" role="alert" data-testid="quest-query-error">{queryError}</p>
+	{/if}
+	{#if queryHelpOpen}
+		<div class="query-help" data-testid="quest-query-help">
+			<p>{t('filter.queryHelpRules', $locale)}</p>
+			<dl>
+				{#each QUERY_KEYS as [key, example, label] (key)}
+					<dt><code>{example}</code></dt>
+					<dd>{t(label, $locale)}</dd>
+				{/each}
+			</dl>
+		</div>
+	{/if}
 </div>
 
 {#if advancedOpen}
@@ -376,6 +442,72 @@
 		cursor: pointer;
 	}
 	.search-opt:hover {
+		color: var(--text);
+	}
+
+	/* --- DEV-447: 쿼리 --- */
+	.query-row {
+		flex: 1 1 100%;
+		display: flex;
+		align-items: center;
+		gap: var(--sp-8);
+	}
+	.query-wrap {
+		position: relative;
+		flex: 1 1 auto;
+		display: flex;
+		align-items: center;
+		gap: var(--sp-8);
+		min-width: 0;
+	}
+	.query-label {
+		font-size: var(--fs-sm);
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.query-input {
+		flex: 1 1 auto;
+		min-width: 0;
+		padding: var(--sp-4) var(--sp-32) var(--sp-4) var(--sp-12);
+		font-family: var(--font-mono);
+		font-size: var(--fs-sm);
+		transition: border-color var(--dur-fast);
+	}
+	.query-input::-webkit-search-cancel-button {
+		display: none;
+	}
+	.query-input.bad {
+		border-color: var(--danger);
+	}
+	.query-help-btn {
+		padding: var(--sp-2) var(--sp-8);
+		font-weight: var(--fw-semibold);
+	}
+	.query-error {
+		flex: 1 1 100%;
+		margin: 0;
+		font-size: var(--fs-sm);
+		color: var(--danger);
+	}
+	.query-help {
+		flex: 1 1 100%;
+		font-size: var(--fs-sm);
+		color: var(--text-muted);
+	}
+	.query-help p {
+		margin: 0 0 var(--sp-4);
+	}
+	.query-help dl {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		gap: var(--sp-2) var(--sp-12);
+		margin: 0;
+	}
+	.query-help dd {
+		margin: 0;
+	}
+	.query-help code {
+		font-family: var(--font-mono);
 		color: var(--text);
 	}
 

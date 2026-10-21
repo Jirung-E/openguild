@@ -31,7 +31,8 @@ describe('serializeFilter / deserializeFilter', () => {
 			createdAfter: '2026-08-01',
 			createdBefore: '2026-08-31',
 			updatedAfter: '2026-08-10',
-			updatedBefore: '2026-08-20'
+			updatedBefore: '2026-08-20',
+			query: 'status:open -tag:wip'
 		});
 		const out = deserializeFilter(serializeFilter(src));
 		expect(out).toEqual(src);
@@ -121,6 +122,11 @@ describe('isFilterActive', () => {
 	});
 
 	/** titleOnly 는 단독으로는 아무것도 거르지 않는다 — 검색어의 수식어. */
+	/** DEV-447: 쿼리는 목록만 거른다 — 보드가 '필터 걸림' 을 띄우고 아무것도 안 흐리면 안 된다. */
+	it('쿼리만으로는 보드 기준 비활성', () => {
+		expect(isFilterActive(filter({ query: 'status:open' }))).toBe(false);
+	});
+
 	it('titleOnly 단독은 비활성', () => {
 		expect(isFilterActive(filter({ titleOnly: true }))).toBe(false);
 	});

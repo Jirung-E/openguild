@@ -27,6 +27,11 @@ export interface QuestFilterState {
 	createdBefore: string;
 	updatedAfter: string;
 	updatedBefore: string;
+	/**
+	 * DEV-447 (REQ-039): 쿼리 문법. 목록만 본다 — 보드는 아직 거르지 않으므로
+	 * [`isFilterActive`] 에 넣지 않는다(넣으면 보드가 '필터 걸림' 을 띄우고 아무것도 안 흐린다).
+	 */
+	query: string;
 }
 
 export const EMPTY_FILTER: QuestFilterState = {
@@ -43,7 +48,8 @@ export const EMPTY_FILTER: QuestFilterState = {
 	createdAfter: '',
 	createdBefore: '',
 	updatedAfter: '',
-	updatedBefore: ''
+	updatedBefore: '',
+	query: ''
 };
 
 /**
@@ -88,7 +94,8 @@ export function serializeFilter(f: QuestFilterState): string {
 		createdAfter: f.createdAfter,
 		createdBefore: f.createdBefore,
 		updatedAfter: f.updatedAfter,
-		updatedBefore: f.updatedBefore
+		updatedBefore: f.updatedBefore,
+		query: f.query
 	});
 }
 
@@ -113,7 +120,8 @@ export function deserializeFilter(raw: string | null): QuestFilterState | null {
 			createdAfter: str(o.createdAfter),
 			createdBefore: str(o.createdBefore),
 			updatedAfter: str(o.updatedAfter),
-			updatedBefore: str(o.updatedBefore)
+			updatedBefore: str(o.updatedBefore),
+			query: str(o.query)
 		};
 	} catch {
 		return null;
