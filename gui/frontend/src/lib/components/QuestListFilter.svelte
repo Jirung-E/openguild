@@ -87,8 +87,13 @@
 
 	// DEV-033: 고급 행 접기. 필터 활성이면 라벨에 표시.
 	let advancedOpen = $state(false);
+	// DEV-447: 쿼리가 틀렸으면 고급을 연다 — 접힌 채면 목록이 왜 안 걸러지는지 알 길이 없다(주소로 받은 쿼리 등).
+	$effect(() => {
+		if (queryError) advancedOpen = true;
+	});
 	let advancedActive = $derived(
-		urgencies.size > 0 ||
+		query.trim() !== '' ||
+			urgencies.size > 0 ||
 			prereqState !== 'any' ||
 			subState !== 'any' ||
 			createdAfter !== '' ||
@@ -106,6 +111,7 @@
 		return cur === 'any' ? 'has' : cur === 'has' ? 'none' : 'any';
 	}
 	function clearAdvanced() {
+		query = '';
 		urgencies = new Set();
 		prereqState = 'any';
 		subState = 'any';
@@ -215,55 +221,6 @@
 		aria-expanded={advancedOpen}
 		>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
 	>
-
-	<!-- DEV-447 (REQ-039): 쿼리 — 줄 하나를 다 쓴다(값이 길다). -->
-	<div class="query-row">
-		<label class="query-wrap">
-			<span class="query-label">{t('filter.queryLabel', $locale)}</span>
-			<input
-				type="search"
-				class="input query-input"
-				class:bad={queryError}
-				placeholder={t('filter.queryPlaceholder', $locale)}
-				bind:value={query}
-				spellcheck="false"
-				autocomplete="off"
-				aria-invalid={queryError ? 'true' : undefined}
-				data-testid="quest-query-input"
-			/>
-			{#if query}
-				<button
-					type="button"
-					class="search-clear"
-					title={t('filter.clearQuery', $locale)}
-					onclick={() => (query = '')}
-					data-testid="quest-query-clear">×</button
-				>
-			{/if}
-		</label>
-		<button
-			type="button"
-			class="query-help-btn"
-			class:active={queryHelpOpen}
-			aria-expanded={queryHelpOpen}
-			title={t('filter.queryHelpToggle', $locale)}
-			onclick={() => (queryHelpOpen = !queryHelpOpen)}>?</button
-		>
-	</div>
-	{#if queryError}
-		<p class="query-error" role="alert" data-testid="quest-query-error">{queryError}</p>
-	{/if}
-	{#if queryHelpOpen}
-		<div class="query-help" data-testid="quest-query-help">
-			<p>{t('filter.queryHelpRules', $locale)}</p>
-			<dl>
-				{#each QUERY_KEYS as [key, example, label] (key)}
-					<dt><code>{example}</code></dt>
-					<dd>{t(label, $locale)}</dd>
-				{/each}
-			</dl>
-		</div>
-	{/if}
 </div>
 
 {#if advancedOpen}
@@ -312,6 +269,54 @@
 			<button class="xfilter-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}
 				>{t('filter.clearBtn', $locale)}</button
 			>
+		{/if}
+		<!-- DEV-447 (REQ-039): 쿼리 — 고급 안에서 줄 하나를 다 쓴다(값이 길다; admin: 고급에 넣는다). -->
+		<div class="query-row">
+			<label class="query-wrap">
+				<span class="query-label">{t('filter.queryLabel', $locale)}</span>
+				<input
+					type="search"
+					class="input query-input"
+					class:bad={queryError}
+					placeholder={t('filter.queryPlaceholder', $locale)}
+					bind:value={query}
+					spellcheck="false"
+					autocomplete="off"
+					aria-invalid={queryError ? 'true' : undefined}
+					data-testid="quest-query-input"
+				/>
+				{#if query}
+					<button
+						type="button"
+						class="search-clear"
+						title={t('filter.clearQuery', $locale)}
+						onclick={() => (query = '')}
+						data-testid="quest-query-clear">×</button
+					>
+				{/if}
+			</label>
+			<button
+				type="button"
+				class="query-help-btn"
+				class:active={queryHelpOpen}
+				aria-expanded={queryHelpOpen}
+				title={t('filter.queryHelpToggle', $locale)}
+				onclick={() => (queryHelpOpen = !queryHelpOpen)}>?</button
+			>
+		</div>
+		{#if queryError}
+			<p class="query-error" role="alert" data-testid="quest-query-error">{queryError}</p>
+		{/if}
+		{#if queryHelpOpen}
+			<div class="query-help" data-testid="quest-query-help">
+				<p>{t('filter.queryHelpRules', $locale)}</p>
+				<dl>
+					{#each QUERY_KEYS as [key, example, label] (key)}
+						<dt><code>{example}</code></dt>
+						<dd>{t(label, $locale)}</dd>
+					{/each}
+				</dl>
+			</div>
 		{/if}
 	</div>
 {/if}
@@ -479,7 +484,18 @@
 	.query-input.bad {
 		border-color: var(--danger);
 	}
-	.query-help-btn {
+	/* 고급 패널의 알약 버튼 규칙(.xfilter-panel button)보다 세게 — 지우기 ×는 테두리 없이. */
+	.xfilter-panel .search-clear {
+		padding: 0 var(--sp-6);
+		border: none;
+		border-radius: var(--r-pill);
+		background: transparent;
+		color: var(--text-faint);
+	}
+	.xfilter-panel .search-clear:hover {
+		color: var(--danger);
+	}
+	.xfilter-panel .query-help-btn {
 		padding: var(--sp-2) var(--sp-8);
 		font-weight: var(--fw-semibold);
 	}
