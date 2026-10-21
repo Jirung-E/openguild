@@ -2552,6 +2552,47 @@
 		type QuestFilterState
 	} from '$lib/stores/quest-filter';
 	import { filterQuests as filterQuestsForBoard, type TriState } from '$lib/utils/quest-list';
+	import { needsServerSearch } from '$lib/utils/search-match';
+	// BUG-371: 보드도 본문 없이 받는다(BUG-210) — 본문 · 댓글 · 첨부 검색은 서버(앱은 코어)가 판정한
+	// id 로 흐린다. 목록과 같은 판정이라야 같은 퀘스트가 걸린다. 늦게 온 답이 최신 판정을 덮지 않게 번호를 단다.
+	let boardSearchIds: Set<number> | null = null;
+	let boardSearchKey = '';
+	let boardSearchSeq = 0;
+	let boardSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	function searchKeyOf(f: QuestFilterState): string {
+		return needsServerSearch(f.search, {
+			titleOnly: f.titleOnly,
+			comments: f.searchComments,
+			attachments: f.searchAttachments
+		})
+			? JSON.stringify([f.search.trim(), f.titleOnly, f.searchComments, f.searchAttachments])
+			: '';
+	}
+	function refreshBoardSearch(f: QuestFilterState) {
+		const key = searchKeyOf(f);
+		if (key === boardSearchKey) return;
+		boardSearchKey = key;
+		boardSearchIds = null;
+		if (boardSearchTimer) clearTimeout(boardSearchTimer);
+		const seq = ++boardSearchSeq;
+		if (!key) return;
+		boardSearchTimer = setTimeout(() => {
+			questsApi
+				.searchWide(f.search.trim(), {
+					comments: f.searchComments,
+					attachments: f.searchAttachments,
+					titleOnly: f.titleOnly
+				})
+				.then((rows) => {
+					if (seq !== boardSearchSeq) return;
+					boardSearchIds = new Set(rows.map((r) => r.id));
+					applyFilterDim();
+				})
+				.catch(() => {
+					// 실패하면 받은 목록(제목 · 번호)으로 흐린 그대로 둔다.
+				});
+		}, 250);
+	}
 	// DEV-135: 필터 활성 chip — 매치 수 표시 + 해제. allQuests 는 의도적
 	// 비-reactive (BUG-054) 라 template 에서 직접 참조하지 않고 effect 가 복사.
 	let filterMatchCount = $state(0);
@@ -2581,6 +2622,11 @@
 		);
 		const matched = new Set(
 			filterQuestsForBoard(allQuests, f.typeIds, f.statusIds, f.search, f.titleOnly, f.tags, {
+				// BUG-371: 서버 판정이 왔으면 그것으로(아직이면 받은 목록의 제목 · 번호로).
+				serverMatchIds:
+					searchKeyOf(f) && searchKeyOf(f) === boardSearchKey
+						? (boardSearchIds ?? undefined)
+						: undefined,
 				urgencies: f.urgencies,
 				prereq: f.prereq,
 				sub: f.sub,
@@ -2607,7 +2653,8 @@
 		});
 	}
 	$effect(() => {
-		void $questFilters; // store 변경 추적 → dim 재적용.
+		const f = $questFilters; // store 변경 추적 → dim 재적용.
+		refreshBoardSearch(f);
 		applyFilterDim();
 	});
 

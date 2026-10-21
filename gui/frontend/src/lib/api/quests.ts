@@ -44,10 +44,16 @@ export const questsApi = {
 	 * REQ-010: 검색 영역을 넓힌 목록 조회 — 댓글 본문 / 첨부 파일 이름까지.
 	 *
 	 * 목록 화면은 평소 전체를 받아 클라이언트에서 거르지만, 댓글·첨부 이름은
-	 * 클라이언트에 없다. 이 옵션이 켜졌을 때만 서버에 판정을 맡긴다.
+	 * 클라이언트에 없다. BUG-371: 본문도 없다(BUG-210 slim) — 그래서 '제목만' 이
+	 * 아니면 늘 여기에 판정을 맡긴다([`needsServerSearch`]).
 	 */
-	searchWide: (search: string, opts: { comments?: boolean; attachments?: boolean }) => {
+	searchWide: (
+		search: string,
+		opts: { comments?: boolean; attachments?: boolean; titleOnly?: boolean }
+	) => {
 		const p = new URLSearchParams({ search, slim: 'true' });
+		// BUG-371: '제목만' 도 같이 보낸다 — 빠지면 제목만 + 댓글 포함이 본문까지 찾았다.
+		if (opts.titleOnly) p.set('title_only', 'true');
 		if (opts.comments) p.set('search_comments', 'true');
 		if (opts.attachments) p.set('search_attachments', 'true');
 		return api.get<Quest[]>(`/api/quests?${p.toString()}`);

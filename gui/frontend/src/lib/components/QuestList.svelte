@@ -31,6 +31,7 @@
 		type SortKey,
 		type TriState
 	} from '$lib/utils/quest-list';
+	import { needsServerSearch } from '$lib/utils/search-match';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
 	// DEV-074 fix14: 내부 스크롤 컨테이너용 overlay 스크롤바.
@@ -130,10 +131,16 @@
 
 	$effect(() => {
 		const q = search.trim();
-		const wide = searchComments || searchAttachments;
+		// BUG-371: 본문도 받은 목록에 없다 — '제목만' 이 아니면 늘 서버에 묻는다.
+		const wide = needsServerSearch(q, {
+			titleOnly,
+			comments: searchComments,
+			attachments: searchAttachments
+		});
 		const wantComments = searchComments;
 		const wantAttachments = searchAttachments;
-		if (!wide || !q) {
+		const wantTitleOnly = titleOnly;
+		if (!wide) {
 			serverMatchIds = null;
 			wideSearching = false;
 			return;
@@ -144,7 +151,11 @@
 		wideSearching = true;
 		wideTimer = setTimeout(() => {
 			questsApi
-				.searchWide(q, { comments: wantComments, attachments: wantAttachments })
+				.searchWide(q, {
+					comments: wantComments,
+					attachments: wantAttachments,
+					titleOnly: wantTitleOnly
+				})
 				.then((rows) => {
 					// 늦게 온 응답이 최신 결과를 덮어쓰면 안 된다(REQ-004 와 같은 함정).
 					if (seq !== wideSeq) return;
