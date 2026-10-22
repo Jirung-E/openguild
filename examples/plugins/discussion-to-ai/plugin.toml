@@ -82,6 +82,7 @@ scripts     = ["main.rhai"]
 
 ■ claude -p "$(cat) — 한국어로 두 문장 이내로." --allowedTools "Bash(openguild *)" Read Grep Glob 2>/dev/null
 ■ cat | ollama run gemma4:e4b --think=false --nowordwrap 2>/dev/null
+■ codex exec --skip-git-repo-check --ephemeral -s read-only "한국어로 두 문장 이내로." 2>/dev/null
 ■ 윈도우는 파워셸 — "$VAR" 를 $env:VAR 로.
 """
 

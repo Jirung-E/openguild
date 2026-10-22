@@ -232,6 +232,21 @@ printf '%s\n\n한국어로 두 문장 이내로만 답하라.' "$q" \
 
 모델 이름만 바꾸면 다른 것도 같다.
 
+#### Codex 로 (2026-10-22)
+
+```bash
+codex exec --skip-git-repo-check --ephemeral -s read-only --color never "한국어로 두 문장 이내로 답하라." 2>/dev/null |
+  openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add "$OG_TARGET_ID" --author ai --parent-id "$OG_COMMENT_ID"
+```
+
+질문은 stdin 으로 들어가 지시 뒤에 붙는다. stdout 에는 **마지막 답만** 나온다(진행 상황은 stderr).
+
+| | 왜 |
+|---|---|
+| `--skip-git-repo-check` | 훅의 작업 폴더는 git 저장소가 아니다 — 없으면 시작하지 않는다 |
+| `-s read-only` | 길드를 **찾아보되 고치지는 못하게** — 답이 정확해진다(22초, 맞는 답) |
+| `--ephemeral` | 댓글마다 세션 파일이 쌓이지 않게 |
+
 #### 윈도우에서는 (BUG-332 · BUG-335)
 
 '명령 실행' 은 **파워셸**로 돈다(`deliver.ps1` 이 그렇게 띄운다). 한때 `cmd.exe /c` 였는데
