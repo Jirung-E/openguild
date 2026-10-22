@@ -136,9 +136,13 @@ delivered.log   언제 무엇이 어디로 갔는지 한 줄씩
 '명령 실행' 에 아래 한 줄을 넣으면 한 바퀴가 돈다.
 
 ```bash
-claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." |
-  openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add "$OG_TARGET_ID"     --author ai --parent-id "$OG_COMMENT_ID"
+claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." --allowedTools "Bash(openguild *)" Read Grep Glob 2>/dev/null |
+  openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add "$OG_TARGET_ID" --author ai --parent-id "$OG_COMMENT_ID"
 ```
+
+`--allowedTools` 를 빼면 답이 엉뚱해진다(2026-10-22 재 봄). `claude -p` 는 묻는 화면이 없어 도구를 쓸 때마다
+막히고, AI 는 "CLI 가 막혀서 확인할 수 없었다" 같은 말을 **답글로** 단다 — 영어로 길게. 읽기만 하는 도구와
+`openguild` 를 열어 두면 길드를 찾아보고 답한다(11초, 한국어 두 문장, 맞는 답).
 
 세 가지가 이걸 가능하게 한다.
 
