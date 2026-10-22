@@ -360,7 +360,9 @@ openguild quest tag add DEV-001 notify
 ```
 
 No script needed. For a comment event, the tags live on the document the comment
-is on, so ask for it: `with = ["subject"]` and `"subject.tags" = "notify"`.
+is on, so ask for it: `with = ["subject"]` and `"subject.tags" = "notify"`. The
+receiver then also gets that document in the body under `with.subject` (title,
+tags, status) — the event itself only carries `target: {kind, id}`.
 
 ## Verifying (do this before handing it over)
 

@@ -2714,6 +2714,128 @@ scope = ["cli"]
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-391: **댓글을 대상 문서로 거르고, 받는 쪽도 그 문서를 안다.** 스크립트 없이 바로 보내는 줄이
+/// `with = ["subject"]` 를 적으면 본문의 `with.subject` 에 대상(제목 · 태그 · 상태)이 실린다 — 퀘스트에
+/// 달렸든 캠페인에 달렸든 같은 자리에. 안 적은 줄에는 `with` 가 없다(읽지도 않는다).
+#[tokio::test]
+async fn an_action_line_hands_its_with_data_to_the_receiver() {
+    #[derive(Default)]
+    struct Sent(std::sync::Mutex<Vec<(String, serde_json::Value)>>);
+    impl runtime::Delivery for Sent {
+        fn deliver(
+            &self,
+            _p: &Plugin,
+            a: &Action,
+            _e: &crate::events::Event,
+            b: &serde_json::Value,
+            _v: &std::collections::BTreeMap<String, String>,
+        ) -> Result<(), String> {
+            let url = match a {
+                Action::Post { url, .. } => url.clone(),
+                _ => String::new(),
+            };
+            self.0.lock().unwrap().push((url, b.clone()));
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("withbody-home");
+    let g = fresh_tmp("withbody");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("tagged");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name  = "tagged"
+scope = ["cli"]
+
+[actions.tagged.post]
+    url = "https://x.test/tagged"
+
+[actions.plain.post]
+    url = "https://x.test/plain"
+
+[[handlers]]
+    post   = ["comment.added"]
+    with   = ["subject"]
+    action = "tagged"
+    [handlers.when]
+        "subject.tags" = "notify"
+
+[[handlers]]
+    post   = ["comment.added"]
+    action = "plain"
+"#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let sent = std::sync::Arc::new(Sent::default());
+    let loaded = {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins(Scope::Cli, sent.clone());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        l
+    };
+    assert_eq!(loaded.active.len(), 1, "{:?}", loaded.errors);
+
+    let mk = |title: &str| crate::models::CreateQuestRequest {
+        quest_type_id: 1,
+        title: title.into(),
+        description: None,
+        status_slug: "open".into(),
+        urgency: Some(3),
+        parent_quest_id: None,
+    };
+    let tagged = crate::ops::quests::create_quest(&store, mk("알림 받을 것")).await.unwrap();
+    let plain = crate::ops::quests::create_quest(&store, mk("조용한 것")).await.unwrap();
+    crate::ops::quests::set_quest_tags(&store, tagged.id, vec!["notify".into()]).await.unwrap();
+    let camp = crate::ops::campaigns::create_campaign(
+        &store,
+        crate::models::CreateCampaignRequest {
+            title: "베타".into(),
+            description: None,
+            started_at: None,
+            ended_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    for slug in [&tagged.quest_id, &plain.quest_id] {
+        crate::ops::comments::add_comment_entry(&store, slug, "a".into(), "댓글".into(), None, false)
+            .await
+            .unwrap();
+    }
+    crate::ops::campaign_comments::add_entry(&store, &camp.campaign_slug, "a".into(), "캠페인 댓글".into(), None)
+        .await
+        .unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(5)));
+
+    let got = sent.0.lock().unwrap().clone();
+    let to = |u: &str| got.iter().filter(|(url, _)| url.ends_with(u)).map(|(_, b)| b.clone()).collect::<Vec<_>>();
+    // 거르기: notify 태그가 붙은 퀘스트의 댓글만.
+    let t = to("/tagged");
+    assert_eq!(t.len(), 1, "{got:?}");
+    assert_eq!(t[0]["target"]["id"], tagged.quest_id.as_str());
+    // 받는 쪽이 대상을 안다 — 제목 · 태그 · 상태.
+    assert_eq!(t[0]["with"]["subject"]["title"], "알림 받을 것", "{}", t[0]);
+    assert_eq!(t[0]["with"]["subject"]["tags"], serde_json::json!(["notify"]));
+    assert_eq!(t[0]["with"]["subject"]["status"], "open");
+    // 이벤트의 `subject`({kind, id})는 그대로다 — 이름이 부딪히지 않는다.
+    assert_eq!(t[0]["subject"], serde_json::json!({ "kind": "quest", "id": tagged.quest_id }));
+    // `with` 를 안 적은 줄은 본문이 예전 그대로(세 댓글 모두, `with` 없음).
+    let p = to("/plain");
+    assert_eq!(p.len(), 3, "{got:?}");
+    assert!(p.iter().all(|b| b.get("with").is_none()), "{p:?}");
+    // 캠페인 댓글도 같은 모양의 대상 — 분기가 안 생긴다.
+    let c = p.iter().find(|b| b["target"]["kind"] == "campaign").unwrap();
+    assert_eq!(c["target"]["id"], camp.campaign_slug.as_str());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ── DEV-406: 스크립트가 길드에 시키는 일 ────────────────────
 
 /// 알림과 백업이 **함수가 끝난 뒤** 실행된다. 권한에 없는 것은 그 일만 거절하고 기록한다.

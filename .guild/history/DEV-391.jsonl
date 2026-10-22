@@ -1,1 +1,2 @@
 {"ts":"2026-10-22T15:15:05+09:00","op":"change_status","old":"open","new":"in_progress"}
+{"ts":"2026-10-22T15:41:04+09:00","op":"change_status","old":"in_progress","new":"testing"}

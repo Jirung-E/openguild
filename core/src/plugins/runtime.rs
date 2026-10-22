@@ -422,7 +422,25 @@ pub(super) fn run_lines(
             let Some(action) = p.def.action_of(r) else {
                 continue; // 검증이 막는다 — 여기 올 일은 없다.
             };
-            if let Err(e) = delivery.deliver(p, action, event, &event.to_json(), subst) {
+            // DEV-391: 스크립트 없이 바로 보내는 줄도 `with` 로 읽은 것을 **받는 쪽에** 넘긴다 — 본문의
+            // `with` 칸에 이름별로. 예전엔 조건(`when`)에만 쓰고 버려서, 웹훅은 "notify 퀘스트의 댓글" 만
+            // 받기는 해도 그 퀘스트의 제목조차 몰랐다(스크립트에는 I/O 가 없어 받는 쪽이 되물을 수도 없다).
+            // 이름을 `subject` 처럼 맨 위에 두지 않는 것은 이벤트의 `subject`({kind, id})와 부딪혀서다.
+            let body = if h.with.is_empty() {
+                event.to_json()
+            } else {
+                let mut b = event.to_json();
+                if let Some(o) = b.as_object_mut() {
+                    let given: serde_json::Map<String, serde_json::Value> = h
+                        .with
+                        .iter()
+                        .map(|w| (w.clone(), extra_map.get(w).cloned().unwrap_or(serde_json::Value::Null)))
+                        .collect();
+                    o.insert("with".into(), serde_json::Value::Object(given));
+                }
+                b
+            };
+            if let Err(e) = delivery.deliver(p, action, event, &body, subst) {
                 note(log, crate::tf!("플러그인 '{name}' {who} — {e}", "plugin '{name}' {who} — {e}"));
             }
         }

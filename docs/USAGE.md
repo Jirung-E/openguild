@@ -258,7 +258,7 @@ scripts     = ["main.rhai"]
 | `post` / `pre` | 언제 볼지. `pre` 는 **바뀌기 전** — 막거나 값을 바꿀 수 있고, 언제나 기다립니다. |
 | `call` / `action` | 무엇을 할지. 스크립트 함수를 부르거나, 동작을 바로 실행합니다. |
 | `when` | 이 줄이 불릴 조건(전부 만족). `"change.to" = ["done", "closed"]` |
-| `with` | 함수가 이벤트 뒤에 받을 연결 데이터 — `subject`, `parent`, `children`, `prereqs`, `campaigns`, `quests`. |
+| `with` | 함수가 이벤트 뒤에 받을 연결 데이터 — `subject`, `parent`, `children`, `prereqs`, `campaigns`, `quests`. 스크립트 없이 바로 보내는 줄은 본문의 `with` 칸에 실어 보냅니다(`with.subject.title` 등) — 댓글 이벤트에서 "그 퀘스트" 를 알 수 있습니다. |
 | `wait` | 이 줄이 끝날 때까지 기다립니다(기본은 안 기다림). |
 | `id` | 줄 이름 — 화면과 오류 메시지가 이 줄을 가리킬 때 씁니다. |
 | `timeout_ms`, `on_timeout`, `on_error` | 시한과, 넘거나 던졌을 때 할 일(`continue` / `block`). |
