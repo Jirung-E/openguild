@@ -34,5 +34,6 @@ case "$(uname -s)" in
   Linux)
     command -v notify-send >/dev/null 2>&1 && notify-send "$title" "$body" ;;
   *)
-    printf '%s: %s\n' "$title" "$body" >> notify.log ;;
+    # DEV-425: 훅은 길드 폴더에서 돈다 — 데이터 폴더에 절대경로로.
+    printf '%s: %s\n' "$title" "$body" >> "$OPENGUILD_PLUGIN_DATA_DIR/notify.log" ;;
 esac

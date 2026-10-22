@@ -254,11 +254,13 @@ the editor, built from the events this build actually knows.
   the user this, or they will think consent is broken. (Imported files outside
   the folder are the exception; the consent screen says so.)
 - **A `run` hook must never write into its own folder.** Its working directory
-  is a separate per-machine data folder, not the plugin folder, precisely
-  because of the rule above: a hook that wrote a log next to itself changed the
-  fingerprint and **silently revoked its own consent** after one run (BUG-279).
-  Relative paths land in the data folder, which is what you want. To reach a
-  file that ships with the plugin, use `${OPENGUILD_PLUGIN_DIR}`:
+  is the guild root, not the plugin folder, precisely because of the rule above:
+  a hook that wrote a log next to itself changed the fingerprint and **silently
+  revoked its own consent** after one run (BUG-279). Write output to
+  `"$OPENGUILD_PLUGIN_DATA_DIR/…"` by **absolute path** — a relative path lands in
+  the guild root and shows up in the user's `git status`. Never write under `.guild`
+  directly (use `openguild` commands). To reach a file that ships with the plugin,
+  use `${OPENGUILD_PLUGIN_DIR}`:
 
   ```toml
   args = ["${OPENGUILD_PLUGIN_DIR}/notify.sh"]
@@ -271,11 +273,12 @@ the editor, built from the events this build actually knows.
   a timeout means with `on_timeout` (`continue`, the default, or `block`); the
   same choice exists for a script that throws, as `on_error`.
 - **One plugin's failure never affects another**, or the guild.
-- **To call `openguild` back, use `$OPENGUILD_GUILD_DIR`.** The working directory
-  is deliberately outside the guild (above), so `openguild` cannot find one on its
-  own — `openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add …`. This is
-  what makes a hook that *answers* (an AI replying to a discussion comment)
-  possible at all.
+- **To call `openguild` back, pass `--guild "$OPENGUILD_GUILD_DIR"`.** The hook
+  starts in the guild root, so the upward search would usually find it — pass it
+  anyway: a hook that `cd`s elsewhere keeps the variable, and the search could pick
+  a nested guild. `openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add …` is
+  what makes a hook that *answers* (an AI replying to a discussion comment) work —
+  and because it starts in the guild, the AI can read the quest it is asked about.
 - **A hook that changes the guild does not trigger itself.** If a `run` hook
   calls `openguild …`, the change it makes is not sent back to the same plugin
   (other plugins still get it), so "on tag change, add a tag" does not loop.

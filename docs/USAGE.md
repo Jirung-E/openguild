@@ -305,10 +305,14 @@ fn on_comment(e, subject) {
 - `run` 은 운영체제마다 다른 명령을 적을 수 있습니다 — `windows = { command =
   "powershell", args = [...] }` (`macos`, `linux` 도). 셸 스크립트는 Windows 에서 못 돌므로
   예제 `backup-archive`·`desktop-notify` 는 Windows 용 PowerShell 스크립트를 함께 둡니다.
-- `run` 이 **파일을 쓰는 자리**는 `~/.openguild/plugin-data/{길드}/{플러그인}/`
-  입니다. 플러그인 폴더가 아닙니다 — 그 폴더는 동의 지문의 대상이라, 훅이
-  거기 무언가를 쓰면 동의가 풀려 스스로 꺼집니다. 플러그인과 함께 배포한
-  파일을 부르려면 `${OPENGUILD_PLUGIN_DIR}` 를 씁니다.
+- `run` 은 **길드 폴더**(`.guild` 파일이 있는 곳)에서 돕니다 — AI 를 부르는 훅이 길드를
+  볼 수 있게. 훅이 **파일을 쓰는 자리**는 따로 있습니다: 데이터 폴더
+  `~/.openguild/plugin-data/{길드}/{플러그인}/`, 훅에는 `$OPENGUILD_PLUGIN_DATA_DIR` 로
+  알려 줍니다. 상대 경로로 쓰면 길드 안에 떨어져 git 에 뜨니 **절대경로로** 씁니다.
+  `.guild` 안은 직접 고치지 말고 `openguild` 명령으로 고칩니다(캐시가 어긋납니다).
+  플러그인 폴더에도 쓰지 않습니다 — 그 폴더는 동의 지문의 대상이라 무언가를 쓰면 동의가
+  풀려 스스로 꺼집니다. 플러그인과 함께 배포한 파일을 부르려면 `${OPENGUILD_PLUGIN_DIR}`,
+  길드 경로는 `$OPENGUILD_GUILD_DIR` 입니다.
   슬랙·디스코드 연동 같은 건 그 둘 중 하나로 여러분의 프로그램이 합니다.
 - **API 키를 직접 적으면 거부됩니다.** `plugin.toml` 은 git 에 올라가니까요.
   `${MY_API_KEY}` 처럼 환경변수 참조만 쓸 수 있고, 값은 보낼 때 이 기계의

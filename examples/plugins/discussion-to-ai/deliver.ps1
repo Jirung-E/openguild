@@ -21,10 +21,12 @@ if ($e) {
 }
 
 # BUG-329: leave one line saying where it went - a command or a tmux pane gives
-# no visible result. It lands in the work folder, which the consent screen names.
+# no visible result. It lands in the data folder, which the consent screen names.
+# DEV-425: the hook runs in the guild folder - a relative path would land inside the
+# guild and show up in git. Write to the data folder by absolute path.
 function Receipt($what, $where) {
     $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    Add-Content -LiteralPath 'delivered.log' -Value "$stamp  $what  $where" -Encoding utf8
+    Add-Content -LiteralPath (Join-Path $env:OPENGUILD_PLUGIN_DATA_DIR 'delivered.log') -Value "$stamp  $what  $where" -Encoding utf8
 }
 
 $how = $env:HOW

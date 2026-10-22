@@ -4,7 +4,8 @@
 # BOM in the system code page, so non-ASCII text here could break the parse.
 #
 # stdin: what main.rhai passed to run("archive", ...) - the snapshot path as a JSON string.
-# The working directory is the plugin data folder, not this folder (BUG-279).
+# The working directory is the guild folder, not this folder (BUG-279, DEV-425) -
+# nothing is written by relative path.
 # Settings (ARCHIVE_DIR, ...) arrive as environment variables.
 $ErrorActionPreference = 'Stop'
 

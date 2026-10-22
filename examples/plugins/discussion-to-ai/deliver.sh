@@ -29,9 +29,10 @@ else
 fi
 
 # BUG-329: 어디로 보냈는지 한 줄 남긴다 — 명령이나 tmux 로 보내면 결과가 눈에 안 보인다.
-# 작업 폴더에 쌓이므로 앱의 관리 → 플러그인(또는 plugin allow)의 '작업 폴더' 에서 찾을 수 있다.
+# 데이터 폴더에 쌓이므로 앱의 관리 → 플러그인(또는 plugin allow)의 '데이터 폴더' 에서 찾을 수 있다.
+# DEV-425: 훅은 길드 폴더에서 돈다 — 상대 경로로 쓰면 길드 안에 떨어져 git 에 뜬다. 절대경로로.
 receipt() {
-  printf '%s  %s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> delivered.log
+  printf '%s  %s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$OPENGUILD_PLUGIN_DATA_DIR/delivered.log"
 }
 
 case "${HOW:-inbox}" in
@@ -71,7 +72,7 @@ case "${HOW:-inbox}" in
   *)
     # 받은 편지함 — 정해 둔 파일 뒤에 한 덩이씩 붙인다. 세션이 이 파일을 지켜보면 된다.
     out=${INBOX_PATH:-}
-    [ -n "$out" ] || out="${OPENGUILD_PLUGIN_DATA_DIR:-.}/inbox.md"
+    [ -n "$out" ] || out="$OPENGUILD_PLUGIN_DATA_DIR/inbox.md"
     {
       printf '## %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')"
       printf '%s\n\n' "$msg"

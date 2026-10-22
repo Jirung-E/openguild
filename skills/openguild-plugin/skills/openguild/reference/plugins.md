@@ -89,14 +89,17 @@ top-level body keys. Scripts have no I/O, so they cannot read the environment; A
 private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so
 user text is never expanded.
 
-A `run` hook's working directory is `~/.openguild/plugin-data/{guild}/{plugin}/`,
-**not** the plugin folder — a hook that writes next to itself changes the consent
-fingerprint and silently revokes its own consent (BUG-279). `OPENGUILD_PLUGIN_DIR`
-points at the plugin folder (usable as `${OPENGUILD_PLUGIN_DIR}` inside `command`
-and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder; `OPENGUILD_GUILD_DIR`
-at the guild — a hook that calls `openguild` back needs it, because the working
-directory is deliberately outside the guild
-(`openguild --guild "$OPENGUILD_GUILD_DIR" …`). Configured `inputs` also arrive
+A `run` hook's working directory is the **guild root** (the folder with the `.guild`
+file), so an AI the hook calls can see the guild. It is **not** the plugin folder — a hook
+that writes next to itself changes the consent fingerprint and silently revokes its own
+consent (BUG-279). Write output to `$OPENGUILD_PLUGIN_DATA_DIR`
+(`~/.openguild/plugin-data/{guild}/{plugin}/`, created beforehand) **by absolute path** — a
+relative path lands in the guild and shows up in `git status`. Never edit files under `.guild`
+directly; change the guild through `openguild` commands. `OPENGUILD_PLUGIN_DIR` points at the
+plugin folder (usable as `${OPENGUILD_PLUGIN_DIR}` inside `command` and `args`);
+`OPENGUILD_GUILD_DIR` at the guild — still pass it when calling `openguild` back
+(`openguild --guild "$OPENGUILD_GUILD_DIR" …`): a hook that `cd`s elsewhere keeps it, and the
+upward search could pick a nested guild. Configured `inputs` also arrive
 as **environment variables** of the child (`$ARCHIVE_DIR`) — a `run` hook has no url or
 header to put them in, and passing a token through `args` would show it in `ps`.
 

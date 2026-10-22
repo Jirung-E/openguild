@@ -37,12 +37,13 @@ scope       = ["cli"]
     post = ["quest.created"]
     [handlers.action.run]
         command = "sh"
-        args    = ["-c", "cat >> hello.log; echo >> hello.log"]
+        # DEV-425: 훅은 길드 루트에서 돈다 — 출력은 데이터 폴더에 절대경로로.
+        args    = ["-c", "cat >> \"$OPENGUILD_PLUGIN_DATA_DIR/hello.log\"; echo >> \"$OPENGUILD_PLUGIN_DATA_DIR/hello.log\""]
     # BUG-347: 윈도우에는 sh 가 없다(Git Bash 가 없으면) — 예제들처럼 그 OS 에서는 PowerShell 로 같은 일을 한다.
     [handlers.action.run.windows]
         command = "powershell"
         args    = ["-NoProfile", "-NonInteractive", "-Command",
-                   "$t = [Console]::In.ReadToEnd(); Add-Content -LiteralPath hello.log -Value $t -Encoding utf8"]
+                   "$t = [Console]::In.ReadToEnd(); Add-Content -LiteralPath (Join-Path $env:OPENGUILD_PLUGIN_DATA_DIR 'hello.log') -Value $t -Encoding utf8"]
 "#,
         )
         .unwrap();

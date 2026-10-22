@@ -1569,9 +1569,9 @@ fn a_hook_that_writes_files_keeps_its_consent() {
     }
 
     // 두 번 다 돌았으니 로그에 두 줄이 쌓여 있어야 한다 — "동의는 살아 있는데
-    // 실은 아무 일도 안 했다" 를 가른다.
-    let data = crate::plugins::data_dir(&g, "audit").unwrap();
-    let log = std::fs::read_to_string(data.join("out.log")).unwrap();
+    // 실은 아무 일도 안 했다" 를 가른다. DEV-425: 상대 경로는 길드 루트에 떨어진다 —
+    // 길드 루트는 지문 대상이 아니므로 동의가 살아 있다(BUG-279 가 안 돌아왔다).
+    let log = std::fs::read_to_string(g.join("out.log")).unwrap();
     assert_eq!(
         log.matches("hello").count(),
         2,
@@ -1595,7 +1595,7 @@ fn a_hook_that_writes_files_keeps_its_consent() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 코드 폴더는 `OPENGUILD_PLUGIN_DIR` 로 알려준다 — 작업 디렉터리가 더는
+/// 코드 폴더는 `OPENGUILD_PLUGIN_DIR` 로 알려준다 — 작업 디렉터리(DEV-425: 길드 루트)가
 /// 그곳이 아니므로, 이게 없으면 `desktop-notify` 처럼 옆 파일을 부르는
 /// 플러그인이 통째로 못 돈다.
 #[test]
@@ -1636,9 +1636,8 @@ fn the_hook_is_told_where_its_code_lives() {
     )
     .unwrap();
 
-    let data = crate::plugins::data_dir(&g, "sibling").unwrap();
     assert_eq!(
-        std::fs::read_to_string(data.join("said.txt"))
+        std::fs::read_to_string(g.join("said.txt"))
             .unwrap()
             .trim(),
         "안녕",

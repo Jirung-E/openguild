@@ -91,14 +91,14 @@ AI 를 부르는 훅이면 돈까지 든다. 평범한 댓글에는 **0건**이 
 
 ```bash
 openguild plugin add <저장소>/examples/plugins/discussion-to-ai
-openguild plugin allow discussion-to-ai          # '작업 폴더' 경로를 적어 둔다
+openguild plugin allow discussion-to-ai          # '데이터 폴더' 경로를 적어 둔다
 openguild plugin allow discussion-to-ai --yes
 
 # 토론 댓글을 하나 단다
 openguild quest comment add DEV-001 --discussion --file <어떤 파일>
 ```
 
-작업 폴더에 둘이 생긴다.
+데이터 폴더에 둘이 생긴다.
 
 ```
 inbox.md        쌓인 댓글
@@ -148,7 +148,7 @@ claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." --allowedToo
 
 | | |
 |---|---|
-| `$OPENGUILD_GUILD_DIR` | 훅의 작업 폴더는 **길드 밖**이라([[BUG-279]]) 이게 없으면 `openguild` 가 길드를 못 찾는다 |
+| `$OPENGUILD_GUILD_DIR` | 훅은 길드 폴더에서 돌지만([[DEV-425]]) 그래도 적는다 — 훅이 중간에 `cd` 해도 살아 있고, 길드 안의 길드를 잘못 잡지 않는다 |
 | `$OG_TARGET_ID` · `$OG_COMMENT_ID` | 어디에, 무엇의 답글로 달지 |
 | 되돌이 막기 | AI 가 단 댓글은 같은 플러그인에 **다시 안 온다**([[DEV-401]]) — 안 그러면 무한이다 |
 
@@ -243,7 +243,7 @@ codex exec --skip-git-repo-check --ephemeral -s read-only --color never "한국�
 
 | | 왜 |
 |---|---|
-| `--skip-git-repo-check` | 훅의 작업 폴더는 git 저장소가 아니다 — 없으면 시작하지 않는다 |
+| `--skip-git-repo-check` | 길드가 git 저장소가 아닐 수도 있다 — 없으면 그때 시작하지 않는다 |
 | `-s read-only` | 길드를 **찾아보되 고치지는 못하게** — 답이 정확해진다(22초, 맞는 답) |
 | `--ephemeral` | 댓글마다 세션 파일이 쌓이지 않게 |
 

@@ -384,8 +384,8 @@ fn resume(pid: u32) -> bool {
 /// 프로세스를 띄우고 **stdin** 으로 이벤트를 넘긴다.
 ///
 /// 인자로 넘기지 않는 이유는 길이 제한과 이스케이프다. 작업 디렉터리는
-/// 플러그인 폴더 — 스크립트가 옆 파일을 상대 경로로 부를 수 있어야 한다.
-/// 환경변수는 물려준다. 자식은 사용자가 **동의한** 코드이고([[DEV-375]]),
+/// **길드 루트**(DEV-425) — 옆 파일은 `$OPENGUILD_PLUGIN_DIR`, 출력 자리는
+/// `$OPENGUILD_PLUGIN_DATA_DIR` 로 알려 준다. 환경변수는 물려준다. 자식은 사용자가 **동의한** 코드이고([[DEV-375]]),
 /// API 키를 환경에서 받는 것이 이 설계의 전제다.
 fn run(
     plugin: &Plugin,
@@ -400,10 +400,11 @@ fn run(
     // 훑으므로 사용자는 **반드시** 참조로 적어야 하는데, 안 풀면 자식이 리터럴
     // `${MY_API_KEY}` 를 받는다. 오류 메시지에는 원문(`command`)을 쓴다 — 푼
     // 값에는 비밀이 들어 있다.
-    // BUG-279: 작업 디렉터리가 데이터 폴더로 바뀌었으므로 코드 폴더를 가리킬
+    // BUG-279: 작업 디렉터리가 플러그인 폴더가 아니므로 코드 폴더를 가리킬
     // 수단이 필요하다. 자식 환경에 넣는 것만으로는 **여기서** 푸는 `${...}` 를
-    // 못 채우므로 확장 표에도 같이 심는다.
-    let workdir = plugin
+    // 못 채우므로 확장 표에도 같이 심는다. 데이터 폴더는 작업 디렉터리가 아니어도
+    // 미리 만든다 — 훅이 `$OPENGUILD_PLUGIN_DATA_DIR` 에 바로 쓸 수 있어야 한다.
+    let data_path = plugin
         .data_dir()
         .map_err(|e| crate::tf!("{command}: 데이터 폴더를 준비하지 못했습니다: {e}", "{command}: could not prepare the data folder: {e}"))?;
     // REQ-021: 사용자가 넣은 값이 먼저, 그 위에 코어가 주는 경로 둘.
@@ -412,7 +413,7 @@ fn run(
     // BUG-294: 훅에 넘기는 경로에는 Windows 의 `\\?\` 를 붙이지 않는다 — 어디서 들어왔든
     // (옛 기록, canonicalize) Windows PowerShell 5.1 이 그 경로를 `-File` 로 못 연다.
     let plugin_dir = crate::recents::strip_verbatim_prefix(&plugin.dir.to_string_lossy());
-    let data_dir = crate::recents::strip_verbatim_prefix(&workdir.to_string_lossy());
+    let data_dir = crate::recents::strip_verbatim_prefix(&data_path.to_string_lossy());
     let guild_dir = crate::recents::strip_verbatim_prefix(&plugin.guild_root.to_string_lossy());
     let mut vars = values.clone();
     vars.insert("OPENGUILD_PLUGIN_DIR".to_string(), plugin_dir.clone());
@@ -445,9 +446,11 @@ fn run(
         const CREATE_SUSPENDED: u32 = 0x0000_0004;
         cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
     }
-    // 작업 디렉터리는 **데이터 폴더**다. 예전엔 플러그인 폴더였는데, 동의
-    // 지문이 그 폴더 전체를 보므로([[DEV-381]]) 훅이 출력을 옆에 쓰는 순간
-    // 자기 동의를 깼다 — 한 번 돌고 조용히 멈춘다.
+    // DEV-425: 작업 디렉터리는 **길드 루트**다. AI 를 부르는 훅에서는 작업 디렉터리가 곧 AI 가
+    // 보는 세상이라, 데이터 폴더에서 띄우면 길드를 못 보고 댓글 한 줄만 들고 답했다.
+    // 플러그인 폴더로는 되돌리지 않는다(BUG-279) — 동의 지문이 그 폴더 전체를 보므로 훅이
+    // 출력을 옆에 쓰는 순간 자기 동의를 깬다. 길드 루트는 지문 대상이 아니다. 출력은
+    // `$OPENGUILD_PLUGIN_DATA_DIR` 에 절대경로로 쓰라고 문서 · 예제가 안내한다.
     // DEV-398: **설정값을 자식 환경에 넣는다.** 예전엔 `${...}` 치환에만 썼다 — 그래서
     // `run` 훅은 사용자가 설정 화면에 넣은 값을 읽을 방법이 사실상 없었다(args 로 넘기면
     // 토큰이 `ps` 에 보인다). `post` 는 url·헤더·body_env 로 값을 쓰지만 `run` 에는 그런
@@ -457,16 +460,15 @@ fn run(
     }
     let mut child = cmd
         .args(&argv)
-        .current_dir(&workdir)
+        .current_dir(&plugin.guild_root)
         // 옆 파일(`notify.sh`)을 부르려면 코드 폴더를 알아야 한다 — 작업
         // 디렉터리가 더는 그곳이 아니기 때문이다.
         .env("OPENGUILD_PLUGIN_DIR", &plugin_dir)
         // 훅이 자기 출력 자리를 알아야 절대경로로 쓸 수도 있다.
         .env("OPENGUILD_PLUGIN_DATA_DIR", &data_dir)
-        // BUG-330: **길드가 어디인지**. 이게 없으면 훅이 `openguild` 를 다시 못 부른다 —
-        // 작업 디렉터리는 BUG-279 때문에 일부러 길드 밖이고, 데이터 폴더 이름은 해시라
-        // 거슬러 올라갈 수도 없다. 문서는 "훅이 openguild 를 부르면" 을 전제로 되돌이
-        // 막기(DEV-401)까지 설명하는데, 정작 부를 방법이 없었다.
+        // BUG-330: **길드가 어디인지**. DEV-425 로 작업 디렉터리가 길드 루트가 됐어도 남긴다 —
+        // 훅이 중간에 `cd` 하면 자동 탐색은 깨지지만 이 값은 산다. 탐색은 위로 올라가므로
+        // 길드 안의 길드를 잘못 잡을 수도 있다(admin: 처방에서 `--guild` 를 걷지 말 것).
         .env("OPENGUILD_GUILD_DIR", &guild_dir)
         // DEV-401: 훅이 부른 `openguild` 가 이 목록을 이어 받는다 — 같은 훅이 다시 불리지 않게.
         .env(crate::events::origin::ENV, origin.to_env())
@@ -680,9 +682,9 @@ mod tests {
         }
     }
 
-    /// BUG-279: `run` 은 이제 **데이터 폴더**에서 돈다. 그래서 시험은 두 가지를
-    /// 지켜야 한다 — 훅이 만든 파일을 그 폴더에서 찾을 것, 그리고 **사용자의
-    /// 진짜 `~/.openguild` 를 절대 건드리지 않을 것.**
+    /// DEV-425: `run` 은 **길드 루트**에서 돈다(BUG-279 때는 데이터 폴더). 그래서 시험은 두 가지를
+    /// 지켜야 한다 — 훅이 상대 경로로 만든 파일을 길드 루트에서 찾을 것, 그리고 데이터 폴더를
+    /// 만들므로 **사용자의 진짜 `~/.openguild` 를 절대 건드리지 않을 것.**
     ///
     /// `OPENGUILD_HOME` 은 프로세스 전역이라 다른 시험과 겹치면 서로의 홈을
     /// 지운다. crate 공통 `env_lock` 으로 직렬화한다.
@@ -716,7 +718,12 @@ mod tests {
             plugin_in(action, self.code.clone(), self.guild.clone())
         }
 
-        /// 훅이 파일을 쓰는 자리.
+        /// 훅의 작업 디렉터리 — 상대 경로로 쓴 파일이 떨어지는 자리(DEV-425: 길드 루트).
+        fn cwd(&self) -> std::path::PathBuf {
+            self.guild.clone()
+        }
+
+        /// 데이터 폴더 — 훅이 `$OPENGUILD_PLUGIN_DATA_DIR` 로 받는 출력 자리.
         fn data(&self) -> std::path::PathBuf {
             crate::plugins::data_dir(&self.guild, "p").unwrap()
         }
@@ -985,7 +992,7 @@ mod tests {
         let lab = RunLab::new("run");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
-            // 작업 디렉터리가 데이터 폴더이므로 상대 경로는 그쪽에 떨어진다.
+            // 작업 디렉터리가 길드 루트이므로 상대 경로는 그쪽에 떨어진다(DEV-425).
             args: vec!["-c".into(), "cat > got.json".into()],
             timeout_ms: Some(5_000),
             os: Default::default(),
@@ -993,7 +1000,7 @@ mod tests {
         Outbound::new()
             .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
-        let got = std::fs::read_to_string(lab.data().join("got.json")).unwrap();
+        let got = std::fs::read_to_string(lab.cwd().join("got.json")).unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&got).unwrap(),
             body(),
@@ -1005,6 +1012,38 @@ mod tests {
             !lab.code.join("got.json").exists(),
             "훅의 출력이 플러그인 폴더(코드)에 생겼다 — 자기 동의를 깬다"
         );
+    }
+
+    /// DEV-425: 훅은 **길드 루트**에서 돈다 — AI 를 부르는 훅이 길드를 보게. 출력 자리(데이터 폴더)는
+    /// 따로 받는다: 미리 만들어져 있고, 길드 밖이다(훅의 기록이 길드의 git 에 안 섞이게).
+    #[cfg(unix)]
+    #[test]
+    fn run_starts_in_the_guild_root_and_is_told_its_data_folder() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
+        let lab = RunLab::new("run-cwd");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec![
+                "-c".into(),
+                "pwd -P > \"$OPENGUILD_PLUGIN_DATA_DIR/cwd.txt\"".into(),
+            ],
+            timeout_ms: Some(5_000),
+            os: Default::default(),
+        });
+        Outbound::new()
+            .deliver_first(&p, &event(), &body(), &Default::default())
+            .unwrap();
+        let cwd = std::fs::read_to_string(lab.data().join("cwd.txt")).unwrap();
+        assert_eq!(
+            std::path::Path::new(cwd.trim()),
+            lab.guild.canonicalize().unwrap(),
+            "훅이 길드 루트에서 돌지 않았다"
+        );
+        assert!(!lab.data().starts_with(&lab.guild), "데이터 폴더가 길드 안이다 — 훅의 기록이 git 에 섞인다");
+        // 출력을 데이터 폴더에 썼으니 길드 루트에는 아무것도 안 남았다.
+        assert!(!lab.guild.join("cwd.txt").exists());
     }
 
     /// BUG-294: 이 OS 에 적힌 명령이 있으면 **그것을** 띄운다. 기본 명령은 실패하게 두어,
@@ -1033,7 +1072,7 @@ mod tests {
         Outbound::new()
             .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
-        assert!(lab.data().join("os.json").is_file(), "이 OS 의 명령이 안 돌았다");
+        assert!(lab.cwd().join("os.json").is_file(), "이 OS 의 명령이 안 돌았다");
     }
 
     /// DEV-401: 훅 자식은 "받은 목록 + 자기 이름" 을 환경변수로 받는다 — 그 자식이 부른
@@ -1056,7 +1095,7 @@ mod tests {
         let mut values = BTreeMap::new();
         values.insert(crate::events::origin::ENV.to_string(), "[\"위조\"]".to_string());
         Outbound::new().deliver_first(&p, &e, &body(), &values).unwrap();
-        let got = std::fs::read_to_string(lab.data().join("chain.txt")).unwrap();
+        let got = std::fs::read_to_string(lab.cwd().join("chain.txt")).unwrap();
         let chain = crate::events::origin::Origin::parse(&got);
         assert_eq!(chain.chain(), ["먼저".to_string(), p.def.name.clone()], "{got}");
     }
@@ -1179,7 +1218,7 @@ mod tests {
         );
         assert!(e.contains("중단"), "{e}");
 
-        let ticks = lab.data().join("ticks");
+        let ticks = lab.cwd().join("ticks");
         let a = std::fs::metadata(&ticks).map(|m| m.len()).unwrap_or(0);
         assert!(
             a > 0,
@@ -1215,7 +1254,7 @@ mod tests {
             .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
         assert_eq!(
-            std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
+            std::fs::read_to_string(lab.cwd().join("got.txt")).unwrap(),
             "tok=s3cret",
             "자식이 리터럴 ${{VAR}} 를 받았다"
         );
@@ -1312,7 +1351,7 @@ mod tests {
             .deliver_first(&p, &event(), &body(), &values)
             .unwrap();
         assert_eq!(
-            std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
+            std::fs::read_to_string(lab.cwd().join("got.txt")).unwrap(),
             "/tmp/보관"
         );
     }
@@ -1336,7 +1375,7 @@ mod tests {
             .deliver_first(&p, &event(), &body(), &values)
             .unwrap();
         assert_eq!(
-            std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
+            std::fs::read_to_string(lab.cwd().join("got.txt")).unwrap(),
             lab.code.display().to_string()
         );
     }
@@ -1492,7 +1531,7 @@ mod tests {
             .unwrap_err();
         assert!(e.contains("중단"), "{e}");
 
-        let log = lab.data().join("grand.log");
+        let log = lab.cwd().join("grand.log");
         let a = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
         assert!(
             a > 0,

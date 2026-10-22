@@ -83,7 +83,9 @@ pub fn consent_lines(p: &Plugin, scope: Scope) -> Vec<String> {
         ));
     }
     if let Some(d) = &v.data_dir {
-        out.push(crate::tf!("작업 폴더: {}", "working folder: {}", d));
+        // DEV-425: 훅은 길드 폴더에서 돈다 — 여기 적는 것은 출력 자리(데이터 폴더)다. 예전 이름 '작업
+        // 폴더' 는 이제 틀린 말이라, 앱 · README 와 함께 이름을 바꿨다(BUG-329: 셋이 같은 이름이어야 찾는다).
+        out.push(crate::tf!("데이터 폴더: {}", "data folder: {}", d));
     }
     if !v.inputs.is_empty() {
         let keys: Vec<&str> = v.inputs.iter().map(|i| i.key.as_str()).collect();

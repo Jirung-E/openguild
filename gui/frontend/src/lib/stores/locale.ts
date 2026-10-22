@@ -265,7 +265,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// 동의 지문이 바뀌어 스스로 꺼진다.
 	// BUG-329: CLI 허용 화면 · 플러그인 설명 · README 가 전부 "작업 폴더" 라고 부른다. 앱만 다른 이름이라
 	// 설명대로 찾으면 앱에 없었다(admin: "작업 폴더가 어디 나와 있다는 건지 모르겠다").
-	'plugins.dataDir': { ko: '작업 폴더', en: 'working folder' },
+	// DEV-425: 훅은 길드 폴더에서 돈다 — 이 경로는 출력 자리라 '데이터 폴더'. CLI · README 와 같이 바꿨다.
+	'plugins.dataDir': { ko: '데이터 폴더', en: 'data folder' },
 	// REQ-021: 플러그인 설정값.
 	'plugins.valueSave': { ko: '저장', en: 'Save' },
 	'plugins.valueClear': { ko: '지우기', en: 'Clear' },
