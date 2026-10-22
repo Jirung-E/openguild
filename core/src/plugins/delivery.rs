@@ -460,7 +460,9 @@ fn run(
     }
     let mut child = cmd
         .args(&argv)
-        .current_dir(&plugin.guild_root)
+        // BUG-294 와 같은 까닭으로 `\\?\` 를 뗀 경로를 준다 — cmd 는 그런 작업 폴더를 UNC 로 보고
+        // 거절하고, Windows PowerShell 5.1 도 제대로 못 다룬다.
+        .current_dir(&guild_dir)
         // 옆 파일(`notify.sh`)을 부르려면 코드 폴더를 알아야 한다 — 작업
         // 디렉터리가 더는 그곳이 아니기 때문이다.
         .env("OPENGUILD_PLUGIN_DIR", &plugin_dir)
