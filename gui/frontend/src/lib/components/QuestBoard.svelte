@@ -2634,6 +2634,8 @@
 				createdBefore: f.createdBefore,
 				updatedAfter: f.updatedAfter,
 				updatedBefore: f.updatedBefore,
+				commentedAfter: f.commentedAfter,
+				commentedBefore: f.commentedBefore,
 				prereqQuestIds,
 				parentIds
 			}).map((q) => q.id)
@@ -2699,6 +2701,9 @@
 	let bfCreatedBefore = $state('');
 	let bfUpdatedAfter = $state('');
 	let bfUpdatedBefore = $state('');
+	// DEV-448: 마지막 댓글 날짜 — 보드도 목록과 같은 필터를 편집한다.
+	let bfCommentedAfter = $state('');
+	let bfCommentedBefore = $state('');
 	// REQ-027: 보드에서도 태그로 거른다. 목록에는 처음부터 있었는데 보드에만 없어서,
 	// 보드를 쓰는 동안에는 태그를 못 바꾸고 목록으로 갔다 와야 했다.
 	let bfTags = $state(new Set<string>());
@@ -2724,6 +2729,8 @@
 		bfCreatedBefore = f.createdBefore;
 		bfUpdatedAfter = f.updatedAfter;
 		bfUpdatedBefore = f.updatedBefore;
+		bfCommentedAfter = f.commentedAfter;
+		bfCommentedBefore = f.commentedBefore;
 	}
 	function boardFilterSnapshot(): QuestFilterState {
 		return {
@@ -2746,7 +2753,9 @@
 			createdAfter: bfCreatedAfter,
 			createdBefore: bfCreatedBefore,
 			updatedAfter: bfUpdatedAfter,
-			updatedBefore: bfUpdatedBefore
+			updatedBefore: bfUpdatedBefore,
+			commentedAfter: bfCommentedAfter,
+			commentedBefore: bfCommentedBefore
 		};
 	}
 	// 보드 필터 편집 → store + localStorage. init 후(boardFilterReady) 에만.
@@ -4156,6 +4165,8 @@
 						bind:createdBefore={bfCreatedBefore}
 						bind:updatedAfter={bfUpdatedAfter}
 						bind:updatedBefore={bfUpdatedBefore}
+						bind:commentedAfter={bfCommentedAfter}
+						bind:commentedBefore={bfCommentedBefore}
 					/>
 				</div>
 			</div>

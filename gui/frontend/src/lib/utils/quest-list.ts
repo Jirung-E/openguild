@@ -51,6 +51,9 @@ export interface ExtraFilters {
 	createdBefore?: string;
 	updatedAfter?: string;
 	updatedBefore?: string;
+	/** DEV-448: 마지막 댓글 날짜 범위 — 댓글이 없는 퀘스트는 범위가 있으면 안 맞는다. */
+	commentedAfter?: string;
+	commentedBefore?: string;
 	/** 선행 quest 가 1개 이상인 quest id 집합 (dependencies 에서 산출). */
 	prereqQuestIds?: Set<number>;
 	/**
@@ -118,6 +121,11 @@ export function filterQuests(
 		// DEV-033: 날짜 범위 (date prefix 비교).
 		if (!dateInRange(q.created_at ?? '', extra.createdAfter, extra.createdBefore)) return false;
 		if (!dateInRange(q.updated_at ?? '', extra.updatedAfter, extra.updatedBefore)) return false;
+		if (extra.commentedAfter || extra.commentedBefore) {
+			if (!q.last_comment_at) return false;
+			if (!dateInRange(q.last_comment_at, extra.commentedAfter, extra.commentedBefore))
+				return false;
+		}
 		// DEV-068: tag 필터 — 선택된 tag 모두 가져야 매치 (AND).
 		if (tagFilter.size > 0) {
 			const qTags = new Set(q.tags ?? []);

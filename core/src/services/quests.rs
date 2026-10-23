@@ -58,7 +58,11 @@ pub const QUEST_SELECT: &str = r#"
         (
             SELECT COUNT(*) FROM quest_comments
             WHERE quest_id = q.id AND discussion = 1 AND resolved = 1
-        ) AS discussion_resolved
+        ) AS discussion_resolved,
+        (
+            SELECT MAX(ts) FROM quest_comments
+            WHERE quest_id = q.id AND COALESCE(ts, '') != ''
+        ) AS last_comment_at
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id
@@ -142,6 +146,15 @@ pub async fn list_with_attachment_matches(
     }
     if trimmed_opt(&query.updated_before).is_some() {
         sql.push_str(" AND datetime(q.updated_at) <= datetime(?)");
+    }
+    // DEV-448: 마지막 댓글 시각 — 댓글은 `updated_at` 을 안 바꾼다(사이드카). 시각 비교는 위와 같이
+    // `datetime()` 으로 UTC 로 맞춘다(댓글마다 적힌 시간대가 다를 수 있다).
+    const LAST_COMMENT_UTC: &str = "(SELECT MAX(datetime(c.ts)) FROM quest_comments c WHERE c.quest_id = q.id AND COALESCE(c.ts, '') != '')";
+    if trimmed_opt(&query.commented_after).is_some() {
+        sql.push_str(&format!(" AND {LAST_COMMENT_UTC} >= datetime(?)"));
+    }
+    if trimmed_opt(&query.commented_before).is_some() {
+        sql.push_str(&format!(" AND {LAST_COMMENT_UTC} <= datetime(?)"));
     }
 
     // REQ-027 후속: 태그 — **모두 가진 것만**(AND). 화면의 태그 줄과 같은 규칙이어야
@@ -346,6 +359,12 @@ pub async fn list_with_attachment_matches(
         q = q.bind(crate::time::normalize_filter_ts(v));
     }
     if let Some(v) = trimmed_opt(&query.updated_before) {
+        q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    if let Some(v) = trimmed_opt(&query.commented_after) {
+        q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    if let Some(v) = trimmed_opt(&query.commented_before) {
         q = q.bind(crate::time::normalize_filter_ts(v));
     }
     // REQ-027: 태그 조건은 SQL 에서 날짜 **뒤에** 붙였다 — 순서가 어긋나면 엉뚱한 값이 바인딩된다.
@@ -1722,6 +1741,20 @@ mod tests {
         assert_eq!(ids("commented:2026-10-20".into(), d()).await, vec![a]);
         assert_eq!(ids("commented:none".into(), d()).await, vec![c]);
         assert_eq!(ids("-commented:none".into(), d()).await, vec![a, b]);
+        // 같은 것을 옵션으로(CLI --commented-after/--before, 서버 ?commented_after=, 앱의 '댓글' 범위).
+        assert_eq!(
+            ids(String::new(), ListQuery { commented_after: Some("2026-10-15".into()), ..d() }).await,
+            vec![a]
+        );
+        assert_eq!(
+            ids(String::new(), ListQuery { commented_before: Some("2026-10-01".into()), ..d() }).await,
+            vec![b]
+        );
+        // 목록 행에 마지막 댓글 시각이 실린다 — 화면이 거를 때 쓴다.
+        let rows = list(&pool, &ListQuery::default()).await.unwrap();
+        let last = |id: i64| rows.iter().find(|r| r.id == id).unwrap().last_comment_at.clone();
+        assert_eq!(last(a).as_deref(), Some("2026-10-20T23:00:00+09:00"));
+        assert_eq!(last(c), None);
         // 다른 필터와는 그리고.
         assert_eq!(ids("campaign:C-007".into(), ListQuery { tag: Some("ui".into()), ..d() }).await, vec![a]);
         // 틀린 쿼리는 BadRequest.

@@ -157,6 +157,24 @@ describe('filterQuests search', () => {
 		expect(filterQuests(quests, new Set(), new Set(), '')).toHaveLength(4);
 	});
 
+	/** DEV-448: 마지막 댓글 날짜 — 댓글이 없는 것은 범위를 걸면 빠진다. 갱신 날짜와는 상관없다. */
+	it('댓글 날짜 범위로 거른다', () => {
+		const withComments: Quest[] = [
+			{ ...quests[0], last_comment_at: '2026-10-20T23:00:00+09:00' },
+			{ ...quests[1], last_comment_at: '2026-09-01T10:00:00+09:00' },
+			{ ...quests[2], last_comment_at: null }
+		];
+		const run = (commentedAfter?: string, commentedBefore?: string) =>
+			filterQuests(withComments, new Set(), new Set(), '', false, new Set(), {
+				commentedAfter,
+				commentedBefore
+			}).map((x) => x.id);
+		expect(run('2026-10-15')).toEqual([1]);
+		expect(run(undefined, '2026-09-30')).toEqual([2]);
+		expect(run('2026-09-01', '2026-10-20')).toEqual([1, 2]);
+		expect(run()).toEqual([1, 2, 3]);
+	});
+
 	/** DEV-447: 쿼리 판정은 검색칸과 **따로** 거는 조건 — 넓힌 검색과 달리 검색어 매칭을 건너뛰지 않는다. */
 	it('쿼리 id 는 검색어와 함께 건다', () => {
 		const queryMatchIds = new Set([1, 2, 3]);

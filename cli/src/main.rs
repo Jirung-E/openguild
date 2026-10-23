@@ -500,6 +500,15 @@ enum QuestCmd {
         updated_after: Option<String>,
         #[arg(long = "updated-before", value_name = "ISO", help = tf!("갱신 시점 ≤ ISO date.", "Updated at ≤ ISO date."))]
         updated_before: Option<String>,
+        // DEV-448: 댓글은 갱신 시점을 안 바꾼다 — 댓글이 달린 때는 따로 거른다.
+        #[arg(long = "commented-after", value_name = "ISO",
+              help = tf!("마지막 댓글 시점 ≥ ISO date — 그 뒤 댓글이 달린 것. 댓글은 갱신 시점(--updated-after)을 안 바꾼다.",
+                         "Last comment at ≥ ISO date — commented since then. Comments do not change the updated time (--updated-after)."))]
+        commented_after: Option<String>,
+        #[arg(long = "commented-before", value_name = "ISO",
+              help = tf!("마지막 댓글 시점 ≤ ISO date — 그 뒤로 댓글이 없는 것(댓글이 아예 없는 것은 빠진다).",
+                         "Last comment at ≤ ISO date — no comments since then (quests with no comments are left out)."))]
+        commented_before: Option<String>,
         #[arg(long = "child-of", value_name = "SLUG", conflicts_with = "no_parent",
               help = tf!("자식 표시 — 지정 quest slug 가 parent 인 직계 자식들만 보여줌. (--no-parent 와 상호배타.)",
                          "Show children — only direct children of the given quest slug. (Mutually exclusive with --no-parent.)"))]
@@ -4463,6 +4472,8 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
         created_before,
         updated_after,
         updated_before,
+        commented_after,
+        commented_before,
         has_prereq,
         no_prereq,
         has_sub,
@@ -4491,6 +4502,8 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
         ("created_before", created_before),
         ("updated_after", updated_after),
         ("updated_before", updated_before),
+        ("commented_after", commented_after),
+        ("commented_before", commented_before),
         ("child_of", child_of),
     ] {
         if let Some(v) = v {
@@ -9630,6 +9643,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             created_before,
             updated_after,
             updated_before,
+            commented_after,
+            commented_before,
             child_of,
             no_parent,
             has_prereq,
@@ -9659,6 +9674,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 created_before,
                 updated_after,
                 updated_before,
+                commented_after,
+                commented_before,
                 child_of,
                 no_parent,
                 has_prereq,
@@ -10869,6 +10886,8 @@ mod tests {
                     created_before,
                     updated_after,
                     updated_before,
+                    commented_after: _,
+                    commented_before: _,
                     child_of,
                     no_parent,
                     has_prereq,
@@ -11022,6 +11041,7 @@ mod tests {
                 sub: QuestCmd::List {
                     type_prefix, status, urgency, tag: _, query: _,
                     created_after, created_before, updated_after, updated_before,
+                    commented_after: _, commented_before: _,
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
                     search, title_only, search_comments, search_attachments,
@@ -11121,6 +11141,8 @@ mod tests {
             created_before: None,
             updated_after: None,
             updated_before: None,
+            commented_after: None,
+            commented_before: None,
             child_of: Some("DEV-001".into()),
             no_parent: false,
             has_prereq: false,
@@ -12120,6 +12142,7 @@ mod tests {
             comment_count: 0,
             discussion_unresolved: 0,
             discussion_resolved: 0,
+            last_comment_at: None,
         };
         QuestDetail {
             quest: q,

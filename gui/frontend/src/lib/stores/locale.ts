@@ -1405,6 +1405,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	'filter.created': { ko: '생성', en: 'Created' },
 	'filter.updated': { ko: '갱신', en: 'Updated' },
+	// DEV-448: 마지막 댓글 날짜 범위. 댓글은 '갱신' 을 안 바꾼다 — 댓글만 달린 퀘스트는 '갱신' 으로 못 찾는다.
+	'filter.commented': { ko: '댓글', en: 'Commented' },
+	'filter.commentedTitle': {
+		ko: '마지막 댓글이 이 범위에 있는 퀘스트 — 댓글은 갱신 날짜를 바꾸지 않습니다',
+		en: 'Quests whose last comment falls in this range — comments do not change the updated date'
+	},
 	'filter.clearAdvanced': { ko: '고급 필터 모두 해제', en: 'Clear all advanced filters' },
 	'filter.clearBtn': { ko: '× 해제', en: '× Clear' },
 

@@ -54,6 +54,11 @@ pub struct QuestRow {
     /// 미해결이 0 이고 이 값이 > 0 이면 노드/리스트 초록 아이콘.
     #[serde(default)]
     pub discussion_resolved: i64,
+    /// DEV-448: 마지막 댓글 시각(댓글에 적힌 그대로) — 없으면 None. 댓글은 `updated_at` 을 안 바꾸므로
+    /// "그 뒤 댓글이 달렸나" 는 이것으로 본다. 목록 · 보드가 화면에서 거를 때 쓴다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[sqlx(default)]
+    pub last_comment_at: Option<String>,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -173,6 +178,10 @@ pub struct ListQuery {
     pub updated_after: Option<String>,
     /// `updated_at <= ?`.
     pub updated_before: Option<String>,
+    /// DEV-448: 마지막 댓글 시각 `>= ?` — 그 뒤 댓글이 달린 것. 댓글은 `updated_at` 을 안 바꾼다.
+    pub commented_after: Option<String>,
+    /// DEV-448: 마지막 댓글 시각 `<= ?` — 그 뒤로 댓글이 없는 것(댓글이 아예 없는 것은 안 걸린다).
+    pub commented_before: Option<String>,
     /// 선행 quest 가 1개 이상 있는 quest 만. `no_prereq` 와 상호배타.
     pub has_prereq: bool,
     /// 선행 quest 가 없는 quest 만. `has_prereq` 와 상호배타.
@@ -318,6 +327,7 @@ mod tests {
             comment_count: 0,
             discussion_unresolved: 0,
             discussion_resolved: 0,
+            last_comment_at: None,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();

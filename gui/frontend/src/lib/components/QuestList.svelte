@@ -107,6 +107,8 @@
 	let createdBefore = $state('');
 	let updatedAfter = $state('');
 	let updatedBefore = $state('');
+	let commentedAfter = $state('');
+	let commentedBefore = $state('');
 	// 선행 quest 가 있는 quest id 들 (dependencies 산출) — tri-state 용.
 	let prereqQuestIds = $state(new Set<number>());
 	// 자식이 있는 quest id 들 — quests 의 parent_quest_id 역산.
@@ -251,6 +253,8 @@
 			createdBefore,
 			updatedAfter,
 			updatedBefore,
+			commentedAfter,
+			commentedBefore,
 			query
 		};
 	}
@@ -269,6 +273,8 @@
 		createdBefore = f.createdBefore;
 		updatedAfter = f.updatedAfter;
 		updatedBefore = f.updatedBefore;
+		commentedAfter = f.commentedAfter;
+		commentedBefore = f.commentedBefore;
 		query = f.query;
 	}
 	function saveFilterToStorage() {
@@ -527,6 +533,8 @@
 				createdBefore,
 				updatedAfter,
 				updatedBefore,
+				commentedAfter,
+				commentedBefore,
 				prereqQuestIds,
 				parentIds
 			}
@@ -556,7 +564,9 @@
 			createdAfter !== '' ||
 			createdBefore !== '' ||
 			updatedAfter !== '' ||
-			updatedBefore !== '';
+			updatedBefore !== '' ||
+			commentedAfter !== '' ||
+			commentedBefore !== '';
 		const filtered = hasFilters ? includeAncestors(matched, quests) : matched;
 		const effectiveExpanded = hasFilters
 			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
@@ -624,6 +634,8 @@
 		bind:createdBefore
 		bind:updatedAfter
 		bind:updatedBefore
+		bind:commentedAfter
+		bind:commentedBefore
 	/>
 
 	<!-- DEV-065 / DEV-068: 뷰 모드 토글 + tag 필터 chip 들 — filter-bar 아래. -->

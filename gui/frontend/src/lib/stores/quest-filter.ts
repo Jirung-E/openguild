@@ -27,6 +27,9 @@ export interface QuestFilterState {
 	createdBefore: string;
 	updatedAfter: string;
 	updatedBefore: string;
+	/** DEV-448: 마지막 댓글 날짜 범위 — 댓글은 갱신 시점을 안 바꾼다. */
+	commentedAfter: string;
+	commentedBefore: string;
 	/**
 	 * DEV-447 (REQ-039): 쿼리 문법. 목록만 본다 — 보드는 아직 거르지 않으므로
 	 * [`isFilterActive`] 에 넣지 않는다(넣으면 보드가 '필터 걸림' 을 띄우고 아무것도 안 흐린다).
@@ -49,6 +52,8 @@ export const EMPTY_FILTER: QuestFilterState = {
 	createdBefore: '',
 	updatedAfter: '',
 	updatedBefore: '',
+	commentedAfter: '',
+	commentedBefore: '',
 	query: ''
 };
 
@@ -70,7 +75,9 @@ export function isFilterActive(f: QuestFilterState): boolean {
 		f.createdAfter !== '' ||
 		f.createdBefore !== '' ||
 		f.updatedAfter !== '' ||
-		f.updatedBefore !== ''
+		f.updatedBefore !== '' ||
+		f.commentedAfter !== '' ||
+		f.commentedBefore !== ''
 	);
 }
 
@@ -95,6 +102,8 @@ export function serializeFilter(f: QuestFilterState): string {
 		createdBefore: f.createdBefore,
 		updatedAfter: f.updatedAfter,
 		updatedBefore: f.updatedBefore,
+		commentedAfter: f.commentedAfter,
+		commentedBefore: f.commentedBefore,
 		query: f.query
 	});
 }
@@ -121,6 +130,8 @@ export function deserializeFilter(raw: string | null): QuestFilterState | null {
 			createdBefore: str(o.createdBefore),
 			updatedAfter: str(o.updatedAfter),
 			updatedBefore: str(o.updatedBefore),
+			commentedAfter: str(o.commentedAfter),
+			commentedBefore: str(o.commentedBefore),
 			query: str(o.query)
 		};
 	} catch {

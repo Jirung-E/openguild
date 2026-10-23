@@ -96,11 +96,13 @@ since D" means **either**, so run both and merge:
 ```bash
 D=2026-10-20
 { openguild quest list --updated-after "$D" --id-only
-  openguild quest list -q "commented:>=$D" --id-only; } | sort -u
+  openguild quest list --commented-after "$D" --id-only; } | sort -u
 ```
 
-`commented:>=D` compares the date of the **last** comment, so it is "at least one comment on or
-after D". `commented:<D` finds quests that have gone quiet; `-commented:none` = has comments.
+`--commented-after` / `--commented-before` compare the **last** comment's time (same date/time
+format as `--updated-after`), so "after D" = at least one comment since D and "before D" = quiet
+since D (quests with no comments are left out). The query form is `commented:>=D` / `commented:<D`
+/ `commented:none`. `quest list --json` rows carry `last_comment_at`.
 Campaigns work the same way but have no filter: compare `updated_at` from
 `openguild campaign list --json` with the `ts` of `openguild campaign comment list <slug> --json`
 entries.

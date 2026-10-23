@@ -196,6 +196,7 @@ openguild quest list -q 'status:open,in_progress -tag:wip urgency:<=2'
 openguild quest list -q 'campaign:C-001 due:overdue'
 openguild quest list -q 'parent:DEV-001 "로그인 화면"'
 openguild quest list -q 'commented:>=2026-10-20'      # 그날 이후 댓글이 달린 퀘스트
+openguild quest list --commented-after 2026-10-20     # 같은 것을 옵션으로 (--commented-before 도 있다)
 ```
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.

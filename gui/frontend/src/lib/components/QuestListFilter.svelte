@@ -29,7 +29,10 @@
 		createdAfter = $bindable(''),
 		createdBefore = $bindable(''),
 		updatedAfter = $bindable(''),
-		updatedBefore = $bindable('')
+		updatedBefore = $bindable(''),
+		// DEV-448: 마지막 댓글 날짜 — 댓글은 '갱신' 을 안 바꾼다.
+		commentedAfter = $bindable(''),
+		commentedBefore = $bindable('')
 	}: {
 		types: QuestType[];
 		statuses: QuestStatus[];
@@ -48,6 +51,8 @@
 		createdBefore?: string;
 		updatedAfter?: string;
 		updatedBefore?: string;
+		commentedAfter?: string;
+		commentedBefore?: string;
 	} = $props();
 
 	function toggle(set: Set<number>, id: number): Set<number> {
@@ -100,7 +105,9 @@
 			createdAfter !== '' ||
 			createdBefore !== '' ||
 			updatedAfter !== '' ||
-			updatedBefore !== ''
+			updatedBefore !== '' ||
+			commentedAfter !== '' ||
+			commentedBefore !== ''
 	);
 
 	const TRI_LABEL: Record<TriState, string> = $derived({
@@ -120,6 +127,8 @@
 		createdBefore = '';
 		updatedAfter = '';
 		updatedBefore = '';
+		commentedAfter = '';
+		commentedBefore = '';
 	}
 </script>
 
@@ -265,6 +274,11 @@
 			>{t('filter.updated', $locale)}
 			<DateField bind:value={updatedAfter} /> ~
 			<DateField bind:value={updatedBefore} /></label
+		>
+		<label class="date-range" title={t('filter.commentedTitle', $locale)}
+			>{t('filter.commented', $locale)}
+			<DateField bind:value={commentedAfter} /> ~
+			<DateField bind:value={commentedBefore} /></label
 		>
 		{#if advancedActive}
 			<button class="xfilter-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}

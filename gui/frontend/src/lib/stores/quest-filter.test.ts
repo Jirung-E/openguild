@@ -32,6 +32,8 @@ describe('serializeFilter / deserializeFilter', () => {
 			createdBefore: '2026-08-31',
 			updatedAfter: '2026-08-10',
 			updatedBefore: '2026-08-20',
+			commentedAfter: '2026-08-21',
+			commentedBefore: '2026-08-22',
 			query: 'status:open -tag:wip'
 		});
 		const out = deserializeFilter(serializeFilter(src));
@@ -119,6 +121,7 @@ describe('isFilterActive', () => {
 		expect(isFilterActive(filter({ sub: 'none' }))).toBe(true);
 		expect(isFilterActive(filter({ createdAfter: '2026-01-01' }))).toBe(true);
 		expect(isFilterActive(filter({ updatedBefore: '2026-01-01' }))).toBe(true);
+		expect(isFilterActive(filter({ commentedAfter: '2026-01-01' }))).toBe(true);
 	});
 
 	/** titleOnly 는 단독으로는 아무것도 거르지 않는다 — 검색어의 수식어. */

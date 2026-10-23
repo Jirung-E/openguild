@@ -55,6 +55,11 @@ export interface Quest {
 	 * 를 "유효 기한" 으로 표시.
 	 */
 	earliest_campaign_due?: string | null;
+	/**
+	 * DEV-448: 마지막 댓글 시각(댓글에 적힌 그대로). 댓글은 `updated_at` 을 안 바꾸므로 "그 뒤 댓글이
+	 * 달렸나" 는 이것으로 본다. 댓글이 없으면 없음.
+	 */
+	last_comment_at?: string | null;
 	/** DEV-068: 본 quest 의 tag 목록. */
 	tags?: string[];
 	/**
