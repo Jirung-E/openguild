@@ -80,11 +80,30 @@ openguild quest list -q 'parent:none type:BUG'
 - Commas inside one key = OR; separate terms = AND; a leading `-` = NOT; a bare word = the
   same text search as `--search` (title, body, id). Quote values with spaces: `tag:"two words"`.
 - Keys: `status` (slug, English or Korean name), `type`, `tag`, `campaign` (id or `none`),
-  `urgency` (`2`, `1-3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, …), `parent` (id or `none`).
+  `urgency` (`2`, `1-3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, …), `parent` (id or `none`),
+  `commented` (date of the **last comment**: `>=YYYY-MM-DD`, `<YYYY-MM-DD`, a date, or `none`).
 - `due` is the effective due date: the earlier of the required due date and the end date of an
   active campaign the quest is in. `overdue` skips quests whose status counts as done.
 - An unknown key (typo) is an error that names the character position — quote text that
   contains a colon. `-q` is ANDed with the other flags.
+
+### What changed since a date
+
+A comment does **not** change the quest's `updated_at` — comments live in a separate file, so
+`--updated-after` (and the app's "updated" range) miss quests that only got comments. "Changed
+since D" means **either**, so run both and merge:
+
+```bash
+D=2026-10-20
+{ openguild quest list --updated-after "$D" --id-only
+  openguild quest list -q "commented:>=$D" --id-only; } | sort -u
+```
+
+`commented:>=D` compares the date of the **last** comment, so it is "at least one comment on or
+after D". `commented:<D` finds quests that have gone quiet; `-commented:none` = has comments.
+Campaigns work the same way but have no filter: compare `updated_at` from
+`openguild campaign list --json` with the `ts` of `openguild campaign comment list <slug> --json`
+entries.
 
 ### Attachments — read what is already there
 

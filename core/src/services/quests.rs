@@ -1704,6 +1704,24 @@ mod tests {
         let prefix_a = slug_a.split('-').next().unwrap().to_lowercase();
         assert_eq!(ids(format!("-로그인 type:{prefix_a}"), d()).await, vec![a, c]);
         assert_eq!(ids(format!("-type:{prefix_a}"), d()).await, Vec::<i64>::new());
+        // DEV-448: 마지막 댓글의 날짜 — 댓글은 `updated_at` 을 안 바꾸므로 따로 본다.
+        for (qid, ts) in [(a, "2026-10-01T09:00:00+09:00"), (a, "2026-10-20T23:00:00+09:00"), (b, "2026-09-01T10:00:00+09:00")] {
+            sqlx::query(
+                "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body)
+                 VALUES (?, (SELECT COALESCE(MAX(entry_id), 0) + 1 FROM quest_comments WHERE quest_id = ?), ?, 'x', 'y')",
+            )
+            .bind(qid)
+            .bind(qid)
+            .bind(ts)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        assert_eq!(ids("commented:>=2026-10-15".into(), d()).await, vec![a]);
+        assert_eq!(ids("commented:<2026-10-01".into(), d()).await, vec![b]);
+        assert_eq!(ids("commented:2026-10-20".into(), d()).await, vec![a]);
+        assert_eq!(ids("commented:none".into(), d()).await, vec![c]);
+        assert_eq!(ids("-commented:none".into(), d()).await, vec![a, b]);
         // 다른 필터와는 그리고.
         assert_eq!(ids("campaign:C-007".into(), ListQuery { tag: Some("ui".into()), ..d() }).await, vec![a]);
         // 틀린 쿼리는 BadRequest.

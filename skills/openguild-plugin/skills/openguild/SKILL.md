@@ -227,6 +227,7 @@ openguild backup new                             # manual snapshot
 | Passing a title positionally (`library new "제목"`) → `unexpected argument` | Things that get an auto-assigned number (`quest new`, `campaign new`, `library new`) take the title as `--title "..."`. Only commands where the name you type **is** the ID take it positionally: `rule new <slug>`, `template new <name>`, `library folder new <path>`, `type add <PREFIX>`, `status add <name_en>`, `tag add <slug>` |
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
 | Forgetting `--force` / `--yes` on a delete that asks | `rule delete` and `comment remove` need `--force`, `library delete` needs `--yes`. Without them they ask (y/N); with no terminal there is no answer, so they **stop with an error (exit 1) and delete nothing**. Pass the flag |
+| Finding "what changed since <date>" with `--updated-after` alone | A comment does **not** change a quest's or campaign's `updated_at` (comments are a separate file). Check both — quests: `quest list --updated-after D` **and** `quest list -q 'commented:>=D'`, merged (see reference/quest.md "What changed since a date"). Campaigns: `updated_at` from `campaign list --json` and the `ts` of `campaign comment list <slug> --json` entries |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |
 
 ## Full reference

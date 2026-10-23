@@ -15,7 +15,14 @@ use crate::error::{AppError, AppResult};
 
 /// 쓸 수 있는 키. 순서는 오류 안내에 보이는 순서.
 pub const KEYS: &[&str] = &[
-    "status", "type", "tag", "campaign", "urgency", "due", "parent",
+    "status",
+    "type",
+    "tag",
+    "campaign",
+    "urgency",
+    "due",
+    "parent",
+    "commented",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +34,8 @@ pub enum Key {
     Urgency,
     Due,
     Parent,
+    /// DEV-448: 마지막 댓글의 날짜. 댓글은 `updated_at` 을 안 바꾼다(사이드카 — DEV-433).
+    Commented,
 }
 
 impl Key {
@@ -39,6 +48,7 @@ impl Key {
             "urgency" => Key::Urgency,
             "due" => Key::Due,
             "parent" => Key::Parent,
+            "commented" => Key::Commented,
             _ => return None,
         })
     }
@@ -250,6 +260,7 @@ fn check_values(term: &Term, pos: usize) -> Result<(), QueryError> {
         let ok = match key {
             Key::Urgency => urgency_cond(v).is_some(),
             Key::Due => due_cond(v).is_some(),
+            Key::Commented => commented_cond(v).is_some(),
             Key::Parent => v.eq_ignore_ascii_case("none") || split_slug(v).is_some(),
             Key::Campaign => v.eq_ignore_ascii_case("none") || split_slug(v).is_some(),
             Key::Status | Key::Type | Key::Tag => true,
@@ -263,6 +274,10 @@ fn check_values(term: &Term, pos: usize) -> Result<(), QueryError> {
                 Key::Due => crate::tf!(
                     "due 는 overdue · none · 날짜(2026-11-01) · <=날짜 · >=날짜",
                     "due is overdue, none, a date (2026-11-01), <=date or >=date"
+                ),
+                Key::Commented => crate::tf!(
+                    "commented 는 none · 날짜(2026-11-01) · >=날짜 · <날짜 — 마지막 댓글의 날짜와 비교",
+                    "commented is none, a date (2026-11-01), >=date or <date — compared with the last comment's date"
                 ),
                 Key::Parent => crate::tf!(
                     "parent 는 퀘스트 번호(DEV-012) 또는 none",
@@ -367,6 +382,24 @@ fn due_cond(v: &str) -> Option<(String, Vec<Bind>)> {
     }
 }
 
+/// DEV-448: 마지막 댓글의 날짜 — 댓글에 적힌 시각(`2026-10-23T11:16:24+09:00`)의 날짜 부분. 적은 기계의
+/// 현지 날짜라 사람이 보는 날짜와 같다. 댓글이 없으면 NULL.
+const LAST_COMMENT: &str = "(SELECT MAX(substr(c.ts, 1, 10)) FROM quest_comments c WHERE c.quest_id = q.id AND COALESCE(c.ts, '') != '')";
+
+/// commented 값 하나 → 조건. `>=날짜` 는 "그날 이후 하나라도 달렸다" 와 같다(마지막 것이 그 뒤이므로).
+fn commented_cond(v: &str) -> Option<(String, Vec<Bind>)> {
+    if v.eq_ignore_ascii_case("none") {
+        return Some((format!("{LAST_COMMENT} IS NULL"), vec![]));
+    }
+    let (op, rest) = split_op(v);
+    is_date(rest).then(|| {
+        (
+            format!("{LAST_COMMENT} {op} ?"),
+            vec![Bind::Text(rest.to_string())],
+        )
+    })
+}
+
 const SLUG_LIKE: &str = "LOWER(qt.prefix || '-' || printf('%03d', q.number)) LIKE LOWER(?)";
 const STATUS_NORM: &str = "REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')";
 
@@ -447,6 +480,7 @@ fn value_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
         }
         Some(Key::Urgency) => urgency_cond(v)?,
         Some(Key::Due) => due_cond(v)?,
+        Some(Key::Commented) => commented_cond(v)?,
         Some(Key::Parent) if v.eq_ignore_ascii_case("none") => ("q.parent_quest_id IS NULL".into(), vec![]),
         Some(Key::Parent) => {
             let (prefix, num) = split_slug(v)?;
@@ -530,6 +564,7 @@ mod tests {
         assert_eq!(at("urgency:<=x"), 0);
         assert_eq!(at("due:soon"), 0);
         assert_eq!(at("due:2026-13-01"), 0);
+        assert_eq!(at("commented:yesterday"), 0);
         assert_eq!(at("parent:abc"), 0);
         assert_eq!(at("-campaign:C3"), 1);
         assert!(

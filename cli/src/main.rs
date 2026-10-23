@@ -536,8 +536,8 @@ enum QuestCmd {
         // DEV-446 (REQ-039): 쿼리 문법 — 해석은 코어 한 곳(`openguild_core::query`).
         // `-tag:wip` 처럼 `-` 로 시작하는 쿼리를 옵션으로 읽지 않게 한다.
         #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
-              help = tf!("쿼리로 거르기 — 예: 'status:open,testing -tag:wip urgency:<=2 due:overdue 로그인'. 같은 키의 쉼표 = 또는, 띄어 쓴 조건 = 그리고, 앞의 - = 아닌 것, 키 없는 낱말 = 검색. 키: status · type · tag · campaign(번호 또는 none) · urgency(2 · 1-3 · <=2) · due(overdue · none · <=날짜) · parent(번호 또는 none). 다른 옵션과는 그리고로 합친다.",
-                         "Filter with a query — e.g. 'status:open,testing -tag:wip urgency:<=2 due:overdue login'. Commas within a key = OR, separate terms = AND, leading - = NOT, bare words = search. Keys: status, type, tag, campaign (id or none), urgency (2, 1-3, <=2), due (overdue, none, <=date), parent (id or none). ANDed with the other options."))]
+              help = tf!("쿼리로 거르기 — 예: 'status:open,testing -tag:wip urgency:<=2 due:overdue 로그인'. 같은 키의 쉼표 = 또는, 띄어 쓴 조건 = 그리고, 앞의 - = 아닌 것, 키 없는 낱말 = 검색. 키: status · type · tag · campaign(번호 또는 none) · urgency(2 · 1-3 · <=2) · due(overdue · none · <=날짜) · parent(번호 또는 none) · commented(마지막 댓글 날짜 — >=날짜 · <날짜 · none; 댓글은 갱신 시점을 안 바꾼다). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'status:open,testing -tag:wip urgency:<=2 due:overdue login'. Commas within a key = OR, separate terms = AND, leading - = NOT, bare words = search. Keys: status, type, tag, campaign (id or none), urgency (2, 1-3, <=2), due (overdue, none, <=date), parent (id or none), commented (date of the last comment — >=date, <date, none; comments do not change the updated time). ANDed with the other options."))]
         query: Option<String>,
         #[arg(long, value_delimiter = ',', num_args = 1..,
               help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",

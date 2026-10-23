@@ -82,7 +82,8 @@
 		['campaign', 'campaign:C-001', 'filter.queryHelpCampaign'],
 		['urgency', 'urgency:<=2', 'filter.queryHelpUrgency'],
 		['due', 'due:overdue', 'filter.queryHelpDue'],
-		['parent', 'parent:none', 'filter.queryHelpParent']
+		['parent', 'parent:none', 'filter.queryHelpParent'],
+		['commented', 'commented:>=2026-10-20', 'filter.queryHelpCommented']
 	] as const;
 
 	// DEV-033: 고급 행 접기. 필터 활성이면 라벨에 표시.

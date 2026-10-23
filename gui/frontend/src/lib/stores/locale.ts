@@ -1384,6 +1384,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'effective due date (earlier of the required due date and an active campaign’s end) — overdue · none · date comparison'
 	},
 	'filter.queryHelpParent': { ko: '부모 번호 · none(최상위)', en: 'parent id · none (top level)' },
+	// DEV-448: 댓글은 갱신 시점을 안 바꾼다 — '갱신' 범위로는 댓글만 달린 퀘스트를 못 찾는다.
+	'filter.queryHelpCommented': {
+		ko: '마지막 댓글 날짜 · none(댓글 없음) — 댓글은 갱신 시점을 안 바꿉니다',
+		en: 'date of the last comment · none (no comments) — comments do not change the updated time'
+	},
 	'filter.advanced': { ko: '고급', en: 'Advanced' },
 	// BUG-194: 좁은 화면에서 타입/상태 칩 줄을 접는 토글 라벨.
 	'filter.chips': { ko: '필터', en: 'Filters' },
