@@ -813,6 +813,34 @@ fn consent_write_leaves_no_temp_file() {
 
 // ── DEV-384: 함께 배포하는 예제 ─────────────────────────
 
+/// BUG-332 다시: **윈도우 PowerShell 5.1 은 BOM 없는 `.ps1` 을 시스템 코드 페이지로 읽는다** — 한국어 윈도우
+/// (CP949)에서 UTF-8 한글이 깨진다(영수증 · 오류 문구). 함께 배포하는 `.ps1` 은 ASCII 로만 쓰거나 UTF-8 BOM 을
+/// 붙인다. `deliver.ps1` 이 한글을 BOM 없이 담고 있었다(2026-10-23 확인).
+#[test]
+fn shipped_powershell_scripts_are_ascii_or_have_a_bom() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
+    let mut seen = 0;
+    for e in std::fs::read_dir(&src).unwrap().flatten() {
+        let Ok(rd) = std::fs::read_dir(e.path()) else { continue };
+        for f in rd.flatten() {
+            let path = f.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("ps1") {
+                continue;
+            }
+            seen += 1;
+            let bytes = std::fs::read(&path).unwrap();
+            let bom = bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+            assert!(
+                bom || bytes.is_ascii(),
+                "{} 에 ASCII 가 아닌 글자가 BOM 없이 있다 — Windows PowerShell 5.1 이 깨서 읽는다. \
+                 ASCII 로만 쓰거나 UTF-8 BOM 을 붙이세요",
+                path.display()
+            );
+        }
+    }
+    assert!(seen >= 3, "예제의 .ps1 을 못 찾았다({seen}) — 시험이 아무것도 안 본다");
+}
+
 /// **예제가 안 도는 건 없느니만 못하다.**
 ///
 /// `examples/plugins/` 는 사용자가 복사해 쓰라고 두는 것이다. 정의가 검증을 못

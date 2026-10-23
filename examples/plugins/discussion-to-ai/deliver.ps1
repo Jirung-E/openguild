@@ -1,4 +1,4 @@
-# discussion-to-ai for Windows - does what deliver.sh does (BUG-311).
+﻿# discussion-to-ai for Windows - does what deliver.sh does (BUG-311).
 #
 # ASCII on purpose: Windows PowerShell 5.1 reads a script without a BOM in the
 # system code page. The payload arrives on stdin as UTF-8.
