@@ -189,10 +189,17 @@ jobs:
       - name: cargo test (workspace)
         run: cargo test --workspace
 
+  # 2026-10-23: 윈도우에서도 돈다 — 윈도우의 `just test` 가 test-frontend 에서 실패하는데 CI 는 리눅스만 봐서
+  # 몰랐다(cargo 와 같은 이유로 OS 마다 따로 본다). 이름은 그대로 둔다 — 가드(check-guard-registration)가
+  # 이 이름으로 단계를 찾는다.
   gui-frontend:
     name: gui/frontend (svelte-kit)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: gui/frontend
