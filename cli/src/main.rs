@@ -752,9 +752,9 @@ enum QuestCmd {
         #[command(subcommand)]
         sub: MemoCmd,
     },
-    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
-    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
-                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — 에이전트가 사용자가 중요하게 본 곳을 보고, 시키면 칠한다.
+    #[command(about = tf!("형광펜 — list / add / remove. 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list / add / remove. Marks in the reading view (private, `.guild/highlights/`, gitignored)."))]
     Highlight {
         #[command(subcommand)]
         sub: HighlightCmd,
@@ -934,12 +934,29 @@ enum MemoCmd {
     Clear { slug: String },
 }
 
-/// DEV-449: 형광펜 — 읽기만. 칠하고 지우는 것은 앱 · 웹의 읽기 화면이 한다(글을 골라야 해서).
+/// DEV-449: 형광펜. 칠할 글은 **읽기 화면에 보이는 글자**로 받는다 — 화면이 그 글자로 자리를 다시 찾기
+/// 때문이다(`highlight_text`).
 #[derive(Subcommand)]
 enum HighlightCmd {
     #[command(about = tf!("칠한 곳 목록 — 칠한 순서대로. 어느 부분(본문 · 메모 · 댓글 #N)인지와 칠한 글. 앞뒤 글자는 --json 에.",
                           "List highlights in the order they were made — which part (body / memo / comment #N) and the highlighted text. Surrounding text is in --json."))]
     List { id: String },
+    // admin(2026-10-23): AI 가 스스로 칠하면 화면이 난잡해진다 — 사용자가 칠해 달라고 할 때만.
+    #[command(about = tf!("칠하기 — 사용자가 칠해 달라고 했을 때만 쓴다(AI 가 스스로 칠하지 않는다). 글은 읽기 화면에 보이는 그대로, 한 문단 안에서.",
+                          "Highlight text — only when the user asks for it (an AI must not highlight on its own). Text as the reading view shows it, within one paragraph."))]
+    Add {
+        id: String,
+        #[arg(allow_hyphen_values = true, help = tf!("칠할 글 — 화면에 보이는 글자 그대로(`**` · `[..](..)` 같은 마크다운 기호 없이). 공백 · 줄바꿈 차이는 무시.",
+                                                     "Text to highlight — as the screen shows it (no markdown such as `**` or `[..](..)`). Differences in spaces/line breaks are ignored."))]
+        text: String,
+        #[arg(long, default_value = "body", help = tf!("어느 부분 — body · memo · comment:N. 메모 · 댓글은 퀘스트 · 캠페인만.",
+                                                       "Which part — body / memo / comment:N. Memo and comments: quests and campaigns only."))]
+        part: String,
+        #[arg(long, help = tf!("같은 글이 여러 번 나오면 몇 번째인지 (1부터).", "Which occurrence when the text appears more than once (from 1)."))]
+        nth: Option<usize>,
+    },
+    #[command(about = tf!("형광펜 지우기 — id 는 `highlight list` 에.", "Remove a highlight — ids are in `highlight list`."))]
+    Remove { id: String, highlight_id: String },
 }
 
 #[derive(Subcommand)]
@@ -1213,9 +1230,9 @@ enum RulesCmd {
         #[command(subcommand)]
         sub: TagCmd,
     },
-    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
-    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
-                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — 에이전트가 사용자가 중요하게 본 곳을 보고, 시키면 칠한다.
+    #[command(about = tf!("형광펜 — list / add / remove. 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list / add / remove. Marks in the reading view (private, `.guild/highlights/`, gitignored)."))]
     Highlight {
         #[command(subcommand)]
         sub: HighlightCmd,
@@ -1329,9 +1346,9 @@ enum LibraryCmd {
         #[command(subcommand)]
         sub: TagCmd,
     },
-    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
-    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
-                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — 에이전트가 사용자가 중요하게 본 곳을 보고, 시키면 칠한다.
+    #[command(about = tf!("형광펜 — list / add / remove. 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list / add / remove. Marks in the reading view (private, `.guild/highlights/`, gitignored)."))]
     Highlight {
         #[command(subcommand)]
         sub: HighlightCmd,
@@ -1413,9 +1430,9 @@ enum CampaignCmd {
         #[command(subcommand)]
         sub: MemoCmd,
     },
-    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
-    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
-                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — 에이전트가 사용자가 중요하게 본 곳을 보고, 시키면 칠한다.
+    #[command(about = tf!("형광펜 — list / add / remove. 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list / add / remove. Marks in the reading view (private, `.guild/highlights/`, gitignored)."))]
     Highlight {
         #[command(subcommand)]
         sub: HighlightCmd,
@@ -4047,6 +4064,81 @@ impl Backend {
         })
     }
 
+    /// DEV-449: 칠할 부분의 마크다운 원문 — 화면이 그리는 것과 같은 값(퀘스트 · 캠페인 본문, 메모, 댓글 본문,
+    /// 규칙 · 도서관 본문). `target` 은 [`Self::highlight_target`] 가 바꾼 키다.
+    fn highlight_source(&self, scope: HighlightScope, target: &str, part: &str) -> Result<String> {
+        let id = target.split_once(':').map_or(target, |(_, id)| id);
+        let comment = part.strip_prefix("comment:");
+        match (scope, part, comment) {
+            (HighlightScope::Quest, "body", _) => {
+                Ok(self.quest_by_slug(id)?.quest.description.unwrap_or_default())
+            }
+            (HighlightScope::Campaign, "body", _) => {
+                Ok(self.campaign_show(id)?.campaign.description.unwrap_or_default())
+            }
+            (HighlightScope::Rule, "body", _) => Ok(self.rules_get(id)?.unwrap_or_default()),
+            (HighlightScope::Library, "body", _) => Ok(self.library_get(id)?.body),
+            (HighlightScope::Quest | HighlightScope::Campaign, "memo", _) => {
+                let s = if matches!(scope, HighlightScope::Quest) { CommentScope::Quest } else { CommentScope::Campaign };
+                self.memo_get_scoped(s, id)?
+                    .filter(|m| !m.trim().is_empty())
+                    .ok_or_else(|| anyhow!(tf!("{id} 에 메모가 없습니다", "{id} has no memo")))
+            }
+            (HighlightScope::Quest | HighlightScope::Campaign, _, Some(n)) => {
+                let s = if matches!(scope, HighlightScope::Quest) { CommentScope::Quest } else { CommentScope::Campaign };
+                let n: u64 = n.parse().map_err(|_| anyhow!(tf!("댓글 번호가 아닙니다: {part}", "not a comment number: {part}")))?;
+                self.comments_list_scoped(s, id)?
+                    .into_iter()
+                    .find(|e| e.id == n)
+                    .map(|e| e.body)
+                    .ok_or_else(|| anyhow!(tf!("{id} 에 댓글 #{n} 이 없습니다", "{id} has no comment #{n}")))
+            }
+            _ => bail!(tf!(
+                "이 대상에서는 칠할 수 없는 부분입니다: {part} (규칙 · 도서관은 body 만, 퀘스트 · 캠페인은 body · memo · comment:N)",
+                "can't highlight this part here: {part} (rules/library: body only; quests/campaigns: body, memo, comment:N)"
+            )),
+        }
+    }
+
+    fn highlight_add(
+        &self,
+        target: &str,
+        part: &str,
+        q: openguild_core::highlight_text::Quote,
+    ) -> Result<openguild_core::repo::highlights::Highlight> {
+        match self {
+            Backend::Http(c) => c.post(
+                &format!("/api/highlights?target={}", urlenc(target)),
+                &serde_json::json!({ "part": part, "exact": q.exact, "prefix": q.prefix, "suffix": q.suffix }),
+            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::highlights::add_highlight(
+                &l.store,
+                target,
+                openguild_core::ops::highlights::NewHighlight {
+                    part: part.to_string(),
+                    exact: q.exact,
+                    prefix: q.prefix,
+                    suffix: q.suffix,
+                },
+            ))),
+        }
+    }
+
+    fn highlight_remove(&self, target: &str, hl_id: &str) -> Result<bool> {
+        match self {
+            Backend::Http(c) => {
+                let v: serde_json::Value = c.delete_query(
+                    &format!("/api/highlights/{}", urlenc(hl_id)),
+                    &[("target", target)],
+                )?;
+                Ok(v.get("removed").and_then(|b| b.as_bool()).unwrap_or(false))
+            }
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::highlights::remove_highlight(&l.store, target, hl_id),
+            )),
+        }
+    }
+
     fn highlight_list(&self, target: &str) -> Result<Vec<openguild_core::repo::highlights::Highlight>> {
         match self {
             Backend::Http(c) => c.get(&format!("/api/highlights?target={}", urlenc(target))),
@@ -5439,6 +5531,42 @@ fn run_highlight_cmd(c: &Backend, scope: HighlightScope, sub: HighlightCmd, json
                         println!("  {line}");
                     }
                 }
+            }
+        }
+        HighlightCmd::Add { id, text, part, nth } => {
+            let target = c.highlight_target(scope, &id)?;
+            let source = c.highlight_source(scope, &target, &part)?;
+            let q = openguild_core::highlight_text::quote(&source, &text, nth)?;
+            // 같은 자리를 또 칠하면 화면에는 그대로인데 목록만 늘어난다 — 있는 것을 돌려준다.
+            let same = c.highlight_list(&target)?.into_iter().find(|h| {
+                h.part == part && h.exact == q.exact && h.prefix == q.prefix && h.suffix == q.suffix
+            });
+            let (h, fresh) = match same {
+                Some(h) => (h, false),
+                None => (c.highlight_add(&target, &part, q)?, true),
+            };
+            if json {
+                json_println!(h);
+            } else {
+                let what = if fresh { tf!("✓ 칠함", "✓ highlighted") } else { tf!("이미 칠해져 있음", "already highlighted") };
+                println!("{what}  {}  {}", highlight_part_label(&h.part), h.id);
+                for line in h.exact.lines() {
+                    println!("  {line}");
+                }
+            }
+        }
+        HighlightCmd::Remove { id, highlight_id } => {
+            let target = c.highlight_target(scope, &id)?;
+            if !c.highlight_remove(&target, &highlight_id)? {
+                bail!(tf!(
+                    "형광펜 {highlight_id} 이 {id} 에 없습니다 — `highlight list` 로 확인하세요",
+                    "no highlight {highlight_id} on {id} — check `highlight list`"
+                ));
+            }
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "removed": highlight_id }));
+            } else {
+                println!("{}", tf!("✓ 형광펜 지움 ({highlight_id})", "✓ highlight removed ({highlight_id})"));
             }
         }
     }
@@ -12668,6 +12796,61 @@ scope = ["gui"]
         ] {
             assert!(c.highlight_target(scope, id).is_err(), "없는 대상 {id} 를 오류로 안 봤다");
         }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-449: CLI 로 칠하면 **화면 글자**로 적힌다 — 원문 기호째(`**`)는 화면에 없으니 거절하고, 같은 자리를
+    /// 또 칠해도 늘지 않으며, 없는 형광펜을 지우면 오류다.
+    #[test]
+    fn highlight_add_stores_screen_text_and_remove_reports_missing() {
+        let dir = fresh_tmp("hl-add");
+        init_guild_at(&dir, Some("hl-add".into())).unwrap();
+        let c = local_backend(&dir);
+
+        let Backend::Local(l) = &c else { unreachable!() };
+        let q = l
+            .rt
+            .block_on(openguild_core::ops::quests::create_quest(
+                &l.store,
+                openguild_core::models::CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: "칠할 퀘스트".into(),
+                    description: Some("**굵은** 글과 [[dev-1]] 링크\n".into()),
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            ))
+            .unwrap();
+        let add = |text: &str| {
+            run_highlight_cmd(
+                &c,
+                HighlightScope::Quest,
+                HighlightCmd::Add { id: q.quest_id.clone(), text: text.into(), part: "body".into(), nth: None },
+                false,
+            )
+        };
+        assert!(add("**굵은** 글").is_err(), "화면에 없는 원문 기호째를 받았다");
+        add("굵은 글과 DEV-1 링크").unwrap();
+        add("굵은 글과 DEV-1 링크").unwrap();
+
+        let target = format!("quest:{}", q.quest_id);
+        let got = c.highlight_list(&target).unwrap();
+        assert_eq!(got.len(), 1, "같은 자리를 또 칠해 늘었다");
+        assert_eq!((got[0].part.as_str(), got[0].exact.as_str()), ("body", "굵은 글과 DEV-1 링크"));
+
+        let remove = |hl: &str| {
+            run_highlight_cmd(
+                &c,
+                HighlightScope::Quest,
+                HighlightCmd::Remove { id: q.quest_id.clone(), highlight_id: hl.into() },
+                false,
+            )
+        };
+        remove(&got[0].id).unwrap();
+        assert!(remove(&got[0].id).is_err(), "없는 형광펜을 지웠는데 오류가 아니다");
+        assert!(c.highlight_list(&target).unwrap().is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

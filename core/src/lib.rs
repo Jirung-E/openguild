@@ -15,6 +15,7 @@ pub mod error;
 pub mod events;
 pub mod file_mtime;
 pub mod health;
+pub mod highlight_text;
 pub mod incremental;
 pub mod guild_file;
 pub mod locale;

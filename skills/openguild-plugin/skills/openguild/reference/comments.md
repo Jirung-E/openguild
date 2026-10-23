@@ -61,7 +61,7 @@ openguild campaign memo set <campaign-slug> --file <PATH>
 
 (Campaigns don't have a discussion/resolved flag — that's quest-only.)
 
-## Highlights (read only)
+## Highlights
 
 The user can highlight text in the app/web reading view — body, comments and
 memo of a quest; a campaign; a rule; a library doc. A highlight is the user
@@ -78,8 +78,25 @@ openguild library highlight list <book-id>
 Each entry prints which part it is on (`body`, `memo`, `comment #N`), when it
 was made, its id, then the highlighted text. `--json` adds the text just before
 and after (`prefix` / `suffix`) — the app uses those to find the spot again
-after the body changes. An unknown slug is an error, not an empty list. There is
-no CLI command to add or remove a highlight.
+after the body changes. An unknown slug is an error, not an empty list.
+
+**Add or remove a highlight only when the user asks.** Never highlight on your
+own initiative — it clutters the user's reading view.
+
+```bash
+openguild quest highlight add <slug> "<text>" [--part body|memo|comment:N] [--nth N]
+openguild quest highlight remove <slug> <highlight-id>
+# campaign: body / memo / comment:N — rule and library: body only
+```
+
+- `<text>` is what the **reading view shows**, not the markdown source: drop
+  `**`, backticks and `[..](..)`; a `[[dev-1]]` link shows as `DEV-1`. Spaces
+  and line breaks are matched loosely; what is stored is the screen text.
+- It must be inside one paragraph (or one code block). Across paragraphs →
+  error; highlight each paragraph separately.
+- Appears more than once → error with the count; choose with `--nth N` (from 1).
+- Highlighting the same spot again returns the existing one instead of adding.
+- `remove` with an id that isn't on that item is an error (exit 1).
 
 ## Guild-wide search
 

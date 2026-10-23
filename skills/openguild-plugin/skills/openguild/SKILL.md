@@ -161,8 +161,22 @@ openguild rule highlight list <name>
 openguild library highlight list <book-id>
 ```
 
-`(no highlights)` means none. The CLI only reads them — highlighting and
-removing happen in the reading view.
+`(no highlights)` means none.
+
+**Never highlight on your own initiative.** Add one only when the user asks
+you to ("칠해줘", "highlight this") — not to mark what you think matters, not to
+show what you changed. Unasked-for highlights clutter the user's reading view.
+Remove only the ones the user asks you to remove.
+
+```bash
+openguild quest highlight add <slug> "text as shown on screen" [--part body|memo|comment:N] [--nth N]
+openguild quest highlight remove <slug> <highlight-id>
+```
+
+The text must be what the reading view shows — no markdown (`**`, `[..](..)`,
+backticks), and `[[dev-1]]` reads as `DEV-1`. Spaces and line breaks are
+matched loosely. It must sit inside one paragraph; if it appears more than once
+the command says how many times — pick one with `--nth`.
 
 ## Cross-links `[[…]]` — follow them, don't skip them
 
@@ -215,7 +229,7 @@ openguild quest comment add <slug> --author <name> --file <PATH>   # non-ASCII b
 openguild quest comment list <slug>              # read ONE quest's comments (campaign: campaign comment list)
 openguild quest comment react <slug> <id> <emoji> --author <name>
 openguild quest memo set <slug> --file <PATH>   # private note, no author field
-openguild quest highlight list <slug>           # what the user highlighted in the app (read only; campaign/rule/library too)
+openguild quest highlight list <slug>           # what the user highlighted (campaign/rule/library too); add only when asked
 openguild quest tag add <slug> <tag...>
 # Tags work the same on library docs and rules (list/add/remove/set).
 openguild library tag add <book-id> <tag...>

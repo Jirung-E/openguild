@@ -160,8 +160,11 @@ echo "디자인 확정함." | openguild quest comment add DEV-001 --author alice
 # 메모 (비공개)
 echo "TODO: foo 확인" | openguild quest memo set DEV-001
 
-# 형광펜 — 앱 · 웹의 읽기 화면에서 칠한 곳(CLI 는 읽기만). campaign · rule · library 도 같은 모양
+# 형광펜 — 읽기 화면에서 칠한 곳. campaign · rule · library 도 같은 모양
 openguild quest highlight list DEV-001
+# 칠할 글은 화면에 보이는 글자 그대로(`**` 같은 기호 없이), 한 문단 안에서. 여러 번 나오면 --nth
+openguild quest highlight add DEV-001 "칠할 글" [--part body|memo|comment:3] [--nth 2]
+openguild quest highlight remove DEV-001 <형광펜 id>
 
 # 길드 규칙 (top-level 은 `rule` 단수형만, 복수형 alias 없음)
 openguild rule list
