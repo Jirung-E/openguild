@@ -726,6 +726,10 @@ mod tests {
         }
 
         /// 데이터 폴더 — 훅이 `$OPENGUILD_PLUGIN_DATA_DIR` 로 받는 출력 자리.
+        ///
+        /// 이것을 보는 시험이 `sh` 를 쓰는 유닉스 전용 하나라, 윈도우에서는 안 쓰이는 함수가 되어 clippy
+        /// (`-D warnings`)가 막았다(DEV-425 CI). 쓰는 쪽과 같은 조건을 단다.
+        #[cfg(unix)]
         fn data(&self) -> std::path::PathBuf {
             crate::plugins::data_dir(&self.guild, "p").unwrap()
         }
