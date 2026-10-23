@@ -208,6 +208,13 @@ fn marks_of(v: &view::PluginView) -> Vec<String> {
     marks
 }
 
+/// 한 줄 요약의 오른쪽만 — 무엇을 하는지(막을 수 있음 · 권한 · 내보내는 곳, 없으면 '밖으로 안 나감').
+/// CLI 의 '아직 허용하지 않은 플러그인' 경고가 쓴다 — 예전엔 동작 종류만 적어 `call` 만 있는 플러그인은
+/// 빈 괄호였다.
+pub fn marks_line(p: &Plugin, scope: Scope) -> String {
+    marks_of(&view::view(p, false, scope)).join(" · ")
+}
+
 pub fn one_liner(p: &Plugin, scope: Scope) -> String {
     let v = view::view(p, false, scope);
     format!(
@@ -307,6 +314,122 @@ action = "out"
         assert!(line.contains("막을 수 있음"), "{line}");
         assert!(line.contains("알림 띄우기"), "{line}");
         let _ = std::fs::remove_dir_all(&g);
+    }
+
+    /// DEV-410 다시: **줄 안에 적은 `post` 도 내보내는 곳이다.** 이름 붙인 `[actions]` 만 봐서, 줄 안에 적은
+    /// 플러그인은 한 줄 요약(일괄 허용이 보는 것)과 경고에 '밖으로 안 나감' 이라고 나왔다 — 실제로는 보냈다.
+    #[test]
+    fn an_inline_post_is_still_where_it_sends() {
+        let g = guild(
+            "inline",
+            "name = \"p\"\nscope = [\"cli\"]\n\n[[handlers]]\npost = [\"quest.created\"]\naction = { post = { url = \"http://127.0.0.1:3613/inline\" } }\n",
+            None,
+        );
+        let l = load_all(&g);
+        assert!(l.errors.is_empty(), "{:?}", l.errors);
+        let p = &l.needs_consent[0];
+        for line in [one_liner(p, Scope::Cli), marks_line(p, Scope::Cli)] {
+            assert!(line.contains("127.0.0.1"), "{line}");
+            assert!(!line.contains("밖으로 안 나감"), "{line}");
+        }
+        assert!(consent_lines(p, Scope::Cli).join("\n").contains("내보내는 곳"));
+        let _ = std::fs::remove_dir_all(&g);
+    }
+
+    /// DEV-410 다시: '쓰는 환경변수' 는 정의가 지목한 것 **전부** — URL 안(`bot${TOKEN}`)과 `run` 의 인자도.
+    /// 코어가 채우는 경로(`OPENGUILD_PLUGIN_DIR`)는 사용자에게 물을 값이 아니라 뺀다.
+    #[test]
+    fn every_referenced_variable_is_listed() {
+        let g = guild(
+            "envs",
+            r#"
+name = "p"
+scope = ["cli"]
+
+[actions.tg.post]
+url = "https://api.test/bot${BOT_KEY}/send"
+
+[actions.sh.run]
+command = "sh"
+args = ["${OPENGUILD_PLUGIN_DIR}/x.sh", "${RUN_ARG}"]
+
+[[handlers]]
+post = ["quest.created"]
+action = "tg"
+
+[[handlers]]
+post = ["quest.created"]
+action = "sh"
+"#,
+            None,
+        );
+        let l = load_all(&g);
+        assert!(l.errors.is_empty(), "{:?}", l.errors);
+        let v = view::view(&l.needs_consent[0], false, Scope::Cli);
+        assert!(v.env.contains(&"BOT_KEY".to_string()), "{:?}", v.env);
+        assert!(v.env.contains(&"RUN_ARG".to_string()), "{:?}", v.env);
+        assert!(!v.env.iter().any(|e| e.starts_with("OPENGUILD_")), "{:?}", v.env);
+        let _ = std::fs::remove_dir_all(&g);
+    }
+
+    /// DEV-410 다시: **값이 화면 · HTTP 로 새지 않는다.** 이 모양은 서버의 `GET /api/plugins` 로도 나간다.
+    /// - 헤더에 쓰인 값은 이름이 무엇이든 비밀이다(`Bearer ${MY_CRED}`).
+    /// - 환경변수에서 온 글자 값은 보내지 않는다 — 있다는 것과 어디서 왔는지만.
+    /// - 고르는 칸(체크)은 정의가 정한 값이라 그대로 보낸다.
+    #[test]
+    fn values_do_not_leak_into_the_view() {
+        let _guard = crate::test_env::env_lock();
+        let home = std::env::temp_dir().join(format!("og-sum-leak-home-{}", crate::test_seq()));
+        std::fs::create_dir_all(&home).unwrap();
+        unsafe {
+            std::env::set_var("OPENGUILD_HOME", &home);
+            std::env::set_var("MY_CRED", "CREDSECRET42");
+            std::env::set_var("MY_CHAT", "CHATSECRET");
+            std::env::set_var("LOUD", "true");
+        }
+        let g = guild(
+            "leak",
+            r#"
+name = "p"
+scope = ["cli"]
+
+[actions.out.post]
+url = "https://example.test/hook"
+headers = { Authorization = "Bearer ${MY_CRED}" }
+body_env = { chat_id = "MY_CHAT", loud = "LOUD" }
+
+[[inputs]]
+key  = "LOUD"
+type = "checkbox"
+
+[[handlers]]
+post = ["quest.created"]
+action = "out"
+"#,
+            None,
+        );
+        let l = load_all(&g);
+        assert!(l.errors.is_empty(), "{:?}", l.errors);
+        let v = view::view(&l.needs_consent[0], false, Scope::Cli);
+        let input = |k: &str| v.inputs.iter().find(|i| i.key == k).unwrap();
+        let cred = input("MY_CRED");
+        assert!(cred.secret, "헤더에 쓰인 값인데 비밀로 안 봤다");
+        assert!(cred.value.is_none() && cred.has_value);
+        let chat = input("MY_CHAT");
+        assert!(!chat.secret);
+        assert!(chat.value.is_none(), "환경변수 값이 화면으로 나갔다: {:?}", chat.value);
+        assert!(chat.has_value && chat.source == "env");
+        assert_eq!(input("LOUD").value, Some(serde_json::json!(true)), "고르는 칸은 그대로 보낸다");
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(!json.contains("CREDSECRET42") && !json.contains("CHATSECRET"), "{json}");
+        unsafe {
+            std::env::remove_var("OPENGUILD_HOME");
+            std::env::remove_var("MY_CRED");
+            std::env::remove_var("MY_CHAT");
+            std::env::remove_var("LOUD");
+        }
+        let _ = std::fs::remove_dir_all(&g);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// 나가는 곳도 권한도 없으면 그렇다고 말한다 — 빈 줄은 "모름" 으로 읽힌다.

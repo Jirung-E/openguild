@@ -555,7 +555,7 @@
 													class="input pi-field"
 													type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
 													autocomplete="off"
-													placeholder={i.secret && i.has_value
+													placeholder={i.has_value && (i.value === null || i.value === undefined)
 														? t('plugins.valueSet', $locale)
 														: ''}
 													value={draftOf(p.name, i)}

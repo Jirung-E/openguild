@@ -523,6 +523,19 @@ impl PluginDef {
         out
     }
 
+    /// `post` 헤더 값에 쓰인 `${NAME}` 들 — 이름이 무엇이든 자격 증명으로 본다(`Bearer ${MY_CRED}`).
+    pub fn header_keys(&self) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        for (_, action) in self.all_actions() {
+            if let Action::Post { headers, .. } = action {
+                for v in headers.values() {
+                    out.extend(env_refs(v));
+                }
+            }
+        }
+        out
+    }
+
     /// 화면에 실제로 그릴 입력 목록 — **선언한 것 + 선언 안 하고 쓰기만 한 것.**
     ///
     /// 참조만 하고 `inputs` 에 안 적은 정의가 흔하다(이 기능이 생기기 전에 쓴
@@ -554,6 +567,15 @@ impl PluginDef {
                 default: None,
                 options: Vec::new(),
             });
+        }
+        // DEV-410 다시: 헤더에 쓰인 값은 **이름과 상관없이** 비밀이다. 이름만 봤더니 `Bearer ${MY_CRED}` 의
+        // 값이 화면과 `GET /api/plugins` 로 그대로 나갔다(서버에는 인증이 없다). 선언이 `secret = false` 라도
+        // 헤더에 넣었다면 가린다 — 가려서 잃는 것은 화면에 값이 안 보이는 것뿐이다.
+        let creds = self.header_keys();
+        for i in &mut out {
+            if creds.contains(&i.key) {
+                i.secret = true;
+            }
         }
         out
     }

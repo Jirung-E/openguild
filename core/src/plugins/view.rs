@@ -96,42 +96,12 @@ pub struct ActionView {
 
 /// DEV-410: 정의가 지목한 환경변수 이름들. 값은 읽지 않는다 — 이름만으로 충분하고, 읽으면
 /// 실수로 내보낼 길이 생긴다.
+///
+/// 다시 고침: 헤더 · `body_env` 만 훑어 **URL 안의** 것(텔레그램의 `bot${TELEGRAM_BOT_TOKEN}`)과 `run` 의
+/// 명령 · 인자에 쓴 것을 빠뜨렸다. 값을 채우는 쪽([`PluginDef::referenced_keys`])과 같은 목록을 쓴다 —
+/// 둘이 따로 있어서 갈라졌다.
 fn env_names(p: &Plugin) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut add = |s: String| {
-        if !out.contains(&s) {
-            out.push(s);
-        }
-    };
-    for (_, a) in p.def.all_actions() {
-        if let Action::Post { headers, body_env, .. } = a {
-            for v in headers.values() {
-                for name in env_refs(v) {
-                    add(name);
-                }
-            }
-            for v in body_env.values() {
-                add(v.clone());
-            }
-        }
-    }
-    out
-}
-
-/// `"Bearer ${TOKEN}"` → `["TOKEN"]`.
-fn env_refs(s: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = s;
-    while let Some(i) = rest.find("${") {
-        rest = &rest[i + 2..];
-        let Some(end) = rest.find('}') else { break };
-        let name = rest[..end].trim();
-        if !name.is_empty() {
-            out.push(name.to_string());
-        }
-        rest = &rest[end + 1..];
-    }
-    out
+    p.def.referenced_keys().into_iter().collect()
 }
 
 fn action_target(a: &Action) -> String {
@@ -275,7 +245,9 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
             }
         })
         .collect();
-    let actions = p
+    // DEV-410 다시: 줄 안에 바로 적은 동작도 "내보내는 곳" 이다. 이름 붙인 `[actions]` 만 담았더니, 줄 안에
+    // `post` 를 적은 플러그인은 한 줄 요약(일괄 허용이 보는 것)에 '밖으로 안 나감' 이라고 나왔다.
+    let mut actions: Vec<ActionView> = p
         .def
         .actions
         .iter()
@@ -285,6 +257,15 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
             target: action_target(a),
         })
         .collect();
+    for (i, h) in p.def.handlers.iter().enumerate() {
+        if let Some(super::ActionRef::Inline(a)) = &h.action {
+            actions.push(ActionView {
+                name: h.label(i),
+                kind: a.kind().into(),
+                target: action_target(a),
+            });
+        }
+    }
     PluginView {
         name: p.def.name.clone(),
         description: p.def.description.clone(),
@@ -344,7 +325,13 @@ fn input_views(p: &Plugin) -> Vec<InputView> {
                     })
                     .collect(),
                 // 비밀은 여기서 끊는다. 화면이 실수로 그릴 기회조차 없어야 한다.
-                value: if i.secret {
+                // DEV-410 다시: **환경변수에서 온 글자 값도** 보내지 않는다 — 이 화면은 서버의 `GET /api/plugins`
+                // 로도 나가는데, 서버 환경에 무엇이 들었는지 정의 이름만으로는 알 수 없다. 있다는 것(`has_value`)과
+                // 어디서 왔는지(`source`)만 알린다. 고르는 칸(체크 · 목록)은 정의가 정한 값이라 그대로 보낸다.
+                value: if i.secret
+                    || (matches!(r.map(|r| r.source), Some(super::values::Source::Env))
+                        && matches!(i.input_type, InputType::Text | InputType::Number))
+                {
                     None
                 } else {
                     r.and_then(|r| r.value.clone())

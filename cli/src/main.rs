@@ -6570,7 +6570,11 @@ fn install_plugins_for_cli(c: &Backend, json: bool) {
             )
         );
         for p in &loaded.needs_consent {
-            eprintln!("  - {} ({})", p.def.name, action_kinds(&p.def));
+            eprintln!(
+                "  - {} ({})",
+                p.def.name,
+                openguild_core::plugins::summary::marks_line(p, openguild_core::plugins::Scope::Cli)
+            );
         }
         eprintln!(
             "{}",
@@ -6580,16 +6584,6 @@ fn install_plugins_for_cli(c: &Backend, json: bool) {
             )
         );
     }
-}
-
-/// 관리 명령은 길드 파일과 이 기계의 동의 파일만 본다 — 실행 scope 와 무관하게
-/// 전부 보여준다. GUI 전용 플러그인의 허용도 여기서 할 수 있어야 한다.
-/// DEV-403: 플러그인이 쓰는 동작 종류 — `post`, `run`, `post,run`.
-fn action_kinds(def: &openguild_core::plugins::PluginDef) -> String {
-    let mut kinds: Vec<&str> = def.all_actions().iter().map(|(_, a)| a.kind()).collect();
-    kinds.sort();
-    kinds.dedup();
-    kinds.join(",")
 }
 
 /// DEV-411: 검사 결과를 찍고, 오류가 하나라도 있으면 **0 이 아닌 값으로 끝난다** — 스크립트와
