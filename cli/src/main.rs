@@ -752,6 +752,13 @@ enum QuestCmd {
         #[command(subcommand)]
         sub: MemoCmd,
     },
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
+    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    Highlight {
+        #[command(subcommand)]
+        sub: HighlightCmd,
+    },
     // BUG-016: doc 에 quest_id prefix 누출 X.
     #[command(about = tf!("태그 — list / add / remove / set. frontmatter 가 진리원.", "Tags — list / add / remove / set. Frontmatter is the source of truth."))]
     Tag {
@@ -925,6 +932,14 @@ enum MemoCmd {
     },
     #[command(about = tf!("메모 본문 비움 (빈 문자열로 교체 — 파일은 남음).", "Clear the memo body (replaces with empty string — the file itself remains)."))]
     Clear { slug: String },
+}
+
+/// DEV-449: 형광펜 — 읽기만. 칠하고 지우는 것은 앱 · 웹의 읽기 화면이 한다(글을 골라야 해서).
+#[derive(Subcommand)]
+enum HighlightCmd {
+    #[command(about = tf!("칠한 곳 목록 — 칠한 순서대로. 어느 부분(본문 · 메모 · 댓글 #N)인지와 칠한 글. 앞뒤 글자는 --json 에.",
+                          "List highlights in the order they were made — which part (body / memo / comment #N) and the highlighted text. Surrounding text is in --json."))]
+    List { id: String },
 }
 
 #[derive(Subcommand)]
@@ -1198,6 +1213,13 @@ enum RulesCmd {
         #[command(subcommand)]
         sub: TagCmd,
     },
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
+    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    Highlight {
+        #[command(subcommand)]
+        sub: HighlightCmd,
+    },
 }
 
 // ─────────────────────────── Library 서브명령 ───────────────────────────
@@ -1307,6 +1329,13 @@ enum LibraryCmd {
         #[command(subcommand)]
         sub: TagCmd,
     },
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
+    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    Highlight {
+        #[command(subcommand)]
+        sub: HighlightCmd,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1383,6 +1412,13 @@ enum CampaignCmd {
     Memo {
         #[command(subcommand)]
         sub: MemoCmd,
+    },
+    // DEV-449: 앱 · 웹에서 칠한 형광펜(DEV-443) — CLI 는 읽기만. 에이전트가 사용자가 중요하게 본 곳을 본다.
+    #[command(about = tf!("형광펜 — list. 앱 · 웹의 읽기 화면에서 칠한 곳(비공개, .guild/highlights/, gitignored).",
+                          "Highlights — list. What was highlighted in the app/web reading view (private, `.guild/highlights/`, gitignored)."))]
+    Highlight {
+        #[command(subcommand)]
+        sub: HighlightCmd,
     },
     #[command(about = tf!("새 캠페인 생성 (자동 C-NNN slug)", "Create a new campaign (auto C-NNN slug)"))]
     New {
@@ -3993,6 +4029,33 @@ impl Backend {
             },
         }
     }
+    /// DEV-449: 받은 이름을 형광펜 키로. 다른 명령처럼 찾아서 **앱이 적는 표기**(`DEV-001` · `BOOK-001`)로
+    /// 바꾼다 — 받은 그대로(`dev-1`) 찾으면 칠한 것이 있어도 "없음" 이 된다. 없는 대상도 여기서 오류가
+    /// 난다 — 오타를 "형광펜 없음" 으로 답하지 않는다.
+    fn highlight_target(&self, scope: HighlightScope, id: &str) -> Result<String> {
+        Ok(match scope {
+            HighlightScope::Quest => format!("quest:{}", self.quest_by_slug(id)?.quest.quest_id),
+            HighlightScope::Campaign => {
+                format!("campaign:{}", self.campaign_show(id)?.campaign.campaign_slug)
+            }
+            HighlightScope::Rule => {
+                self.rules_get(id)?
+                    .ok_or_else(|| anyhow!(tf!("규칙 '{id}' 없음", "rule '{id}' not found")))?;
+                format!("rule:{id}")
+            }
+            HighlightScope::Library => format!("library:{}", self.library_get(id)?.book_id),
+        })
+    }
+
+    fn highlight_list(&self, target: &str) -> Result<Vec<openguild_core::repo::highlights::Highlight>> {
+        match self {
+            Backend::Http(c) => c.get(&format!("/api/highlights?target={}", urlenc(target))),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::highlights::list_highlights(&l.store, target)),
+            ),
+        }
+    }
+
     // DEV-068: tag — frontmatter 에서 read, ops::set_quest_tags 로 write.
     fn tag_list(&self, slug: &str) -> Result<Vec<String>> {
         match self {
@@ -4655,6 +4718,15 @@ impl CommentScope {
             CommentScope::Campaign => "campaign",
         }
     }
+}
+
+/// DEV-449: 형광펜의 대상 — 앱이 적는 키의 앞부분(`quest:` · `campaign:` · `rule:` · `library:`).
+#[derive(Clone, Copy)]
+enum HighlightScope {
+    Quest,
+    Campaign,
+    Rule,
+    Library,
 }
 
 fn comments_api_base(scope: CommentScope, slug: &str) -> String {
@@ -5350,6 +5422,41 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
     Ok(())
 }
 
+/// DEV-449: 형광펜 명령 공용 핸들러 — 퀘스트 · 캠페인 · 규칙 · 도서관.
+fn run_highlight_cmd(c: &Backend, scope: HighlightScope, sub: HighlightCmd, json: bool) -> Result<()> {
+    match sub {
+        HighlightCmd::List { id } => {
+            let target = c.highlight_target(scope, &id)?;
+            let list = c.highlight_list(&target)?;
+            if json {
+                json_println!(list);
+            } else if list.is_empty() {
+                println!("{}", tf!("(형광펜 없음)", "(no highlights)"));
+            } else {
+                for h in &list {
+                    println!("{}  {}  {}", highlight_part_label(&h.part), h.created_at, h.id);
+                    for line in h.exact.lines() {
+                        println!("  {line}");
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `body` · `memo` · `comment:N` → 읽는 이름.
+fn highlight_part_label(part: &str) -> String {
+    match part {
+        "body" => tf!("본문", "body"),
+        "memo" => tf!("메모", "memo"),
+        _ => match part.strip_prefix("comment:") {
+            Some(n) => tf!("댓글 #{n}", "comment #{n}"),
+            None => part.to_string(),
+        },
+    }
+}
+
 /// ANSI 24-bit truecolor — `#RRGGBB` → "\x1b[38;2;r;g;bm{text}\x1b[0m".
 /// 비-TTY / NO_COLOR 일 땐 plain 반환.
 fn colorize(text: &str, hex: &str) -> String {
@@ -5543,6 +5650,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         }
         CampaignCmd::Attach { sub } => run_attach_cmd(c, CommentScope::Campaign, sub, json)?,
         CampaignCmd::Memo { sub } => run_memo_cmd(c, CommentScope::Campaign, sub, json)?,
+        CampaignCmd::Highlight { sub } => run_highlight_cmd(c, HighlightScope::Campaign, sub, json)?,
         CampaignCmd::New {
             title,
             started_at,
@@ -8873,6 +8981,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                 }
             }
         }
+        RulesCmd::Highlight { sub } => run_highlight_cmd(c, HighlightScope::Rule, sub, json)?,
         RulesCmd::History { slug } => {
             let history = c.rule_history(&slug)?;
             print_sidecar_history(&history, json);
@@ -9042,6 +9151,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 );
             }
         }
+        LibraryCmd::Highlight { sub } => run_highlight_cmd(c, HighlightScope::Library, sub, json)?,
         LibraryCmd::History { id } => {
             let history = c.library_history(&id)?;
             print_sidecar_history(&history, json);
@@ -10317,6 +10427,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
         QuestCmd::Comment { sub } => run_comment_cmd(c, CommentScope::Quest, sub, json)?,
         QuestCmd::Attach { sub } => run_attach_cmd(c, CommentScope::Quest, sub, json)?,
         QuestCmd::Memo { sub } => run_memo_cmd(c, CommentScope::Quest, sub, json)?,
+        QuestCmd::Highlight { sub } => run_highlight_cmd(c, HighlightScope::Quest, sub, json)?,
         QuestCmd::Tag { sub } => match sub {
             TagCmd::List { slug } => {
                 let tags = c.tag_list(&slug)?;
@@ -12489,6 +12600,74 @@ scope = ["gui"]
         let d = c.quest_by_slug(&q.quest_id).unwrap();
         assert_eq!(d.attachments.len(), 1, "첨부를 안 채웠다");
         assert_eq!(d.attachments[0].name, "스펙.md");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-449: 형광펜은 **앱이 적은 표기**로 찾는다 — `dev-1` · `BOOK-1` 로 물어도 `quest:DEV-001` ·
+    /// `library:BOOK-001` 에 칠한 것이 나와야 한다. 없는 대상은 빈 목록이 아니라 오류다 — 오타를
+    /// "형광펜 없음" 으로 답하면 에이전트가 칠한 곳이 없다고 믿는다.
+    #[test]
+    fn highlights_are_found_by_the_name_the_app_wrote() {
+        let dir = fresh_tmp("hl-list");
+        init_guild_at(&dir, Some("hl-list".into())).unwrap();
+        let c = local_backend(&dir);
+
+        let Backend::Local(l) = &c else { unreachable!() };
+        let q = l
+            .rt
+            .block_on(openguild_core::ops::quests::create_quest(
+                &l.store,
+                openguild_core::models::CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: "칠한 퀘스트".into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            ))
+            .unwrap();
+        let book = l
+            .rt
+            .block_on(openguild_core::ops::library::create_book(&l.store, "칠한 문서", "본문", ""))
+            .unwrap();
+        let paint = |target: String, part: &str, exact: &str| {
+            l.rt.block_on(openguild_core::ops::highlights::add_highlight(
+                &l.store,
+                &target,
+                openguild_core::ops::highlights::NewHighlight {
+                    part: part.into(),
+                    exact: exact.into(),
+                    prefix: String::new(),
+                    suffix: String::new(),
+                },
+            ))
+            .unwrap();
+        };
+        paint(format!("quest:{}", q.quest_id), "comment:3", "댓글에 칠한 글");
+        paint(format!("library:{}", book.book_id()), "body", "문서에 칠한 글");
+
+        let lower = q.quest_id.to_lowercase();
+        let target = c.highlight_target(HighlightScope::Quest, &lower).unwrap();
+        assert_eq!(target, format!("quest:{}", q.quest_id));
+        let got = c.highlight_list(&target).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].part.as_str(), got[0].exact.as_str()), ("comment:3", "댓글에 칠한 글"));
+
+        let short = format!("BOOK-{}", book.number);
+        let target = c.highlight_target(HighlightScope::Library, &short).unwrap();
+        assert_eq!(target, format!("library:{}", book.book_id()));
+        assert_eq!(c.highlight_list(&target).unwrap()[0].exact, "문서에 칠한 글");
+
+        for (scope, id) in [
+            (HighlightScope::Quest, "DEV-999"),
+            (HighlightScope::Campaign, "C-999"),
+            (HighlightScope::Rule, "no-such-rule"),
+            (HighlightScope::Library, "BOOK-999"),
+        ] {
+            assert!(c.highlight_target(scope, id).is_err(), "없는 대상 {id} 를 오류로 안 봤다");
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }

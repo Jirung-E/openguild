@@ -148,6 +148,22 @@ Skip only what is clearly irrelevant to the task — and say which ones you
 skipped rather than ignoring them silently. A binary you cannot read (a .sketch,
 a .zip) is worth telling the user about instead of guessing at its contents.
 
+## Highlights — what the user marked
+
+In the app/web reading view the user can highlight text — a quest's body,
+comments and memo, a campaign, a rule, a library doc. **A highlight is the user
+saying "this part matters"**: read them with the text before you work on it.
+
+```bash
+openguild quest highlight list <slug>      # part (body / memo / comment #N) + the highlighted text
+openguild campaign highlight list <campaign-slug>
+openguild rule highlight list <name>
+openguild library highlight list <book-id>
+```
+
+`(no highlights)` means none. The CLI only reads them — highlighting and
+removing happen in the reading view.
+
 ## Cross-links `[[…]]` — follow them, don't skip them
 
 Guild documents reference each other with double-bracket tokens. When you read
@@ -199,6 +215,7 @@ openguild quest comment add <slug> --author <name> --file <PATH>   # non-ASCII b
 openguild quest comment list <slug>              # read ONE quest's comments (campaign: campaign comment list)
 openguild quest comment react <slug> <id> <emoji> --author <name>
 openguild quest memo set <slug> --file <PATH>   # private note, no author field
+openguild quest highlight list <slug>           # what the user highlighted in the app (read only; campaign/rule/library too)
 openguild quest tag add <slug> <tag...>
 # Tags work the same on library docs and rules (list/add/remove/set).
 openguild library tag add <book-id> <tag...>
@@ -238,7 +255,7 @@ directory — load only the one you need:
 - [reference/setup.md](reference/setup.md) — init, local vs. remote mode, env vars/flags
 - [reference/quest.md](reference/quest.md) — quest CRUD, status transitions, relations, due dates, history, workflow examples
 - [reference/campaign.md](reference/campaign.md) — campaigns, checklists, linking quests
-- [reference/comments.md](reference/comments.md) — quest/campaign comments, memos, reactions, discussion threads
+- [reference/comments.md](reference/comments.md) — quest/campaign comments, memos, reactions, discussion threads, highlights
 - [reference/templates.md](reference/templates.md) — quest templates
 - [reference/rules.md](reference/rules.md) — project rules/convention docs
 - [reference/library.md](reference/library.md) — reference notes library, folders, and file attachments (large/binary material)

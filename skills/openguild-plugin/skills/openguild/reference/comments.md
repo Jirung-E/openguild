@@ -61,6 +61,26 @@ openguild campaign memo set <campaign-slug> --file <PATH>
 
 (Campaigns don't have a discussion/resolved flag — that's quest-only.)
 
+## Highlights (read only)
+
+The user can highlight text in the app/web reading view — body, comments and
+memo of a quest; a campaign; a rule; a library doc. A highlight is the user
+marking what matters, so read them with the text. They are private like memos
+(`.guild/highlights/`, kept out of git).
+
+```bash
+openguild quest highlight list <slug>
+openguild campaign highlight list <campaign-slug>
+openguild rule highlight list <name>
+openguild library highlight list <book-id>
+```
+
+Each entry prints which part it is on (`body`, `memo`, `comment #N`), when it
+was made, its id, then the highlighted text. `--json` adds the text just before
+and after (`prefix` / `suffix`) — the app uses those to find the spot again
+after the body changes. An unknown slug is an error, not an empty list. There is
+no CLI command to add or remove a highlight.
+
 ## Guild-wide search
 
 **Only for searching when you don't know which quest.** To read one quest's or
