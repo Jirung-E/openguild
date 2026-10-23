@@ -81,8 +81,8 @@ describe('플러그인 조회/관리의 경계', () => {
 		);
 		const got = await pluginApi.status();
 		expect(got.no_guild).toBe(true);
-		// 서버가 사람 말을 실어 보내지 않는다 — 자유 문장 필드 자체가 없다.
-		expect('notes' in got).toBe(false);
+		// DEV-385: 자유 문장 칸(`notes`)이 없다는 것은 Rust 쪽 `plugin_status_sends_only_known_fields` 가 지킨다 —
+		// 여기서 `'notes' in got` 을 봐도 위에서 고정한 응답을 보는 것이라 아무것도 못 잡는다.
 		vi.unstubAllGlobals();
 	});
 

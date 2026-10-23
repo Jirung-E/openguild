@@ -135,19 +135,21 @@ fn rekey(used: BTreeMap<String, Vec<Used>>, key: impl Fn(&str) -> String) -> BTr
 /// ([`super::consent`]): 못 읽는 파일은 덮어쓰지 않고, 임시 파일에 쓰고 rename.
 fn update(f: impl FnOnce(&mut SourcesFile) -> AppResult<()>) -> AppResult<()> {
     let p = path()?;
+    // DEV-385: 없는 파일만 처음 상태다. 읽지 못하는 파일(UTF-8 아님 · 권한 없음)은 문법이 깨진 파일과
+    // 같다 — 빈 상태로 갈음해 덮어쓰면 등록해 둔 소스가 전부 사라진다.
+    let refuse = |e: String| {
+        AppError::BadRequest(crate::tf!(
+            "{} 를 읽을 수 없습니다: {e}\n덮어쓰면 등록해 둔 소스가 전부 사라지므로 멈춥니다 — \
+             파일을 고치거나 지운 뒤 다시 시도하세요.",
+            "cannot read {}: {e}\nOverwriting it would drop the registered sources, so this stops — \
+             fix or delete the file and try again.",
+            p.display()
+        ))
+    };
     let mut file: SourcesFile = match std::fs::read_to_string(&p) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
-            AppError::BadRequest(crate::tf!(
-                "{} 를 읽을 수 없습니다: {e}
- 덮어쓰면 등록해 둔 소스가 사라지므로 멈춥니다 \
-                 — 파일을 고치거나 지운 뒤 다시 시도하세요.",
-                "cannot read {}: {e}
- Overwriting it would drop the registered sources, so this stops \
-                 — fix or delete the file and try again.",
-                p.display()
-            ))
-        })?,
-        Err(_) => SourcesFile::default(),
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| refuse(e.to_string()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => SourcesFile::default(),
+        Err(e) => return Err(refuse(e.to_string())),
     };
     // 옛 형태로 적힌 것은 고쳐 쓴다 — 비교(같은 경로면 같은 소스)도 뗀 형태끼리 해야 맞는다.
     file.normalize();

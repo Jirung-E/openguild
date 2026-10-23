@@ -398,7 +398,20 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
 
 #[cfg(test)]
 mod examples_url_tests {
-    use super::examples_url_for;
+    use super::{PluginStatus, examples_url_for};
+
+    /// DEV-385: 화면에 가는 상태의 칸은 이것뿐이다 — 없앤 자유 문장 칸(`notes`)이 되살아나면 여기서 걸린다.
+    /// 프런트 시험은 고정한 응답을 흉내 내므로 이걸 못 잡는다(되살려도 통과했다 — 2026-10-22 확인).
+    #[test]
+    fn plugin_status_sends_only_known_fields() {
+        let v = serde_json::to_value(PluginStatus::no_guild()).unwrap();
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec!["auto_allow", "errors", "examples_url", "manageable", "no_guild", "plugins", "problems"]
+        );
+    }
 
     /// REQ-032: 릴리스 빌드는 그 태그, 그 밖은 develop — 없는 태그를 가리키지 않는다.
     #[test]

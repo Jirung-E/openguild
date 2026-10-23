@@ -744,6 +744,50 @@ fn a_corrupt_consent_file_is_never_overwritten() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-385 다시: **읽지 못하는 파일도 덮어쓰지 않는다.** 문법만 봤었다 — UTF-8 이 아닌 파일(디스크 손상, 메모장의
+/// '유니코드' 저장)은 읽기 단계에서 실패하는데, 그건 "아직 없음" 과 같이 빈 상태로 갈음하고 덮어써서 동의 ·
+/// 소스 · 값이 전부 사라졌다. 셋 다 같은 규칙이다. 없는 파일만 처음 상태다.
+#[test]
+fn an_unreadable_state_file_is_never_overwritten() {
+    let _guard = env_lock();
+    let home = fresh_tmp("unreadable-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("unreadable");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+    let bad: &[u8] = b"{\"guilds\": \xff\xfe}";
+
+    let consent_path = consent::path().unwrap();
+    std::fs::write(&consent_path, bad).unwrap();
+    let err = consent::enable_auto_allow(&g).unwrap_err().to_string();
+    assert!(err.contains("동의가 전부 사라지므로"), "{err}");
+    assert_eq!(std::fs::read(&consent_path).unwrap(), bad, "읽지 못한 동의 파일을 덮어썼다");
+
+    let sources_path = super::sources::path().unwrap();
+    std::fs::write(&sources_path, bad).unwrap();
+    let other = fresh_tmp("unreadable-src");
+    // 소스로 받으려면 안에 플러그인이 하나는 있어야 한다.
+    std::fs::create_dir_all(other.join("p1")).unwrap();
+    std::fs::copy(plugins_dir(&g).join("ai-notify").join(MANIFEST), other.join("p1").join(MANIFEST)).unwrap();
+    let err = super::sources::add_source(&g, &other, Some("other")).unwrap_err().to_string();
+    assert!(err.contains("소스가 전부 사라지므로"), "{err}");
+    assert_eq!(std::fs::read(&sources_path).unwrap(), bad, "읽지 못한 소스 파일을 덮어썼다");
+
+    let values_path = super::values::path().unwrap();
+    std::fs::write(&values_path, bad).unwrap();
+    let err = super::values::clear(&g, "ai-notify").unwrap_err().to_string();
+    assert!(err.contains("값이 전부 사라지므로"), "{err}");
+    assert_eq!(std::fs::read(&values_path).unwrap(), bad, "읽지 못한 값 파일을 덮어썼다");
+
+    // 없는 파일은 처음 상태다 — 그대로 된다.
+    std::fs::remove_file(&consent_path).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&other);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// 쓰기가 원자적이다 — 임시 파일을 남기지 않는다.
 #[test]
 fn consent_write_leaves_no_temp_file() {
