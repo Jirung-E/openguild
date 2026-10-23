@@ -79,6 +79,10 @@ test-rust:
 
 # Frontend 검증 — check.yml 의 gui-frontend job 과 **같은 순서·같은 항목**.
 # BUG-251: `check:no-emoji` 가 빠져 있었다(BUG-169 의 재발 방지 검사).
+# DEV-372: 마지막 `npm run build` 는 CI 의 마지막 단계다. 여기 없으면 `just test` 만 믿었을 때
+# 프로덕션 빌드가 깨져도 로컬은 통과한다(실제로 그랬다).
+# 레시피 **안에는 주석을 쓰지 않는다** — 줄이 그대로 셸에 가는데 윈도우의 cmd.exe 는 `#` 을 명령으로
+# 읽어 실패한다(2026-10-23). check:guards 가 지킨다.
 test-frontend:
     cd gui/frontend && npm run check
     cd gui/frontend && npm run check:no-hex
@@ -92,8 +96,6 @@ test-frontend:
     cd gui/frontend && npm run check:classes
     cd gui/frontend && npm run check:guards
     cd gui/frontend && npm test -- --run
-    # DEV-372: CI 의 마지막 단계. 여기 없으면 `just test` 만 믿었을 때
-    # 프로덕션 빌드가 깨져도 로컬은 통과한다(실제로 그랬다).
     cd gui/frontend && npm run build
 
 # 전체 테스트 (CI 와 동일)

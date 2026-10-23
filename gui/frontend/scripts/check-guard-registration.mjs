@@ -16,6 +16,7 @@
 //   1. `scripts/check-*.mjs` 가 전부 `package.json` 의 스크립트로 등록돼 있다.
 //   2. CI 의 gui-frontend job 이 돌리는 npm 명령 집합 == justfile 의
 //      `test-frontend` 가 돌리는 집합.
+//   3. justfile 레시피 안에 `#` 주석이 없다(윈도우 cmd.exe).
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -79,6 +80,18 @@ if (ciJob === '' || jfBody === '') {
 			problems.push(`CI 의 gui-frontend job 에 \`npm ${c}\` 가 없습니다 (justfile 에는 있음).`);
 	}
 }
+
+// ── 3. justfile 레시피 안의 주석 ──────────────────────────────────
+// 레시피 줄은 그대로 셸에 간다. 윈도우의 셸은 cmd.exe(`windows-shell`)라 `#` 을 주석으로 안 보고
+// 명령으로 실행하다 실패한다 — test-frontend 가 윈도우에서만 끝에서 멈췄다(2026-10-23). 맥 · CI(리눅스)는
+// sh 라 아무 말이 없다. 주석은 레시피 위에 쓴다. (`#!` 로 시작하는 shebang 레시피는 예외.)
+just.split('\n').forEach((line, i) => {
+	if (/^\s+#(?!!)/.test(line)) {
+		problems.push(
+			`justfile ${i + 1}번 줄: 레시피 안의 주석 — 윈도우 cmd.exe 가 명령으로 실행합니다. 레시피 위로 옮기세요.`
+		);
+	}
+});
 
 if (problems.length > 0) {
 	console.error(`✗ 검사 등록이 어긋난 곳 ${problems.length}건.`);
