@@ -88,6 +88,9 @@ pub struct Store {
     /// CLI 의 `guild list` 가 쓰는 것과 **같은 규칙**(`recents::guess_name`)이라
     /// 사용자가 보는 이름과 이벤트가 어긋나지 않는다.
     pub guild_name: String,
+    /// DEV-450: 열 때 index.db 가 망가져 있어 새로 만들었으면, 치워 둔 옛 파일 자리.
+    /// 컴포넌트가 사용자에게 알리는 데 쓴다(CLI 는 stderr 한 줄).
+    pub index_recovered: Option<std::path::PathBuf>,
 }
 
 impl Store {
@@ -389,14 +392,28 @@ impl Store {
         })?;
 
         // index.db — 경로 직접 전달 (URL 로 만들면 UNC 가 깨짐, BUG-091 2차).
-        let index_pool = db::create_pool_from_path(&paths.index_db(), false)
-            .await
-            .with_context(|| {
-                format!("failed to open index db: {}", paths.index_db().display())
-            })?;
-        let db_ahead_versions = db::run_migrations(&index_pool)
-            .await
-            .context("failed to migrate index db")?;
+        //
+        // DEV-450: 망가져 있으면 치우고 새로 만든다. 파일에서 다시 만들 수 있는 캐시라 버려도
+        // 잃는 것이 없고, 안 그러면 `reindex` 마저 여기서 막혀 길드가 영영 안 열린다.
+        let (index_pool, db_ahead_versions, index_recovered) =
+            match open_index_db(&paths.index_db()).await {
+                Ok((pool, ahead)) => (pool, ahead, None),
+                Err(e) if is_corrupt_db(&e) => {
+                    let aside = set_aside_corrupt_index(&paths).with_context(|| {
+                        format!(
+                            "index.db 가 망가져 새로 만들려 했으나 옮기지 못했습니다 — 다른 \
+                             프로그램(앱 · 서버)이 쓰고 있다면 닫고 다시 하세요. 처음 오류: {e:#}"
+                        )
+                    })?;
+                    tracing::warn!(
+                        "index.db 가 망가져 있어 새로 만든다 — 옛 파일: {} ({e:#})",
+                        aside.display()
+                    );
+                    let (pool, ahead) = open_index_db(&paths.index_db()).await?;
+                    (pool, ahead, Some(aside))
+                }
+                Err(e) => return Err(e),
+            };
 
         // journal.db
         let journal_pool = db::create_pool_from_path(&paths.journal_db(), false)
@@ -407,11 +424,19 @@ impl Store {
                     paths.journal_db().display()
                 )
             })?;
-        journal::ensure_schema(&journal_pool)
-            .await
-            .context("failed to init journal schema")?;
+        if let Err(e) = journal::ensure_schema(&journal_pool).await {
+            // DEV-450: journal.db 는 캐시가 아니다(되돌리기 기록) — 망가졌어도 버리지 않고 알린다.
+            if is_corrupt_db(&e) {
+                return Err(e.context(format!(
+                    "{} 가 망가졌습니다. 변경 기록(되돌리기용)이고 길드 파일은 멀쩡합니다 — 이 파일을 \
+                     다른 이름으로 옮기면 새 기록으로 열립니다(옛 기록은 잃습니다).",
+                    paths.journal_db().display()
+                )));
+            }
+            return Err(e.context("failed to init journal schema"));
+        }
 
-        Ok(Self {
+        let store = Self {
             paths,
             index_pool,
             journal_pool,
@@ -424,7 +449,16 @@ impl Store {
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             auto_snapshot_ops_override: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
-        })
+            index_recovered,
+        };
+
+        // DEV-450: 새로 만든 index.db 는 비어 있다 — CLI 는 매번 재색인하지 않으므로 여기서 채운다.
+        if store.index_recovered.is_some() {
+            crate::reindex::reindex(&store)
+                .await
+                .context("망가진 index.db 를 새로 만든 뒤 파일에서 다시 채우지 못했습니다")?;
+        }
+        Ok(store)
     }
 
     /// DEV-121: `open` + 외부 편집 incremental sync. GUI startup hook 권장.
@@ -502,8 +536,57 @@ impl Store {
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             auto_snapshot_ops_override: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            index_recovered: None,
         })
     }
+}
+
+/// index.db 를 열고 마이그레이션한다. 실패하면 풀을 닫고 돌려준다 — 망가진 파일을 옮기려면
+/// 아무도 쥐고 있지 않아야 한다(윈도우).
+async fn open_index_db(path: &std::path::Path) -> Result<(SqlitePool, Vec<i64>)> {
+    let pool = db::create_pool_from_path(path, false)
+        .await
+        .with_context(|| format!("failed to open index db: {}", path.display()))?;
+    match db::run_migrations(&pool).await {
+        Ok(ahead) => Ok((pool, ahead)),
+        Err(e) => {
+            pool.close().await;
+            Err(e.context("failed to migrate index db"))
+        }
+    }
+}
+
+/// DEV-450: SQLite 가 "파일이 망가졌다"(`SQLITE_CORRUPT` 11 · `SQLITE_NOTADB` 26)고 답한 오류인가.
+/// 확장 코드(예: 267 `CORRUPT_VTAB`)도 아래 8비트가 기본 코드다.
+pub(crate) fn is_corrupt_db(err: &anyhow::Error) -> bool {
+    err.chain().any(|e| match e.downcast_ref::<sqlx::Error>() {
+        Some(sqlx::Error::Database(d)) => d
+            .code()
+            .and_then(|c| c.parse::<i32>().ok())
+            .is_some_and(|c| matches!(c & 0xff, 11 | 26)),
+        _ => false,
+    })
+}
+
+/// DEV-450: 망가진 index.db(와 `-wal` · `-shm`)를 `backups/index.db.corrupt` 로 옮긴다. 원인을 볼 수
+/// 있게 지우지 않되, 한 벌만 둔다 — 앞서 옮긴 것은 덮는다.
+fn set_aside_corrupt_index(paths: &GuildPaths) -> Result<std::path::PathBuf> {
+    fn with_suffix(p: &std::path::Path, suffix: &str) -> std::path::PathBuf {
+        let mut s = p.as_os_str().to_owned();
+        s.push(suffix);
+        s.into()
+    }
+    let src = paths.index_db();
+    let dst = paths.backups_dir().join("index.db.corrupt");
+    for suffix in ["", "-wal", "-shm"] {
+        let (from, to) = (with_suffix(&src, suffix), with_suffix(&dst, suffix));
+        let _ = std::fs::remove_file(&to);
+        if from.exists() {
+            std::fs::rename(&from, &to)
+                .with_context(|| format!("{} → {}", from.display(), to.display()))?;
+        }
+    }
+    Ok(dst)
 }
 
 /// Journal 관련 모듈 (AOF append).
@@ -859,5 +942,93 @@ mod tests {
         journal::ensure_schema(&store.journal_pool).await.unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
-}
 
+    async fn quest_count(store: &Store) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM quests")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap()
+    }
+
+    /// DEV-450: 망가진 index.db 는 치우고 새로 만들어 파일에서 다시 채운다 — 그러지 않으면
+    /// `reindex` 마저 `Store::open` 에서 막혀 길드가 영영 안 열린다. 망가지는 모양 둘 다:
+    /// 데이터베이스가 아닌 글(NOTADB)과, 머리는 멀쩡한데 안쪽이 깨진 것(CORRUPT).
+    #[tokio::test]
+    async fn corrupt_index_db_is_set_aside_and_rebuilt_from_files() {
+        for label in ["notadb", "malformed"] {
+            let dir = fresh_tmp(&format!("corrupt-{label}"));
+            crate::repo::seed_guild_dir(&dir).unwrap();
+            let store = Store::open(&dir).await.unwrap();
+            crate::ops::quests::create_quest(
+                &store,
+                crate::models::CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: "살아남을 퀘스트".into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(2),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(quest_count(&store).await, 1);
+            store.index_pool.close().await;
+            store.journal_pool.close().await;
+            drop(store);
+
+            let index = dir.join(".guild").join("index.db");
+            let mut bytes = std::fs::read(&index).unwrap();
+            if label == "notadb" {
+                bytes = b"not a database at all ".repeat(300);
+            } else {
+                bytes[100..4096].fill(0xff); // 첫 페이지(스키마 표)가 깨진다
+            }
+            std::fs::write(&index, &bytes).unwrap();
+            // 망가진 그대로 열면 정말 실패하는지 — 아니면 이 시험은 아무것도 안 본다.
+            let raw_err = match open_index_db(&index).await {
+                Ok(_) => panic!("{label}: 망가진 파일이 열렸다"),
+                Err(e) => e,
+            };
+            assert!(is_corrupt_db(&raw_err), "{label}: {raw_err:#}");
+
+            let store = Store::open(&dir).await.unwrap();
+            let aside = store.index_recovered.clone().expect(label);
+            assert_eq!(aside, dir.join(".guild").join("backups").join("index.db.corrupt"));
+            assert_eq!(std::fs::read(&aside).unwrap(), bytes, "{label}: 옛 파일이 그대로 남는다");
+            assert_eq!(quest_count(&store).await, 1, "{label}: 파일에서 다시 채운다");
+            store.index_pool.close().await;
+            store.journal_pool.close().await;
+            drop(store);
+
+            // 한 번 고친 뒤에는 멀쩡하다 — 다시 열어도 새로 만들지 않는다.
+            let store = Store::open(&dir).await.unwrap();
+            assert!(store.index_recovered.is_none(), "{label}");
+            assert_eq!(quest_count(&store).await, 1);
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// DEV-450: 멀쩡한 길드는 아무것도 안 바뀐다.
+    #[tokio::test]
+    async fn healthy_index_db_is_left_alone() {
+        let dir = fresh_tmp("healthy-index");
+        let store = Store::open(&dir).await.unwrap();
+        assert!(store.index_recovered.is_none());
+        assert!(!store.paths.backups_dir().join("index.db.corrupt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-450: SQLite 의 망가짐 코드만 고른다 — 다른 실패(잠김 · 권한)로 캐시를 버리면 안 된다.
+    #[tokio::test]
+    async fn only_corruption_codes_count_as_corrupt() {
+        let pool = db::create_pool("sqlite::memory:").await.unwrap();
+        let err: anyhow::Error = sqlx::query("SELECT * FROM no_such_table")
+            .execute(&pool)
+            .await
+            .unwrap_err()
+            .into();
+        assert!(!is_corrupt_db(&err), "{err:#}");
+        assert!(!is_corrupt_db(&anyhow::anyhow!("database disk image is malformed")));
+    }
+}

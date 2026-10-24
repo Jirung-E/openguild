@@ -533,6 +533,7 @@ macOS 는 `/Applications/openguild.app`.
 | 파일을 직접 편집했는데 GUI 가 옛 상태 | 시동 시 자동 reindex 합니다. 또는 상단 reindex 버튼. |
 | 다른 PC 에서 git pull 후 quest 안 보임 | 위와 동일. 자동 / 수동 reindex. |
 | 캐시 손상 의심 | Settings → "Drift 검사" → 필요 시 Reindex. |
+| `database disk image is malformed` | `index.db`(캐시)가 망가진 것. 열 때 알아서 `backups/index.db.corrupt` 로 옮기고 파일에서 새로 만듭니다. `journal.db` 가 망가졌다고 나오면 그 파일을 다른 이름으로 옮기고 다시 여세요(변경 기록만 잃고 길드 파일은 그대로). |
 | 데이터 손실 의심 | Settings → Admin → 최근 snapshot 복원. |
 | CLI 가 인식 안 됨 | 설치 시 "Add to PATH" 체크 안 했을 가능성. 재설치 또는 수동 PATH 등록. |
 

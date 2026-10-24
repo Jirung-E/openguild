@@ -383,6 +383,12 @@ async fn run_host(
     let ctx = load_guild()?;
     // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    if let Some(aside) = &store.index_recovered {
+        eprintln!(
+            "⚠ index.db(캐시)가 망가져 있어 파일에서 새로 만들었습니다 — 옛 파일: {}",
+            aside.display()
+        );
+    }
     // DEV-299: 서버는 프로세스가 계속 살아 있으므로 auto-snapshot 을
     // 백그라운드로 — 임계치에 걸린 요청 하나가 ~2초 멈추던 것을 없앤다.
     store.set_background_snapshots(true);

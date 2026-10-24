@@ -2486,6 +2486,16 @@ impl Backend {
             .build()
             .context("failed to start tokio runtime")?;
         let store = rt.block_on(openguild_core::Store::open(&guild_path))?;
+        if let Some(aside) = &store.index_recovered {
+            eprintln!(
+                "{}",
+                tf!(
+                    "⚠ index.db(캐시)가 망가져 있어 파일에서 새로 만들었습니다 — 옛 파일: {}",
+                    "⚠ index.db (cache) was corrupt and has been rebuilt from files — old file: {}",
+                    aside.display()
+                )
+            );
+        }
 
         // DEV-117: 여기서 `recents::add` 를 호출하지 않는다.
         //
