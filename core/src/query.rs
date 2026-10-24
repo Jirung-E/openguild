@@ -515,8 +515,7 @@ impl Query {
                     Target::Campaign => campaign_cond(term.key, v),
                     Target::Library => library_cond(term.key, v),
                 };
-                let (cond, b) = cond
-                    .ok_or_else(|| QueryError::at(term.pos, format!("'{v}'")))?;
+                let (cond, b) = cond.ok_or_else(|| QueryError::at(term.pos, format!("'{v}'")))?;
                 alts.push(cond);
                 binds.extend(b);
             }
@@ -779,10 +778,22 @@ mod tests {
         assert!(err(Target::Campaign, "urgency:2").contains("status, start, end, quest"));
         assert!(err(Target::Library, "status:open").contains("tag, folder, updated"));
         assert!(err(Target::Quest, "folder:a").contains("status, type, tag"));
-        assert!(parse_for(Target::Campaign, "status:active,DONE end:overdue quest:dev-3").is_ok());
+        assert!(
+            parse_for(
+                Target::Campaign,
+                "status:active,DONE end:overdue quest:dev-3"
+            )
+            .is_ok()
+        );
         assert!(err(Target::Campaign, "status:open").contains("active"));
         assert!(err(Target::Campaign, "start:soon").contains("start"));
-        assert!(parse_for(Target::Library, "tag:a folder:none updated:>=2026-01-01 낱말").is_ok());
+        assert!(
+            parse_for(
+                Target::Library,
+                "tag:a folder:none updated:>=2026-01-01 낱말"
+            )
+            .is_ok()
+        );
         // 퀘스트의 `status` 는 길드가 정하므로 아무 값이나 받는다.
         assert!(parse("status:anything").is_ok());
 
@@ -791,7 +802,10 @@ mod tests {
             .to_sql()
             .unwrap();
         assert!(sql.contains("library_docs.path LIKE ? ESCAPE"), "{sql}");
-        assert_eq!(binds, vec![Bind::Text("a_b".into()), Bind::Text("a\\_b/%".into())]);
+        assert_eq!(
+            binds,
+            vec![Bind::Text("a_b".into()), Bind::Text("a\\_b/%".into())]
+        );
         let (sql, binds) = parse_for(Target::Campaign, "-quest:DEV-12")
             .unwrap()
             .to_sql()
