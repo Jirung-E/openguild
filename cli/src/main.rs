@@ -6024,11 +6024,7 @@ fn print_quest_list(quests: &[Quest], json: bool) {
 /// 폭 계산을 깨지 않게 한다.
 type TableCell = (String, Option<String>);
 
-/// 공용 테이블 렌더 — 헤더 + 컬럼 폭 정렬 + 행수 footer. 원칙: **한글 등
-/// 가변폭(더블폭) 문자가 올 수 있는 텍스트는 마지막 컬럼에** — 마지막 컬럼은
-/// 패딩하지 않으므로 폭 계산 문제가 없다. 그 외 컬럼은 ASCII 전제.
-/// `right_align[i]` = 해당 컬럼 우측 정렬(숫자용).
-/// 터미널에서 차지하는 **칸 수** 기준으로 오른쪽에 공백을 채운다.
+/// 테이블 셀 폭 맞춤 — 터미널에서 차지하는 **칸 수** 기준으로 오른쪽에 공백을 채운다.
 ///
 /// BUG-326: 열을 맞출 때 `chars().count()`(글자 수)를 쓰면 한글·한자·일본어에서 어긋난다 —
 /// 그 글자들은 문자 1개지만 터미널에서 **두 칸**을 먹기 때문이다. `긴명령`(3자)은 9칸,
@@ -6047,20 +6043,33 @@ fn max_width<'a>(cells: impl Iterator<Item = &'a str>) -> usize {
     cells.map(|c| c.width()).max().unwrap_or(0)
 }
 
+/// 공용 테이블 렌더 — 헤더 + 컬럼 폭 정렬 + 행수 footer. 마지막 컬럼은 패딩하지 않는다
+/// (제목처럼 긴 글이 온다). 폭은 **터미널 칸 수**로 센다 — BUG-353: 상태 이름(`테스트 중`)처럼
+/// 한글이 앞 컬럼에도 온다.
+/// `right_align[i]` = 해당 컬럼 우측 정렬(숫자용).
 fn render_table(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>], noun: &str) {
     if rows.is_empty() {
         println!("(no {noun})");
         return;
     }
+    for line in table_lines(headers, right_align, rows) {
+        println!("{line}");
+    }
+    println!("-- {} {noun}", rows.len());
+}
+
+/// [`render_table`] 의 몸통 — 머리글 · 가로줄 · 행. 시험할 수 있게 글로 돌려준다.
+fn table_lines(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>]) -> Vec<String> {
+    use unicode_width::UnicodeWidthStr;
     let ncols = headers.len();
     // 마지막 컬럼 제외 폭 계산.
     let widths: Vec<usize> = (0..ncols.saturating_sub(1))
         .map(|i| {
-            rows.iter()
-                .map(|r| r.get(i).map(|(t, _)| t.chars().count()).unwrap_or(0))
-                .chain(std::iter::once(headers[i].chars().count()))
-                .max()
-                .unwrap_or(0)
+            max_width(
+                rows.iter()
+                    .map(|r| r.get(i).map(|(t, _)| t.as_str()).unwrap_or(""))
+                    .chain(std::iter::once(headers[i])),
+            )
         })
         .collect();
     let pad = |text: &str, i: usize| -> String {
@@ -6069,9 +6078,9 @@ fn render_table(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>],
         }
         let w = widths[i];
         if right_align.get(i).copied().unwrap_or(false) {
-            format!("{text:>w$}")
+            format!("{}{text}", " ".repeat(w.saturating_sub(text.width())))
         } else {
-            format!("{text:<w$}")
+            pad_to_width(text, w)
         }
     };
     let header_line = headers
@@ -6080,8 +6089,8 @@ fn render_table(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>],
         .map(|(i, h)| pad(h, i))
         .collect::<Vec<_>>()
         .join("  ");
-    println!("{header_line}");
-    println!("{}", "─".repeat(header_line.chars().count().max(10)));
+    let rule = "─".repeat(header_line.width().max(10));
+    let mut out = vec![header_line, rule];
     for row in rows {
         let line = row
             .iter()
@@ -6095,9 +6104,9 @@ fn render_table(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>],
             })
             .collect::<Vec<_>>()
             .join("  ");
-        println!("{line}");
+        out.push(line);
     }
-    println!("-- {} {noun}", rows.len());
+    out
 }
 
 /// DEV-211: 사람용 정렬 표 — 색은 line 렌더와 동일 규칙(type 색 ID / status
@@ -10729,6 +10738,35 @@ mod tests {
         for name in names {
             assert_eq!(super::pad_to_width(name, w).width(), w, "{name}");
         }
+    }
+
+    // BUG-353: 표의 앞 컬럼에도 한글이 온다(상태 `테스트 중`). 마지막 컬럼이 같은 칸에서 시작해야 한다.
+    #[test]
+    fn table_columns_line_up_with_korean_in_front_columns() {
+        use unicode_width::UnicodeWidthStr;
+        let cell = |t: &str| (t.to_string(), None);
+        let rows = vec![
+            vec![cell("DEV-1"), cell("테스트 중"), cell("2"), cell("제목 하나")],
+            vec![cell("BUG-12"), cell("Open"), cell("10"), cell("두 번째")],
+            vec![cell("REQ-3"), cell("진행 중"), cell("3"), cell("셋")],
+        ];
+        let headers = ["ID", "STATUS", "URG", "TITLE"];
+        let lines = super::table_lines(&headers, &[false, false, true, false], &rows);
+        let starts: Vec<usize> = lines
+            .iter()
+            .filter(|l| !l.starts_with('─'))
+            .map(|l| {
+                let (head, _) = l.rsplit_once("  ").unwrap();
+                head.width() + 2
+            })
+            .collect();
+        let shown = lines.join("\n");
+        assert!(starts.windows(2).all(|w| w[0] == w[1]), "마지막 컬럼 시작 칸 {starts:?}\n{shown}");
+        // 숫자는 오른쪽 맞춤 — 2 와 10 의 끝이 같다.
+        assert!(lines[2].contains("테스트 중    2  제목"), "{}", lines[2]);
+        assert!(lines[3].contains("Open        10  두"), "{}", lines[3]);
+        // 가로줄은 머리글 칸 수만큼(한글 머리글이어도 짧아지지 않게).
+        assert_eq!(lines[1].chars().count(), lines[0].width().max(10));
     }
 
     #[test]
