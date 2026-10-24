@@ -31,8 +31,8 @@ export interface QuestFilterState {
 	commentedAfter: string;
 	commentedBefore: string;
 	/**
-	 * DEV-447 (REQ-039): 쿼리 문법. 목록만 본다 — 보드는 아직 거르지 않으므로
-	 * [`isFilterActive`] 에 넣지 않는다(넣으면 보드가 '필터 걸림' 을 띄우고 아무것도 안 흐린다).
+	 * DEV-447 (REQ-039): 쿼리 문법. DEV-452 부터 보드도 이것으로 흐린다 — 그래서
+	 * [`isFilterActive`] 에 들어간다.
 	 */
 	query: string;
 }
@@ -77,7 +77,8 @@ export function isFilterActive(f: QuestFilterState): boolean {
 		f.updatedAfter !== '' ||
 		f.updatedBefore !== '' ||
 		f.commentedAfter !== '' ||
-		f.commentedBefore !== ''
+		f.commentedBefore !== '' ||
+		f.query.trim() !== ''
 	);
 }
 

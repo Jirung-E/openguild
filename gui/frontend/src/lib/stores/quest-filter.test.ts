@@ -125,9 +125,10 @@ describe('isFilterActive', () => {
 	});
 
 	/** titleOnly 는 단독으로는 아무것도 거르지 않는다 — 검색어의 수식어. */
-	/** DEV-447: 쿼리는 목록만 거른다 — 보드가 '필터 걸림' 을 띄우고 아무것도 안 흐리면 안 된다. */
-	it('쿼리만으로는 보드 기준 비활성', () => {
-		expect(isFilterActive(filter({ query: 'status:open' }))).toBe(false);
+	/** DEV-452: 보드도 쿼리로 흐린다 — 쿼리만 걸려도 '필터 걸림'. 빈칸 · 공백만은 아니다. */
+	it('쿼리만으로도 보드 기준 활성', () => {
+		expect(isFilterActive(filter({ query: 'status:open' }))).toBe(true);
+		expect(isFilterActive(filter({ query: '   ' }))).toBe(false);
 	});
 
 	it('titleOnly 단독은 비활성', () => {

@@ -474,6 +474,22 @@ describe('TauriTransport', () => {
 		});
 	});
 
+	it('routeToInvoke — 캠페인 · 도서관 목록의 쿼리 ?q= 를 코어로 넘긴다 (DEV-452)', () => {
+		expect(
+			__test_only.routeToInvoke({ method: 'GET', path: '/api/library?q=tag%3A%EC%84%A4%EA%B3%84' })
+		).toEqual({ cmd: 'list_books', args: { q: 'tag:설계' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/campaigns?status=active&q=end%3Aoverdue'
+			})
+		).toEqual({ cmd: 'list_campaigns', args: { status: 'active', q: 'end:overdue' } });
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/campaigns' })).toEqual({
+			cmd: 'list_campaigns',
+			args: {}
+		});
+	});
+
 	it('routeToInvoke — 도서관 CRUD 매핑 (DEV-217)', () => {
 		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library' })).toEqual({
 			cmd: 'list_books',

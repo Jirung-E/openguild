@@ -321,7 +321,11 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 
 	// DEV-217: 도서관 — server routes/library.rs 와 1:1.
 	if (pathOnly === '/api/library') {
-		if (method === 'GET') return { cmd: 'list_books', args: {} };
+		// DEV-452: 쿼리(`?q=`)는 코어가 거른다 — 서버와 같은 값.
+		if (method === 'GET') {
+			const q = query.get('q');
+			return { cmd: 'list_books', args: q ? { q } : {} };
+		}
 		if (method === 'POST') {
 			const b = (body as { title?: string; body?: string; path?: string } | undefined) ?? {};
 			return {
@@ -766,9 +770,11 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	}
 	if (method === 'GET' && pathOnly === '/api/campaigns') {
 		const status = query.get('status');
+		// DEV-452: 쿼리(`?q=`)도 그대로 — 코어가 거른다.
+		const q = query.get('q');
 		return {
 			cmd: 'list_campaigns',
-			args: status ? { status } : {}
+			args: { ...(status ? { status } : {}), ...(q ? { q } : {}) }
 		};
 	}
 	if (method === 'POST' && pathOnly === '/api/campaigns') {

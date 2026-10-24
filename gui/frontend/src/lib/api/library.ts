@@ -40,6 +40,9 @@ export interface LibraryExported {
 
 export const libraryApi = {
 	list: () => api.get<Book[]>('/api/library'),
+	/** DEV-452 (REQ-039): 쿼리(`tag:설계 -folder:보관`)에 맞는 문서 — 해석과 거르기는 코어(DEV-451). */
+	matchQuery: (q: string) =>
+		api.get<Book[]>(`/api/library?${new URLSearchParams({ q }).toString()}`),
 	get: (bookId: string) => api.get<Book>(`/api/library/${encodeURIComponent(bookId)}`),
 	// DEV-290: BOOK 변경 이력(최신→과거).
 	history: (bookId: string) =>

@@ -42,6 +42,8 @@
 	} from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// DEV-452 (REQ-039): 쿼리 칸 — 퀘스트 목록과 같은 부품, 키만 도서관 것.
+	import QueryField from '$lib/components/QueryField.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
@@ -129,6 +131,53 @@
 		collapsedFolders = next;
 		searchQuery = '';
 	}
+	// DEV-452: 쿼리 — 해석과 거르기는 코어가 하고(`GET /api/library?q=`), 여기는 맞는 번호만 받아
+	// 태그 줄 · 검색과 **그리고**로 겹친다. 틀린 동안은 거르지 않는다(퀘스트 목록과 같다).
+	const LIBRARY_QUERY_KEYS = [
+		['tag', 'tag:설계', 'library.queryHelpTag'],
+		['folder', '-folder:보관', 'library.queryHelpFolder'],
+		['updated', 'updated:>=2026-10-01', 'library.queryHelpUpdated']
+	] as const;
+	let query = $state($page.url.searchParams.get('q') ?? '');
+	let queryMatch = $state<Set<string> | null>(null);
+	let queryError = $state<string | null>(null);
+	let querySeq = 0;
+	let queryTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		const q = query.trim();
+		void books; // 다시 불러오면 맞는 것도 다시 묻는다.
+		if (queryTimer) clearTimeout(queryTimer);
+		const seq = ++querySeq;
+		if (!q) {
+			queryMatch = null;
+			queryError = null;
+			return;
+		}
+		queryTimer = setTimeout(() => {
+			libraryApi
+				.matchQuery(q)
+				.then((rows) => {
+					if (seq !== querySeq) return;
+					queryMatch = new Set(rows.map((b) => b.book_id));
+					queryError = null;
+				})
+				.catch((e) => {
+					if (seq !== querySeq) return;
+					queryMatch = null;
+					queryError = e instanceof Error ? e.message : String(e);
+				});
+		}, 250);
+	});
+	// 주소에 싣는다(새로고침 · 공유). 문서 · 폴더 이동과 달리 글자마다 기록을 쌓지 않는다.
+	$effect(() => {
+		const q = query.trim();
+		const url = new URL(window.location.href);
+		if ((url.searchParams.get('q') ?? '') === q) return;
+		if (q) url.searchParams.set('q', q);
+		else url.searchParams.delete('q');
+		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+	});
+
 	// DEV-243 후속(admin 지적): 태그는 달 수 있는데 태그로 찾을 방법이 없었음.
 	// quest 의 DEV-068 tag 필터(AND, chip 클릭 토글)와 동일 패턴.
 	let filterTags = $state(new Set<string>());
@@ -149,13 +198,14 @@
 		filterTags = next;
 	}
 	const tagFilteredBooks = $derived(
-		filterTags.size === 0
+		(filterTags.size === 0
 			? books
 			: books.filter((b) => {
 					const bTags = new Set(b.tags ?? []);
 					for (const t of filterTags) if (!bTags.has(t)) return false;
 					return true;
 				})
+		).filter((b) => !queryMatch || queryMatch.has(b.book_id))
 	);
 	// DEV-251: 문서 정렬 기준 선택 — 번호/이름/수정순 + 방향. localStorage 영속.
 	type DocSortKey = 'number' | 'title' | 'updated';
@@ -458,6 +508,8 @@
 		const next = new URLSearchParams();
 		if (explorerPath) next.set('path', explorerPath);
 		if (selectedId) next.set('id', selectedId);
+		// DEV-452: 쿼리는 이동해도 남는다.
+		if (query.trim()) next.set('q', query.trim());
 		const qs = next.toString();
 		goto(qs ? `/library?${qs}` : '/library', { keepFocus: true, noScroll: true });
 	}
@@ -1244,6 +1296,16 @@
 				storageKey="library"
 			/>
 		{/if}
+		<div class="query-line">
+			<QueryField
+				bind:value={query}
+				error={queryError}
+				keys={LIBRARY_QUERY_KEYS}
+				rulesKey="library.queryHelpRules"
+				placeholderKey="library.queryPlaceholder"
+				testid="library-query"
+			/>
+		</div>
 		<div class="crumbs">
 			<!-- BUG-127(admin 요청): 현재 위치 왼쪽에 상위 폴더 이동 버튼.
 			     BUG-127: 상위/도서관/각 경로 조각도 드롭 대상 — 문서를 여기로 끌어다
@@ -1588,6 +1650,16 @@
 							storageKey="library"
 						/>
 					{/if}
+					<div class="query-line">
+						<QueryField
+							bind:value={query}
+							error={queryError}
+							keys={LIBRARY_QUERY_KEYS}
+							rulesKey="library.queryHelpRules"
+							placeholderKey="library.queryPlaceholder"
+							testid="library-query"
+						/>
+					</div>
 					<!-- DEV-429: 트리에서 고른 것도 같은 줄로 다룬다. -->
 					{@render pickedTools()}
 					{#if searchResults}
@@ -2514,6 +2586,16 @@
 	   같아 보이게 한다. */
 	.page > .search-row {
 		margin-bottom: var(--sp-8);
+	}
+	/* DEV-452: 쿼리 칸 — 줄 · 오류 · 쓰는 법이 각자 한 줄을 다 쓴다. 탐색기 쪽은 위아래를 margin 으로
+	   띄운다(위의 BUG-266 과 같은 까닭 — 사이드바는 부모 gap 이 띄운다). 위아래 margin 은 겹쳐 하나가 된다. */
+	.query-line {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-4) var(--sp-8);
+	}
+	.page > .query-line {
+		margin-block: var(--sp-8);
 	}
 	.search-row .search-input {
 		/* flex-basis 100% → 항상 자기 줄을 독차지하고 뒤 요소를 밀어낸다. */

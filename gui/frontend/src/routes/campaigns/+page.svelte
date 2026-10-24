@@ -17,6 +17,8 @@
 	import type { Campaign, CampaignSummary } from '$lib/types';
 	import { isDateOverdue } from '$lib/utils/datetime';
 	import NewCampaignModal from '$lib/components/NewCampaignModal.svelte';
+	// DEV-452 (REQ-039): 쿼리 칸 — 퀘스트 목록과 같은 부품, 키만 캠페인 것.
+	import QueryField from '$lib/components/QueryField.svelte';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -50,8 +52,57 @@
 		}
 	});
 
+	// DEV-452: 쿼리 — 해석과 거르기는 코어가 하고(`GET /api/campaigns?q=`), 여기는 맞는 번호만 받아
+	// 상태 선택과 **그리고**로 겹친다. 틀린 동안은 거르지 않는다(퀘스트 목록과 같다). 주소 `?q=` 에 실린다.
+	const CAMPAIGN_QUERY_KEYS = [
+		['status', 'status:active', 'campaignList.queryHelpStatus'],
+		['start', 'start:>=2026-10-01', 'campaignList.queryHelpStart'],
+		['end', 'end:overdue', 'campaignList.queryHelpEnd'],
+		['quest', 'quest:DEV-001', 'campaignList.queryHelpQuest']
+	] as const;
+	let query = $state($page.url.searchParams.get('q') ?? '');
+	let queryMatch = $state<Set<string> | null>(null);
+	let queryError = $state<string | null>(null);
+	let querySeq = 0;
+	let queryTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		const q = query.trim();
+		void all; // 다시 불러오면(순서 바꾸기 등) 맞는 것도 다시 묻는다.
+		if (queryTimer) clearTimeout(queryTimer);
+		const seq = ++querySeq;
+		if (!q) {
+			queryMatch = null;
+			queryError = null;
+			return;
+		}
+		queryTimer = setTimeout(() => {
+			campaignsApi
+				.matchQuery(q)
+				.then((rows) => {
+					if (seq !== querySeq) return;
+					queryMatch = new Set(rows.map((r) => r.campaign_slug));
+					queryError = null;
+				})
+				.catch((e) => {
+					if (seq !== querySeq) return;
+					queryMatch = null;
+					queryError = e instanceof Error ? e.message : String(e);
+				});
+		}, 250);
+	});
+	// 주소에 싣는다 — 새로고침 · 공유한 링크가 같은 목록을 연다.
+	$effect(() => {
+		const q = query.trim();
+		const url = new URL(window.location.href);
+		if ((url.searchParams.get('q') ?? '') === q) return;
+		if (q) url.searchParams.set('q', q);
+		else url.searchParams.delete('q');
+		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+	});
+
 	let filtered = $derived.by(() => {
-		const base = statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
+		const byStatus = statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
+		const base = queryMatch ? byStatus.filter((c) => queryMatch!.has(c.campaign_slug)) : byStatus;
 		return sortCampaigns(base, sort);
 	});
 
@@ -145,6 +196,14 @@
 				<option value="manual">{t('campaignList.sortManual', $locale)}</option>
 			</select>
 		</label>
+		<QueryField
+			bind:value={query}
+			error={queryError}
+			keys={CAMPAIGN_QUERY_KEYS}
+			rulesKey="campaignList.queryHelpRules"
+			placeholderKey="campaignList.queryPlaceholder"
+			testid="campaign-query"
+		/>
 	</div>
 
 	{#if loading}
@@ -234,7 +293,9 @@
 
 	.controls {
 		display: flex;
-		gap: var(--sp-16);
+		/* DEV-452: 쿼리 칸은 다음 줄에 한 줄을 다 쓴다. */
+		flex-wrap: wrap;
+		gap: var(--sp-8) var(--sp-16);
 		margin-bottom: var(--sp-16);
 	}
 	.controls label {

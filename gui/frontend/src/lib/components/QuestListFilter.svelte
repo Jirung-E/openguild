@@ -7,6 +7,8 @@
 	import { statusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from './DateField.svelte';
+	// DEV-452: 쿼리 칸 — 보드 · 캠페인 · 도서관과 같이 쓴다.
+	import QueryField from './QueryField.svelte';
 	import type { TriState } from '$lib/utils/quest-list';
 
 	let {
@@ -79,7 +81,6 @@
 	const activeChipCount = $derived(typeIds.size + statusIds.size);
 
 	// DEV-447: 쿼리 도움말 — 키 목록. 값의 예는 CLI `quest list -q` 와 같다.
-	let queryHelpOpen = $state(false);
 	const QUERY_KEYS = [
 		['status', 'status:open,in_progress', 'filter.queryHelpStatus'],
 		['type', 'type:BUG', 'filter.queryHelpType'],
@@ -286,53 +287,7 @@
 			>
 		{/if}
 		<!-- DEV-447 (REQ-039): 쿼리 — 고급 안에서 줄 하나를 다 쓴다(값이 길다; admin: 고급에 넣는다). -->
-		<div class="query-row">
-			<label class="query-wrap">
-				<span class="query-label">{t('filter.queryLabel', $locale)}</span>
-				<input
-					type="search"
-					class="input query-input"
-					class:bad={queryError}
-					placeholder={t('filter.queryPlaceholder', $locale)}
-					bind:value={query}
-					spellcheck="false"
-					autocomplete="off"
-					aria-invalid={queryError ? 'true' : undefined}
-					data-testid="quest-query-input"
-				/>
-				{#if query}
-					<button
-						type="button"
-						class="search-clear"
-						title={t('filter.clearQuery', $locale)}
-						onclick={() => (query = '')}
-						data-testid="quest-query-clear">×</button
-					>
-				{/if}
-			</label>
-			<button
-				type="button"
-				class="query-help-btn"
-				class:active={queryHelpOpen}
-				aria-expanded={queryHelpOpen}
-				title={t('filter.queryHelpToggle', $locale)}
-				onclick={() => (queryHelpOpen = !queryHelpOpen)}>?</button
-			>
-		</div>
-		{#if queryError}
-			<p class="query-error" role="alert" data-testid="quest-query-error">{queryError}</p>
-		{/if}
-		{#if queryHelpOpen}
-			<div class="query-help" data-testid="quest-query-help">
-				<p>{t('filter.queryHelpRules', $locale)}</p>
-				<dl>
-					{#each QUERY_KEYS as [key, example, label] (key)}
-						<dt><code>{example}</code></dt>
-						<dd>{t(label, $locale)}</dd>
-					{/each}
-				</dl>
-			</div>
-		{/if}
+		<QueryField bind:value={query} error={queryError} keys={QUERY_KEYS} />
 	</div>
 {/if}
 
@@ -462,83 +417,6 @@
 		cursor: pointer;
 	}
 	.search-opt:hover {
-		color: var(--text);
-	}
-
-	/* --- DEV-447: 쿼리 --- */
-	.query-row {
-		flex: 1 1 100%;
-		display: flex;
-		align-items: center;
-		gap: var(--sp-8);
-	}
-	.query-wrap {
-		position: relative;
-		flex: 1 1 auto;
-		display: flex;
-		align-items: center;
-		gap: var(--sp-8);
-		min-width: 0;
-	}
-	.query-label {
-		font-size: var(--fs-sm);
-		color: var(--text-muted);
-		white-space: nowrap;
-	}
-	.query-input {
-		flex: 1 1 auto;
-		min-width: 0;
-		padding: var(--sp-4) var(--sp-32) var(--sp-4) var(--sp-12);
-		font-family: var(--font-mono);
-		font-size: var(--fs-sm);
-		transition: border-color var(--dur-fast);
-	}
-	.query-input::-webkit-search-cancel-button {
-		display: none;
-	}
-	.query-input.bad {
-		border-color: var(--danger);
-	}
-	/* 고급 패널의 알약 버튼 규칙(.xfilter-panel button)보다 세게 — 지우기 ×는 테두리 없이. */
-	.xfilter-panel .search-clear {
-		padding: 0 var(--sp-6);
-		border: none;
-		border-radius: var(--r-pill);
-		background: transparent;
-		color: var(--text-faint);
-	}
-	.xfilter-panel .search-clear:hover {
-		color: var(--danger);
-	}
-	.xfilter-panel .query-help-btn {
-		padding: var(--sp-2) var(--sp-8);
-		font-weight: var(--fw-semibold);
-	}
-	.query-error {
-		flex: 1 1 100%;
-		margin: 0;
-		font-size: var(--fs-sm);
-		color: var(--danger);
-	}
-	.query-help {
-		flex: 1 1 100%;
-		font-size: var(--fs-sm);
-		color: var(--text-muted);
-	}
-	.query-help p {
-		margin: 0 0 var(--sp-4);
-	}
-	.query-help dl {
-		display: grid;
-		grid-template-columns: max-content 1fr;
-		gap: var(--sp-2) var(--sp-12);
-		margin: 0;
-	}
-	.query-help dd {
-		margin: 0;
-	}
-	.query-help code {
-		font-family: var(--font-mono);
 		color: var(--text);
 	}
 

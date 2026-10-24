@@ -18,6 +18,13 @@ export const campaignsApi = {
 	},
 
 	/**
+	 * DEV-452 (REQ-039): 쿼리(`end:overdue quest:DEV-001 출시`)에 맞는 캠페인. 해석과 거르기는 코어
+	 * (DEV-451) — 화면은 맞는 번호만 받아 지금 목록에 겹친다. 틀린 쿼리는 "쿼리 N번째 글자: …" 로 던진다.
+	 */
+	matchQuery: (q: string) =>
+		api.get<Campaign[]>(`/api/campaigns?${new URLSearchParams({ q }).toString()}`),
+
+	/**
 	 * 목록 화면용 — 전체 캠페인 summary(진행도 포함, admin 요청).
 	 * `list()` 는 진행도가 없는 원본 행이라 목록에서 진행바를 못 그린다.
 	 */

@@ -2593,6 +2593,40 @@
 				});
 		}, 250);
 	}
+	// DEV-452 (REQ-039): 쿼리도 흐린다 — 목록과 같은 판정(코어 `?q=`). 틀린 동안은 쿼리만 빼고 거른다
+	// (목록과 같다). 다시 그릴 때(새로 불러옴)는 맞는 것이 바뀌었을 수 있어 다시 묻는다.
+	let boardQueryIds: Set<number> | null = null;
+	let boardQueryKey = '';
+	let boardQueryError = $state<string | null>(null);
+	let boardQuerySeq = 0;
+	let boardQueryTimer: ReturnType<typeof setTimeout> | null = null;
+	function refreshBoardQuery(f: QuestFilterState, force = false) {
+		const key = f.query.trim();
+		if (key === boardQueryKey && !force) return;
+		boardQueryKey = key;
+		boardQueryIds = null;
+		if (boardQueryTimer) clearTimeout(boardQueryTimer);
+		const seq = ++boardQuerySeq;
+		if (!key) {
+			boardQueryError = null;
+			return;
+		}
+		boardQueryTimer = setTimeout(() => {
+			questsApi
+				.matchQuery(key)
+				.then((rows) => {
+					if (seq !== boardQuerySeq) return;
+					boardQueryIds = new Set(rows.map((r) => r.id));
+					boardQueryError = null;
+					applyFilterDim();
+				})
+				.catch((e) => {
+					if (seq !== boardQuerySeq) return;
+					boardQueryError = e instanceof Error ? e.message : String(e);
+					applyFilterDim();
+				});
+		}, 250);
+	}
 	// DEV-135: 필터 활성 chip — 매치 수 표시 + 해제. allQuests 는 의도적
 	// 비-reactive (BUG-054) 라 template 에서 직접 참조하지 않고 effect 가 복사.
 	let filterMatchCount = $state(0);
@@ -2627,6 +2661,11 @@
 					searchKeyOf(f) && searchKeyOf(f) === boardSearchKey
 						? (boardSearchIds ?? undefined)
 						: undefined,
+				// DEV-452: 쿼리 — 판정이 왔고 지금 쿼리의 것일 때만.
+				queryMatchIds:
+					f.query.trim() && f.query.trim() === boardQueryKey
+						? (boardQueryIds ?? undefined)
+						: undefined,
 				urgencies: f.urgencies,
 				prereq: f.prereq,
 				sub: f.sub,
@@ -2657,6 +2696,7 @@
 	$effect(() => {
 		const f = $questFilters; // store 변경 추적 → dim 재적용.
 		refreshBoardSearch(f);
+		refreshBoardQuery(f);
 		applyFilterDim();
 	});
 
@@ -2704,6 +2744,8 @@
 	// DEV-448: 마지막 댓글 날짜 — 보드도 목록과 같은 필터를 편집한다.
 	let bfCommentedAfter = $state('');
 	let bfCommentedBefore = $state('');
+	// DEV-452: 쿼리 — 예전엔 보드 설정의 필터에 칸만 보이고 어디에도 이어지지 않았다.
+	let bfQuery = $state('');
 	// REQ-027: 보드에서도 태그로 거른다. 목록에는 처음부터 있었는데 보드에만 없어서,
 	// 보드를 쓰는 동안에는 태그를 못 바꾸고 목록으로 갔다 와야 했다.
 	let bfTags = $state(new Set<string>());
@@ -2731,6 +2773,7 @@
 		bfUpdatedBefore = f.updatedBefore;
 		bfCommentedAfter = f.commentedAfter;
 		bfCommentedBefore = f.commentedBefore;
+		bfQuery = f.query;
 	}
 	function boardFilterSnapshot(): QuestFilterState {
 		return {
@@ -2745,8 +2788,8 @@
 			// '댓글/첨부 이름 포함' 이 풀린다.
 			searchComments: get(questFilters).searchComments,
 			searchAttachments: get(questFilters).searchAttachments,
-			// DEV-447: 쿼리도 보드에서는 편집 안 함 — 들렀다 와도 목록의 쿼리가 남게.
-			query: get(questFilters).query,
+			// DEV-452: 쿼리도 보드에서 편집한다 — 목록과 같은 값(들렀다 와도 그대로).
+			query: bfQuery,
 			urgencies: bfUrgencies,
 			prereq: bfPrereq,
 			sub: bfSub,
@@ -3527,6 +3570,8 @@
 		syncDomGraphNow();
 		// DEV-135 fix: 렌더 완료(노드 생성) 직후 현재 필터로 dim 적용 —
 		// effect 만으론 cy 준비 전에 돌고 끝나 List→Board 전환 시 dim 누락됨.
+		// DEV-452: 새로 불러왔으니 쿼리에 맞는 것도 다시 묻는다.
+		refreshBoardQuery(get(questFilters), true);
 		applyFilterDim();
 	}
 </script>
@@ -4167,6 +4212,8 @@
 						bind:updatedBefore={bfUpdatedBefore}
 						bind:commentedAfter={bfCommentedAfter}
 						bind:commentedBefore={bfCommentedBefore}
+						bind:query={bfQuery}
+						queryError={boardQueryError}
 					/>
 				</div>
 			</div>

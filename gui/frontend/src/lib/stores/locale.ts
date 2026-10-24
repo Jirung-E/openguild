@@ -1389,6 +1389,45 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '마지막 댓글 날짜 · none(댓글 없음) — 댓글은 갱신 시점을 안 바꿉니다',
 		en: 'date of the last comment · none (no comments) — comments do not change the updated time'
 	},
+	// DEV-452 (REQ-039): 캠페인 · 도서관의 쿼리 — 문법은 같고 키만 다르다(코어 DEV-451).
+	'campaignList.queryPlaceholder': {
+		ko: '예: end:overdue -status:done 출시',
+		en: 'e.g. end:overdue -status:done launch'
+	},
+	'campaignList.queryHelpRules': {
+		ko: '같은 키의 쉼표 = 또는 · 띄어 쓴 조건 = 그리고 · 앞의 - = 아닌 것 · 키 없는 낱말 = 제목 · 설명 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 위의 상태 선택과는 그리고로 겹칩니다.',
+		en: 'Commas within a key = OR · separate terms = AND · leading - = NOT · bare words = search title, description and id · quote values with spaces. Combined (AND) with the status selector above.'
+	},
+	'campaignList.queryHelpStatus': { ko: '상태 — active · done', en: 'status — active or done' },
+	'campaignList.queryHelpStart': {
+		ko: '시작 날 — 날짜 비교 · none',
+		en: 'start date — date comparison · none'
+	},
+	'campaignList.queryHelpEnd': {
+		ko: '끝 날 — 날짜 비교 · none · overdue(지났는데 진행 중)',
+		en: 'end date — date comparison · none · overdue (past it and still active)'
+	},
+	'campaignList.queryHelpQuest': {
+		ko: '그 퀘스트가 연결된 캠페인',
+		en: 'campaigns that quest is linked to'
+	},
+	'library.queryPlaceholder': {
+		ko: '예: tag:설계 -folder:보관 updated:>=2026-10-01',
+		en: 'e.g. tag:design -folder:archive updated:>=2026-10-01'
+	},
+	'library.queryHelpRules': {
+		ko: '같은 키의 쉼표 = 또는 · 띄어 쓴 조건 = 그리고 · 앞의 - = 아닌 것 · 키 없는 낱말 = 제목 · 본문 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 검색 · 태그 줄과는 그리고로 겹칩니다.',
+		en: 'Commas within a key = OR · separate terms = AND · leading - = NOT · bare words = search title, body and id · quote values with spaces. Combined (AND) with the search and the tag row.'
+	},
+	'library.queryHelpTag': { ko: '태그', en: 'tag' },
+	'library.queryHelpFolder': {
+		ko: '폴더 — 하위 폴더까지 · none(최상위만)',
+		en: 'folder — including subfolders · none (top level only)'
+	},
+	'library.queryHelpUpdated': {
+		ko: '고친 날 — 날짜 비교',
+		en: 'day it was edited — date comparison'
+	},
 	'filter.advanced': { ko: '고급', en: 'Advanced' },
 	// BUG-194: 좁은 화면에서 타입/상태 칩 줄을 접는 토글 라벨.
 	'filter.chips': { ko: '필터', en: 'Filters' },
