@@ -841,6 +841,40 @@ fn shipped_powershell_scripts_are_ascii_or_have_a_bom() {
     assert!(seen >= 3, "예제의 .ps1 을 못 찾았다({seen}) — 시험이 아무것도 안 본다");
 }
 
+/// BUG-332 세 번째: 윈도우 11 에서 실제로 돌려 보니 `deliver.ps1` 의 명령 실행이 셋을 놓쳤다(2026-10-24).
+/// 이 기계엔 파워셸이 없어 돌려 볼 수 없으므로, 고친 모양이 빠지지 않았는지만 지킨다.
+///
+/// - 명령을 `-Command <글>` 로 넘기면 파워셸 5.1 이 안쪽 `"` 를 떨군다 → `-EncodedCommand`.
+/// - 명령을 도는 자식 파워셸에서 UTF-8 을 다시 정하지 않으면 답글이 `?` 투성이다.
+/// - 없는 명령은 종료 코드가 비어 `exit $LASTEXITCODE` 가 0 — `$?` 도 본다.
+#[test]
+fn deliver_ps1_runs_the_command_as_written_and_reports_a_missing_one() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../examples/plugins/discussion-to-ai/deliver.ps1");
+    let src = std::fs::read_to_string(&path).unwrap();
+    let code: String = src
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(code.contains("-EncodedCommand $encoded"), "명령 글은 인코딩해서 넘긴다");
+    assert!(!code.contains("-Command $inner"), "-Command 로 넘기면 따옴표가 빠진다");
+    assert!(
+        code.contains("[System.Text.Encoding]::Unicode.GetBytes($inner)"),
+        "-EncodedCommand 는 UTF-16LE base64 다"
+    );
+    let prelude = code.split("$epilogue").next().unwrap();
+    for want in [
+        // 따옴표로 시작 — 자식에게 넘기는 글 안의 것. 바깥(부모) 줄과 헷갈리지 않게.
+        "'[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding",
+        "'$OutputEncoding = New-Object System.Text.UTF8Encoding",
+    ] {
+        assert!(prelude.contains(want), "자식에서 UTF-8 을 정한다: {want}");
+    }
+    assert!(code.contains("$ok = $?; $code = $LASTEXITCODE"), "명령 바로 다음 줄에서 둘 다 잡는다");
+    assert!(code.contains("elseif (-not $ok) { exit 1 }"), "종료 코드가 비었으면 $? 로 실패를 낸다");
+}
+
 /// **예제가 안 도는 건 없느니만 못하다.**
 ///
 /// `examples/plugins/` 는 사용자가 복사해 쓰라고 두는 것이다. 정의가 검증을 못

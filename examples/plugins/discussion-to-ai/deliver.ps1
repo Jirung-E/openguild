@@ -3,6 +3,11 @@
 # ASCII on purpose: Windows PowerShell 5.1 reads a script without a BOM in the
 # system code page. The payload arrives on stdin as UTF-8.
 $ErrorActionPreference = 'Stop'
+# BUG-332: UTF-8 both ways. Without this a failure message thrown below reaches openguild in
+# the code page (CP949 on Korean Windows) and shows up garbled, and the child powershell's
+# output (made UTF-8 below) would be read back wrong. openguild starts us with no console
+# window, so this console is our own - the user's terminal is not touched.
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 
 $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), (New-Object System.Text.UTF8Encoding($false)))
 $raw = $reader.ReadToEnd()
@@ -55,8 +60,31 @@ switch ($how) {
             # write %VAR% in a PowerShell script, against every example around it. A child
             # powershell takes the message on stdin the same way cmd did, and `exit $LASTEXITCODE`
             # carries the inner command's code back out (-Command alone reports 0/1).
-            $inner = $env:AI_COMMAND + "`nexit `$LASTEXITCODE"
-            $out = $msg | & powershell -NoProfile -NonInteractive -Command $inner 2>&1
+            #
+            # BUG-332 (again, found on a real Windows 11):
+            # - The child has its own encodings. `claude -p | openguild ...` inside it read the
+            #   answer in the code page and passed it on in ASCII, so the reply was all '?'.
+            #   Setting them here, in the parent, does not reach the child - set them in it.
+            # - A command that does not exist starts nothing, so $LASTEXITCODE stays empty and
+            #   `exit $LASTEXITCODE` said 0: the log read success while no reply came. Look at
+            #   $? too, right after the command.
+            # - `-Command <string>` hands the text to powershell.exe as a native argument and
+            #   PowerShell 5.1 drops the inner double quotes: `Write-Output "a b"` ran as two
+            #   words and `cmd /c "echo hi & exit 3"` did not parse. -EncodedCommand carries the
+            #   text untouched (UTF-16LE, base64). No progress records - with it they come back
+            #   on stderr as CLIXML.
+            $prelude = @(
+                '$ProgressPreference = ''SilentlyContinue'''
+                '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)'
+                '$OutputEncoding = New-Object System.Text.UTF8Encoding($false)'
+            ) -join "`n"
+            $epilogue = @(
+                '$ok = $?; $code = $LASTEXITCODE'
+                'if ($code) { exit $code } elseif (-not $ok) { exit 1 } else { exit 0 }'
+            ) -join "`n"
+            $inner = $prelude + "`n" + $env:AI_COMMAND + "`n" + $epilogue
+            $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($inner))
+            $out = $msg | & powershell -NoProfile -NonInteractive -EncodedCommand $encoded 2>&1
             $code = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $prevPref
