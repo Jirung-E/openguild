@@ -87,6 +87,8 @@ pub struct MoveFolderRequest {
 #[derive(Deserialize)]
 pub struct ListBooksQuery {
     folder: Option<String>,
+    /// DEV-451: 쿼리 문법(도서관 키) — 해석은 코어.
+    q: Option<String>,
 }
 
 pub async fn list_books(
@@ -95,7 +97,7 @@ pub async fn list_books(
 ) -> AppResult<Json<Vec<BookResponse>>> {
     // 거르기는 SQL 이 한다 — 전부 보내 놓고 클라이언트가 버리면 문서가 늘수록
     // 그대로 전송 비용이 된다.
-    let rows = ops::list_books_in(&store, q.folder.as_deref()).await?;
+    let rows = ops::list_books_query(&store, q.folder.as_deref(), &[], q.q.as_deref()).await?;
     Ok(Json(rows.into_iter().map(BookResponse::from).collect()))
 }
 

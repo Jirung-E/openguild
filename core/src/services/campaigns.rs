@@ -47,6 +47,35 @@ pub async fn list_by_status(pool: &SqlitePool, status: &str) -> AppResult<Vec<Ca
     Ok(rows)
 }
 
+/// DEV-451: 상태와 쿼리(`start:` · `end:` · `quest:` · 낱말 …)로 거른 목록. 둘 다 없으면 [`list_alive`] 와 같다.
+pub async fn list_matching(
+    pool: &SqlitePool,
+    status: Option<&str>,
+    q: Option<&str>,
+) -> AppResult<Vec<CampaignRow>> {
+    let mut sql = format!("{CAMPAIGN_SELECT} WHERE deleted_at IS NULL");
+    if status.is_some() {
+        sql.push_str(" AND status = ?");
+    }
+    let (query_sql, query_binds) = match q.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(text) => crate::query::parse_for(crate::query::Target::Campaign, text)?.to_sql()?,
+        None => (String::new(), Vec::new()),
+    };
+    sql.push_str(&query_sql);
+    sql.push_str(" ORDER BY display_order ASC, datetime(created_at) DESC, id DESC");
+    let mut query = sqlx::query_as::<_, CampaignRow>(&sql);
+    if let Some(s) = status {
+        query = query.bind(s);
+    }
+    for b in query_binds {
+        query = match b {
+            crate::query::Bind::Text(s) => query.bind(s),
+            crate::query::Bind::Int(n) => query.bind(n),
+        };
+    }
+    Ok(query.fetch_all(pool).await?)
+}
+
 pub async fn fetch_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<CampaignRow> {
     let sql = format!("{CAMPAIGN_SELECT} WHERE campaign_slug = ? AND deleted_at IS NULL");
     let row = sqlx::query_as::<_, CampaignRow>(&sql)

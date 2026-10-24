@@ -202,6 +202,14 @@ openguild quest list -q 'status:open,in_progress -tag:wip urgency:<=2'
 openguild quest list -q 'campaign:C-001 due:overdue'
 openguild quest list -q 'parent:DEV-001 "로그인 화면"'
 openguild quest list -q 'commented:>=2026-10-20'      # 그날 이후 댓글이 달린 퀘스트
+
+# 캠페인 · 도서관도 같은 문법 — 키만 다르다(다른 키를 쓰면 쓸 수 있는 키를 알려 준다)
+#   캠페인: status(active · done) · start · end(날짜 · <=날짜 · >=날짜 · none; end:overdue = 끝 날이 지났는데 진행 중)
+#           · quest(그 퀘스트가 연결된 캠페인). 낱말은 제목 · 설명 · 번호
+#   도서관: tag · folder(하위 폴더까지, none = 최상위만) · updated(고친 날). 낱말은 제목 · 본문 · 번호
+openguild campaign list -q 'end:overdue'
+openguild campaign list -q 'quest:DEV-001'
+openguild library list -q 'tag:설계 -folder:보관 updated:>=2026-10-01'
 openguild quest list --commented-after 2026-10-20     # 같은 것을 옵션으로 (--commented-before 도 있다)
 ```
 

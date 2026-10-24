@@ -214,6 +214,7 @@ openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2
                       [--sort urgency,id --reverse]
                       [--table]                 # aligned table for humans
                       [--json]                  # machine-readable
+# campaign list / library list take -q too — same syntax, their own keys (reference/campaign.md, library.md)
 openguild quest show <slug>                      # summary: id/title/status/urgency + relations
 openguild quest show <slug> --full               # everything (body, relations, tags, due)
 openguild quest show <slug> --field title status parent   # only these (1 field = bare value)

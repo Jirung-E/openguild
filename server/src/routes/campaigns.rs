@@ -28,24 +28,24 @@ use openguild_core::Store;
 pub struct ListQuery {
     /// "active" | "done" 미지정 시 전체 alive.
     pub status: Option<String>,
+    /// DEV-451: 쿼리 문법(캠페인 키) — 해석은 코어.
+    pub q: Option<String>,
 }
 
 pub async fn list_campaigns(
     State(store): State<Store>,
     Query(q): Query<ListQuery>,
 ) -> AppResult<Json<Vec<CampaignRow>>> {
-    let rows = match q.status.as_deref() {
-        Some(s) => {
-            if s != "active" && s != "done" {
-                return Err(AppError::BadRequest(format!(
-                    "invalid status '{s}' (expected 'active' or 'done')"
-                ))
-                .into());
-            }
-            svc::list_by_status(&store.index_pool, s).await?
-        }
-        None => svc::list_alive(&store.index_pool).await?,
-    };
+    if let Some(s) = q.status.as_deref()
+        && s != "active"
+        && s != "done"
+    {
+        return Err(AppError::BadRequest(format!(
+            "invalid status '{s}' (expected 'active' or 'done')"
+        ))
+        .into());
+    }
+    let rows = svc::list_matching(&store.index_pool, q.status.as_deref(), q.q.as_deref()).await?;
     Ok(Json(rows))
 }
 

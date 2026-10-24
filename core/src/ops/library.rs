@@ -120,6 +120,32 @@ pub async fn list_books_in(store: &Store, folder: Option<&str>) -> AppResult<Vec
     Ok(rows)
 }
 
+/// DEV-451: 폴더 · 태그에 더해 쿼리(`tag:` · `folder:` · `updated:` · 낱말 …)로도 거른다 — 모두 그리고.
+pub async fn list_books_query(
+    store: &Store,
+    folder: Option<&str>,
+    tags: &[String],
+    q: Option<&str>,
+) -> AppResult<Vec<LibraryDocRow>> {
+    let rows = list_books_filtered(store, folder, tags).await?;
+    let Some(text) = q.map(str::trim).filter(|t| !t.is_empty()) else {
+        return Ok(rows);
+    };
+    let (query_sql, binds) =
+        crate::query::parse_for(crate::query::Target::Library, text)?.to_sql()?;
+    let sql = format!("SELECT id FROM library_docs WHERE deleted_at IS NULL{query_sql}");
+    let mut query = sqlx::query_scalar::<_, i64>(&sql);
+    for b in binds {
+        query = match b {
+            crate::query::Bind::Text(s) => query.bind(s),
+            crate::query::Bind::Int(n) => query.bind(n),
+        };
+    }
+    let ids: std::collections::HashSet<i64> =
+        query.fetch_all(&store.index_pool).await?.into_iter().collect();
+    Ok(rows.into_iter().filter(|r| ids.contains(&r.id)).collect())
+}
+
 /// REQ-027 후속(admin "cli는?"): 폴더에 더해 **태그로도** 거른다.
 ///
 /// 여러 개면 **모두 가진 것만**(AND) — 화면의 태그 줄과 같은 규칙이라야 CLI 와 앱이 같은
@@ -1580,6 +1606,56 @@ mod tests {
         assert_eq!(one(list_books_in(&store, Some("100%")).await.unwrap()), "퍼센트하위");
         // `_` 는 한 글자 와일드카드 — `axb/안` 이 딸려 온다.
         assert_eq!(one(list_books_in(&store, Some("a_b")).await.unwrap()), "밑줄하위");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-451: 도서관 목록의 쿼리 — 태그 · 폴더(하위까지, none) · 고친 날 · 낱말 · 빼기, 폴더 · 태그 옵션과 함께.
+    #[tokio::test]
+    async fn library_query_filters_the_list() {
+        let dir = fresh_tmp("query");
+        let store = setup(&dir).await;
+        let top = create_book(&store, "최상위 문서", "잠금 이야기", "").await.unwrap();
+        let design = create_book(&store, "설계 개요", "본문", "설계").await.unwrap();
+        let lock = create_book(&store, "잠금 설계", "본문", "설계/잠금").await.unwrap();
+        let old = create_book(&store, "옛 문서", "본문", "보관").await.unwrap();
+        set_book_tags(&store, &design.book_id(), vec!["결정".into()]).await.unwrap();
+        set_book_tags(&store, &lock.book_id(), vec!["결정".into(), "초안".into()]).await.unwrap();
+        sqlx::query("UPDATE library_docs SET updated_at = '2020-05-01T10:00:00+09:00' WHERE id = ?")
+            .bind(old.id)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        let ids = |folder: Option<&'static str>, tags: Vec<String>, q: &str| {
+            let store = store.clone();
+            let q = q.to_string();
+            async move {
+                let mut v: Vec<String> = list_books_query(&store, folder, &tags, Some(&q))
+                    .await
+                    .unwrap()
+                    .iter()
+                    .map(|b| b.book_id())
+                    .collect();
+                v.sort();
+                v
+            }
+        };
+        let (t, d, l, o) = (top.book_id(), design.book_id(), lock.book_id(), old.book_id());
+        assert_eq!(ids(None, vec![], "tag:결정").await, vec![d.clone(), l.clone()]);
+        assert_eq!(ids(None, vec![], "tag:결정 -tag:초안").await, vec![d.clone()]);
+        assert_eq!(ids(None, vec![], "folder:설계").await, vec![d.clone(), l.clone()]);
+        assert_eq!(ids(None, vec![], "folder:none").await, vec![t.clone()]);
+        assert_eq!(ids(None, vec![], "folder:보관,설계/잠금").await, vec![l.clone(), o.clone()]);
+        assert_eq!(ids(None, vec![], "updated:<2021-01-01").await, vec![o.clone()]);
+        assert_eq!(ids(None, vec![], "잠금").await, vec![t.clone(), l.clone()]);
+        assert_eq!(ids(None, vec![], &t.to_lowercase()).await, vec![t.clone()]);
+        // 옵션과는 그리고.
+        assert_eq!(ids(Some("설계"), vec!["초안".into()], "잠금").await, vec![l.clone()]);
+        assert_eq!(ids(None, vec![], "").await.len(), 4);
+        for bad in ["status:open", "updated:yesterday", "folder:"] {
+            let e = list_books_query(&store, None, &[], Some(bad)).await.unwrap_err();
+            assert!(matches!(e, AppError::BadRequest(_)), "{bad}: {e:?}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

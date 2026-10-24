@@ -1473,20 +1473,18 @@ pub fn open_guild_in_current_window(
 pub async fn list_campaigns(
     store: State<'_, Store>,
     status: Option<String>,
+    // DEV-451: 쿼리 문법(캠페인 키) — 서버 `?q=` 와 같다.
+    q: Option<String>,
 ) -> Result<Vec<CampaignRow>, String> {
-    match status.as_deref() {
-        Some(s) => {
-            if s != "active" && s != "done" {
-                return Err(format!(
-                    "invalid status '{s}' (expected 'active' or 'done')"
-                ));
-            }
-            camp_svc::list_by_status(&store.index_pool, s)
-                .await
-                .map_err(err)
-        }
-        None => camp_svc::list_alive(&store.index_pool).await.map_err(err),
+    if let Some(s) = status.as_deref()
+        && s != "active"
+        && s != "done"
+    {
+        return Err(format!("invalid status '{s}' (expected 'active' or 'done')"));
     }
+    camp_svc::list_matching(&store.index_pool, status.as_deref(), q.as_deref())
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -1925,8 +1923,12 @@ impl From<openguild_core::ops::library::LibraryFolderRow> for FolderResponse {
 }
 
 #[tauri::command]
-pub async fn list_books(store: State<'_, Store>) -> Result<Vec<BookResponse>, String> {
-    let rows = openguild_core::ops::library::list_books(&store)
+pub async fn list_books(
+    store: State<'_, Store>,
+    // DEV-451: 쿼리 문법(도서관 키) — 서버 `?q=` 와 같다.
+    q: Option<String>,
+) -> Result<Vec<BookResponse>, String> {
+    let rows = openguild_core::ops::library::list_books_query(&store, None, &[], q.as_deref())
         .await
         .map_err(err)?;
     Ok(rows.into_iter().map(BookResponse::from).collect())

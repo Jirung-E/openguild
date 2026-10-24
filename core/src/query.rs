@@ -10,10 +10,12 @@
 //!
 //! 해석은 **여기 한 곳**에만 둔다. CLI · 서버 · 앱이 같은 [`crate::models::ListQuery`] 의 `q` 로
 //! 넘기고, 목록 조회(`services::quests`)가 [`Query::to_sql`] 로 조건을 붙인다.
+//!
+//! DEV-451: 캠페인 · 도서관 목록도 같은 문법을 쓴다 — **키만 대상마다 다르다**([`Target`]).
 
 use crate::error::{AppError, AppResult};
 
-/// 쓸 수 있는 키. 순서는 오류 안내에 보이는 순서.
+/// 퀘스트 목록에 쓸 수 있는 키. 순서는 오류 안내에 보이는 순서.
 pub const KEYS: &[&str] = &[
     "status",
     "type",
@@ -24,6 +26,31 @@ pub const KEYS: &[&str] = &[
     "parent",
     "commented",
 ];
+
+/// DEV-451: 캠페인 목록의 키.
+pub const CAMPAIGN_KEYS: &[&str] = &["status", "start", "end", "quest"];
+
+/// DEV-451: 도서관 목록의 키.
+pub const LIBRARY_KEYS: &[&str] = &["tag", "folder", "updated"];
+
+/// DEV-451: 쿼리를 거는 목록. 문법은 같고 쓸 수 있는 키와 SQL 만 다르다.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Target {
+    #[default]
+    Quest,
+    Campaign,
+    Library,
+}
+
+impl Target {
+    pub fn keys(self) -> &'static [&'static str] {
+        match self {
+            Target::Quest => KEYS,
+            Target::Campaign => CAMPAIGN_KEYS,
+            Target::Library => LIBRARY_KEYS,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -36,11 +63,23 @@ pub enum Key {
     Parent,
     /// DEV-448: 마지막 댓글의 날짜. 댓글은 `updated_at` 을 안 바꾼다(사이드카 — DEV-433).
     Commented,
+    /// DEV-451: 캠페인의 시작 · 끝 날, 연결된 퀘스트.
+    Start,
+    End,
+    Quest,
+    /// DEV-451: 도서관 문서의 폴더 · 고친 날.
+    Folder,
+    Updated,
 }
 
 impl Key {
-    fn parse(s: &str) -> Option<Key> {
-        Some(match s.to_ascii_lowercase().as_str() {
+    /// 대상에 있는 키만 — 캠페인에 `urgency` 를 쓰면 모르는 키다.
+    fn parse(target: Target, s: &str) -> Option<Key> {
+        let s = s.to_ascii_lowercase();
+        if !target.keys().contains(&s.as_str()) {
+            return None;
+        }
+        Some(match s.as_str() {
             "status" => Key::Status,
             "type" => Key::Type,
             "tag" => Key::Tag,
@@ -49,6 +88,11 @@ impl Key {
             "due" => Key::Due,
             "parent" => Key::Parent,
             "commented" => Key::Commented,
+            "start" => Key::Start,
+            "end" => Key::End,
+            "quest" => Key::Quest,
+            "folder" => Key::Folder,
+            "updated" => Key::Updated,
             _ => return None,
         })
     }
@@ -67,6 +111,7 @@ pub struct Term {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Query {
     pub terms: Vec<Term>,
+    pub target: Target,
 }
 
 /// 해석 오류 — 몇 번째 글자에서 무엇이 틀렸나.
@@ -100,8 +145,13 @@ impl From<QueryError> for AppError {
     }
 }
 
-/// 글 → 조건 목록.
+/// 글 → 조건 목록 (퀘스트 목록).
 pub fn parse(input: &str) -> Result<Query, QueryError> {
+    parse_for(Target::Quest, input)
+}
+
+/// DEV-451: 글 → 조건 목록, 대상의 키로.
+pub fn parse_for(target: Target, input: &str) -> Result<Query, QueryError> {
     let chars: Vec<char> = input.chars().collect();
     let n = chars.len();
     let mut terms = Vec::new();
@@ -175,13 +225,13 @@ pub fn parse(input: &str) -> Result<Query, QueryError> {
         }
 
         let name: String = chars[i..j].iter().collect();
-        let Some(key) = Key::parse(&name) else {
+        let Some(key) = Key::parse(target, &name) else {
             return Err(QueryError::at(
                 body,
                 crate::tf!(
                     "모르는 키 '{name}' — 쓸 수 있는 키: {}. 쌍점이 든 글을 찾으려면 따옴표로 묶으세요",
                     "unknown key '{name}' — available keys: {}. Quote text that contains a colon",
-                    KEYS.join(", ")
+                    target.keys().join(", ")
                 ),
             ));
         };
@@ -231,11 +281,11 @@ pub fn parse(input: &str) -> Result<Query, QueryError> {
             values,
             pos: start,
         };
-        check_values(&term, body)?;
+        check_values(target, &term, body)?;
         terms.push(term);
         i = k;
     }
-    Ok(Query { terms })
+    Ok(Query { terms, target })
 }
 
 /// `"…"` 를 읽는다 — 돌려주는 끝은 닫는 따옴표 다음 자리.
@@ -254,7 +304,7 @@ fn read_quoted(chars: &[char], open: usize) -> Result<(String, usize), QueryErro
 }
 
 /// 값의 모양을 **해석할 때** 본다 — 조회까지 가서야 틀린 것을 알면 어디가 틀렸는지 못 짚는다.
-fn check_values(term: &Term, pos: usize) -> Result<(), QueryError> {
+fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryError> {
     let Some(key) = term.key else { return Ok(()) };
     for v in &term.values {
         let ok = match key {
@@ -263,10 +313,37 @@ fn check_values(term: &Term, pos: usize) -> Result<(), QueryError> {
             Key::Commented => commented_cond(v).is_some(),
             Key::Parent => v.eq_ignore_ascii_case("none") || split_slug(v).is_some(),
             Key::Campaign => v.eq_ignore_ascii_case("none") || split_slug(v).is_some(),
-            Key::Status | Key::Type | Key::Tag => true,
+            // 캠페인 상태는 둘뿐이다 — 퀘스트처럼 길드가 정하지 않는다.
+            Key::Status if target == Target::Campaign => {
+                ["active", "done"].iter().any(|s| v.eq_ignore_ascii_case(s))
+            }
+            Key::Start | Key::Updated => date_cond("x", v).is_some(),
+            Key::End => v.eq_ignore_ascii_case("overdue") || date_cond("x", v).is_some(),
+            Key::Quest => split_slug(v).is_some(),
+            Key::Status | Key::Type | Key::Tag | Key::Folder => true,
         };
         if !ok {
             let hint = match key {
+                Key::Status => crate::tf!(
+                    "캠페인의 status 는 active · done",
+                    "a campaign's status is active or done"
+                ),
+                Key::Start => crate::tf!(
+                    "start 는 none · 날짜(2026-11-01) · <=날짜 · >=날짜",
+                    "start is none, a date (2026-11-01), <=date or >=date"
+                ),
+                Key::End => crate::tf!(
+                    "end 는 overdue · none · 날짜(2026-11-01) · <=날짜 · >=날짜",
+                    "end is overdue, none, a date (2026-11-01), <=date or >=date"
+                ),
+                Key::Updated => crate::tf!(
+                    "updated 는 날짜(2026-11-01) · <=날짜 · >=날짜 — 고친 날과 비교",
+                    "updated is a date (2026-11-01), <=date or >=date — compared with the day it was edited"
+                ),
+                Key::Quest => crate::tf!(
+                    "quest 는 퀘스트 번호(DEV-012)",
+                    "quest is a quest id (DEV-012)"
+                ),
                 Key::Urgency => crate::tf!(
                     "urgency 는 1~4 — 2 · 1-3 · <=2 · >=3 처럼",
                     "urgency is 1–4 — like 2, 1-3, <=2, >=3"
@@ -400,6 +477,22 @@ fn commented_cond(v: &str) -> Option<(String, Vec<Bind>)> {
     })
 }
 
+/// DEV-451: 날짜 칸 하나와 비교 — `none` · `2026-11-01` · `<=2026-11-01` 따위. `col` 은 날짜(앞 10글자)를 낸다.
+fn date_cond(col: &str, v: &str) -> Option<(String, Vec<Bind>)> {
+    if v.eq_ignore_ascii_case("none") {
+        return Some((format!("{col} IS NULL"), vec![]));
+    }
+    let (op, rest) = split_op(v);
+    is_date(rest).then(|| (format!("{col} {op} ?"), vec![Bind::Text(rest.to_string())]))
+}
+
+/// LIKE 의 와일드카드를 글자 그대로 — 폴더 이름에 `_` 가 흔하다.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 const SLUG_LIKE: &str = "LOWER(qt.prefix || '-' || printf('%03d', q.number)) LIKE LOWER(?)";
 const STATUS_NORM: &str = "REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')";
 
@@ -409,14 +502,20 @@ impl Query {
     }
 
     /// 조건들 → `AND (…)` 를 이어 붙인 SQL 과 그 값들(나온 순서 그대로).
-    /// 별칭 `q` · `qt` · `qs` 는 [`crate::services::quests::QUEST_SELECT`] 의 것.
+    /// 퀘스트는 별칭 `q` · `qt` · `qs`([`crate::services::quests::QUEST_SELECT`] 의 것), 캠페인은
+    /// `campaigns`, 도서관은 `library_docs` 테이블 이름을 그대로 쓴다.
     pub fn to_sql(&self) -> AppResult<(String, Vec<Bind>)> {
         let mut sql = String::new();
         let mut binds = Vec::new();
         for term in &self.terms {
             let mut alts = Vec::new();
             for v in &term.values {
-                let (cond, b) = value_cond(term.key, v)
+                let cond = match self.target {
+                    Target::Quest => value_cond(term.key, v),
+                    Target::Campaign => campaign_cond(term.key, v),
+                    Target::Library => library_cond(term.key, v),
+                };
+                let (cond, b) = cond
                     .ok_or_else(|| QueryError::at(term.pos, format!("'{v}'")))?;
                 alts.push(cond);
                 binds.extend(b);
@@ -491,6 +590,79 @@ fn value_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
                 vec![Bind::Text(prefix), Bind::Int(num)],
             )
         }
+        // 다른 대상의 키 — 해석에서 이미 막는다.
+        Some(Key::Start | Key::End | Key::Quest | Key::Folder | Key::Updated) => return None,
+    };
+    Some((format!("({cond})"), binds))
+}
+
+/// DEV-451: 캠페인 목록의 값 하나 → 조건(테이블 `campaigns`).
+fn campaign_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
+    const START: &str = "NULLIF(substr(campaigns.started_at, 1, 10), '')";
+    const END: &str = "NULLIF(substr(campaigns.ended_at, 1, 10), '')";
+    let t = |s: &str| Bind::Text(s.to_string());
+    let (cond, binds) = match key {
+        None => {
+            let pat = format!("%{v}%");
+            (
+                "LOWER(campaigns.title) LIKE LOWER(?) OR LOWER(COALESCE(campaigns.description, '')) LIKE LOWER(?)
+                 OR LOWER(campaigns.campaign_slug) LIKE LOWER(?)"
+                    .into(),
+                vec![t(&pat), t(&pat), t(&pat)],
+            )
+        }
+        Some(Key::Status) => ("LOWER(campaigns.status) = LOWER(?)".into(), vec![t(v)]),
+        Some(Key::Start) => date_cond(START, v)?,
+        // 퀘스트의 `due:overdue` 와 같은 뜻 — 날이 지났는데 아직 진행 중.
+        Some(Key::End) if v.eq_ignore_ascii_case("overdue") => (
+            format!("{END} < ? AND campaigns.status = 'active'"),
+            vec![Bind::Text(crate::time::today_local_iso_date())],
+        ),
+        Some(Key::End) => date_cond(END, v)?,
+        Some(Key::Quest) => {
+            let (prefix, num) = split_slug(v)?;
+            (
+                "EXISTS (SELECT 1 FROM campaign_quests cq JOIN quests q ON q.id = cq.quest_id
+                  JOIN quest_types qt ON qt.id = q.quest_type_id
+                  WHERE cq.campaign_id = campaigns.id AND q.deleted_at IS NULL
+                    AND UPPER(qt.prefix) = UPPER(?) AND q.number = ?)"
+                    .into(),
+                vec![Bind::Text(prefix), Bind::Int(num)],
+            )
+        }
+        _ => return None,
+    };
+    Some((format!("({cond})"), binds))
+}
+
+/// DEV-451: 도서관 목록의 값 하나 → 조건(테이블 `library_docs`).
+fn library_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
+    let t = |s: &str| Bind::Text(s.to_string());
+    let (cond, binds) = match key {
+        None => {
+            let pat = format!("%{v}%");
+            (
+                "LOWER(library_docs.title) LIKE LOWER(?) OR LOWER(library_docs.body) LIKE LOWER(?)
+                 OR LOWER('BOOK-' || printf('%03d', library_docs.number)) LIKE LOWER(?)"
+                    .into(),
+                vec![t(&pat), t(&pat), t(&pat)],
+            )
+        }
+        Some(Key::Tag) => (
+            "EXISTS (SELECT 1 FROM library_tags lt WHERE lt.book_id = library_docs.id AND lt.tag = ?)".into(),
+            vec![t(v)],
+        ),
+        // `--folder` 와 같다 — 그 폴더와 하위 폴더. `none` 은 최상위만.
+        Some(Key::Folder) if v.eq_ignore_ascii_case("none") => ("library_docs.path = ''".into(), vec![]),
+        Some(Key::Folder) => {
+            let f = v.trim_end_matches('/');
+            (
+                "library_docs.path = ? OR library_docs.path LIKE ? ESCAPE '\\'".into(),
+                vec![t(f), Bind::Text(format!("{}/%", like_escape(f)))],
+            )
+        }
+        Some(Key::Updated) => date_cond("substr(library_docs.updated_at, 1, 10)", v)?,
+        _ => return None,
     };
     Some((format!("({cond})"), binds))
 }
@@ -598,5 +770,33 @@ mod tests {
     fn empty_input_is_no_condition() {
         assert!(parse("   ").unwrap().is_empty());
         assert_eq!(parse("").unwrap().to_sql().unwrap().0, "");
+    }
+
+    /// DEV-451: 키는 대상마다 — 다른 대상의 키는 모르는 키이고, 안내에 그 대상의 키만 나온다.
+    #[test]
+    fn each_target_has_its_own_keys() {
+        let err = |t: Target, s: &str| parse_for(t, s).unwrap_err().message;
+        assert!(err(Target::Campaign, "urgency:2").contains("status, start, end, quest"));
+        assert!(err(Target::Library, "status:open").contains("tag, folder, updated"));
+        assert!(err(Target::Quest, "folder:a").contains("status, type, tag"));
+        assert!(parse_for(Target::Campaign, "status:active,DONE end:overdue quest:dev-3").is_ok());
+        assert!(err(Target::Campaign, "status:open").contains("active"));
+        assert!(err(Target::Campaign, "start:soon").contains("start"));
+        assert!(parse_for(Target::Library, "tag:a folder:none updated:>=2026-01-01 낱말").is_ok());
+        // 퀘스트의 `status` 는 길드가 정하므로 아무 값이나 받는다.
+        assert!(parse("status:anything").is_ok());
+
+        let (sql, binds) = parse_for(Target::Library, "folder:a_b")
+            .unwrap()
+            .to_sql()
+            .unwrap();
+        assert!(sql.contains("library_docs.path LIKE ? ESCAPE"), "{sql}");
+        assert_eq!(binds, vec![Bind::Text("a_b".into()), Bind::Text("a\\_b/%".into())]);
+        let (sql, binds) = parse_for(Target::Campaign, "-quest:DEV-12")
+            .unwrap()
+            .to_sql()
+            .unwrap();
+        assert!(sql.starts_with(" AND NOT (EXISTS"), "{sql}");
+        assert_eq!(binds, vec![Bind::Text("DEV".into()), Bind::Int(12)]);
     }
 }

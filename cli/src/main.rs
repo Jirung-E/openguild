@@ -1268,6 +1268,11 @@ enum LibraryCmd {
               help = tf!("태그 필터 — 여러 개면 **모두 가진 것만**(AND).",
                          "Tag filter — with several, only documents having **all** of them (AND)."))]
         tag: Vec<String>,
+        // DEV-451 (REQ-039): 퀘스트 목록과 같은 쿼리 문법 — 키만 도서관 것.
+        #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
+              help = tf!("쿼리로 거르기 — 예: 'tag:설계 -folder:보관 updated:>=2026-10-01 잠금'. 같은 키의 쉼표 = 또는, 띄어 쓴 조건 = 그리고, 앞의 - = 아닌 것, 키 없는 낱말 = 제목 · 본문 · 번호 검색. 키: tag · folder(하위 폴더까지, none = 최상위만) · updated(고친 날 — 날짜 · <=날짜 · >=날짜). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'tag:design -folder:archive updated:>=2026-10-01 lock'. Commas within a key = OR, separate terms = AND, leading - = NOT, bare words = search title, body and id. Keys: tag, folder (with subfolders; none = top level only), updated (day it was edited — date, <=date, >=date). ANDed with the other options."))]
+        query: Option<String>,
     },
     // REQ-028: 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이다 — 밖으로 가져가려면
     // 그 구조를 그때 만들어야 한다.
@@ -1450,6 +1455,11 @@ enum CampaignCmd {
     List {
         #[arg(long, help = tf!("필터: active | done", "Filter: active | done"))]
         status: Option<String>,
+        // DEV-451 (REQ-039): 퀘스트 목록과 같은 쿼리 문법 — 키만 캠페인 것.
+        #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
+              help = tf!("쿼리로 거르기 — 예: 'status:active end:overdue 출시'. 같은 키의 쉼표 = 또는, 띄어 쓴 조건 = 그리고, 앞의 - = 아닌 것, 키 없는 낱말 = 제목 · 설명 · 번호 검색. 키: status(active · done) · start · end(날짜 · <=날짜 · >=날짜 · none; end 는 overdue = 끝 날이 지났는데 진행 중) · quest(퀘스트 번호 — 그 퀘스트가 연결된 캠페인). --status 와는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'status:active end:overdue launch'. Commas within a key = OR, separate terms = AND, leading - = NOT, bare words = search title, description and id. Keys: status (active, done), start, end (date, <=date, >=date, none; end also takes overdue = past its end and still active), quest (a quest id — campaigns that quest is linked to). ANDed with --status."))]
+        query: Option<String>,
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
@@ -1871,10 +1881,19 @@ impl HttpClient {
     fn campaign_list(
         &self,
         status: Option<&str>,
+        query: Option<&str>,
     ) -> Result<Vec<openguild_core::models::CampaignRow>> {
-        let path = match status {
-            Some(s) => format!("/api/campaigns?status={s}"),
-            None => "/api/campaigns".to_string(),
+        let mut params = Vec::new();
+        if let Some(s) = status {
+            params.push(format!("status={}", urlenc(s)));
+        }
+        if let Some(q) = query {
+            params.push(format!("q={}", urlenc(q)));
+        }
+        let path = if params.is_empty() {
+            "/api/campaigns".to_string()
+        } else {
+            format!("/api/campaigns?{}", params.join("&"))
         };
         self.get(&path)
     }
@@ -2982,19 +3001,17 @@ impl Backend {
     fn campaign_list(
         &self,
         status: Option<String>,
+        query: Option<&str>,
     ) -> Result<Vec<openguild_core::models::CampaignRow>> {
         match self {
-            Backend::Http(c) => c.campaign_list(status.as_deref()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
-                match status.as_deref() {
-                    Some(s) => openguild_core::services::campaigns::list_by_status(
-                        &l.store.index_pool,
-                        s,
-                    )
-                    .await,
-                    None => openguild_core::services::campaigns::list_alive(&l.store.index_pool).await,
-                }
-            })),
+            Backend::Http(c) => c.campaign_list(status.as_deref(), query),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::services::campaigns::list_matching(
+                    &l.store.index_pool,
+                    status.as_deref(),
+                    query,
+                ),
+            )),
         }
     }
 
@@ -3348,20 +3365,34 @@ impl Backend {
 
     /// BUG-281: `folder` 는 서버/SQL 이 거른다. 예전엔 전부 받아 CLI 에서
     /// `retain` 했는데, 원격 모드에서 그건 도서관 전체를 받아서 버리는 짓이다.
-    fn library_list(&self, folder: Option<&str>, tags: &[String]) -> Result<Vec<BookDto>> {
+    fn library_list(
+        &self,
+        folder: Option<&str>,
+        tags: &[String],
+        query: Option<&str>,
+    ) -> Result<Vec<BookDto>> {
         match self {
             // REQ-027 후속: 원격은 폴더까지만 서버가 거르고, 태그는 받아서 여기서 거른다 —
             // 서버 API 를 늘리지 않고도 CLI 동작이 로컬과 같아진다.
+            // DEV-451: 쿼리는 서버가 거른다(해석이 코어에 있다).
             Backend::Http(c) => {
-                let rows: Vec<BookDto> = match folder {
-                    // 빈 문자열도 뜻이 있다("최상위만") — 그대로 실어 보낸다.
-                    Some(f) => c.get(&format!("/api/library?folder={}", urlenc(f)))?,
-                    None => c.get("/api/library")?,
+                let mut params = Vec::new();
+                // 빈 문자열도 뜻이 있다("최상위만") — 그대로 실어 보낸다.
+                if let Some(f) = folder {
+                    params.push(format!("folder={}", urlenc(f)));
+                }
+                if let Some(q) = query {
+                    params.push(format!("q={}", urlenc(q)));
+                }
+                let rows: Vec<BookDto> = if params.is_empty() {
+                    c.get("/api/library")?
+                } else {
+                    c.get(&format!("/api/library?{}", params.join("&")))?
                 };
                 Ok(filter_by_tags(rows, tags))
             }
             Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::library::list_books_filtered(&l.store, folder, tags),
+                openguild_core::ops::library::list_books_query(&l.store, folder, tags, query),
             ))
             .map(|rows| rows.into_iter().map(BookDto::from).collect()),
         }
@@ -5835,7 +5866,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             )?;
             print_row(&row, json);
         }
-        CampaignCmd::List { status, table } => {
+        CampaignCmd::List { status, table, query } => {
             // 잘못된 --status 값은 silent fail 방지 — active | done 만 허용.
             if let Some(s) = &status
                 && s != "active"
@@ -5845,7 +5876,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                     "invalid --status '{s}' (expected 'active' or 'done')"
                 ));
             }
-            let rows = c.campaign_list(status)?;
+            let rows = c.campaign_list(status, query.as_deref())?;
                         ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&rows));
@@ -9190,8 +9221,8 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
-        LibraryCmd::List { table, folder, tag } => {
-            let books = c.library_list(folder.as_deref(), &tag)?;
+        LibraryCmd::List { table, folder, tag, query } => {
+            let books = c.library_list(folder.as_deref(), &tag, query.as_deref())?;
                         ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&books));
@@ -10737,6 +10768,27 @@ mod tests {
         let w = super::max_width(names.into_iter());
         for name in names {
             assert_eq!(super::pad_to_width(name, w).width(), w, "{name}");
+        }
+    }
+
+    // DEV-451: 캠페인 · 도서관 목록도 -q — `-` 로 시작하는 쿼리를 옵션으로 읽지 않는다.
+    #[test]
+    fn campaign_and_library_lists_take_a_query() {
+        let cli = Cli::try_parse_from(["openguild", "campaign", "list", "-q", "-status:done end:overdue"]).unwrap();
+        match cli.command {
+            Command::Campaign { sub: CampaignCmd::List { query, .. } } => {
+                assert_eq!(query.as_deref(), Some("-status:done end:overdue"))
+            }
+            _ => panic!(),
+        }
+        let cli =
+            Cli::try_parse_from(["openguild", "library", "list", "--folder", "설계", "--query", "-tag:초안"]).unwrap();
+        match cli.command {
+            Command::Library { sub: LibraryCmd::List { query, folder, .. } } => {
+                assert_eq!(query.as_deref(), Some("-tag:초안"));
+                assert_eq!(folder.as_deref(), Some("설계"));
+            }
+            _ => panic!(),
         }
     }
 

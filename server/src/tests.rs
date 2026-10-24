@@ -2688,6 +2688,33 @@ async fn test_campaign_create_get_update_delete() {
     assert!(list.as_array().unwrap().is_empty());
 }
 
+/// DEV-451: 캠페인 · 도서관 목록도 `?q=` — 같은 코어 해석기, 키만 대상 것. 틀리면 400 과 쓸 수 있는 키.
+#[tokio::test]
+async fn test_campaign_and_library_lists_take_a_query() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "출시", "ended_at": "2020-01-01" })).await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "다음", "ended_at": "2999-01-01" })).await;
+    let (status, list) = get(app.clone(), "/api/campaigns?q=end%3Aoverdue").await;
+    assert_eq!(status, StatusCode::OK);
+    let titles: Vec<&str> = list.as_array().unwrap().iter().map(|c| c["title"].as_str().unwrap()).collect();
+    assert_eq!(titles, vec!["출시"]);
+    let (status, body) = get(app.clone(), "/api/campaigns?status=active&q=urgency%3A2").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.to_string().contains("start, end, quest"), "{body}");
+
+    post(app.clone(), "/api/library", json!({ "title": "설계", "body": "잠금", "path": "아키텍처" })).await;
+    post(app.clone(), "/api/library", json!({ "title": "메모", "body": "", "path": "" })).await;
+    let (status, list) = get(app.clone(), "/api/library?q=folder%3Anone").await;
+    assert_eq!(status, StatusCode::OK);
+    let titles: Vec<&str> = list.as_array().unwrap().iter().map(|b| b["title"].as_str().unwrap()).collect();
+    assert_eq!(titles, vec!["메모"]);
+    let (_, list) = get(app.clone(), "/api/library?folder=%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98&q=%EC%9E%A0%EA%B8%88").await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    let (status, body) = get(app, "/api/library?q=stauts%3Aopen").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.to_string().contains("tag, folder, updated"), "{body}");
+}
+
 // DEV-226: 캠페인 status 변경 시 이력이 기록되고, no-op(같은 status 로
 // 재요청)/status 없는 update 는 기록 안 됨. quest_history 와 대칭.
 #[tokio::test]

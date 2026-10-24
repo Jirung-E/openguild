@@ -869,4 +869,99 @@ mod tests {
         assert!(check_banner_ext("txt").is_err());
         assert!(check_banner_ext("").is_err());
     }
+
+    /// DEV-451: 캠페인 목록의 쿼리 — 키마다, 빼기, `--status` 와 함께, 틀리면 BadRequest.
+    #[tokio::test]
+    async fn campaign_query_filters_the_list() {
+        let (dir, store) = banner_setup("query").await; // C-001 "camp" — 날짜 없음
+        let mk = |title: &'static str, start: Option<&'static str>, end: Option<&'static str>| {
+            let store = store.clone();
+            async move {
+                create_campaign(
+                    &store,
+                    crate::models::CreateCampaignRequest {
+                        title: title.into(),
+                        description: Some("출시 준비".into()),
+                        started_at: start.map(Into::into),
+                        ended_at: end.map(Into::into),
+                    },
+                )
+                .await
+                .unwrap()
+            }
+        };
+        let late = mk("지난 것", Some("2020-01-01"), Some("2020-02-01")).await; // C-002, 진행 중
+        let next = mk("다음 것", Some("2999-01-01"), Some("2999-02-01")).await; // C-003
+        let done = mk("끝난 것", Some("2020-01-01"), Some("2020-02-01")).await; // C-004
+        sqlx::query("UPDATE campaigns SET status = 'done' WHERE id = ?")
+            .bind(done.id)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let quest = crate::ops::quests::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "연결된 퀘스트".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(2),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let qslug = sqlx::query_scalar::<_, String>(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number) FROM quests q
+               JOIN quest_types qt ON q.quest_type_id = qt.id WHERE q.id = ?",
+        )
+        .bind(quest.id)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        link_quest_by_slug(&store, next.id, &qslug).await.unwrap();
+
+        let slugs = |status: Option<&'static str>, q: &str| {
+            let pool = store.index_pool.clone();
+            let q = q.to_string();
+            async move {
+                crate::services::campaigns::list_matching(&pool, status, Some(&q))
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|c| c.campaign_slug)
+                    .collect::<Vec<_>>()
+            }
+        };
+        let sorted = |v: Vec<String>| {
+            let mut v = v;
+            v.sort();
+            v
+        };
+        assert_eq!(sorted(slugs(None, "end:overdue").await), vec![late.campaign_slug.clone()]);
+        assert_eq!(sorted(slugs(None, "status:done").await), vec![done.campaign_slug.clone()]);
+        assert_eq!(sorted(slugs(None, "start:none").await), vec!["C-001".to_string()]);
+        assert_eq!(
+            sorted(slugs(None, "start:>=2026-01-01").await),
+            vec![next.campaign_slug.clone()]
+        );
+        assert_eq!(
+            sorted(slugs(None, &format!("quest:{}", qslug.to_lowercase())).await),
+            vec![next.campaign_slug.clone()]
+        );
+        assert_eq!(
+            sorted(slugs(None, "출시 -status:done").await),
+            vec![late.campaign_slug.clone(), next.campaign_slug.clone()]
+        );
+        assert_eq!(sorted(slugs(Some("done"), "출시").await), vec![done.campaign_slug.clone()]);
+        assert_eq!(sorted(slugs(None, "c-001").await), vec!["C-001".to_string()]);
+        // 없는 키 · 틀린 값은 오류 — 조용히 "없음" 으로 보이지 않게.
+        for bad in ["urgency:2", "status:open", "end:soon", "quest:abc"] {
+            let e = crate::services::campaigns::list_matching(&store.index_pool, None, Some(bad))
+                .await
+                .unwrap_err();
+            assert!(matches!(e, AppError::BadRequest(_)), "{bad}: {e:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

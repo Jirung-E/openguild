@@ -8,7 +8,7 @@ zips, images) that don't belong as markdown body text — that was one of the
 original reasons the library exists.
 
 ```bash
-openguild library list [--table] [--folder "아키텍처"]
+openguild library list [--table] [--folder "아키텍처"] [--tag 설계] [-q 'tag:설계 -folder:보관 updated:>=2026-10-01']
 openguild library show <book-id>
 openguild library new --title "..." [--file <PATH>] [--folder "folder/sub"]
 openguild library update <book-id> [--title ...] [--file <PATH>] [--folder "..."]
@@ -45,6 +45,13 @@ openguild library new --title "이벤트 설계" --folder "아키텍처/결정"
 openguild library list --folder "아키텍처"      # includes subfolders
 openguild library list --folder ""              # top-level only
 ```
+
+`library list -q` takes the same `key:value` syntax as `quest list -q`
+(comma = OR, separate terms = AND, leading `-` = NOT, bare words search title,
+body and id). Keys: `tag`, `folder` (with subfolders; `folder:none` = top level
+only), `updated` (the day it was edited — a date, `<=date`, `>=date`). It is
+ANDed with `--folder` / `--tag`; a key from another list is an error that names
+the keys you can use. Over `--remote` the server filters (`GET /api/library?q=`).
 
 `--folder` was called `--path` until BUG-281; the old name still works as an
 alias. `list --folder` filters in SQL (and, over `--remote`, on the server) — it
