@@ -17,8 +17,9 @@
 	import type { Campaign, CampaignSummary } from '$lib/types';
 	import { isDateOverdue } from '$lib/utils/datetime';
 	import NewCampaignModal from '$lib/components/NewCampaignModal.svelte';
-	// DEV-452 (REQ-039): 쿼리 칸 — 퀘스트 목록과 같은 부품, 키만 캠페인 것.
-	import QueryField from '$lib/components/QueryField.svelte';
+	// DEV-452 (REQ-039): 검색칸 — 퀘스트 목록과 같은 부품([검색 | 쿼리]), 키만 캠페인 것.
+	import SearchField, { type SearchMode } from '$lib/components/SearchField.svelte';
+	import QueryNotes from '$lib/components/QueryNotes.svelte';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -52,21 +53,28 @@
 		}
 	});
 
-	// DEV-452: 쿼리 — 해석과 거르기는 코어가 하고(`GET /api/campaigns?q=`), 여기는 맞는 번호만 받아
-	// 상태 선택과 **그리고**로 겹친다. 틀린 동안은 거르지 않는다(퀘스트 목록과 같다). 주소 `?q=` 에 실린다.
+	// DEV-452: 검색 · 쿼리 — 둘 다 코어가 거르고(`GET /api/campaigns?q=`), 여기는 맞는 번호만 받아
+	// 상태 선택과 **그리고**로 겹친다. 검색은 글 전체를 따옴표로 묶은 쿼리다(제목 · 설명 · 번호에서 찾는다).
+	// 틀린 동안은 거르지 않는다(퀘스트 목록과 같다). 주소 `?search=` · `?q=` 에 실린다.
 	const CAMPAIGN_QUERY_KEYS = [
 		['status', 'status:active', 'campaignList.queryHelpStatus'],
 		['start', 'start:>=2026-10-01', 'campaignList.queryHelpStart'],
 		['end', 'end:overdue', 'campaignList.queryHelpEnd'],
 		['quest', 'quest:DEV-001', 'campaignList.queryHelpQuest']
 	] as const;
-	let query = $state($page.url.searchParams.get('q') ?? '');
+	const initialSearch = $page.url.searchParams.get('search') ?? '';
+	const initialQuery = $page.url.searchParams.get('q') ?? '';
+	let search = $state(initialSearch);
+	let query = $state(initialQuery);
+	let mode = $state<SearchMode>(initialQuery.trim() && !initialSearch.trim() ? 'query' : 'search');
+	let queryHelpOpen = $state(false);
 	let queryMatch = $state<Set<string> | null>(null);
 	let queryError = $state<string | null>(null);
 	let querySeq = 0;
 	let queryTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
-		const q = query.trim();
+		const words = search.trim().replaceAll('"', '');
+		const q = mode === 'query' ? query.trim() : words ? `"${words}"` : '';
 		void all; // 다시 불러오면(순서 바꾸기 등) 맞는 것도 다시 묻는다.
 		if (queryTimer) clearTimeout(queryTimer);
 		const seq = ++querySeq;
@@ -92,12 +100,17 @@
 	});
 	// 주소에 싣는다 — 새로고침 · 공유한 링크가 같은 목록을 연다.
 	$effect(() => {
-		const q = query.trim();
+		const want = { search: search.trim(), q: query.trim() };
 		const url = new URL(window.location.href);
-		if ((url.searchParams.get('q') ?? '') === q) return;
-		if (q) url.searchParams.set('q', q);
-		else url.searchParams.delete('q');
-		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+		let changed = false;
+		for (const [k, v] of Object.entries(want)) {
+			if ((url.searchParams.get(k) ?? '') === v) continue;
+			if (v) url.searchParams.set(k, v);
+			else url.searchParams.delete(k);
+			changed = true;
+		}
+		if (changed)
+			goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
 	});
 
 	let filtered = $derived.by(() => {
@@ -196,12 +209,22 @@
 				<option value="manual">{t('campaignList.sortManual', $locale)}</option>
 			</select>
 		</label>
-		<QueryField
-			bind:value={query}
-			error={queryError}
+		<SearchField
+			bind:search
+			bind:query
+			bind:mode
+			bind:helpOpen={queryHelpOpen}
+			queryError={mode === 'query' ? queryError : null}
+			placeholder={t('campaignList.searchPlaceholder', $locale)}
+			queryPlaceholderKey="campaignList.queryPlaceholder"
+			testids={{ search: 'campaign-search', query: 'campaign-query' }}
+			grow
+		/>
+		<QueryNotes
+			error={mode === 'query' ? queryError : null}
+			open={mode === 'query' && queryHelpOpen}
 			keys={CAMPAIGN_QUERY_KEYS}
 			rulesKey="campaignList.queryHelpRules"
-			placeholderKey="campaignList.queryPlaceholder"
 			testid="campaign-query"
 		/>
 	</div>

@@ -42,8 +42,9 @@
 	} from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
-	// DEV-452 (REQ-039): 쿼리 칸 — 퀘스트 목록과 같은 부품, 키만 도서관 것.
-	import QueryField from '$lib/components/QueryField.svelte';
+	// DEV-452 (REQ-039): 검색칸 — 퀘스트 목록과 같은 부품([검색 | 쿼리]), 키만 도서관 것.
+	import SearchField, { type SearchMode } from '$lib/components/SearchField.svelte';
+	import QueryNotes from '$lib/components/QueryNotes.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
@@ -138,7 +139,10 @@
 		['folder', '-folder:보관', 'library.queryHelpFolder'],
 		['updated', 'updated:>=2026-10-01', 'library.queryHelpUpdated']
 	] as const;
-	let query = $state($page.url.searchParams.get('q') ?? '');
+	const initialQuery = $page.url.searchParams.get('q') ?? '';
+	let query = $state(initialQuery);
+	let searchMode = $state<SearchMode>(initialQuery.trim() ? 'query' : 'search');
+	let queryHelpOpen = $state(false);
 	let queryMatch = $state<Set<string> | null>(null);
 	let queryError = $state<string | null>(null);
 	let querySeq = 0;
@@ -1256,21 +1260,28 @@
 			<button class="btn btn-sm" onclick={openCreate}>{t('library.newDoc', $locale)}</button>
 		</div>
 		<div class="search-row">
-			<input
-				class="input search-input"
-				type="search"
+			<SearchField
+				bind:search={searchQuery}
+				bind:query
+				bind:mode={searchMode}
+				bind:helpOpen={queryHelpOpen}
+				queryError={searchMode === 'query' ? queryError : null}
 				placeholder={t('library.searchPlaceholder', $locale)}
-				bind:value={searchQuery}
+				queryPlaceholderKey="library.queryPlaceholder"
+				testids={{ search: 'library-search', query: 'library-query' }}
+				grow
 			/>
-			<!-- REQ-011: 첨부 이름까지 검색. 켜지 않으면 예전과 동일. -->
-			<label class="search-opt">
-				<input
-					type="checkbox"
-					bind:checked={searchAttachments}
-					data-testid="library-search-attachments"
-				/>
-				<span>{t('library.searchAttachments', $locale)}</span>
-			</label>
+			{#if searchMode === 'search'}
+				<!-- REQ-011: 첨부 이름까지 검색. 켜지 않으면 예전과 동일. -->
+				<label class="search-opt">
+					<input
+						type="checkbox"
+						bind:checked={searchAttachments}
+						data-testid="library-search-attachments"
+					/>
+					<span>{t('library.searchAttachments', $locale)}</span>
+				</label>
+			{/if}
 			<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 			<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
 				<select class="sort-sel" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
@@ -1296,16 +1307,17 @@
 				storageKey="library"
 			/>
 		{/if}
-		<div class="query-line">
-			<QueryField
-				bind:value={query}
-				error={queryError}
-				keys={LIBRARY_QUERY_KEYS}
-				rulesKey="library.queryHelpRules"
-				placeholderKey="library.queryPlaceholder"
-				testid="library-query"
-			/>
-		</div>
+		{#if searchMode === 'query' && (queryError || queryHelpOpen)}
+			<div class="query-line">
+				<QueryNotes
+					error={queryError}
+					open={queryHelpOpen}
+					keys={LIBRARY_QUERY_KEYS}
+					rulesKey="library.queryHelpRules"
+					testid="library-query"
+				/>
+			</div>
+		{/if}
 		<div class="crumbs">
 			<!-- BUG-127(admin 요청): 현재 위치 왼쪽에 상위 폴더 이동 버튼.
 			     BUG-127: 상위/도서관/각 경로 조각도 드롭 대상 — 문서를 여기로 끌어다
@@ -1606,21 +1618,28 @@
 						>
 					</div>
 					<div class="search-row">
-						<input
-							class="input search-input"
-							type="search"
+						<SearchField
+							bind:search={searchQuery}
+							bind:query
+							bind:mode={searchMode}
+							bind:helpOpen={queryHelpOpen}
+							queryError={searchMode === 'query' ? queryError : null}
 							placeholder={t('library.searchPlaceholder', $locale)}
-							bind:value={searchQuery}
+							queryPlaceholderKey="library.queryPlaceholder"
+							testids={{ search: 'library-search', query: 'library-query' }}
+							grow
 						/>
-						<!-- REQ-011: 첨부 이름까지 검색. 위쪽 뷰의 검색줄과 같은 옵션. -->
-						<label class="search-opt">
-							<input
-								type="checkbox"
-								bind:checked={searchAttachments}
-								data-testid="library-search-attachments"
-							/>
-							<span>{t('library.searchAttachments', $locale)}</span>
-						</label>
+						{#if searchMode === 'search'}
+							<!-- REQ-011: 첨부 이름까지 검색. 켜지 않으면 예전과 동일. -->
+							<label class="search-opt">
+								<input
+									type="checkbox"
+									bind:checked={searchAttachments}
+									data-testid="library-search-attachments"
+								/>
+								<span>{t('library.searchAttachments', $locale)}</span>
+							</label>
+						{/if}
 						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 						<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
 							<select
@@ -1650,16 +1669,17 @@
 							storageKey="library"
 						/>
 					{/if}
-					<div class="query-line">
-						<QueryField
-							bind:value={query}
-							error={queryError}
-							keys={LIBRARY_QUERY_KEYS}
-							rulesKey="library.queryHelpRules"
-							placeholderKey="library.queryPlaceholder"
-							testid="library-query"
-						/>
-					</div>
+					{#if searchMode === 'query' && (queryError || queryHelpOpen)}
+						<div class="query-line">
+							<QueryNotes
+								error={queryError}
+								open={queryHelpOpen}
+								keys={LIBRARY_QUERY_KEYS}
+								rulesKey="library.queryHelpRules"
+								testid="library-query"
+							/>
+						</div>
+					{/if}
 					<!-- DEV-429: 트리에서 고른 것도 같은 줄로 다룬다. -->
 					{@render pickedTools()}
 					{#if searchResults}
@@ -2547,17 +2567,6 @@
 		border-radius: var(--r-md);
 		margin: var(--sp-8) 0;
 	}
-	/* DEV-238: 검색창 — sidebar/explorer 툴바 양쪽에서 재사용. */
-	.search-input {
-		width: 100%;
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		font-size: var(--fs-sm);
-		margin: var(--sp-6) 0;
-	}
 	.book-path {
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
@@ -2587,8 +2596,9 @@
 	.page > .search-row {
 		margin-bottom: var(--sp-8);
 	}
-	/* DEV-452: 쿼리 칸 — 줄 · 오류 · 쓰는 법이 각자 한 줄을 다 쓴다. 탐색기 쪽은 위아래를 margin 으로
-	   띄운다(위의 BUG-266 과 같은 까닭 — 사이드바는 부모 gap 이 띄운다). 위아래 margin 은 겹쳐 하나가 된다. */
+	/* DEV-452: 쿼리의 오류 · 쓰는 법(쿼리 모드일 때만). 탐색기 쪽은 위아래를 margin 으로 띄운다(위의
+	   BUG-266 과 같은 까닭 — 사이드바는 부모 gap 이 띄운다). 위아래 margin 은 겹쳐 하나가 된다.
+	   검색칸(SearchField)은 줄 하나를 다 쓰고, 첨부 옵션 · 정렬은 예전처럼 둘째 줄(REQ-016). */
 	.query-line {
 		display: flex;
 		flex-wrap: wrap;
@@ -2596,11 +2606,6 @@
 	}
 	.page > .query-line {
 		margin-block: var(--sp-8);
-	}
-	.search-row .search-input {
-		/* flex-basis 100% → 항상 자기 줄을 독차지하고 뒤 요소를 밀어낸다. */
-		flex: 1 1 100%;
-		min-width: 0;
 	}
 	/* 둘째 줄 — 체크박스는 왼쪽, 정렬 컨트롤은 오른쪽 끝. */
 	.search-row .sort-group {

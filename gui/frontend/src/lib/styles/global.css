@@ -741,3 +741,49 @@ input[type='checkbox']:disabled {
 	border-radius: var(--r-xl);
 	box-shadow: var(--shadow-lg);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   DEV-452 · DEV-453: 둘 이상 중 하나 고르기(세그먼트) — [검색 | 쿼리], [보드 | 목록].
+
+     <div class="seg" role="radiogroup">
+       <button class:on={…} role="radio" aria-checked={…}>검색</button>
+       <button …>쿼리</button>
+     </div>
+
+   높이가 `.input` · `.btn` 과 같아서 나란히 놓아도 줄이 맞는다. 고른 것은 파랑(`.on`).
+   ───────────────────────────────────────────────────────────── */
+.seg {
+	display: inline-flex;
+	flex: none;
+	border: var(--bw) solid var(--border);
+	border-radius: var(--r-md);
+	overflow: hidden;
+}
+.seg > button {
+	padding: var(--sp-6) var(--sp-8);
+	font: inherit;
+	font-size: var(--fs-sm);
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition:
+		background var(--dur-fast),
+		color var(--dur-fast);
+}
+.seg > button + button {
+	border-left: var(--bw) solid var(--border);
+}
+.seg > button:hover {
+	color: var(--text);
+	background: var(--bg-subtle);
+}
+.seg > button.on {
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.seg > button:focus-visible {
+	outline: none;
+	box-shadow: inset var(--ring);
+}

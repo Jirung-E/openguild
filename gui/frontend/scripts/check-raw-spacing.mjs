@@ -66,7 +66,10 @@ function blankOptedOutRegions(css) {
 /** 파일별로 허용하는 리터럴 — 이유를 코드 주석으로 남긴 곳만 등록한다. */
 const ALLOW = new Map([
 	// 스크린리더 전용으로 숨긴 요소. 화면에 안 보이는 1px 이라 배율과 무관하다.
+	// 그리고 필터 줄의 세로 구분선(.divider) 1px.
 	['lib/components/QuestListFilter.svelte', new Set(['width:1px', 'height:1px'])],
+	// DEV-452: 퀘스트 목록의 검색칸이 SearchField 로 옮겨 가며 같이 왔다(스크린리더 전용).
+	['lib/components/SearchField.svelte', new Set(['width:1px', 'height:1px'])],
 	// 같은 목적 — 화면 밖으로 치워 두는 건너뛰기 링크. 배율과 무관하다.
 	['lib/components/Nav.svelte', new Set(['left:-9999px'])]
 ]);

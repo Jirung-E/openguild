@@ -1364,6 +1364,18 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'filter.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },
 	// DEV-447 (REQ-039): 쿼리 문법 입력칸.
 	'filter.queryLabel': { ko: '쿼리', en: 'Query' },
+	// DEV-452: 검색칸 하나에서 [검색 | 쿼리] 를 고른다.
+	'filter.searchModeAria': { ko: '검색 방식', en: 'Search mode' },
+	'filter.modeSearch': { ko: '검색', en: 'Search' },
+	'filter.modeQuery': { ko: '쿼리', en: 'Query' },
+	'filter.modeQueryHint': {
+		ko: '키:값 으로 거르기 — 예: status:open -tag:wip',
+		en: 'Filter with key:value — e.g. status:open -tag:wip'
+	},
+	'campaignList.searchPlaceholder': {
+		ko: '검색 (제목 / 설명 / 번호)',
+		en: 'Search (title / description / id)'
+	},
 	'filter.queryPlaceholder': {
 		ko: '예: status:open,in_progress -tag:wip due:overdue',
 		en: 'e.g. status:open,in_progress -tag:wip due:overdue'

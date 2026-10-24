@@ -7,8 +7,9 @@
 	import { statusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from './DateField.svelte';
-	// DEV-452: 쿼리 칸 — 보드 · 캠페인 · 도서관과 같이 쓴다.
-	import QueryField from './QueryField.svelte';
+	// DEV-452: 검색칸 하나에서 [검색 | 쿼리] — 보드 · 캠페인 · 도서관과 같이 쓴다.
+	import SearchField, { type SearchMode } from './SearchField.svelte';
+	import QueryNotes from './QueryNotes.svelte';
 	import type { TriState } from '$lib/utils/quest-list';
 
 	let {
@@ -80,6 +81,13 @@
 	/** 접힘 상태에서 보여줄 '몇 개 걸려 있는지'. 0 이면 표시 안 함. */
 	const activeChipCount = $derived(typeIds.size + statusIds.size);
 
+	// DEV-452: 검색칸이 쿼리 모드인가. 쿼리가 있고 검색어가 없으면(주소로 받은 `?q=` 등) 쿼리로 연다.
+	let searchMode = $state<SearchMode>('search');
+	let queryHelpOpen = $state(false);
+	$effect(() => {
+		if (query.trim() && !search.trim()) searchMode = 'query';
+	});
+
 	// DEV-447: 쿼리 도움말 — 키 목록. 값의 예는 CLI `quest list -q` 와 같다.
 	const QUERY_KEYS = [
 		['status', 'status:open,in_progress', 'filter.queryHelpStatus'],
@@ -94,13 +102,8 @@
 
 	// DEV-033: 고급 행 접기. 필터 활성이면 라벨에 표시.
 	let advancedOpen = $state(false);
-	// DEV-447: 쿼리가 틀렸으면 고급을 연다 — 접힌 채면 목록이 왜 안 걸러지는지 알 길이 없다(주소로 받은 쿼리 등).
-	$effect(() => {
-		if (queryError) advancedOpen = true;
-	});
 	let advancedActive = $derived(
-		query.trim() !== '' ||
-			urgencies.size > 0 ||
+		urgencies.size > 0 ||
 			prereqState !== 'any' ||
 			subState !== 'any' ||
 			createdAfter !== '' ||
@@ -120,7 +123,6 @@
 		return cur === 'any' ? 'has' : cur === 'has' ? 'none' : 'any';
 	}
 	function clearAdvanced() {
-		query = '';
 		urgencies = new Set();
 		prereqState = 'any';
 		subState = 'any';
@@ -179,49 +181,41 @@
 
 	<div class="divider"></div>
 
-	<!-- DEV-037: 검색 -->
+	<!-- DEV-037: 검색. DEV-452: 같은 칸에서 [검색 | 쿼리] 를 고른다(쿼리는 예전엔 고급 안의 따로 칸). -->
 	<div class="search-group">
-		<label class="search-input-wrap">
-			<span class="sr-only">{t('filter.search', $locale)}</span>
-			<input
-				type="search"
-				class="input search-input"
-				placeholder={t('filter.searchPlaceholder', $locale)}
-				bind:value={search}
-				data-testid="quest-search-input"
-			/>
-			{#if search}
-				<button
-					type="button"
-					class="search-clear"
-					title={t('filter.clearSearch', $locale)}
-					onclick={() => (search = '')}
-					data-testid="quest-search-clear">×</button
-				>
-			{/if}
-		</label>
-		<label class="search-opt">
-			<input type="checkbox" bind:checked={titleOnly} data-testid="quest-search-title-only" />
-			<span>{t('filter.titleOnly', $locale)}</span>
-		</label>
-		<!-- REQ-010: 검색 영역을 넓히는 옵션. titleOnly 가 좁히는 것과 방향이 반대라
-		     나란히 두되, 켜지 않으면 예전과 완전히 같은 결과가 나온다. -->
-		<label class="search-opt">
-			<input
-				type="checkbox"
-				bind:checked={searchComments}
-				data-testid="quest-search-comments"
-			/>
-			<span>{t('filter.searchComments', $locale)}</span>
-		</label>
-		<label class="search-opt">
-			<input
-				type="checkbox"
-				bind:checked={searchAttachments}
-				data-testid="quest-search-attachments"
-			/>
-			<span>{t('filter.searchAttachments', $locale)}</span>
-		</label>
+		<SearchField
+			bind:search
+			bind:query
+			bind:mode={searchMode}
+			bind:helpOpen={queryHelpOpen}
+			{queryError}
+			placeholder={t('filter.searchPlaceholder', $locale)}
+		>
+			{#snippet options()}
+				<label class="search-opt">
+					<input type="checkbox" bind:checked={titleOnly} data-testid="quest-search-title-only" />
+					<span>{t('filter.titleOnly', $locale)}</span>
+				</label>
+				<!-- REQ-010: 검색 영역을 넓히는 옵션. titleOnly 가 좁히는 것과 방향이 반대라
+				     나란히 두되, 켜지 않으면 예전과 완전히 같은 결과가 나온다. -->
+				<label class="search-opt">
+					<input
+						type="checkbox"
+						bind:checked={searchComments}
+						data-testid="quest-search-comments"
+					/>
+					<span>{t('filter.searchComments', $locale)}</span>
+				</label>
+				<label class="search-opt">
+					<input
+						type="checkbox"
+						bind:checked={searchAttachments}
+						data-testid="quest-search-attachments"
+					/>
+					<span>{t('filter.searchAttachments', $locale)}</span>
+				</label>
+			{/snippet}
+		</SearchField>
 	</div>
 
 	<!-- DEV-033: 고급 필터 토글. -->
@@ -232,6 +226,12 @@
 		aria-expanded={advancedOpen}
 		>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
 	>
+	<!-- DEV-452: 쿼리의 오류 · 쓰는 법 — 필터 줄 아래 한 줄을 다 쓴다. -->
+	<QueryNotes
+		error={searchMode === 'query' ? queryError : null}
+		open={searchMode === 'query' && queryHelpOpen}
+		keys={QUERY_KEYS}
+	/>
 </div>
 
 {#if advancedOpen}
@@ -287,7 +287,6 @@
 			>
 		{/if}
 		<!-- DEV-447 (REQ-039): 쿼리 — 고급 안에서 줄 하나를 다 쓴다(값이 길다; admin: 고급에 넣는다). -->
-		<QueryField bind:value={query} error={queryError} keys={QUERY_KEYS} />
 	</div>
 {/if}
 
@@ -357,52 +356,6 @@
 		align-items: center;
 		gap: var(--sp-8);
 		flex-wrap: wrap;
-	}
-	.search-input-wrap {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-	}
-	/* 스크린리더 전용 — 화면에는 안 보인다. BUG-256: 이 1px 은 "보이지 않게
-	   만드는" 관용구지 치수가 아니라서 배율을 따라갈 이유가 없다(가드의
-	   ALLOW 에 등록). */
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		/* BUG-256: 테두리 겹침 보정이라 rem 이 아니라 **테두리 두께 토큰**이
-		   맞다 — 상쇄해야 할 대상이 `--bw` 이기 때문이다. rem 으로 두면
-		   배율에 따라 상쇄량이 테두리와 어긋난다. */
-		margin: calc(-1 * var(--bw));
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
-	}
-	.search-input {
-		padding: var(--sp-4) var(--sp-32) var(--sp-4) var(--sp-12);
-		min-width: 12.5rem;
-		transition: border-color var(--dur-fast);
-	}
-	.search-input::-webkit-search-cancel-button {
-		display: none;
-	}
-	.search-clear {
-		position: absolute;
-		right: 0.3rem;
-		padding: 0 var(--sp-6);
-		border: none;
-		border-radius: var(--r-pill);
-		background: transparent;
-		color: var(--text-faint);
-		font-size: 1rem; /* token-ok: × 글리프 크기 */
-		line-height: var(--lh-tight);
-		cursor: pointer;
-	}
-	.search-clear:hover {
-		color: var(--danger);
-		background: transparent;
 	}
 	.search-opt {
 		display: inline-flex;
