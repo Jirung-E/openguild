@@ -8,6 +8,8 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
 	import { statusLabel, questStatusLabel } from '$lib/utils/status-label';
+	// DEV-453: 보드 · 목록 전환.
+	import QuestViewSwitch from './QuestViewSwitch.svelte';
 	import { questsApi } from '$lib/api/quests';
 	// DEV-142 후속: 상태 변경 실패(미해결 토론 등) 시 통일된 toast 경고.
 	import { showToast } from '$lib/stores/toast';
@@ -3868,13 +3870,15 @@
 	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
 	     그 아래로 내림 (사용자 피드백). 접기 토글로 도구만 숨길 수 있음. -->
-	{#if onNewQuest}
-		<div class="tb-newquest-wrap">
+	<!-- DEV-453: [보드 | 목록] — 목록 화면의 같은 자리('+ 새 퀘스트' 왼쪽). -->
+	<div class="tb-newquest-wrap">
+		<QuestViewSwitch current="board" />
+		{#if onNewQuest}
 			<button class="tb-btn tb-new" onclick={onNewQuest} title={t('board.newQuest', $locale)}>
 				<span class="icon">+</span><span>{t('board.newQuest', $locale)}</span>
 			</button>
-		</div>
-	{/if}
+		{/if}
+	</div>
 	<!-- 툴바 — DEV-073: collapsed 시 ⊟ 토글만 보이고 나머지 숨김 (lane header 안 가림).
 		 fix4: 사용자 피드백 — 토글 버튼이 펴진 도구바의 왼쪽 끝에 있으니 다시 접을
 		 때 마우스를 멀리 이동해야 함. 펴는 / 접는 위치를 동일하게 (우측 끝) 유지하기
@@ -5197,6 +5201,10 @@
 		right: 0.875rem;
 		z-index: 10;
 		pointer-events: auto;
+		/* DEV-453: [보드 | 목록] 과 '+ 새 퀘스트' 를 한 줄로 — 높이는 버튼에 맞춘다(stretch). */
+		display: flex;
+		align-items: stretch;
+		gap: var(--sp-8);
 	}
 	.toolbar {
 		position: absolute;

@@ -297,7 +297,8 @@
 		gap: var(--sp-12);
 		/* DEV-086: 우측 New Quest 플로팅 버튼 자리 확보 (보드 toolbar 와 동일
 		   위치). 필터가 wrap 돼도 버튼 밑으로 안 들어가게 padding-right 예약. */
-		padding: var(--sp-12) 8.125rem var(--sp-12) var(--sp-24);
+		/* DEV-453: 오른쪽 위에 [보드 | 목록] 이 더해져 예약 폭을 늘렸다(8.125 → 15rem). */
+		padding: var(--sp-12) 15rem var(--sp-12) var(--sp-24);
 		background: var(--bg-elevated);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 		flex-wrap: wrap;
@@ -388,7 +389,7 @@
 		align-items: center;
 		gap: var(--sp-12);
 		flex-wrap: wrap;
-		padding: var(--sp-8) 8.125rem var(--sp-8) var(--sp-24);
+		padding: var(--sp-8) 15rem var(--sp-8) var(--sp-24);
 		background: var(--bg-elevated);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 	}

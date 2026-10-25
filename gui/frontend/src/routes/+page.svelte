@@ -14,10 +14,15 @@
 	import { launchDocHref } from '$lib/utils/launch-doc';
 	import { showToast } from '$lib/stores/toast';
 	import { locale, t } from '$lib/stores/locale';
+	import { saveQuestView } from '$lib/utils/quest-view';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
 	let currentView: View = $derived(($page.url.searchParams.get('view') as View | null) ?? 'home');
+	// DEV-453: 메뉴 '퀘스트' 가 마지막에 본 쪽으로 가게 — 링크로 들어와도 기억한다.
+	$effect(() => {
+		if (currentView === 'board' || currentView === 'list') saveQuestView(currentView);
+	});
 
 	// DEV-084: New Quest 를 상단 nav 에서 각 뷰의 기존 상단 바/툴바 우측 끝으로
 	// 이동 (QuestBoard toolbar / QuestList filter-bar). 모달 + 생성 로직은 여기

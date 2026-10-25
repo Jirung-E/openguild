@@ -5,6 +5,8 @@
 	import { bumpReindex } from '$lib/stores/reindex';
 	// DEV-260: Nav overflow → 타이틀바 ☰ 메뉴 공유 스토어.
 	import { navOverflowItems, type NavOverflowItem } from '$lib/stores/navOverflow';
+	// DEV-453: 보드 · 목록은 한 메뉴 — 마지막에 본 쪽으로 간다.
+	import { questViewHref } from '$lib/utils/quest-view';
 	// DEV-205 모듈1: Nav 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
@@ -102,14 +104,11 @@
 	const navItems = $derived.by((): NavOverflowItem[] => [
 		{ href: '/', label: t('nav.home', $locale), active: onRootPath && currentView === 'home' },
 		{
-			href: '/?view=board',
-			label: t('nav.board', $locale),
-			active: onRootPath && currentView === 'board'
-		},
-		{
-			href: '/?view=list',
-			label: t('nav.list', $locale),
-			active: onRootPath && currentView === 'list'
+			// DEV-453: '퀘스트 보드' · '퀘스트 목록' 두 메뉴를 하나로. 페이지 안의 [보드 | 목록] 으로 고르고,
+			// 여기를 누르면 마지막에 본 쪽으로 간다($page 가 바뀔 때마다 다시 읽는다).
+			href: questViewHref(),
+			label: t('nav.quests', $locale),
+			active: onRootPath && (currentView === 'board' || currentView === 'list')
 		},
 		{ href: '/rules', label: t('nav.rules', $locale), active: onRulesPath },
 		{ href: '/library', label: t('nav.library', $locale), active: onLibraryPath }

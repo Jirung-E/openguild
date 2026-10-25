@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-453: 보드 · 목록 전환.
+	import QuestViewSwitch from './QuestViewSwitch.svelte';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
@@ -610,11 +612,15 @@
 	<!-- DEV-086: New Quest — Quest Board toolbar 와 동일 좌표 (top:10px right:14px)
 	     + 동일 크기. 페이지 전환 시 버튼이 안 흔들리도록. filter-bar 위에 떠 있되
 	     filter-bar 가 우측 130px padding 으로 자리 비워둠. -->
-	{#if onNewQuest}
-		<button class="qb-new" onclick={onNewQuest} title={t('questList.newQuest', $locale)}>
-			<span class="qb-new-icon">+</span><span>{t('questList.newQuest', $locale)}</span>
-		</button>
-	{/if}
+	<!-- DEV-453: [보드 | 목록] — 보드 화면의 같은 자리('+ 새 퀘스트' 왼쪽). -->
+	<div class="qb-top">
+		<QuestViewSwitch current="list" />
+		{#if onNewQuest}
+			<button class="qb-new" onclick={onNewQuest} title={t('questList.newQuest', $locale)}>
+				<span class="qb-new-icon">+</span><span>{t('questList.newQuest', $locale)}</span>
+			</button>
+		{/if}
+	</div>
 
 	<QuestListFilter
 		{types}
@@ -742,12 +748,18 @@
 	   BUG-256: 그래서 둘 다 rem 으로 옮겼다. 예전엔 둘 다 px 였고 보드 쪽이
 	   "노드 px 섬"(DEV-369) 안에 들어 있는 것으로 잘못 분류돼 있었다 — 여기만
 	   rem 으로 바꿨다면 배율을 올렸을 때 목록 버튼만 커져 짝이 깨졌을 것이다.
-	   `QuestListFilter` 의 우측 예약 폭(8.125rem)도 같은 한 벌이다. */
-	.qb-new {
+	   `QuestListFilter` 의 우측 예약 폭(15rem — DEV-453 의 [보드 | 목록] 포함)도 같은 한 벌이다. */
+	/* DEV-453: [보드 | 목록] 과 '+ 새 퀘스트' 를 한 묶음으로 띄운다(보드의 .tb-newquest-wrap 과 같은 자리). */
+	.qb-top {
 		position: absolute;
 		top: 0.625rem;
 		right: 0.875rem;
 		z-index: 10;
+		display: flex;
+		align-items: stretch; /* 높이는 '+ 새 퀘스트' 에 맞춘다 */
+		gap: var(--sp-8);
+	}
+	.qb-new {
 		display: flex;
 		align-items: center;
 		gap: var(--sp-4);

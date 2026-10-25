@@ -169,6 +169,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'nav.home': { ko: '홈', en: 'Home' },
 	'nav.board': { ko: '퀘스트 보드', en: 'Quest Board' },
 	'nav.list': { ko: '퀘스트 목록', en: 'Quest List' },
+	// DEV-453: 보드 · 목록은 한 메뉴 — 페이지 안에서 고른다.
+	'nav.quests': { ko: '퀘스트', en: 'Quests' },
+	'nav.viewBoard': { ko: '보드', en: 'Board' },
+	'nav.viewList': { ko: '목록', en: 'List' },
+	'nav.questViewAria': { ko: '퀘스트 보기', en: 'Quest view' },
 	'nav.admin': { ko: '관리', en: 'Admin' },
 	'nav.rules': { ko: '규칙', en: 'Rules' },
 	'nav.library': { ko: '도서관', en: 'Library' },
