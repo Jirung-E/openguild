@@ -51,7 +51,7 @@ openguild reindex                 # rebuild the SQL cache from .guild/**
 openguild check drift             # compare files vs. cache — and resync the cache if they differ
 openguild check counters          # verify ID counters — and correct them if behind
 openguild check sidecars          # comment/memo/attachment files whose document is missing (report only)
-openguild check update            # is a newer release out? (no guild needed; tells only, never installs)
+openguild update --check          # is a newer release out? (no guild needed; tells only, never installs)
 openguild index rebuild
 openguild index vacuum
 openguild journal tail            # tail the append-only journal

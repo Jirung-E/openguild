@@ -145,7 +145,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   만들어 붙인다 (DEV-395, DEV-396)
 - `index.db` 가 망가져 있으면(`database disk image is malformed`) 열 때 `backups/index.db.corrupt`
   로 옮기고 파일에서 새로 만든다 — 전에는 `reindex` 마저 막혀 길드가 안 열렸다 (DEV-450)
-- `openguild check update` — 새 버전이 나왔는지 알려 준다(앱과 같은 `latest.json`, 설치는 안 함). CLI ·
+- `openguild update --check` — 새 버전이 나왔는지 알려 준다(앱과 같은 `latest.json`, 설치는 안 함). CLI ·
   서버만 쓰는 사람을 위해. 길드 밖에서도 돈다 (DEV-187)
 - **지우기** — Windows 제거 프로그램이 `~/.openguild` 의 설치 사본도 치우고, "앱 데이터 삭제" 를 고르면
   이 기계의 설정(최근 길드 · 플러그인 허용 · 설정값 등)도 지운다. macOS CLI · 서버 tar.gz 에

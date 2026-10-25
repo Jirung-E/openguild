@@ -1,10 +1,14 @@
-//! DEV-187: `openguild check update` — 새 버전이 나왔는지 알려 준다.
+//! DEV-187: `openguild update --check` — 새 버전이 나왔는지 알려 준다.
 //!
 //! 앱은 Tauri updater 로 스스로 확인하지만, CLI · 서버만 쓰는 사람은 새 버전을 알 길이 없었다. 앱과 **같은**
 //! `latest.json`(GitHub Releases 의 최신 릴리스)을 읽어 버전만 비교하고 안내한다. 설치는 하지 않는다 — 돌고
 //! 있는 실행 파일을 바꾸는 것은 플랫폼마다 까다롭고, 설치는 설치 프로그램 · 앱의 몫이다.
 //!
 //! CLI 와 서버(`openguild-server`)는 늘 같은 버전으로 함께 나가므로 이 명령 하나로 둘 다 본다.
+//!
+//! 길드 점검(`check drift` 등)이 아니라 최상위 `update` 에 둔다 — 길드와 상관없고, 길드 옵션도 안 쓴다.
+//! `--check` 없이 부르면 지금은 같은 확인에 "직접 바꾸기는 아직 없다" 는 말을 붙인다. 나중에 직접 바꾸게
+//! 되면(DEV-351) 그 자리를 쓰고, `--check` 는 그때도 확인만 한다.
 
 use anyhow::{Result, anyhow};
 // `tf!` 가 부르는 언어 판정(main.rs).
@@ -137,13 +141,22 @@ fn fetch(url: &str) -> Result<String> {
     Ok(resp.text()?)
 }
 
-/// `openguild check update`. 주소는 `OPENGUILD_UPDATE_URL` 로 바꿀 수 있다(미러 · 시험).
-pub fn run(json: bool) -> Result<()> {
+/// `openguild update [--check]`. 주소는 `OPENGUILD_UPDATE_URL` 로 바꿀 수 있다(미러 · 시험).
+pub fn run(json: bool, check_only: bool) -> Result<()> {
     let url = std::env::var("OPENGUILD_UPDATE_URL").unwrap_or_else(|_| LATEST_JSON_URL.to_string());
     let st = status_from(env!("CARGO_PKG_VERSION"), &fetch(&url)?)?;
     if json {
         println!("{}", crate::json_str(&st));
         return Ok(());
+    }
+    if !check_only {
+        println!(
+            "{}",
+            tf!(
+                "직접 바꾸기는 아직 없습니다 — 새 버전이 나왔는지만 봅니다. (확인만: openguild update --check)",
+                "Installing by itself is not supported yet — this only checks for a new version. (check only: openguild update --check)"
+            )
+        );
     }
     if st.update_available {
         let date = st
