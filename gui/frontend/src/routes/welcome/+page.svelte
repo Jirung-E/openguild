@@ -455,7 +455,7 @@
 				</button>
 			</div>
 			{#if remoteCheckState === 'ok'}
-				<p class="remote-check ok">{t('welcome.connOk', $locale)}</p>
+				<p class="remote-check ok"><Icon name="check" size="1em" /> {t('welcome.connOk', $locale)}</p>
 			{:else if remoteCheckState === 'fail'}
 				<p class="remote-check err">
 					{t('welcome.connFail', $locale)}{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}
@@ -536,7 +536,7 @@
 							</div>
 							<div class="path">{entry.path}</div>
 							{#if entry.missing}
-								<div class="missing-label">{t('welcome.pathNotFound', $locale)}</div>
+								<div class="missing-label"><Icon name="warn" size="1em" /> {t('welcome.pathNotFound', $locale)}</div>
 							{/if}
 							{#if opening === entry.path}
 								<div class="opening">{t('welcome.guildOpening', $locale)}</div>
@@ -562,7 +562,10 @@
 							{#if !remoteChecked}
 								<div class="checking-label">{t('welcome.checkingConn', $locale)}</div>
 							{:else if !remoteOk}
-								<div class="missing-label">{t('welcome.serverUnreachableWarn', $locale)}</div>
+								<div class="missing-label">
+									<Icon name="warn" size="1em" />
+									{t('welcome.serverUnreachableWarn', $locale)}
+								</div>
 							{/if}
 						</button>
 					{/if}

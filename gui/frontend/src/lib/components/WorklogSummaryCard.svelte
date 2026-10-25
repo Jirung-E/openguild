@@ -113,7 +113,10 @@
 					>{t('worklogCard.rangePre', $locale)}{WEEKS}{t(
 						'worklogCard.rangeWeeks',
 						$locale
-					)}{total}{t('worklogCard.rangeActivities', $locale)}</span
+					)}{total}{t('worklogCard.rangeActivities', $locale)}<Icon
+						name="chevron-right"
+						size="1em"
+					/></span
 				>
 			</button>
 			<div class="heat" role="img" aria-label={t('worklogCard.heatmapAria', $locale)}>

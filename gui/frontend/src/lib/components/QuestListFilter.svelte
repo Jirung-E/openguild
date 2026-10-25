@@ -227,7 +227,7 @@
 		onclick={() => (advancedOpen = !advancedOpen)}
 		aria-expanded={advancedOpen}
 		><Icon name={advancedOpen ? 'caret-down-sm' : 'caret-right-sm'} size="1em" />
-		{t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
+		{t('filter.advanced', $locale)}{#if advancedActive}<Icon name="dot" size="1em" />{/if}</button
 	>
 	<!-- DEV-452: 쿼리의 오류 · 쓰는 법 — 필터 줄 아래 한 줄을 다 쓴다. -->
 	<QueryNotes
@@ -286,7 +286,7 @@
 		>
 		{#if advancedActive}
 			<button class="xfilter-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}
-				>{t('filter.clearBtn', $locale)}</button
+				><Icon name="close" size="1em" /> {t('filter.clearBtn', $locale)}</button
 			>
 		{/if}
 		<!-- DEV-447 (REQ-039): 쿼리 — 고급 안에서 줄 하나를 다 쓴다(값이 길다; admin: 고급에 넣는다). -->

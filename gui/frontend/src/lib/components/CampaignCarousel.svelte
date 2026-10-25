@@ -7,6 +7,8 @@
   - 카드 1개면 화살표 / dots 숨김.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import PlayPauseIcon from './PlayPauseIcon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
@@ -123,7 +125,7 @@
 		{#if summaries.length > 1}
 			<div class="controls">
 				<button class="arrow" type="button" onclick={prev} aria-label={t('carousel.prev', $locale)}
-					>‹</button
+					><Icon name="chevron-left" size="1em" /></button
 				>
 				<div class="dots" role="tablist">
 					{#each summaries as _s, i (i)}
@@ -137,7 +139,7 @@
 					{/each}
 				</div>
 				<button class="arrow" type="button" onclick={next} aria-label={t('carousel.next', $locale)}
-					>›</button
+					><Icon name="chevron-right" size="1em" /></button
 				>
 				<!-- BUG-027: 자동 회전 정지/재생 토글. -->
 				<button
@@ -204,7 +206,7 @@
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
-		font-size: 1rem; /* token-ok: ‹ › 글리프 크기 */
+		font-size: 1rem; /* token-ok: 아이콘(1em) 크기 */
 		line-height: var(--lh-tight);
 		cursor: pointer;
 		transition: background var(--dur-fast);

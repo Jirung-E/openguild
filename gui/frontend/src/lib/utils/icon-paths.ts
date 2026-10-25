@@ -49,7 +49,21 @@ export type IconName =
 	| 'horizontal'
 	| 'undo'
 	| 'redo'
-	| 'collapse-right';
+	| 'collapse-right'
+	// DEV-454 후속: 남아 있던 글자(‹ › ← → ↺ ⇲ ⠿ ☺ ⊕ ⊖ ⤢ ●).
+	| 'chevron-left'
+	| 'chevron-right'
+	| 'arrow-left'
+	| 'arrow-right'
+	| 'reset'
+	| 'tree'
+	| 'grip'
+	| 'smile-plus'
+	| 'plus-circle'
+	| 'minus-circle'
+	| 'expand'
+	| 'shrink'
+	| 'dot';
 
 /** 아이콘별 SVG 도형(16×16). `<svg>` 래퍼 없이 자식 엘리먼트만. */
 export const ICON_SHAPES: Record<IconName, string> = {
@@ -102,8 +116,9 @@ export const ICON_SHAPES: Record<IconName, string> = {
 	// 톱니 8개 — 바깥 6.3 · 안 4.7 반지름(해 모양으로 보이지 않게 이를 붙였다).
 	settings:
 		'<path d="M6.78 3.46 7.01 1.78h1.98l.23 1.68 1.13.47 1.35-1.03 1.4 1.4-1.03 1.35.47 1.13 1.68.23v1.98l-1.68.23-.47 1.13 1.03 1.35-1.4 1.4-1.35-1.03-1.13.47-.23 1.68H7.01l-.23-1.68-1.13-.47-1.35 1.03-1.4-1.4 1.03-1.35-.47-1.13-1.68-.23V7.01l1.68-.23.47-1.13L2.9 4.3l1.4-1.4 1.35 1.03z"/><circle cx="8" cy="8" r="1.9"/>',
-	// ⟲ — 다시 색인.
-	refresh: '<path d="M3.3 8a4.7 4.7 0 1 0 1.4-3.4"/><path d="M3.1 2.7v2.6h2.6"/>',
+	// ⟳ — 다시 색인. **시계 방향** — 도는 중에는 버튼째 시계 방향(rotate 0→360deg)으로 돌리므로 화살표도
+	// 그쪽을 가리켜야 한다(예전 도형은 반시계라 화살표와 반대로 돌았다).
+	refresh: '<path d="M12.7 8a4.7 4.7 0 1 1-1.4-3.4"/><path d="M12.9 2.7v2.6h-2.6"/>',
 	// ▦ ⊞ — 아이콘 보기 · 격자.
 	grid: '<rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1"/><path d="M8 2.6v10.8M2.6 8h10.8"/>',
 	// ⊟ — 정렬.
@@ -115,8 +130,44 @@ export const ICON_SHAPES: Record<IconName, string> = {
 	undo: '<path d="M5.6 3.6 2.8 6.4l2.8 2.8"/><path d="M3 6.4h6.4a3.3 3.3 0 0 1 0 6.6H7"/>',
 	redo: '<path d="M10.4 3.6 13.2 6.4l-2.8 2.8"/><path d="M13 6.4H6.6a3.3 3.3 0 0 0 0 6.6H9"/>',
 	// ⇥ — 도구줄 접기.
-	'collapse-right': '<path d="M2.6 8h8.2M7.8 5l3 3-3 3M13.2 3.6v8.8"/>'
+	'collapse-right': '<path d="M2.6 8h8.2M7.8 5l3 3-3 3M13.2 3.6v8.8"/>',
+	// ── DEV-454 후속 ──
+	// ‹ › — 캐러셀 넘기기 · 경로 구분 · 펼침.
+	'chevron-left': '<path d="M10 3.4 5.4 8l4.6 4.6"/>',
+	'chevron-right': '<path d="M6 3.4 10.6 8 6 12.4"/>',
+	// ← → — 목록으로 · 페이지로 이동 · 바뀐 값(옛 값 → 새 값).
+	'arrow-left': '<path d="M13 8H3.2M7.2 4 3.2 8l4 4"/>',
+	'arrow-right': '<path d="M3 8h9.8M8.8 4l4 4-4 4"/>',
+	// ↺ — 기본값으로(반시계).
+	reset: '<path d="M3.3 8a4.7 4.7 0 1 0 1.4-3.4"/><path d="M3.1 2.7v2.6h2.6"/>',
+	// ⇲ — 트리 보기.
+	tree: '<path d="M13.6 4H5.6M13.6 8H8.8M13.6 12H8.8"/><path d="M2.8 4v2.7A1.3 1.3 0 0 0 4.1 8h2.2M2.8 6.7v4A1.3 1.3 0 0 0 4.1 12h2.2"/>',
+	// ⠿ — 끌어서 옮기기.
+	grip: '<g fill="currentColor" stroke="none"><circle cx="6" cy="4" r="1.1"/><circle cx="10" cy="4" r="1.1"/><circle cx="6" cy="8" r="1.1"/><circle cx="10" cy="8" r="1.1"/><circle cx="6" cy="12" r="1.1"/><circle cx="10" cy="12" r="1.1"/></g>',
+	// ☺+ — 반응 달기.
+	'smile-plus':
+		'<circle cx="7" cy="9" r="4.9"/><path d="M5.1 10.6c1 1 2.8 1 3.8 0"/><circle cx="5.4" cy="7.9" r="0.55" fill="currentColor" stroke="none"/><circle cx="8.6" cy="7.9" r="0.55" fill="currentColor" stroke="none"/><path d="M13.2 1.6v3.6M11.4 3.4H15"/>',
+	// ⊕ ⊖ — 모두 펼치기 · 접기.
+	'plus-circle': '<circle cx="8" cy="8" r="5.6"/><path d="M8 5.4v5.2M5.4 8h5.2"/>',
+	'minus-circle': '<circle cx="8" cy="8" r="5.6"/><path d="M5.4 8h5.2"/>',
+	// ⤢ — 늘리기, 그 반대 — 높이 고정.
+	expand: '<path d="M9.6 2.8h3.6v3.6M13.2 2.8 9.2 6.8M6.4 13.2H2.8V9.6M2.8 13.2l4-4"/>',
+	shrink: '<path d="M9.2 3.2v3.6h3.6M9.2 6.8l4-4M6.8 12.8V9.2H3.2M6.8 9.2l-4 4"/>',
+	// ● — 켜져 있음 · 미해결 · 강조 종류(글자색을 따른다).
+	dot: '<circle cx="8" cy="8" r="2.6" fill="currentColor" stroke="none"/>'
 };
+
+/**
+ * DEV-454 후속: 코드로 만드는 단추(`document.createElement('button')`)에 넣을 `<svg>` 문자열.
+ * `Icon.svelte` 와 같은 도형 · 굵기 · 세로 정렬(1em 이면 0.375em − 0.5em = −0.125em). 크기는 둘레 글자를 따른다.
+ */
+export function iconSvgMarkup(name: IconName): string {
+	return (
+		`<svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" ` +
+		`stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ` +
+		`focusable="false" style="vertical-align:-0.125em">${ICON_SHAPES[name]}</svg>`
+	);
+}
 
 /**
  * 문자열로 조립하는 SVG 안에 넣을 아이콘 그룹.

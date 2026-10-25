@@ -435,7 +435,7 @@
 											: t('plugins.stagePost', $locale)}
 										{h.events.join(' ')}</span
 									>
-									<span aria-hidden="true">→</span>
+									<Icon name="arrow-right" size="1em" />
 									<code class="plugin-target"
 										>{h.call
 											? `${h.call}()`

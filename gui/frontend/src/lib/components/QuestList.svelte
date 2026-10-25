@@ -656,7 +656,9 @@
 				title={t('questList.treeTitle', $locale)}
 				aria-pressed={viewMode === 'tree'}
 			>
-				<span class="vt-icon">⇲</span><span>{t('questList.tree', $locale)}</span>
+				<span class="vt-icon"><Icon name="tree" size="1em" /></span><span
+					>{t('questList.tree', $locale)}</span
+				>
 			</button>
 			<button
 				class="vt-btn"
@@ -665,7 +667,9 @@
 				title={t('questList.listTitle', $locale)}
 				aria-pressed={viewMode === 'list'}
 			>
-				<span class="vt-icon">≡</span><span>{t('questList.list', $locale)}</span>
+				<span class="vt-icon"><Icon name="menu" size="1em" /></span><span
+					>{t('questList.list', $locale)}</span
+				>
 			</button>
 		</div>
 		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->

@@ -6,6 +6,8 @@
   버튼은 본 메뉴로 흡수.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
 	// DEV-114: 커스텀 프리셋 — 기본 3개 옆에 노출 + 기본 테마 클릭 시 커스텀 해제.
@@ -172,7 +174,9 @@
 		</div>
 	</div>
 
-	<a class="qm-all" href="/settings" onclick={onclose}>{t('settings.all', $locale)}</a>
+	<a class="qm-all" href="/settings" onclick={onclose}
+		>{t('settings.all', $locale)} <Icon name="arrow-right" size="1em" /></a
+	>
 </div>
 
 <style>

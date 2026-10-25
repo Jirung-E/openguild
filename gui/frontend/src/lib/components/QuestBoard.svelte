@@ -54,6 +54,7 @@
 		type BoardLod
 	} from '$lib/utils/quest-board-viewport';
 	import Icon from './Icon.svelte';
+	import { iconSvgMarkup } from '$lib/utils/icon-paths';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
 		saveLaneOrder as saveLaneOrderShared
@@ -3102,7 +3103,7 @@
 			const btn = document.createElement('button');
 			btn.className = 'lane-arrange-btn';
 			btn.title = 'Arrange this lane';
-			btn.textContent = '⊟';
+			btn.innerHTML = iconSvgMarkup('arrange');
 
 			// lane 별 정렬 모드 select (Group/All) — 전역 toolbar 의 mode select 와 같은 역할
 			const modeSel = document.createElement('select');
@@ -3154,7 +3155,7 @@
 			settingsBtn.className = 'lane-settings-btn';
 			settingsBtn.type = 'button';
 			settingsBtn.dataset.laneSlug = s.slug;
-			settingsBtn.textContent = '⚙';
+			settingsBtn.innerHTML = iconSvgMarkup('settings');
 			const setOpenAttrs = () => {
 				const open = lanesSettingsOpen.has(s.slug);
 				settingsBtn.title = open
@@ -3747,7 +3748,7 @@
 			onmousedown={startCardDrag}
 		>
 			<div class="card-head">
-				<span class="drag-hint" title={t('board.dragToMove', $locale)}>⠿</span>
+				<span class="drag-hint" title={t('board.dragToMove', $locale)}><Icon name="grip" size="1em" /></span>
 				<div class="card-badges">
 					<span class="pill sm" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
 					<span class="pill sm" style:--c={urgencyColor(expandedQuest.urgency)}
@@ -3776,6 +3777,7 @@
 				onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}
 			>
 				{t('board.gotoDetail', $locale)}
+				<Icon name="arrow-right" size="1em" />
 			</button>
 
 			<div class="card-divider"></div>
@@ -3793,22 +3795,26 @@
 				<button
 					class="hl-btn pre"
 					class:on={activeHighlights.has('pre')}
-					onclick={() => toggleHighlight('pre')}>{t('board.hlPre', $locale)}</button
+					onclick={() => toggleHighlight('pre')}
+					><Icon name="dot" size="1em" /> {t('board.hlPre', $locale)}</button
 				>
 				<button
 					class="hl-btn sub"
 					class:on={activeHighlights.has('sub')}
-					onclick={() => toggleHighlight('sub')}>{t('board.hlSub', $locale)}</button
+					onclick={() => toggleHighlight('sub')}
+					><Icon name="dot" size="1em" /> {t('board.hlSub', $locale)}</button
 				>
 				<button
 					class="hl-btn next"
 					class:on={activeHighlights.has('next')}
-					onclick={() => toggleHighlight('next')}>{t('board.hlNext', $locale)}</button
+					onclick={() => toggleHighlight('next')}
+					><Icon name="dot" size="1em" /> {t('board.hlNext', $locale)}</button
 				>
 				<button
 					class="hl-btn parent"
 					class:on={activeHighlights.has('parent')}
-					onclick={() => toggleHighlight('parent')}>{t('board.hlParent', $locale)}</button
+					onclick={() => toggleHighlight('parent')}
+					><Icon name="dot" size="1em" /> {t('board.hlParent', $locale)}</button
 				>
 			</div>
 
@@ -3829,6 +3835,7 @@
 						disabled={arranging}
 						title={t('board.arrangeHighlighted', $locale)}
 					>
+						<Icon name="grid" size="1em" />
 						{t('board.arrangeBtn', $locale)}
 					</button>
 					<button
@@ -3836,6 +3843,7 @@
 						onclick={clearHighlight}
 						title={t('board.clearHighlightTitle', $locale)}
 					>
+						<Icon name="close" size="1em" />
 						{t('common.clearBtn', $locale)}
 					</button>
 				</div>
@@ -3857,7 +3865,7 @@
 				)}</span
 			>
 			<button class="fc-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}
-				>{t('common.clearBtn', $locale)}</button
+				><Icon name="close" size="1em" /> {t('common.clearBtn', $locale)}</button
 			>
 		</div>
 	{/if}
@@ -4201,7 +4209,8 @@
 						<button
 							class="bf-clear"
 							onclick={clearBoardFilter}
-							title={t('common.clearFilter', $locale)}>{t('common.clearBtn', $locale)}</button
+							title={t('common.clearFilter', $locale)}
+							><Icon name="close" size="1em" /> {t('common.clearBtn', $locale)}</button
 						>
 					{/if}
 				</div>

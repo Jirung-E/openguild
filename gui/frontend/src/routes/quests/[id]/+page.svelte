@@ -754,7 +754,7 @@
 				<span
 					class="urgency-warn"
 					title={`${t('qd.urgencyClampPre', $locale)}${detail.urgency}${t('qd.urgencyClampPost', $locale)}`}
-					>{t('qd.outOfRange', $locale)}</span
+					><Icon name="warn" size="1em" /> {t('qd.outOfRange', $locale)}</span
 				>
 			{/if}
 			{#key badgePulse}
@@ -1447,6 +1447,7 @@
 				<code>{target.prefix}-NNN</code>{t('qd.changeTypeMsg3', $locale)}
 			</p>
 			<p class="del-prereq">
+				<Icon name="warn" size="1em" />
 				{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t(
 					'qd.changeTypeWarnPost',
 					$locale
@@ -1458,6 +1459,7 @@
 			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
 			{#if editMode}
 				<p class="del-prereq">
+					<Icon name="warn" size="1em" />
 					{t('qd.immediateNavWarn', $locale)}<strong>{t('qd.unsavedWarnStrong', $locale)}</strong
 					>{t('qd.unsavedWarnRest', $locale)}
 				</p>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -317,7 +319,7 @@
 	</aside>
 
 	<div class="panel">
-		<p class="note">{t('admin.noAuthWarn', $locale)}</p>
+		<p class="note"><Icon name="warn" size="1em" /> {t('admin.noAuthWarn', $locale)}</p>
 
 		{#if activeTab === 'structure'}
 			<AdminTypesSection onmessage={onSectionMessage} />
@@ -394,6 +396,7 @@
 				{#if problemFiles.length > 0}
 					<div class="problem-files" role="alert">
 						<h3>
+							<Icon name="warn" size="1em" />
 							{t('admin.problemFilesPre', $locale)}{problemFiles.length}{t(
 								'admin.problemFilesPost',
 								$locale
@@ -416,7 +419,7 @@
 					{@const total =
 						drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length}
 					{#if total === 0}
-						<p class="ok">{t('admin.driftOk', $locale)}</p>
+						<p class="ok"><Icon name="check" size="1em" /> {t('admin.driftOk', $locale)}</p>
 					{:else}
 						<div class="drift-report">
 							{#if drift.missing_in_index.length > 0}

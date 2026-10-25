@@ -1202,7 +1202,8 @@
 					title={e.resolved
 						? t('comment.resolvedTitle', $locale)
 						: t('comment.unresolvedTitle', $locale)}
-					>{e.resolved ? t('comment.resolved', $locale) : t('comment.unresolved', $locale)}</button
+					><Icon name={e.resolved ? 'check' : 'dot'} size="1em" />
+					{e.resolved ? t('comment.resolved', $locale) : t('comment.unresolved', $locale)}</button
 				>
 			{/if}
 			{#if editingId !== e.id}
@@ -1354,7 +1355,7 @@
 							class="reaction-add"
 							onclick={(ev) => toggleReactionPicker(ev, e.id)}
 							aria-expanded={pickerOpenFor === e.id}
-							title={t('comment.addReaction', $locale)}>☺+</button
+							title={t('comment.addReaction', $locale)}><Icon name="smile-plus" size="1.3em" /></button
 						>
 						{#if pickerOpenFor === e.id && reactionPickerPos}
 							<div
@@ -1508,6 +1509,7 @@
 					? t('comment.expandAllTitle', $locale)
 					: t('comment.collapseAllTitle', $locale)}
 			>
+				<Icon name={allCollapsed ? 'plus-circle' : 'minus-circle'} size="1em" />
 				{allCollapsed ? t('comment.expandAll', $locale) : t('comment.collapseAll', $locale)}
 			</button>
 		{/if}
@@ -1570,7 +1572,9 @@
 					{/each}
 					{#if groups.orphans.length > 0}
 						<li class="entry-card orphan-card">
-							<span class="orphan-label">{t('comment.replyToDeleted', $locale)}</span>
+							<span class="orphan-label"
+								><Icon name="undo" size="1em" /> {t('comment.replyToDeleted', $locale)}</span
+							>
 							{#each groups.orphans as o (o.id)}
 								{@render entryView(o, true)}
 							{/each}
@@ -2125,6 +2129,9 @@
 		position: relative;
 	}
 	.reaction-add {
+		/* DEV-454 후속: 글자 '☺+' 두 개 → 도형 하나라 조금 크게(1.3em), 가운데는 flex 로. */
+		display: inline-flex;
+		align-items: center;
 		padding: var(--sp-2) var(--sp-6);
 		background: transparent;
 		border: var(--bw) solid var(--border-muted);

@@ -1359,7 +1359,7 @@
 					.split('/')
 					.slice(0, i + 1)
 					.join('/')}
-				<span class="crumb-sep">›</span>
+				<span class="crumb-sep"><Icon name="chevron-right" size="0.9em" /></span>
 				<button
 					class="crumb"
 					class:drag-over={dragOverFolder === partial}
@@ -1819,7 +1819,7 @@
 						     뒤로·검색을 숨기는 것과 같은 판정을 쓴다. -->
 						{#if showsBackToList(viewMode, $isChildWindow)}
 							<button class="btn" onclick={explorerBack}
-								>{t('library.backToList', $locale)}</button
+								><Icon name="arrow-left" size="1em" />{t('library.backToList', $locale)}</button
 							>
 						{/if}
 						<!-- BUG-127(admin 요청): 뷰모드 토글은 트리/탐색기 목록 쪽에만 —
@@ -1836,6 +1836,7 @@
 						{#if !editMode}
 							<div class="top-actions">
 								<button class="btn" onclick={enterEdit}>
+									{#if selected.body.trim()}<Icon name="edit" size="1em" />{/if}
 									{selected.body.trim()
 										? t('library.editDoc', $locale)
 										: t('library.writeDoc', $locale)}
@@ -2339,6 +2340,7 @@
 		white-space: nowrap;
 	}
 	.crumb-sep {
+		display: inline-flex;
 		color: var(--text-muted);
 	}
 	/* BUG-127: 상위 폴더 버튼/경로 조각도 드롭 대상. */

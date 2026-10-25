@@ -203,6 +203,7 @@
 						? t('note.heightExpand', $locale)
 						: t('note.heightFixed', $locale)}
 				>
+					<Icon name={heightMode === 'fixed' ? 'expand' : 'shrink'} size="1em" />
 					{heightMode === 'fixed' ? t('note.expandBtn', $locale) : t('note.fixBtn', $locale)}
 				</button>
 			{/if}

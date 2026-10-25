@@ -95,6 +95,7 @@
 
 	{#if selected.size > 0}
 		<button class="tag-clear" onclick={onclear} title={t('tagFilter.clearTitle', $locale)}>
+			<Icon name="close" size="1em" />
 			{t('questList.clearAllBtn', $locale)}
 		</button>
 	{/if}

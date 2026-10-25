@@ -9,6 +9,8 @@
   width 는 부모가 결정 (carousel = 100%, conveyor = 200px 등).
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	// BUG-033: goto 제거 — anchor href 로 native navigate.
 	import type { CampaignSummary } from '$lib/types';
 	import { formatRemaining } from '$lib/utils/datetime';
@@ -160,7 +162,9 @@
 	{#if mode === 'active'}
 		<div class="head">
 			<span class="slug">{summary.campaign_slug}</span>
-			{#if completed}<span class="done-mark" title={t('common.done', $locale)}>{t('common.doneMark', $locale)}</span>{/if}
+			{#if completed}<span class="done-mark" title={t('common.done', $locale)}
+					><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span
+				>{/if}
 		</div>
 		<div class="title">{summary.title}</div>
 		<div class="meta">

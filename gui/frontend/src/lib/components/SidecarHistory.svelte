@@ -86,7 +86,7 @@
 					<span class="ch-op">{e.op}</span>
 					{#if e.old != null || e.new != null}
 						<span class="ch-change">
-							{e.old ?? '∅'} <span class="ch-arrow">→</span>
+							{e.old ?? '∅'} <span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
 							{e.new ?? '∅'}
 						</span>
 					{:else}

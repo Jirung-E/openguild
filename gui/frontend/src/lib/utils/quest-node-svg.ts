@@ -158,13 +158,14 @@ export function makeQuestNodeSvgUrl(
 	const ulX = 10 + qidW + 6;
 
 	// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글과 별도. 미해결>0 면 ✗(빨강),
-	// 아니면 해결>0 면 ✓(초록). 텍스트 글리프라 fill 로 테마색이 그대로 입혀짐.
-	// 우측 상단. (보드 노드 QuestBoard.svelte 와 동일 규칙.)
+	// 아니면 해결>0 면 ✓(초록). 우측 상단. (보드 노드 QuestBoard.svelte 와 동일 규칙.)
+	// DEV-454 후속: ✗ ✓ 를 글자로 쓰면 글꼴마다 높이가 달라 배지 안에서 숫자와 어긋났다 — 도형으로.
 	const du = quest.discussion_unresolved ?? 0;
 	const dr = quest.discussion_resolved ?? 0;
 	const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
-	const dText = dColor ? `${du > 0 ? '✗' : '✓'} ${du > 0 ? du : dr}` : '';
-	const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
+	const dText = dColor ? String(du > 0 ? du : dr) : '';
+	const D_ICON = 10;
+	const dW = dText ? D_ICON + 3 + Math.ceil(dText.length * 6.0) + 12 : 0;
 	const dX = W - 10 - dW;
 
 	const full = quest.title;
@@ -218,15 +219,18 @@ export function makeQuestNodeSvgUrl(
     font-family="system-ui,sans-serif">${xEsc(ul)}</text>
   ${
 		urgWarn
-			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${palette.danger}"
-    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>`
+			? `<g><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>${iconSvgGroup(
+					'warn',
+					{ x: ulX + ulW + 4, y: 10.5, size: 14, color: palette.danger }
+				)}</g>`
 			: ''
 	}
   ${
 		dText
 			? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
     fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
-  <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
+  ${iconSvgGroup(du > 0 ? 'close' : 'check', { x: dX + 6, y: 12.5, size: D_ICON, color: dColor })}
+  <text x="${dX + 6 + D_ICON + 3}" y="21.5"
     fill="${dColor}" font-size="10" font-weight="600"
     font-family="system-ui,sans-serif">${xEsc(dText)}</text>`
 			: ''

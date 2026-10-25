@@ -2,7 +2,7 @@
 // 중 더 빠른 날짜를 반환. SVG / Home 임박 분류 양쪽에서 사용 → 회귀 방지 핵심.
 
 import { describe, it, expect } from 'vitest';
-import { effectiveQuestDue } from './quest-node-svg';
+import { effectiveQuestDue, makeQuestNodeSvgUrl } from './quest-node-svg';
 import type { Quest } from '$lib/types';
 
 // 최소 Quest 헬퍼 — 기한 관련 필드만 의미 있음, 나머지는 dummy.
@@ -77,5 +77,24 @@ describe('effectiveQuestDue', () => {
 			date: null,
 			source: 'none'
 		});
+	});
+});
+
+// DEV-454 후속: 토론 배지(✗ ✓)와 urgency 경고(⚠)를 글자로 쓰면 글꼴마다 높이가 달라 배지 안에서 숫자와
+// 어긋났다 — 도형(icon-paths)으로 그리고 글자는 숫자만.
+describe('보드 노드 배지는 도형으로', () => {
+	const svgOf = (quest: Quest) => decodeURIComponent(makeQuestNodeSvgUrl(quest).split(',')[1]);
+
+	it('미해결 토론 · 범위 밖 urgency', () => {
+		const svg = svgOf({ ...q({}), urgency: 9, discussion_unresolved: 2 });
+		expect(svg).not.toMatch(/[✓✗⚠]/);
+		expect(svg).toMatch(/>2<\/text>/);
+		expect(svg).toContain('<title>urgency 원본값 9');
+	});
+
+	it('해결된 토론만', () => {
+		const svg = svgOf({ ...q({}), discussion_resolved: 3 });
+		expect(svg).not.toMatch(/[✓✗⚠]/);
+		expect(svg).toMatch(/>3<\/text>/);
 	});
 });

@@ -166,14 +166,14 @@
 							<span class="qh-status" style:--c={statusColor(e.old_value)}>
 								{statusLabel(e.old_value)}
 							</span>
-							<span class="qh-arrow">→</span>
+							<span class="qh-arrow"><Icon name="arrow-right" size="1em" /></span>
 							<span class="qh-status" style:--c={statusColor(e.new_value)}>
 								{statusLabel(e.new_value)}
 							</span>
 						</span>
 					{:else}
 						<span class="qh-change">
-							{e.old_value ?? '∅'} <span class="qh-arrow">→</span>
+							{e.old_value ?? '∅'} <span class="qh-arrow"><Icon name="arrow-right" size="1em" /></span>
 							{e.new_value ?? '∅'}
 						</span>
 					{/if}

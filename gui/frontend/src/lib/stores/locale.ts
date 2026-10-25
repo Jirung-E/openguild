@@ -73,7 +73,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.uiScale': { ko: 'UI 크기', en: 'UI Scale' },
 	'settings.contentWidth': { ko: '컨텐츠 폭', en: 'Content Width' },
 	'settings.language': { ko: '언어', en: 'Language' },
-	'settings.all': { ko: '전체 설정 →', en: 'All settings →' },
+	'settings.all': { ko: '전체 설정', en: 'All settings' },
 
 	// DEV-205 / REQ-001: 퀘스트·캠페인 상세 공통 액션 + 섹션 라벨. 두 화면이
 	// 영/한 혼재(예: Quest 'Edit'/'Sub-Quests' vs Campaign '편집'/'연결된 퀘스트')
@@ -457,8 +457,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'admin.tabBackup': { ko: '백업', en: 'Backups' },
 	'admin.tabDiagnostics': { ko: '진단', en: 'Diagnostics' },
 	'admin.noAuthWarn': {
-		ko: '⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.',
-		en: '⚠ No authentication — MVP stage. Protection needed for multi-user use.'
+		ko: '인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.',
+		en: 'No authentication — MVP stage. Protection needed for multi-user use.'
 	},
 	'admin.backupsHeading': { ko: '백업 (Snapshots)', en: 'Backups (Snapshots)' },
 	'admin.newBackup': { ko: '+ 새 백업', en: '+ New backup' },
@@ -483,13 +483,13 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	'admin.driftHeading': { ko: 'Drift 검사', en: 'Drift check' },
 	'admin.check': { ko: '검사', en: 'Check' },
-	'admin.problemFilesPre': { ko: '⚠ 비정상 파일 ', en: '⚠ Problem files: ' },
+	'admin.problemFilesPre': { ko: '비정상 파일 ', en: 'Problem files: ' },
 	'admin.problemFilesPost': { ko: '개 — 캐시에서 제외됨', en: ' — excluded from cache' },
 	'admin.driftEmpty': {
 		ko: '파일 vs index.db 일치성 검사. 외부 편집 / git pull 후 활용.',
 		en: 'Checks file vs index.db consistency. Use after external edits / git pull.'
 	},
-	'admin.driftOk': { ko: '✓ drift 없음', en: '✓ No drift' },
+	'admin.driftOk': { ko: 'drift 없음', en: 'No drift' },
 	'admin.missingInIndex': {
 		ko: '파일은 있는데 index 에 없음 (',
 		en: 'File exists but missing from index ('
@@ -856,7 +856,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '캐시 정합 — 외부 편집 / git pull 후 한 번 클릭',
 		en: 'Sync cache — click once after external edits / git pull'
 	},
-	'nav.reindex.done': { ko: '✓ Reindex 완료', en: '✓ Reindex done' },
+	'nav.reindex.done': { ko: 'Reindex 완료', en: 'Reindex done' },
 	'nav.reindex.failed': { ko: 'Reindex 실패', en: 'Reindex failed' },
 	'nav.reindex.error': { ko: 'reindex 실패', en: 'reindex failed' },
 
@@ -869,7 +869,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'common.today': { ko: '오늘', en: 'Today' },
 	'common.copy': { ko: '복사', en: 'Copy' },
 	'common.change': { ko: '변경', en: 'Change' },
-	'common.clearBtn': { ko: '× 해제', en: '× Clear' },
+	'common.clearBtn': { ko: '해제', en: 'Clear' },
 	'common.clearFilter': { ko: '필터 모두 해제', en: 'Clear all filters' },
 	'common.statusChangeFailed': { ko: '상태 변경 실패', en: 'Failed to change status' },
 	'common.save': { ko: '저장', en: 'Save' },
@@ -877,7 +877,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'common.add': { ko: '추가', en: 'Add' },
 	'common.created': { ko: '생성', en: 'Created' },
 	'common.updated': { ko: '변경', en: 'Updated' },
-	'common.doneMark': { ko: '✓ 완료', en: '✓ Done' },
+	'common.doneMark': { ko: '완료', en: 'Done' },
 	'common.countSuffix': { ko: '개', en: '' },
 	// 우하단 floating 점프 버튼 (퀘스트/캠페인 상세 공통).
 	'common.jumpTop': { ko: '맨 위로', en: 'Back to top' },
@@ -905,7 +905,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'welcome.checking': { ko: '확인 중…', en: 'Checking…' },
 	'welcome.checkConn': { ko: '연결 확인', en: 'Check connection' },
 	'welcome.connect': { ko: '연결', en: 'Connect' },
-	'welcome.connOk': { ko: '✓ 연결 확인됨.', en: '✓ Connection verified.' },
+	'welcome.connOk': { ko: '연결 확인됨.', en: 'Connection verified.' },
 	'welcome.connFail': { ko: '연결 실패', en: 'Connection failed' },
 	'welcome.remoteHint1': {
 		ko: 'openguild-server 의 주소. 연결하면 아래 "최근 길드" 목록에 등록되어 다음부터는 클릭만으로 다시 열 수 있습니다. ',
@@ -958,7 +958,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '현재 창에서 이 길드를 엽니다',
 		en: 'Opens this guild in the current window'
 	},
-	'welcome.pathNotFound': { ko: '⚠ 경로를 찾을 수 없습니다', en: '⚠ Path not found' },
+	'welcome.pathNotFound': { ko: '경로를 찾을 수 없습니다', en: 'Path not found' },
 	'welcome.guildOpening': { ko: '길드 여는 중…', en: 'Opening guild…' },
 	'welcome.checkingConn': { ko: '연결 확인 중…', en: 'Checking connection…' },
 	'welcome.connectRemote': {
@@ -967,8 +967,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	'welcome.serverUnreachable': { ko: '서버에 연결할 수 없습니다', en: 'Cannot reach server' },
 	'welcome.serverUnreachableWarn': {
-		ko: '⚠ 서버에 연결할 수 없습니다',
-		en: '⚠ Cannot reach server'
+		ko: '서버에 연결할 수 없습니다',
+		en: 'Cannot reach server'
 	},
 	'welcome.removeFromList': { ko: '목록에서 제거', en: 'Remove from list' },
 	'welcome.clearAll': { ko: '전체 비우기', en: 'Clear all' },
@@ -1093,7 +1093,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'worklogCard.title': { ko: '작업 기록', en: 'Worklog' },
 	'worklogCard.rangePre': { ko: '최근 ', en: 'Last ' },
 	'worklogCard.rangeWeeks': { ko: '주 · 총 ', en: ' weeks · ' },
-	'worklogCard.rangeActivities': { ko: ' 활동 ›', en: ' activities ›' },
+	'worklogCard.rangeActivities': { ko: ' 활동', en: ' activities' },
 	'worklogCard.heatmapAria': { ko: '최근 활동 히트맵', en: 'Recent activity heatmap' },
 	'worklogCard.today': { ko: '오늘', en: 'Today' },
 	'worklogCard.statusChanges': { ko: '상태변경', en: 'status changes' },
@@ -1177,8 +1177,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'note.collapse': { ko: '메모 접기', en: 'Collapse memo' },
 	'note.heightExpand': { ko: '메모를 전체 높이로 펼치기 (확장)', en: 'Expand memo to full height' },
 	'note.heightFixed': { ko: '메모를 고정 높이 + 스크롤로 (고정)', en: 'Fixed height with scroll' },
-	'note.expandBtn': { ko: '⤢ 확장', en: '⤢ Expand' },
-	'note.fixBtn': { ko: '⊟ 고정', en: '⊟ Fixed' },
+	'note.expandBtn': { ko: '확장', en: 'Expand' },
+	'note.fixBtn': { ko: '고정', en: 'Fixed' },
 	'note.helpAttach': {
 		ko: '(이미지·동영상은 드래그&드랍 또는 Ctrl+V 로 첨부)',
 		en: '(attach images/videos via drag & drop or Ctrl+V)'
@@ -1249,8 +1249,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'comment.edited': { ko: '(편집됨)', en: '(edited)' },
 	'comment.editedTitle': { ko: '편집됨 — ', en: 'Edited — ' },
 	'comment.unknownTime': { ko: '(시각 미상)', en: '(unknown time)' },
-	'comment.resolved': { ko: '✓ 해결됨', en: '✓ Resolved' },
-	'comment.unresolved': { ko: '● 미해결 토론', en: '● Unresolved discussion' },
+	'comment.resolved': { ko: '해결됨', en: 'Resolved' },
+	'comment.unresolved': { ko: '미해결 토론', en: 'Unresolved discussion' },
 	'comment.resolvedTitle': {
 		ko: '해결됨 — 클릭하면 다시 미해결로',
 		en: 'Resolved — click to reopen'
@@ -1300,8 +1300,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'comment.filterUnresolved': { ko: '미해결 토론만', en: 'Unresolved only' },
 	'comment.filterNextPre': { ko: '지금: ', en: 'Now: ' },
 	'comment.filterNextMid': { ko: ' · 누르면 ', en: ' · click for ' },
-	'comment.expandAll': { ko: '⊕ 전체 펼치기', en: '⊕ Expand all' },
-	'comment.collapseAll': { ko: '⊖ 전체 접기', en: '⊖ Collapse all' },
+	'comment.expandAll': { ko: '전체 펼치기', en: 'Expand all' },
+	'comment.collapseAll': { ko: '전체 접기', en: 'Collapse all' },
 	'comment.expandAllTitle': {
 		ko: '모든 댓글의 답글·본문 펼치기',
 		en: 'Expand all replies and bodies'
@@ -1310,7 +1310,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '모든 댓글의 답글·본문 접기',
 		en: 'Collapse all replies and bodies'
 	},
-	'comment.replyToDeleted': { ko: '↩ 삭제된 댓글에 대한 답글', en: '↩ Reply to a deleted comment' },
+	'comment.replyToDeleted': { ko: '삭제된 댓글에 대한 답글', en: 'Reply to a deleted comment' },
 	'comment.deleteTitle': { ko: '댓글 삭제', en: 'Delete comment' },
 	'comment.deleteMsg': {
 		ko: '이 댓글을 삭제할까요? (답글이 있다면 그대로 남고 안내가 표시됩니다)',
@@ -1349,7 +1349,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'questList.filterRemoveSuffix': { ko: ' 필터 해제', en: ' — remove filter' },
 	'questList.filterAddSuffix': { ko: ' 필터 추가', en: ' — add filter' },
 	'questList.clearTagFilters': { ko: '태그 필터 모두 해제', en: 'Clear all tag filters' },
-	'questList.clearAllBtn': { ko: '× 전체 해제', en: '× Clear all' },
+	'questList.clearAllBtn': { ko: '전체 해제', en: 'Clear all' },
 	'questList.sortId': { ko: 'ID (생성 순)', en: 'ID (creation order)' },
 	'questList.sortUrgency': { ko: '긴급도', en: 'Urgency' },
 	'questList.sortStatus': { ko: '상태', en: 'Status' },
@@ -1471,25 +1471,25 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Quests whose last comment falls in this range — comments do not change the updated date'
 	},
 	'filter.clearAdvanced': { ko: '고급 필터 모두 해제', en: 'Clear all advanced filters' },
-	'filter.clearBtn': { ko: '× 해제', en: '× Clear' },
+	'filter.clearBtn': { ko: '해제', en: 'Clear' },
 
 	// DEV-205 모듈3: Quest Board.
 	'board.dragToMove': { ko: '드래그하여 이동', en: 'Drag to move' },
 	'board.closeEsc': { ko: '닫기 (Esc)', en: 'Close (Esc)' },
 	'board.highlightRelated': { ko: '연관 퀘스트 하이라이트', en: 'Highlight related quests' },
 	'board.multiSelect': { ko: '(다중 선택 가능)', en: '(multi-select)' },
-	'board.gotoDetail': { ko: '퀘스트 상세 페이지로 이동 →', en: 'Go to quest detail page →' },
+	'board.gotoDetail': { ko: '퀘스트 상세 페이지로 이동', en: 'Go to quest detail page' },
 	'board.selectBtn': { ko: '선택', en: 'Select' },
-	'board.arrangeBtn': { ko: '⊞ 정렬', en: '⊞ Arrange' },
+	'board.arrangeBtn': { ko: '정렬', en: 'Arrange' },
 	'board.cardNote': {
 		ko: "하이라이트는 선택(파란색)과 별개 — '선택' 버튼을 누르면 드래그·상태변경 대상이 됨",
 		en: "Highlight is separate from selection (blue) — press 'Select' to make them drag / status-change targets"
 	},
 	'board.allRelated': { ko: '연관 전체', en: 'All related' },
-	'board.hlPre': { ko: '● 선행 퀘스트', en: '● Prerequisites' },
-	'board.hlSub': { ko: '● 서브 퀘스트', en: '● Sub-quests' },
-	'board.hlNext': { ko: '● 후속 퀘스트', en: '● Successors' },
-	'board.hlParent': { ko: '● 부모 퀘스트', en: '● Parent' },
+	'board.hlPre': { ko: '선행 퀘스트', en: 'Prerequisites' },
+	'board.hlSub': { ko: '서브 퀘스트', en: 'Sub-quests' },
+	'board.hlNext': { ko: '후속 퀘스트', en: 'Successors' },
+	'board.hlParent': { ko: '부모 퀘스트', en: 'Parent' },
 	'board.selectHighlighted': {
 		ko: '하이라이트된 노드들을 모두 선택 (드래그·상태변경 대상으로)',
 		en: 'Select all highlighted nodes (for drag / status change)'
@@ -1623,7 +1623,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: ' 가 유효 범위(1-4) 밖 — clamp 표시 중. .guild 파일의 urgency 를 1~4 로 정정하세요.',
 		en: ' is out of the valid range (1-4) — showing clamped. Fix urgency to 1-4 in the .guild file.'
 	},
-	'qd.outOfRange': { ko: '⚠ 범위 밖', en: '⚠ Out of range' },
+	'qd.outOfRange': { ko: '범위 밖', en: 'Out of range' },
 	'qd.requiredDue': { ko: '필수 기한', en: 'Required due' },
 	'qd.desiredDue': { ko: '희망 기한', en: 'Desired due' },
 	'qd.desiredDueHint': { ko: '(정보성)', en: '(informational)' },
@@ -1673,7 +1673,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'qd.changeTypeMsg1': { ko: ' 의 타입을 ', en: ' type will change to ' },
 	'qd.changeTypeMsg2': { ko: ' 로 변경합니다.', en: '.' },
 	'qd.changeTypeMsg3': { ko: ' 형태의 새 번호가 부여됩니다.', en: '-format number.' },
-	'qd.changeTypeWarnPre': { ko: '⚠ 다른 퀘스트 본문 안에 ', en: '⚠ Mentions of ' },
+	'qd.changeTypeWarnPre': { ko: '다른 퀘스트 본문 안에 ', en: 'Mentions of ' },
 	'qd.changeTypeWarnPost': {
 		ko: ' 를 직접 언급(예 "참조") 한 부분은 자동으로',
 		en: ' (e.g. "ref") in other quest bodies are not'
@@ -1702,8 +1702,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	'qd.autoUpdated': { ko: '자동 갱신됩니다.', en: '' },
 	'qd.immediateNavWarn': {
-		ko: '⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — ',
-		en: '⚠ You will be navigated to the new slug page immediately — '
+		ko: '변경 즉시 새 슬러그 페이지로 이동합니다 — ',
+		en: 'You will be navigated to the new slug page immediately — '
 	},
 	'questList.tree': { ko: '트리', en: 'Tree' },
 	'questList.list': { ko: '리스트', en: 'List' },
@@ -1926,7 +1926,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.tagFilterOffPost': { ko: ' 필터 해제', en: ' filter off' },
 	'library.tagFilterOnPost': { ko: ' 필터 추가', en: ' filter on' },
 	'library.clearTagFiltersTitle': { ko: '태그 필터 모두 해제', en: 'Clear all tag filters' },
-	'library.clearTagFilters': { ko: '× 전체 해제', en: '× Clear all' },
+	'library.clearTagFilters': { ko: '전체 해제', en: 'Clear all' },
 	'library.upToParent': { ko: '상위 폴더로', en: 'Up to parent folder' },
 	'library.deleteCurrentFolder': { ko: '현재 폴더 삭제', en: 'Delete current folder' },
 	// BUG-313(admin): 옆의 '현재 폴더 삭제' 와 짝이 맞아야 한다 — 둘 다 **지금 들어와 있는**
@@ -1959,7 +1959,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '목록에서 문서를 선택하세요.',
 		en: 'Select a document from the list.'
 	},
-	'library.backToList': { ko: '← 목록', en: '← List' },
+	'library.backToList': { ko: '목록', en: 'List' },
 	// DEV-419: 아이콘 뷰에서 여러 개 고르기.
 	'library.pickedCount': { ko: '{n}개 선택됨', en: '{n} selected' },
 	'library.pickedClear': { ko: '선택 해제', en: 'Clear' },
@@ -1977,7 +1977,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '문서 {n}개를 복사했습니다 — 탐색기에서 붙여넣으세요.',
 		en: 'Copied {n} document(s) — paste them in your file explorer.'
 	},
-	'library.editDoc': { ko: '✎ 편집', en: '✎ Edit' },
+	'library.editDoc': { ko: '편집', en: 'Edit' },
 	'library.writeDoc': { ko: '+ 작성', en: '+ Write' },
 	'library.retitle': { ko: '제목 변경', en: 'Rename' },
 	'library.moveFolder': { ko: '폴더 이동', en: 'Move folder' },
@@ -2049,8 +2049,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'palette.openWindow': { ko: '새 창으로 열기', en: 'Open in new window' },
 	'palette.goPage': { ko: '페이지로 이동', en: 'Go to page' },
 	'palette.backToListTitle': { ko: '목록으로 (Esc)', en: 'Back to list (Esc)' },
-	'palette.backToList': { ko: '← 목록', en: '← List' },
-	'palette.goPageArrow': { ko: '페이지로 이동 →', en: 'Go to page →' },
+	'palette.backToList': { ko: '목록', en: 'List' },
+	'palette.goPageArrow': { ko: '페이지로 이동', en: 'Go to page' },
 	'palette.emptyBody': { ko: '_(본문 없음)_', en: '_(no content)_' },
 	'palette.previewLoadFail': {
 		ko: '_미리보기를 불러오지 못했습니다._',

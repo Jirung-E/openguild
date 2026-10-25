@@ -659,7 +659,7 @@
 				{t('campaign.checklist', $locale)} ({detail.checklists.filter((c) => c.checked)
 					.length}/{detail.checklists.length})
 				{#if detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}
-					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
+					<span class="done-mark"><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span>
 				{/if}
 			</h2>
 			{#if detail.checklists.length === 0}
@@ -710,7 +710,7 @@
 					({detail.linked_quests.length})
 				{/if}
 				{#if (detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}
-					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
+					<span class="done-mark"><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span>
 				{/if}
 			</h2>
 			{#if (detail.quest_total ?? 0) > 0}
@@ -1141,6 +1141,10 @@
 	}
 
 	.rm {
+		/* DEV-454 후속: 높이를 정해 둔 아이콘 단추 — 글자 줄에 맡기면 줄 상자가 위에 붙어 × 가 아래로 처졌다. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		background: transparent;
 		border: var(--bw) solid transparent;
 		color: var(--text-muted);

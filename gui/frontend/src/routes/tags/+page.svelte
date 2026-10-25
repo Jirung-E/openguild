@@ -15,6 +15,8 @@
   나눠 갖지 않게 합쳤다.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { questsApi } from '$lib/api/quests';
 	import { rulesApi } from '$lib/api/rules';
@@ -274,7 +276,7 @@
 						<button class="tag-head" onclick={() => toggle(r.tag)} aria-expanded={expanded === r.tag}>
 							<!-- 펼침 표시는 **맨 앞**에. 끝에 두면 오른쪽 버튼 수(0·1·2개)에 따라 줄마다
 							     자리가 달라져 목록이 들쭉날쭉해진다(브라우저로 확인한 결함). -->
-							<span class="chev" class:open={expanded === r.tag}>›</span>
+							<span class="chev" class:open={expanded === r.tag}><Icon name="chevron-right" size="0.9em" /></span>
 							<span
 								class="chip"
 								style={r.color ? `--chip:${r.color}` : ''}
@@ -434,7 +436,10 @@
 	}
 	.chev {
 		flex: none;
-		width: 0.6rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 0.9rem;
 		color: var(--text-faint);
 		transition: transform var(--dur-fast);
 	}

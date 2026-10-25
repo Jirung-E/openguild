@@ -667,14 +667,14 @@
 		{/if}
 		<div class="dp-foot">
 			<button class="dp-btn" onclick={() => (preview = null)}
-				>{t('palette.backToList', $locale)}</button
+				><Icon name="arrow-left" size="1em" /> {t('palette.backToList', $locale)}</button
 			>
 			<!-- DEV-255: 미리보기에서도 자식윈도우/페이지이동으로 전환 가능. -->
 			<button class="dp-btn" onclick={() => preview && windowItem(preview)}
 				>{t('palette.openWindow', $locale)}</button
 			>
 			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}
-				>{t('palette.goPageArrow', $locale)}</button
+				>{t('palette.goPageArrow', $locale)} <Icon name="arrow-right" size="1em" /></button
 			>
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -13,6 +13,8 @@
   다시 호버하면 중첩 팝업도 자연히 동작한다(위키피디아 프리뷰 식).
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import MarkdownView from './MarkdownView.svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { openInWindow, openInPage } from '$lib/utils/open-item';
@@ -153,7 +155,9 @@
 	</div>
 	<div class="lp-foot">
 		<button class="lp-btn" onclick={goWindow}>{t('palette.openWindow', $locale)}</button>
-		<button class="lp-btn primary" onclick={goPage}>{t('palette.goPageArrow', $locale)}</button>
+		<button class="lp-btn primary" onclick={goPage}
+			>{t('palette.goPageArrow', $locale)} <Icon name="arrow-right" size="1em" /></button
+		>
 	</div>
 </div>
 

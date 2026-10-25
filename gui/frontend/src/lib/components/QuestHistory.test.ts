@@ -211,6 +211,7 @@ describe('QuestHistory', () => {
 		const change = screen.getAllByTestId('qh-item')[0].querySelector('.qh-change');
 		expect(change?.textContent).toContain('OLDVAL');
 		expect(change?.textContent).toContain('NEWVAL');
-		expect(change?.textContent).toContain('→');
+		// DEV-454 후속: 화살표는 글자(→)가 아니라 도형.
+		expect(change?.querySelector('.qh-arrow svg')).not.toBeNull();
 	});
 });

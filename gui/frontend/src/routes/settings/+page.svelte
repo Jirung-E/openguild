@@ -9,6 +9,8 @@
     우하단 통합 스택, DEV-259)가 담당. Tauri 전용.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -775,7 +777,7 @@
 											<button
 												class="ct-reset"
 												title={t('settings.resetToDefaultToken', $locale)}
-												onclick={() => resetToken(d.token)}>↺</button
+												onclick={() => resetToken(d.token)}><Icon name="reset" size="1em" /></button
 											>
 										{/if}
 									</div>

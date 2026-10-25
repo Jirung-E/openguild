@@ -115,14 +115,14 @@
 							<span class="ch-status" style:--c={statusColor(e.old_value)}>
 								{statusLabel(e.old_value)}
 							</span>
-							<span class="ch-arrow">→</span>
+							<span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
 							<span class="ch-status" style:--c={statusColor(e.new_value)}>
 								{statusLabel(e.new_value)}
 							</span>
 						</span>
 					{:else}
 						<span class="ch-change">
-							{e.old_value ?? '∅'} <span class="ch-arrow">→</span>
+							{e.old_value ?? '∅'} <span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
 							{e.new_value ?? '∅'}
 						</span>
 					{/if}

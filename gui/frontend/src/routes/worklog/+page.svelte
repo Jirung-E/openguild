@@ -551,7 +551,7 @@
 			<div class="timeline">
 				{#each grouped as g (g.date)}
 					{#if unit !== 'day'}
-						<div class="day-sep">── {g.date} ──</div>
+						<div class="day-sep">{g.date}</div>
 					{/if}
 					<!-- BUG-118 (admin 보고): 짧은 시간에 상태를 반복 토글하면 같은 ts/
 					     slug/kind/summary 조합이 여러 번 나올 수 있어 (ts+slug+kind+
@@ -784,10 +784,20 @@
 		background: var(--bg-elevated);
 		padding: var(--sp-4) var(--sp-12);
 	}
+	/* DEV-454 후속: 양옆 선을 글자(──)로 그리면 글꼴마다 굵기 · 높이가 달랐다 — 선은 CSS 로. */
 	.day-sep {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-8);
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		padding: var(--sp-8) 0 var(--sp-4);
+	}
+	.day-sep::before,
+	.day-sep::after {
+		content: '';
+		width: 1.25rem;
+		border-top: var(--bw) solid var(--border);
 	}
 	/* REQ-006: compact 뷰 — 문서 단위 묶음. */
 	.docgroup {

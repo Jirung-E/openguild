@@ -39,6 +39,13 @@
 	// 호출부를 전부 고치는 대신 여기서 rem 으로 환산한다. 16 으로 나누므로
 	// 기본 배율에서는 **기존과 정확히 같은 크기**다(size=14 → 0.875rem = 14px).
 	const px = $derived(typeof size === 'number' ? `${size / 16}rem` : size);
+
+	// DEV-454 후속: 세로 자리. `vertical-align: middle` 은 도형 가운데를 **기준선 + x높이의 절반**에 둔다 —
+	// x높이는 글꼴마다 달라서(윈도우 Segoe UI 는 높다) 아이콘이 글자보다 1~2px 아래로 처졌고, 아이콘만 있는
+	// 버튼에서도 줄 상자 가운데보다 아래였다. 글자 상자의 가운데는 대부분의 글꼴에서 기준선 위 0.375em 쯤이라
+	// (올림 · 내림 높이의 평균) 도형 가운데를 거기에 맞춘다: 도형 아래 끝 = 0.375em − 크기/2.
+	// 부모가 flex 면 이 값은 쓰이지 않는다(flex 의 가운데 맞춤이 이긴다).
+	const valign = $derived(`calc(0.375em - ${px} / 2)`);
 </script>
 
 <svg
@@ -54,6 +61,7 @@
 	aria-hidden={title ? undefined : 'true'}
 	aria-label={title}
 	focusable="false"
+	style:vertical-align={valign}
 >
 	{#if title}<title>{title}</title>{/if}
 	<!-- eslint-disable-next-line svelte/no-at-html-tags — 도형은 icon-paths.ts 의 고정 상수(사용자 입력 아님) -->
@@ -77,6 +85,7 @@
 	  이 무시되므로 **기존 정렬에 영향이 없다** — 순수하게 추가 동작이다.
 	*/
 	svg {
+		/* 실제 값은 위의 style:vertical-align(크기에 맞춘 calc). 이것은 그 식을 못 읽는 경우의 폴백. */
 		vertical-align: middle;
 	}
 </style>

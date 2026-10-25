@@ -41,7 +41,9 @@ const isColorEmoji = (cp) => COLOR_RANGES.some(([a, b]) => cp >= a && cp <= b);
 // DEV-454: 흑백으로 그려지는 **글자 아이콘**도 — OS · 글꼴마다 모양 · 크기 · 높이가 달라 SVG(Icon.svelte)로
 // 옮겼다. 마크업에서만 본다(스크립트의 문장 · 화살표 설명은 대상이 아니다). 일부러 쓰는 글자(곱셈 기호
 // 'x3', 마크다운 토글 'M↓', 입력칸 안내 글)는 그 줄이나 윗줄에 `glyph-ok` 주석.
-const GLYPH_ICONS = new Set([...'☰⚙⟲⟳✎▼▾▶▸◀▲✓✗✕×⤓⊞⊟▦⇥⚠↩↪↕↔↑↓↗']);
+// DEV-454 후속: 첫 목록이 좁아 ‹ › ← → ↺ ⇲ ≡ ⠿ ☺ ⊕ ⊖ ⤢ ● ─ 가 그대로 남아 있었다(캐러셀 ‹ › 가 윈도우에서
+// 동그라미 가운데에 안 맞았다).
+const GLYPH_ICONS = new Set([...'☰⚙⟲⟳✎▼▾▶▸◀▲✓✗✕×⤓⊞⊟▦⇥⚠↩↪↕↔↑↓↗‹›←→↺⇲≡⠿☺⊕⊖⤢●─']);
 
 /** .svelte 에서 <script>/<style> 블록을 제거하고 마크업만 남긴다. */
 function markupOnly(text) {
@@ -133,10 +135,30 @@ function scan(rel, text, startLine, origLines) {
 
 const glyphViolations = [];
 
+// 화살표는 문장에도 흔히 쓴다('a' → 'b' 확인 문구 · 핸들러 안의 주석) — `{…}` 식 밖의 **글자**로 놓였을 때만
+// 아이콘으로 본다(예: 이력의 `<span>→</span>`).
+const PROSE_ARROWS = new Set([...'←→']);
+
+/** `{…}` 식을 공백으로 — 줄 수는 그대로. 중첩 괄호를 센다(템플릿 문자열의 `${}` 도 짝이 맞는다). */
+function textOnly(text) {
+	let depth = 0;
+	let out = '';
+	for (const ch of text) {
+		if (ch === '{') depth++;
+		const inExpr = depth > 0;
+		if (ch === '}' && depth > 0) depth--;
+		out += inExpr && ch !== '\n' ? ' ' : ch;
+	}
+	return out;
+}
+
 function scanGlyphs(rel, text, origLines) {
+	const plain = textOnly(text).split('\n');
 	text.split('\n').forEach((line, i) => {
 		if (origLines[i]?.includes('glyph-ok') || origLines[i - 1]?.includes('glyph-ok')) return;
-		const hit = [...line].find((ch) => GLYPH_ICONS.has(ch));
+		const hit =
+			[...line].find((ch) => GLYPH_ICONS.has(ch) && !PROSE_ARROWS.has(ch)) ??
+			[...(plain[i] ?? '')].find((ch) => PROSE_ARROWS.has(ch));
 		if (hit) {
 			glyphViolations.push(
 				`${rel}:${i + 1}  '${hit}'  ${line.trim().slice(0, 80)}`
@@ -145,7 +167,32 @@ function scanGlyphs(rel, text, origLines) {
 	});
 }
 
+/**
+ * DEV-454 후속: 번역 문자열 **앞 · 뒤에 붙은** 글자 아이콘('× 해제', '← 목록', '전체 설정 →') — 마크업만 보면
+ * 놓친다. 아이콘은 마크업이 `<Icon>` 으로 그리고 문자열은 말만 둔다. 문장 가운데의 화살표(전체 → 있음)나
+ * 이어 붙이는 조각의 끝(' quests → ')은 글이라 대상이 아니다. 일부러 쓰는 줄은 `glyph-ok` 주석.
+ */
+function scanLocale() {
+	const rel = 'lib/stores/locale.ts';
+	const lines = readFileSync(join(SRC, rel), 'utf8').split('\n');
+	lines.forEach((line, i) => {
+		if (line.includes('glyph-ok') || lines[i - 1]?.includes('glyph-ok')) return;
+		for (const m of line.matchAll(/(?:ko|en): '((?:[^'\\]|\\.)*)'/g)) {
+			const v = m[1];
+			const head = [...v][0];
+			const tail = [...v].at(-1);
+			const prefix = GLYPH_ICONS.has(head) && /^.\s/u.test(v);
+			const suffix = GLYPH_ICONS.has(tail) && /\s.$/u.test(v);
+			if (prefix || suffix) {
+				glyphViolations.push(`${rel}:${i + 1}  '${prefix ? head : tail}'  ${line.trim().slice(0, 80)}`);
+				return;
+			}
+		}
+	});
+}
+
 walk(SRC);
+scanLocale();
 
 if (glyphViolations.length > 0) {
 	console.error('글자 아이콘이 마크업에 있습니다 — <Icon name="…" size="1em" /> 로(도형은 utils/icon-paths.ts):\n');
