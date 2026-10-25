@@ -70,8 +70,9 @@
 	let questBarHover = $state(false);
 	let tooltipTop = $state(0);
 	let tooltipLeft = $state(0);
+	// BUG-373: 다 찬 막대도 hover 하면 상태별로 보인다(카드와 같이).
 	function onQuestBarEnter() {
-		if (!detail || detail.quest_done === detail.quest_total || !questBarEl) return;
+		if (!detail || !questBarEl) return;
 		const r = questBarEl.getBoundingClientRect();
 		tooltipTop = r.top;
 		tooltipLeft = r.left;
@@ -81,10 +82,7 @@
 		questBarHover = false;
 	}
 	const showQuestStack = $derived(
-		questBarHover &&
-			!!detail &&
-			detail.quest_done !== detail.quest_total &&
-			(detail.quest_status_counts?.length ?? 0) > 0
+		questBarHover && !!detail && (detail.quest_status_counts?.length ?? 0) > 0
 	);
 
 	// BUG-033: edit mode 통합 — Quest Detail 과 동일하게 단일 editMode 가
@@ -1289,8 +1287,9 @@
 			width var(--dur-mid),
 			background var(--dur-mid);
 	}
+	/* BUG-373: 카드와 같이 --success(--success-strong 은 너무 어둡다). */
 	.quest-progress-fill.done {
-		background: var(--success-strong);
+		background: var(--success);
 	}
 	/* DEV-233: hover 시 상태별 stacked 세그먼트 — CampaignCard 와 동일 패턴. */
 	.quest-progress-seg {

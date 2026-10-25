@@ -65,14 +65,15 @@
 
 	// DEV-233(기획 변경, admin 2026-07-10): 기본은 기존 단일 채움 그대로 두고,
 	// hover 시에만 상태별 stacked 세그먼트 + 카운트 팝업으로 전환. 마우스가
-	// 바를 벗어나면 원래대로. 완료된 캠페인(questFull)은 hover 해도 기존 초록
-	// 단색 그대로(admin 확인 "완료 시 단색 유지 고려" — 의미 없는 정보라 skip).
+	// 바를 벗어나면 원래대로.
+	// BUG-373(admin 2026-10-25): 다 찬 막대도 hover 하면 보인다 — 예전엔 "의미 없는 정보" 라 건너뛰었는데,
+	// 다 찬 막대만 반응이 없으니 고장으로 보였다.
 	let questBarEl = $state<HTMLDivElement | null>(null);
 	let questBarHover = $state(false);
 	let tooltipTop = $state(0);
 	let tooltipLeft = $state(0);
 	function onQuestBarEnter() {
-		if (questFull || !questBarEl) return;
+		if (!questBarEl) return;
 		const r = questBarEl.getBoundingClientRect();
 		tooltipTop = r.top;
 		tooltipLeft = r.left;
@@ -81,9 +82,7 @@
 	function onQuestBarLeave() {
 		questBarHover = false;
 	}
-	const showStack = $derived(
-		questBarHover && !questFull && (summary.quest_status_counts?.length ?? 0) > 0
-	);
+	const showStack = $derived(questBarHover && (summary.quest_status_counts?.length ?? 0) > 0);
 
 	function activeRemainingLabel(): string {
 		if (!summary.ended_at?.trim()) return '';
@@ -460,9 +459,10 @@
 			width var(--dur-mid),
 			background var(--dur-mid);
 	}
-	/* BUG-025: 100% 시 초록 */
+	/* BUG-025: 100% 시 초록. BUG-373: --success-strong 은 주 버튼용 진한 초록이라 막대로는 너무 어두웠다 —
+	   옆의 '완료' 글자와 같은 --success. */
 	.progress-fill.done {
-		background: var(--success-strong);
+		background: var(--success);
 	}
 	/* DEV-233: hover 시 상태별 stacked 세그먼트 — progress-fill 대신 렌더. */
 	.progress-seg {
