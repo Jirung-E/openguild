@@ -2,3 +2,4 @@
 {"ts":"2026-10-25T11:02:05+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-10-25T13:29:33+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-10-25T14:06:24+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-10-26T01:08:22+09:00","op":"change_status","old":"testing","new":"done"}
