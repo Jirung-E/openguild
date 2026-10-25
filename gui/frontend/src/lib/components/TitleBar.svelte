@@ -16,8 +16,8 @@
    - 오른쪽: 최소화 / 최대화(복원) / 닫기
    - 나머지 빈 영역: data-tauri-drag-region (창 드래그, 더블클릭 최대화)
 
-  메뉴(☰)에는 메뉴바(Nav)에 노출하지 않은 페이지를 모음:
-  캠페인 목록 / 작업기록 / 태그 목록.
+  메뉴(☰)에는 메뉴바(Nav)에 노출하지 않은 페이지를 모음 — DEV-456: 사용자가 설정에서 고른다
+  (기본: 관리 / 캠페인 / 작업 기록 / 태그).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -40,6 +40,14 @@
 	// DEV-260: 창 폭이 좁아 메뉴바(Nav)에서 넘친 페이지 링크 — ☰ 메뉴 상단에
 	// 구분선과 함께 렌더(priority+ navigation). Nav 가 폭 변화에 반응해 발행.
 	import { navOverflowItems } from '$lib/stores/navOverflow';
+	// DEV-456: 상단바에 놓지 않은 페이지가 이 메뉴에 온다(사용자 설정).
+	import { navPages } from '$lib/stores/navPages';
+	import {
+		NAV_PAGE_LABEL_KEY,
+		menuPages,
+		navPageHref,
+		type NavPageId
+	} from '$lib/utils/nav-pages';
 	// DEV-276: 최근 본 문서 목록 — 검색 pill 옆 시계 버튼.
 	// BUG-159: 제목은 cross-link 인덱스에서 조회(저장값 아님) — 목록을 열 때
 	// 인덱스가 아직 없으면 조용히 적재(이미 있으면 memo 라 비용 0).
@@ -383,81 +391,14 @@
 							{/each}
 							<div class="tb-menu-sep"></div>
 						{/if}
-						<!-- BUG-201(admin 지시): 어드민은 창 폭과 무관하게 항상 이 메뉴 안에.
-				     Nav 의 응답형 목록에서 빠졌으므로 여기 상시 항목으로 둔다
-				     (데스크탑·웹 양쪽에서 같은 자리). -->
-						<button onclick={() => goto('/admin')}>
-							<svg class="tb-ico"
-								width="15"
-								height="15"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
-								<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
-								<circle cx="5.5" cy="4.5" r="1.4" />
-								<circle cx="10.5" cy="8" r="1.4" />
-								<circle cx="6.5" cy="11.5" r="1.4" />
-							</svg>
-							{t('nav.admin', $locale)}
-						</button>
-						<button onclick={() => goto('/campaigns')}>
-							<svg class="tb-ico"
-								width="15"
-								height="15"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
-								<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-								<path d="M5 6h6M5 8.5h6M5 11h3.5" />
-							</svg>
-							{t('titlebar.menuCampaigns', $locale)}
-						</button>
-						<button onclick={() => goto('/worklog')}>
-							<svg class="tb-ico"
-								width="15"
-								height="15"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
-								<circle cx="8" cy="8" r="5.5" />
-								<path d="M8 4.8V8l2.2 1.6" />
-							</svg>
-							{t('titlebar.menuWorklog', $locale)}
-						</button>
-						<button onclick={() => goto('/tags')}>
-							<svg class="tb-ico"
-								width="15"
-								height="15"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
-								<path
-									d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z"
-								/>
-								<circle cx="5.4" cy="5.4" r=".9" />
-							</svg>
-							{t('titlebar.menuTags', $locale)}
-						</button>
+						<!-- DEV-456: 상단바에 놓지 않은 페이지 — 설정에서 고른다. 기본은 예전 그대로(관리 · 캠페인 · 작업 기록 ·
+						     태그). BUG-201 의 '관리는 늘 이 메뉴 안' 은 기본값으로 남는다. -->
+						{#each menuPages($navPages) as id (id)}
+							<button onclick={() => goto(navPageHref(id))}>
+								{@render pageIcon(id)}
+								{t(NAV_PAGE_LABEL_KEY[id], $locale)}
+							</button>
+						{/each}
 					</div>
 				{/if}
 			</div>
@@ -559,6 +500,48 @@
 	<!-- 오른쪽 배치(기본) — 왼쪽 배치면 위 타이틀바 시작부에서 렌더됨. -->
 	{#if !controlsOnLeft}{@render winControls()}{/if}
 </div>
+
+{#snippet pageIcon(id: NavPageId)}
+	<!-- DEV-456: ☰ 메뉴의 페이지 아이콘. 관리 · 캠페인 · 작업 기록 · 태그는 예전 그림 그대로. -->
+	<svg
+		class="tb-ico"
+		width="15"
+		height="15"
+		viewBox="0 0 16 16"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.2"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-hidden="true"
+	>
+		{#if id === 'admin'}
+			<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+			<circle cx="5.5" cy="4.5" r="1.4" />
+			<circle cx="10.5" cy="8" r="1.4" />
+			<circle cx="6.5" cy="11.5" r="1.4" />
+		{:else if id === 'campaigns'}
+			<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+			<path d="M5 6h6M5 8.5h6M5 11h3.5" />
+		{:else if id === 'worklog'}
+			<circle cx="8" cy="8" r="5.5" />
+			<path d="M8 4.8V8l2.2 1.6" />
+		{:else if id === 'tags'}
+			<path d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z" />
+			<circle cx="5.4" cy="5.4" r=".9" />
+		{:else if id === 'quests'}
+			<path d="M2.5 4.2 3.7 5.4 5.8 3.2M7.8 4.4h5.7M2.5 10.2l1.2 1.2 2.1-2.2M7.8 10.4h5.7" />
+		{:else if id === 'rules'}
+			<path d="M4 2.5h5.5l2.5 2.5v8.5H4z" />
+			<path d="M6 7.2h4M6 9.6h4M6 12h2.4" />
+		{:else if id === 'library'}
+			<path d="M2.8 3h2.6v10H2.8zM6.4 3H9v10H6.4z" />
+			<path d="m10.2 3.6 2.3-.6 2.5 9.6-2.3.6z" />
+		{:else}
+			<path d="M2.5 7.2 8 2.8l5.5 4.4V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z" />
+		{/if}
+	</svg>
+{/snippet}
 
 {#snippet winControls()}
 	<div

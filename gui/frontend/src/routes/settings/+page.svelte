@@ -42,6 +42,16 @@
 		DEFAULT_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice, type EffectiveTheme } from '$lib/stores/theme';
+	// DEV-456: 상단바에 놓을 페이지.
+	import { navPages, setNavPages, resetNavPages } from '$lib/stores/navPages';
+	import {
+		NAV_PAGE_LABEL_KEY,
+		DEFAULT_NAV_PAGES,
+		REQUIRED_NAV_PAGE,
+		menuPages,
+		moveNavPage,
+		toggleNavPage
+	} from '$lib/utils/nav-pages';
 	// DEV-114: 커스텀 테마 — 프리셋 저장/활성화 + 토큰 color picker.
 	import {
 		TOKEN_CATALOG,
@@ -293,6 +303,12 @@
 		fontCustomOpen = { ...fontCustomOpen, [kind]: false };
 		setFont(kind, value);
 	}
+	// DEV-456: 켠 페이지(상단바 순서) 다음에 끈 페이지.
+	const navRows = $derived([...$navPages, ...menuPages($navPages)]);
+	const navIsDefault = $derived(
+		$navPages.length === DEFAULT_NAV_PAGES.length &&
+			$navPages.every((id, i) => id === DEFAULT_NAV_PAGES[i])
+	);
 </script>
 
 <div class="settings">
@@ -631,6 +647,54 @@
 						</p>
 					</dd>
 				{/if}
+
+				<!-- DEV-456: 상단바 메뉴 — 켜고 끄고 순서를 바꾼다. 홈은 빠질 수 없고 늘 맨 앞. -->
+				<dt>{t('settings.navPages', $locale)}</dt>
+				<dd>
+					<ul class="nav-pages" data-testid="nav-pages">
+						{#each navRows as id (id)}
+							{@const on = $navPages.includes(id)}
+							{@const idx = $navPages.indexOf(id)}
+							<li class:off={!on}>
+								<label title={id === REQUIRED_NAV_PAGE ? t('settings.navPageRequired', $locale) : ''}>
+									<input
+										type="checkbox"
+										checked={on}
+										disabled={id === REQUIRED_NAV_PAGE}
+										onchange={() => setNavPages(toggleNavPage($navPages, id))}
+									/>
+									{t(NAV_PAGE_LABEL_KEY[id], $locale)}
+								</label>
+								{#if on && id !== REQUIRED_NAV_PAGE}
+									<span class="nav-page-move">
+										<button
+											class="btn btn-sm"
+											disabled={idx <= 1}
+											onclick={() => setNavPages(moveNavPage($navPages, id, -1))}
+											title={t('settings.navPageUp', $locale)}
+											aria-label={t('settings.navPageUp', $locale)}
+											><Icon name="caret-up" size="1em" /></button
+										>
+										<button
+											class="btn btn-sm"
+											disabled={idx === $navPages.length - 1}
+											onclick={() => setNavPages(moveNavPage($navPages, id, 1))}
+											title={t('settings.navPageDown', $locale)}
+											aria-label={t('settings.navPageDown', $locale)}
+											><Icon name="caret-down" size="1em" /></button
+										>
+									</span>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+					<div class="nav-pages-foot">
+						<button class="btn" onclick={resetNavPages} disabled={navIsDefault}
+							>{t('settings.reset', $locale)}</button
+						>
+					</div>
+					<p class="scale-hint">{t('settings.navPagesHint', $locale)}</p>
+				</dd>
 
 				<!-- DEV-074: 테마 (Dark / Light / System). DEV-114: 커스텀 프리셋도 옆에 노출. -->
 				<dt>{t('settings.theme', $locale)}</dt>
@@ -1049,6 +1113,40 @@
 		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		margin: var(--sp-8) 0 0;
+	}
+
+	/* DEV-456: 상단바 메뉴 — 한 줄에 체크 + 앞 · 뒤 버튼. */
+	.nav-pages {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-4);
+		max-width: 20rem;
+	}
+	.nav-pages li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--sp-8);
+		min-height: 1.75rem;
+	}
+	.nav-pages li.off {
+		color: var(--text-muted);
+	}
+	.nav-pages label {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--sp-6);
+		cursor: pointer;
+	}
+	.nav-page-move {
+		display: inline-flex;
+		gap: var(--sp-4);
+	}
+	.nav-pages-foot {
+		margin-top: var(--sp-8);
 	}
 
 	/* DEV-074: 테마 토글 — segmented (QuestList 의 view-toggle 과 같은 패턴). */

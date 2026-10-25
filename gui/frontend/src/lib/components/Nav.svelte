@@ -7,8 +7,16 @@
 	import { bumpReindex } from '$lib/stores/reindex';
 	// DEV-260: Nav overflow → 타이틀바 ☰ 메뉴 공유 스토어.
 	import { navOverflowItems, type NavOverflowItem } from '$lib/stores/navOverflow';
-	// DEV-453: 보드 · 목록은 한 메뉴 — 마지막에 본 쪽으로 간다.
-	import { questViewHref } from '$lib/utils/quest-view';
+	// DEV-456: 상단바의 페이지는 사용자가 고른다(기본: 홈 · 퀘스트 · 규칙 · 도서관). 퀘스트는 DEV-453 대로
+	// 마지막에 본 쪽(보드 · 목록)으로 간다.
+	import { navPages } from '$lib/stores/navPages';
+	import {
+		NAV_PAGE_LABEL_KEY,
+		isNavPageActive,
+		menuPages,
+		navPageHref,
+		type NavPageId
+	} from '$lib/utils/nav-pages';
 	// DEV-205 모듈1: Nav 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
@@ -76,18 +84,9 @@
 	// OS)이든 웹이든 Nav 에는 아예 그리지 않으므로 관련 상태/조회/판별 전부
 	// 제거했다.
 
-	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
-	type View = 'home' | 'board' | 'list';
-
-	let currentView: View = $derived(($page.url.searchParams.get('view') as View | null) ?? 'home');
-
-	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
-	let onRootPath = $derived($page.url.pathname === '/');
+	// DEV-456: 페이지마다의 '지금 여기' 판정(홈 · 퀘스트 보기 · 규칙 · 도서관 …)은 utils/nav-pages 의
+	// isNavPageActive 로 옮겼다.
 	let onSettingsPath = $derived($page.url.pathname.startsWith('/settings'));
-	// DEV-016: 길드 규칙 페이지.
-	let onRulesPath = $derived($page.url.pathname.startsWith('/rules'));
-	// DEV-217: 도서관 페이지.
-	let onLibraryPath = $derived($page.url.pathname.startsWith('/library'));
 
 	// DEV-260: 창 폭이 좁아 Nav 링크가 가로로 다 안 들어가면 오른쪽(우선순위
 	// 낮은) 항목부터 숨기고, 숨긴 항목을 데스크탑에선 타이틀바 ☰ 메뉴로
@@ -103,43 +102,17 @@
 	// 배열만 대상으로 하므로, 창이 아무리 넓어도 그 3개는 폭 계산에
 	// 끼지 않고 항상 접힌 메뉴로만 간다 — TitleBar.svelte(데스크탑) 의
 	// "하드코딩 3개 + 응답형 나머지" 패턴과 동일하게 맞춤.
-	const navItems = $derived.by((): NavOverflowItem[] => [
-		{ href: '/', label: t('nav.home', $locale), active: onRootPath && currentView === 'home' },
-		{
-			// DEV-453: '퀘스트 보드' · '퀘스트 목록' 두 메뉴를 하나로. 페이지 안의 [보드 | 목록] 으로 고르고,
-			// 여기를 누르면 마지막에 본 쪽으로 간다($page 가 바뀔 때마다 다시 읽는다).
-			href: questViewHref(),
-			label: t('nav.quests', $locale),
-			active: onRootPath && (currentView === 'board' || currentView === 'list')
-		},
-		{ href: '/rules', label: t('nav.rules', $locale), active: onRulesPath },
-		{ href: '/library', label: t('nav.library', $locale), active: onLibraryPath }
-	]);
-	// DEV-271: 웹 전용 — 데스크탑은 TitleBar.svelte 의 ☰ 메뉴에 상시 존재
-	// (하드코딩). 웹은 타이틀바가 없어 이 Nav 의 접힌 메뉴에 상시 존재.
+	const toItem = (id: NavPageId): NavOverflowItem => ({
+		// href 는 $page 가 바뀔 때마다 다시 만든다 — 퀘스트는 마지막에 본 보기(localStorage)를 읽는다.
+		href: navPageHref(id),
+		label: t(NAV_PAGE_LABEL_KEY[id], $locale),
+		active: isNavPageActive(id, $page.url)
+	});
+	const navItems = $derived.by((): NavOverflowItem[] => $navPages.map(toItem));
+	// DEV-271: 웹 전용 — 데스크탑은 TitleBar.svelte 의 ☰ 메뉴에 상시 존재.
+	// 웹은 타이틀바가 없어 이 Nav 의 접힌 메뉴에 상시 존재. DEV-456: 상단바에 놓지 않은 페이지 전부.
 	const alwaysOverflowItems = $derived.by((): NavOverflowItem[] =>
-		showWebExtras
-			? [
-					// BUG-201(admin 지시): 어드민도 캠페인/작업기록/태그처럼 창 폭과
-					// 무관하게 항상 접힌 메뉴 안에 둔다 — 자주 쓰는 곳이 아니다.
-					{ href: '/admin', label: t('nav.admin', $locale), active: onAdminPath },
-					{
-						href: '/campaigns',
-						label: t('titlebar.menuCampaigns', $locale),
-						active: $page.url.pathname.startsWith('/campaigns')
-					},
-					{
-						href: '/worklog',
-						label: t('titlebar.menuWorklog', $locale),
-						active: $page.url.pathname.startsWith('/worklog')
-					},
-					{
-						href: '/tags',
-						label: t('titlebar.menuTags', $locale),
-						active: $page.url.pathname.startsWith('/tags')
-					}
-				]
-			: []
+		showWebExtras ? menuPages($navPages).map(toItem) : []
 	);
 	let navEl = $state<HTMLElement | null>(null);
 	let measureEl = $state<HTMLElement | null>(null);

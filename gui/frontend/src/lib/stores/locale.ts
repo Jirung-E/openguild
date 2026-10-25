@@ -73,6 +73,15 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.uiScale': { ko: 'UI 크기', en: 'UI Scale' },
 	'settings.contentWidth': { ko: '컨텐츠 폭', en: 'Content Width' },
 	'settings.language': { ko: '언어', en: 'Language' },
+	// DEV-456: 상단바 메뉴(사용자 설정).
+	'settings.navPages': { ko: '상단바 메뉴', en: 'Top bar menu' },
+	'settings.navPagesHint': {
+		ko: '체크한 페이지가 이 순서로 상단바에 나옵니다. 나머지는 왼쪽 위 메뉴 버튼 안에 있습니다. 홈은 빠질 수 없습니다.',
+		en: 'Checked pages appear in the top bar in this order. The rest are in the menu button at the top left. Home is always shown.'
+	},
+	'settings.navPageRequired': { ko: '홈은 빠질 수 없습니다', en: 'Home is always shown' },
+	'settings.navPageUp': { ko: '앞으로', en: 'Move earlier' },
+	'settings.navPageDown': { ko: '뒤로', en: 'Move later' },
 	'settings.all': { ko: '전체 설정', en: 'All settings' },
 
 	// DEV-205 / REQ-001: 퀘스트·캠페인 상세 공통 액션 + 섹션 라벨. 두 화면이
