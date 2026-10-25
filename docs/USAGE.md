@@ -533,6 +533,11 @@ macOS 는 `/Applications/openguild.app`.
 감지. Settings → "업데이트 확인" 으로 수동 확인도 가능. 다운로드 → 서명 검증
 → 재시작 흐름은 자동.
 
+CLI · 서버만 쓴다면 `openguild check update` 로 새 버전이 나왔는지 봅니다(앱과 같은
+`latest.json`). 알려 주기만 하고 설치는 하지 않습니다 — 설치 프로그램이나 릴리스 페이지의
+파일로 바꿉니다. CLI 와 서버는 늘 같은 버전이라 이 명령 하나로 둘 다 봅니다. `--json` 이면
+`update_available` 로 스크립트에서 쓸 수 있습니다.
+
 ---
 
 ## 8. 도움말 / 문제 해결

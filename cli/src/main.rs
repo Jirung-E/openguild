@@ -124,6 +124,9 @@ macro_rules! json_println {
     };
 }
 
+// DEV-187: `check update` — 위의 `tf!` 를 쓰므로 그 뒤에 둔다.
+mod update_check;
+
 // QuestCmd 가 ListQuery 등 큰 필터 구조체를 포함하므로 다른 variant 와 크기 차가
 // 크지만, CLI 는 한 번 실행되고 끝 — 메모리 영향 무시 가능. 박싱 회피.
 #[allow(clippy::large_enum_variant)]
@@ -227,7 +230,7 @@ enum Command {
     },
     #[command(about = tf!("파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일", "Rebuild index.db cache from files (after external edits / git pull / restore). Same as `index rebuild`"))]
     Reindex,
-    #[command(about = tf!("무결성 점검 — drift / counters", "Integrity checks — drift / counters"))]
+    #[command(about = tf!("점검 — drift / counters / sidecars / update(새 버전)", "Checks — drift / counters / sidecars / update (new version)"))]
     Check {
         #[command(subcommand)]
         sub: CheckCmd,
@@ -440,6 +443,9 @@ enum CheckCmd {
     },
     #[command(about = tf!("주인 없는 댓글 · 메모 · 첨부 파일 찾기 — 문서(`이름.md`)가 없는 것. 보고만 한다.", "Find comment/memo/attachment files whose document (`name.md`) is missing. Report only."))]
     Sidecars,
+    // DEV-187: 앱은 스스로 업데이트를 확인하지만 CLI · 서버만 쓰면 알 길이 없었다. 길드가 필요 없다.
+    #[command(about = tf!("새 버전이 나왔는지 확인 — 앱과 같은 latest.json 을 읽고 안내만 한다(설치는 안 함). CLI · 서버는 늘 같은 버전이다.", "Check whether a new version is out — reads the same latest.json as the app and only tells you (does not install). The CLI and server always share a version."))]
+    Update,
 }
 
 /// DEV-177: index.db 캐시 그룹.
@@ -7851,6 +7857,13 @@ fn run() -> Result<()> {
     if let Command::Guild { sub } = &cli.command {
         return handle_guild(cli.json, sub.clone());
     }
+    // DEV-187: 새 버전 확인도 길드와 무관 — 길드 밖에서도 돈다.
+    if let Command::Check {
+        sub: CheckCmd::Update,
+    } = &cli.command
+    {
+        return update_check::run(cli.json);
+    }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
 
@@ -7909,6 +7922,7 @@ fn run() -> Result<()> {
             CheckCmd::Drift { resync } => run_check_drift_cmd(&c, resync, cli.json)?,
             CheckCmd::Counters { fix } => run_check_counters_cmd(&c, fix, cli.json)?,
             CheckCmd::Sidecars => run_check_sidecars_cmd(&c, cli.json)?,
+            CheckCmd::Update => unreachable!("handled above"),
         },
         Command::Index { sub } => match sub {
             IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
