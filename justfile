@@ -48,9 +48,13 @@ build-frontend:
 # BUG-374: 윈도우 설치본(NSIS)은 target/release 의 openguild · openguild-server 를 그대로 싣는다 —
 # tauri build 는 이 둘을 만들지 않으므로 release.yml 과 같은 순서로 먼저 빌드한다. 안 하면 그 자리에
 # 남아 있던 옛 빌드가 실린다.
+#
+# 업데이트 파일(.tar.gz · .sig)은 서명 키의 비밀번호(TAURI_SIGNING_PRIVATE_KEY_PASSWORD)가 있을 때만 만든다.
+# 키가 없으면 맨 끝에서 실패하고(맥), 키만 있고 비밀번호가 없으면 입력을 기다리며 멈췄다(윈도우) — 앱 · 설치
+# 파일은 그 전에 다 만들어지므로 로컬 빌드에서는 끈다(tauri.local-build.conf.json). 배포는 release.yml 이 한다.
 build-desktop:
     cargo build --release -p openguild-cli -p openguild-server
-    cd gui && cargo tauri build
+    cd gui && cargo tauri build {{ if env_var_or_default("TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "") == "" { "--config tauri.local-build.conf.json" } else { "" } }}
 
 # 모든 Rust crate release 빌드
 build-rust:
