@@ -791,6 +791,11 @@ input[type='checkbox']:disabled {
 .seg.sm > button {
 	padding: var(--sp-2) var(--sp-8);
 }
+/* DEV-457: 아주 작은 세그먼트 — `.btn-sm`(위아래 sp-2, fs-xs) 옆. 판의 여백이 칸의 위아래 여백을 대신한다. */
+.seg.xs > button {
+	padding: 0 var(--sp-6);
+	font-size: var(--fs-xs);
+}
 /* DEV-453 후속: 내용 **위에 떠 있는** 세그먼트(보드 · 목록 오른쪽 위의 [보드 | 목록]) — 보드 도구줄(.toolbar)
    처럼 그림자를 얹어 아래의 보드와 떼어 놓는다. */
 .seg.raised {

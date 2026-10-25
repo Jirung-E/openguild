@@ -96,11 +96,12 @@
 <div class="popup qm" role="menu" aria-label={t('nav.settingsQuickMenu', $locale)}>
 	<div class="qm-row">
 		<span class="qm-label">{t('settings.theme', $locale)}</span>
-		<div class="qm-seg" role="group" aria-label={t('settings.theme', $locale)}>
+		<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양) — 메뉴 폭을 다 쓴다. -->
+		<div class="seg sm qm-seg" role="group" aria-label={t('settings.theme', $locale)}>
 			{#each THEME_OPTIONS as o (o.value)}
 				<button
 					class="qm-seg-btn"
-					class:active={!$activeCustomTheme && $theme === o.value}
+					class:on={!$activeCustomTheme && $theme === o.value}
 					onclick={() => {
 						// DEV-114: 커스텀 활성 중 기본 테마 클릭 → override 해제 후 전환.
 						if ($activeCustomTheme) deactivateCustom();
@@ -110,8 +111,8 @@
 			{/each}
 			{#each $customThemes as p (p.name)}
 				<button
-					class="qm-seg-btn qm-custom"
-					class:active={$activeCustomTheme === p.name}
+					class="qm-seg-btn"
+					class:on={$activeCustomTheme === p.name}
 					onclick={() => activatePreset(p.name)}>{p.name}</button
 				>
 			{/each}
@@ -121,11 +122,11 @@
 	<!-- DEV-015 (MVP): 언어 토글 — 이 메뉴의 라벨에 즉시 반영, 전역 적용은 후속. -->
 	<div class="qm-row">
 		<span class="qm-label">{t('settings.language', $locale)}</span>
-		<div class="qm-seg" role="group" aria-label={t('settings.language', $locale)}>
+		<div class="seg sm qm-seg" role="group" aria-label={t('settings.language', $locale)}>
 			{#each LOCALE_OPTIONS as o (o.value)}
 				<button
 					class="qm-seg-btn"
-					class:active={$locale === o.value}
+					class:on={$locale === o.value}
 					onclick={() => setLocale(o.value)}>{o.label}</button
 				>
 			{/each}
@@ -209,36 +210,16 @@
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
 	}
+	/* DEV-457: 모양은 .seg.sm — 여기서는 메뉴 폭을 다 쓰게 칸을 고르게 나눈다. */
 	.qm-seg {
 		display: flex;
-		gap: var(--sp-4);
 	}
 	.qm-seg-btn {
 		flex: 1;
 		min-width: 0; /* DEV-138 fix3: flex 자식이 내용 폭으로 안 밀려나게. */
-		padding: var(--sp-4) 0;
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-sm);
-		cursor: pointer;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.qm-seg-btn:hover {
-		color: var(--text);
-		border-color: var(--text-faint);
-	}
-	.qm-seg-btn.active {
-		background: color-mix(in srgb, var(--accent) 15%, transparent);
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-	/* DEV-114: 커스텀 프리셋 버튼 — 좁은 메뉴라 최소 폭만 확보, 이름은 ellipsis. */
-	.qm-seg-btn.qm-custom {
-		padding: var(--sp-4) var(--sp-6);
 	}
 	.qm-slider {
 		display: flex;

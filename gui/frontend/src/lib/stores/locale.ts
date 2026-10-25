@@ -1840,6 +1840,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-288: 규칙·도서관 변경 활동.
 	'worklogPage.badge.rule': { ko: '규칙', en: 'Rule' },
 	'worklogPage.badge.book': { ko: '문서', en: 'Doc' },
+	// DEV-457: 고르기(.seg)의 이름 — 화면 읽기용.
+	'worklogPage.unitAria': { ko: '기간 단위', en: 'Period unit' },
+	'worklogPage.viewAria': { ko: '표시 방식', en: 'Display' },
 	'worklogPage.title': { ko: '작업 기록', en: 'Work Log' },
 	'worklogPage.rangeStartAria': { ko: '구간 시작', en: 'Range start' },
 	'worklogPage.rangeEndAria': { ko: '구간 끝', en: 'Range end' },
@@ -1907,6 +1910,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '폴더 삭제 실패 — 비어 있는지 확인하세요',
 		en: 'Failed to delete folder — check that it is empty'
 	},
+	// DEV-457: 보기 고르기(.seg)의 이름 — 화면 읽기용.
+	'library.viewModeAria': { ko: '보기 방식', en: 'View mode' },
 	'library.treeView': { ko: '트리 보기', en: 'Tree view' },
 	'library.iconView': { ko: '아이콘 보기', en: 'Icon view' },
 	'library.newFolder': { ko: '+ 폴더', en: '+ Folder' },

@@ -402,14 +402,19 @@
 	<div class="hdr">
 		<h1><Icon name="clock" size={16} />{t('worklogPage.title', $locale)}</h1>
 		<div class="controls">
-			<div class="unit">
+			<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양). -->
+			<div class="seg sm" role="radiogroup" aria-label={t('worklogPage.unitAria', $locale)}>
 				{#each UNITS as u (u)}
-					<button class:on={unit === u} onclick={() => setUnit(u)}>{unitLabel(u)}</button>
+					<button role="radio" aria-checked={unit === u} class:on={unit === u} onclick={() => setUnit(u)}
+						>{unitLabel(u)}</button
+					>
 				{/each}
 			</div>
 			<!-- REQ-006: 표시 방식 — 문서별 묶기(기본) / 전체 시간순. -->
-			<div class="unit">
+			<div class="seg sm" role="radiogroup" aria-label={t('worklogPage.viewAria', $locale)}>
 				<button
+					role="radio"
+					aria-checked={viewMode === 'compact'}
 					class:on={viewMode === 'compact'}
 					onclick={() => setViewMode('compact')}
 					title={t('worklogPage.view.compactHint', $locale)}
@@ -417,6 +422,8 @@
 					{t('worklogPage.view.compact', $locale)}
 				</button>
 				<button
+					role="radio"
+					aria-checked={viewMode === 'full'}
 					class:on={viewMode === 'full'}
 					onclick={() => setViewMode('full')}
 					title={t('worklogPage.view.fullHint', $locale)}
@@ -671,27 +678,6 @@
 		   밀리지 않게 줄바꿈 허용. */
 		flex-wrap: wrap;
 		row-gap: var(--sp-6);
-	}
-	.unit {
-		display: inline-flex;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		overflow: hidden;
-	}
-	.unit button {
-		border: none;
-		background: transparent;
-		color: var(--text-muted);
-		padding: var(--sp-4) var(--sp-12);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.unit button + button {
-		border-left: var(--bw) solid var(--border);
-	}
-	.unit button.on {
-		background: color-mix(in srgb, var(--accent) 15%, transparent);
-		color: var(--accent);
 	}
 	.nav {
 		display: inline-flex;

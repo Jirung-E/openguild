@@ -1246,13 +1246,18 @@
 		<!-- ─── explorer 모드: 폴더/문서 그리드 (문서 선택 전) ─── -->
 		<div class="explorer-toolbar">
 			<h1 class="page-title">{t('library.title', $locale)}</h1>
-			<div class="view-toggle">
+			<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양). -->
+			<div class="view-toggle seg xs" role="radiogroup" aria-label={t('library.viewModeAria', $locale)}>
 				<button
+					role="radio"
+					aria-checked={isMode('tree')}
 					class:on={isMode('tree')}
 					onclick={() => setViewMode('tree')}
 					title={t('library.treeView', $locale)}><Icon name="menu" size="1em" /></button
 				>
 				<button
+					role="radio"
+					aria-checked={isMode('explorer')}
 					class:on={isMode('explorer')}
 					onclick={() => setViewMode('explorer')}
 					title={t('library.iconView', $locale)}><Icon name="grid" size="1em" /></button
@@ -1597,13 +1602,18 @@
 						>
 							{t('library.title', $locale)}
 						</h2>
-						<div class="view-toggle">
+						<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양). -->
+						<div class="view-toggle seg xs" role="radiogroup" aria-label={t('library.viewModeAria', $locale)}>
 							<button
+								role="radio"
+								aria-checked={isMode('tree')}
 								class:on={isMode('tree')}
 								onclick={() => setViewMode('tree')}
 								title={t('library.treeView', $locale)}><Icon name="menu" size="1em" /></button
 							>
 							<button
+								role="radio"
+								aria-checked={isMode('explorer')}
 								class:on={isMode('explorer')}
 								onclick={() => setViewMode('explorer')}
 								title={t('library.iconView', $locale)}><Icon name="grid" size="1em" /></button
@@ -2195,24 +2205,9 @@
 		gap: var(--sp-6);
 		margin-bottom: var(--sp-4);
 	}
+	/* DEV-457: 모양은 .seg.xs — 여기서는 자리만. */
 	.view-toggle {
 		margin-left: auto;
-		display: flex;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		overflow: hidden;
-	}
-	.view-toggle button {
-		padding: var(--sp-2) var(--sp-6);
-		background: transparent;
-		border: none;
-		color: var(--text-muted);
-		cursor: pointer;
-		font-size: var(--fs-xs);
-	}
-	.view-toggle button.on {
-		background: color-mix(in srgb, var(--accent) 15%, transparent);
-		color: var(--text);
 	}
 	.empty-list {
 		color: var(--text-muted);
