@@ -45,7 +45,11 @@ build-frontend:
     cd gui/frontend && npm run build
 
 # Tauri desktop binary release 빌드
+# BUG-374: 윈도우 설치본(NSIS)은 target/release 의 openguild · openguild-server 를 그대로 싣는다 —
+# tauri build 는 이 둘을 만들지 않으므로 release.yml 과 같은 순서로 먼저 빌드한다. 안 하면 그 자리에
+# 남아 있던 옛 빌드가 실린다.
 build-desktop:
+    cargo build --release -p openguild-cli -p openguild-server
     cd gui && cargo tauri build
 
 # 모든 Rust crate release 빌드
