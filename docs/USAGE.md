@@ -56,6 +56,22 @@ openguild-server --version
 - 또는 탐색기에서 `*.guild` 파일을 더블클릭 (파일 연결 등록됨).
 - 최근에 열었던 길드는 자동 목록에 표시.
 
+### 지우기
+
+**길드(`.guild` 가 든 폴더)는 어떤 방법으로 지워도 그대로 남습니다** — 사용자 문서입니다.
+
+| 플랫폼 | 방법 |
+|--------|------|
+| Windows | 설정 → 앱 → openguild → 제거(또는 설치 폴더의 `uninstall.exe`). 앱 · CLI · 서버 · 바로가기 · PATH 등록을 지웁니다. **"앱 데이터 삭제"** 를 고르면 이 기계의 설정도 지웁니다(아래). |
+| macOS 앱 | `/Applications/openguild.app` 을 휴지통으로. |
+| macOS CLI / Server | tar.gz 안의 `./uninstall.sh` — 기본은 CLI · 서버만, `--app` 이면 앱도, `--settings` 면 설정과 앱 데이터도. 지울 것을 보여 주고 묻습니다(`--yes` 면 안 묻는다). |
+| Linux | 패키지 관리자로(`sudo apt remove openguild` / `sudo dnf remove openguild`), AppImage 는 파일을 지운다. |
+
+이 기계의 설정은 `~/.openguild/`(Windows `%USERPROFILE%\.openguild\`)에 있습니다 — 최근 길드 · 언어 ·
+테마 · 플러그인 허용 · 플러그인 설정값(토큰 같은 비밀값) · 서버 설정. 앱만 지우고 다시 깔 생각이면 남겨 두면
+됩니다. `~/.openguild/plugin-data/` 는 플러그인이 남긴 기록(삭제 감사 로그 · 받은 편지함 등)이라 제거 프로그램도
+지우지 않습니다 — 필요 없으면 직접 지우세요.
+
 ---
 
 ## 2. 핵심 개념

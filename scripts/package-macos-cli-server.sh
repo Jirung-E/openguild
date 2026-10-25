@@ -40,6 +40,10 @@ install -m 755 "$release_dir/openguild-server" "$package_dir/openguild-server"
 install -m 644 \
   "$repo_root/packaging/macos/cli-server-README.md" \
   "$package_dir/README.md"
+# DEV-327: 지우는 법도 함께 — CLI · 서버는 손으로 /usr/local/bin 에 넣으므로 지우는 것도 손이 간다.
+install -m 755 \
+  "$repo_root/packaging/macos/uninstall.sh" \
+  "$package_dir/uninstall.sh"
 
 archive="$release_dir/$package_name.tar.gz"
 checksum="$archive.sha256"
