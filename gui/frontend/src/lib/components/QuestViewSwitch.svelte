@@ -15,7 +15,7 @@
 	}
 </script>
 
-<div class="seg sm" role="radiogroup" aria-label={t('nav.questViewAria', $locale)}>
+<div class="seg sm raised" role="radiogroup" aria-label={t('nav.questViewAria', $locale)}>
 	<button
 		type="button"
 		role="radio"
