@@ -76,6 +76,19 @@ ${StrLoc}
   Delete "$INSTDIR\docs\AGENTS_OPENGUILD_USAGE.md"
 !macroend
 
+; BUG-376: 설정 앱(GUI)에서 지우면 레지스트리 삭제만 셋 다 안 됐다(같은 구역의 파일 삭제 · 레지스트리 읽기는
+; 됐고, `/S` 로 지울 때는 지워졌다). 원인을 찾을 때까지 지운 뒤에도 키가 남았는지를
+; %TEMP%\openguild-uninstall.log 에 덧붙여 남긴다. 키가 없으면 EnumRegValue 가 오류 표시를 켠다.
+!macro UnLogRegKey KEY
+  ClearErrors
+  EnumRegValue $R8 HKCU "${KEY}" 0
+  ${If} ${Errors}
+    FileWrite $R7 "  HKCU\${KEY}: gone$\r$\n"
+  ${Else}
+    FileWrite $R7 "  HKCU\${KEY}: STILL THERE$\r$\n"
+  ${EndIf}
+!macroend
+
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 !define STARTMENUFOLDER "{{start_menu_folder}}"
@@ -1053,6 +1066,18 @@ Section Uninstall
     RMDir "$INSTDIR\openguild"
     RMDir "$INSTDIR"
   ${EndIf}
+
+  ; BUG-376: 진단 기록(위 매크로 설명).
+  FileOpen $R7 "$TEMP\openguild-uninstall.log" a
+  FileSeek $R7 0 END
+  FileWrite $R7 "openguild uninstall: exe=$EXEPATH instdir=$INSTDIR update=$UpdateMode passive=$PassiveMode deleteAppData=$DeleteAppDataCheckboxState$\r$\n"
+  ${If} ${Silent}
+    FileWrite $R7 "  silent$\r$\n"
+  ${EndIf}
+  !insertmacro UnLogRegKey "${UNINSTKEY}"
+  !insertmacro UnLogRegKey "${MANUPRODUCTKEY}"
+  !insertmacro UnLogRegKey "Software\Classes\.guild"
+  FileClose $R7
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
     !insertmacro NSIS_HOOK_POSTUNINSTALL
