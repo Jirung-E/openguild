@@ -4,6 +4,8 @@
   리터럴이라 statusLabel/Color 는 훨씬 단순.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import type { CampaignHistoryEntry } from '$lib/types';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
@@ -81,7 +83,7 @@
 			aria-expanded={!collapsed}
 			title={collapsed ? t('history.expand', $locale) : t('history.collapse', $locale)}
 		>
-			<span class="toggle-icon" class:collapsed>▼</span>
+			<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
 			<h2 class="section-title">{t('history.title', $locale)}</h2>
 		</button>
 		{#if entries.length > 0}

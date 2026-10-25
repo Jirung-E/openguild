@@ -401,7 +401,7 @@
 					onclick={() => (quickMenuOpen = !quickMenuOpen)}
 					title={t('nav.settings', $locale)}
 					aria-label={t('nav.settings', $locale)}
-					aria-expanded={quickMenuOpen}>⚙</button
+					aria-expanded={quickMenuOpen}><Icon name="settings" size="1em" /></button
 				>
 				{#if quickMenuOpen}
 					<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
@@ -574,7 +574,7 @@
 						title={t('welcome.removeFromList', $locale)}
 						aria-label={t('welcome.removeFromList', $locale)}
 					>
-						×
+						<Icon name="close" size="1em" />
 					</button>
 				</li>
 			{/each}

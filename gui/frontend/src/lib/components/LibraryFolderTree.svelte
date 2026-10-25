@@ -89,7 +89,7 @@
 		aria-expanded={!collapsed}
 		aria-label={collapsed ? t('library.folderExpand', $locale) : t('library.folderCollapse', $locale)}
 	>
-		{collapsed ? '▶' : '▼'}
+		<Icon name={collapsed ? 'caret-right' : 'caret-down'} size="1em" />
 	</button>
 	<span class="folder-icon" aria-hidden="true"><Icon name="folder" /></span>
 	<button
@@ -102,14 +102,14 @@
 		title={t('library.folderRenameTitle', $locale)}
 		onclick={() => onRenameFolder(node.path)}
 	>
-		✎
+		<Icon name="edit" size="1em" />
 	</button>
 	<button
 		class="folder-del"
 		title={t('library.folderDeleteTitle', $locale)}
 		onclick={() => onDeleteFolder(node.path)}
 	>
-		✕
+		<Icon name="close" size="1em" />
 	</button>
 </div>
 

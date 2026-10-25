@@ -38,6 +38,11 @@ const ALLOW_FILES = new Set(['lib/components/Icon.svelte', 'lib/components/PlayP
 
 const isColorEmoji = (cp) => COLOR_RANGES.some(([a, b]) => cp >= a && cp <= b);
 
+// DEV-454: 흑백으로 그려지는 **글자 아이콘**도 — OS · 글꼴마다 모양 · 크기 · 높이가 달라 SVG(Icon.svelte)로
+// 옮겼다. 마크업에서만 본다(스크립트의 문장 · 화살표 설명은 대상이 아니다). 일부러 쓰는 글자(곱셈 기호
+// 'x3', 마크다운 토글 'M↓', 입력칸 안내 글)는 그 줄이나 윗줄에 `glyph-ok` 주석.
+const GLYPH_ICONS = new Set([...'☰⚙⟲⟳✎▼▾▶▸◀▲✓✗✕×⤓⊞⊟▦⇥⚠↩↪↕↔↑↓↗']);
+
 /** .svelte 에서 <script>/<style> 블록을 제거하고 마크업만 남긴다. */
 function markupOnly(text) {
 	return text
@@ -94,6 +99,7 @@ function walk(dir) {
 		const orig = text.split('\n');
 		if (isSvelte) {
 			scan(rel, markupOnly(text), 1, orig);
+			scanGlyphs(rel, markupOnly(text), orig);
 			// DEV-302: <script> 안의 코드도 — 문자열로 조립하는 SVG / 라벨.
 			for (const { startLine, body } of scriptOnly(text)) scan(rel, body, startLine, orig);
 		} else {
@@ -125,7 +131,28 @@ function scan(rel, text, startLine, origLines) {
 	});
 }
 
+const glyphViolations = [];
+
+function scanGlyphs(rel, text, origLines) {
+	text.split('\n').forEach((line, i) => {
+		if (origLines[i]?.includes('glyph-ok') || origLines[i - 1]?.includes('glyph-ok')) return;
+		const hit = [...line].find((ch) => GLYPH_ICONS.has(ch));
+		if (hit) {
+			glyphViolations.push(
+				`${rel}:${i + 1}  '${hit}'  ${line.trim().slice(0, 80)}`
+			);
+		}
+	});
+}
+
 walk(SRC);
+
+if (glyphViolations.length > 0) {
+	console.error('글자 아이콘이 마크업에 있습니다 — <Icon name="…" size="1em" /> 로(도형은 utils/icon-paths.ts):\n');
+	for (const v of glyphViolations) console.error('  ' + v);
+	console.error('\n아이콘이 아니라 글자라면(곱셈 기호 · 안내 글) 그 줄이나 윗줄에 glyph-ok 주석과 이유를 다세요.');
+	process.exit(1);
+}
 
 if (violations.length > 0) {
 	console.error('컬러 이모지 아이콘이 마크업에 있습니다 (Icon.svelte / 인라인 SVG 로 교체):\n');
@@ -135,4 +162,4 @@ if (violations.length > 0) {
 	);
 	process.exit(1);
 }
-console.log('OK — 마크업에 컬러 이모지 아이콘 없음');
+console.log('OK — 마크업에 컬러 이모지 · 글자 아이콘 없음');

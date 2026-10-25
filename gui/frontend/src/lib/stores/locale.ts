@@ -1445,6 +1445,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '고친 날 — 날짜 비교',
 		en: 'day it was edited — date comparison'
 	},
+	// DEV-454: 날짜 고르기의 이전 · 다음(예전엔 화면 읽기 도구가 '◀' 를 읽었다).
+	'datefield.prev': { ko: '이전', en: 'Previous' },
+	'datefield.next': { ko: '다음', en: 'Next' },
 	'filter.advanced': { ko: '고급', en: 'Advanced' },
 	// BUG-194: 좁은 화면에서 타입/상태 칩 줄을 접는 토글 라벨.
 	'filter.chips': { ko: '필터', en: 'Filters' },

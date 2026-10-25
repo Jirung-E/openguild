@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import type { QuestStatus, QuestType } from '$lib/types';
 	import { urgencyLabel, urgencyColor } from '$lib/types';
 	// DEV-205 모듈3: 필터 문자열 i18n.
@@ -143,7 +145,7 @@
 			class:active={activeChipCount > 0}
 			onclick={() => (chipsOpen = !chipsOpen)}
 			aria-expanded={chipsOpen}
-			>{chipsOpen ? '▾' : '▸'}
+			><Icon name={chipsOpen ? 'caret-down-sm' : 'caret-right-sm'} size="1em" />
 			{t('filter.chips', $locale)}{activeChipCount > 0 ? ` (${activeChipCount})` : ''}</button
 		>
 	{/if}
@@ -224,7 +226,8 @@
 		class:active={advancedActive}
 		onclick={() => (advancedOpen = !advancedOpen)}
 		aria-expanded={advancedOpen}
-		>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
+		><Icon name={advancedOpen ? 'caret-down-sm' : 'caret-right-sm'} size="1em" />
+		{t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
 	>
 	<!-- DEV-452: 쿼리의 오류 · 쓰는 법 — 필터 줄 아래 한 줄을 다 쓴다. -->
 	<QueryNotes

@@ -25,7 +25,31 @@ export type IconName =
 	| 'link'
 	| 'tag'
 	| 'campaign'
-	| 'select';
+	| 'select'
+	// DEV-454: 예전엔 글자(☰ ⚙ ✎ × ▼ …)로 그리던 UI 아이콘들 — OS · 글꼴마다 모양 · 크기 · 높이가 달랐다.
+	| 'close'
+	| 'check'
+	| 'warn'
+	| 'caret-down'
+	| 'caret-up'
+	| 'caret-left'
+	| 'caret-right'
+	| 'caret-down-sm'
+	| 'caret-right-sm'
+	| 'down'
+	| 'external'
+	| 'download'
+	| 'edit'
+	| 'menu'
+	| 'settings'
+	| 'refresh'
+	| 'grid'
+	| 'arrange'
+	| 'vertical'
+	| 'horizontal'
+	| 'undo'
+	| 'redo'
+	| 'collapse-right';
 
 /** 아이콘별 SVG 도형(16×16). `<svg>` 래퍼 없이 자식 엘리먼트만. */
 export const ICON_SHAPES: Record<IconName, string> = {
@@ -48,7 +72,50 @@ export const ICON_SHAPES: Record<IconName, string> = {
 	// DEV-302: 캠페인(옛 ⛺) — 텐트. 기한의 출처가 캠페인임을 나타낸다.
 	campaign: '<path d="M8 2.6 2.2 13.2h11.6z"/><path d="M8 6.4v6.8"/>',
 	// DEV-302: 선택 모드(옛 🔘) — 라디오.
-	select: '<circle cx="8" cy="8" r="5.6"/><circle cx="8" cy="8" r="2.1" fill="currentColor"/>'
+	select: '<circle cx="8" cy="8" r="5.6"/><circle cx="8" cy="8" r="2.1" fill="currentColor"/>',
+	// ── DEV-454: 옛 글자 아이콘 ──
+	// × ✕ ✗ — 닫기 · 지우기 · 미해결.
+	close: '<path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/>',
+	// ✓
+	check: '<path d="M3.4 8.4 6.4 11.3 12.6 4.9"/>',
+	// ⚠
+	warn: '<path d="M8 2.7 14 13.1H2z"/><path d="M8 6.6v3.1"/><circle cx="8" cy="11.4" r="0.45" fill="currentColor"/>',
+	// ▼ ▲ ◀ ▶ — 칠한 삼각형(접기 · 레인 이동). 굵기를 맞추려고 같은 색 선도 두른다.
+	'caret-down': '<path d="M3.8 5.6h8.4L8 10.6z" fill="currentColor"/>',
+	'caret-up': '<path d="M3.8 10.4h8.4L8 5.4z" fill="currentColor"/>',
+	'caret-left': '<path d="M10.4 3.8v8.4L5.4 8z" fill="currentColor"/>',
+	'caret-right': '<path d="M5.6 3.8v8.4L10.6 8z" fill="currentColor"/>',
+	// ▾ ▸ — 작은 삼각형(필터 · 고급 · 소스 펼치기).
+	'caret-down-sm': '<path d="M5.2 6.6h5.6L8 9.8z" fill="currentColor"/>',
+	'caret-right-sm': '<path d="M6.6 5.2v5.6L9.8 8z" fill="currentColor"/>',
+	// ↓ (↑ 은 위의 up)
+	down: '<path d="M8 3.4v8.7M4.4 8.5 8 12.1l3.6-3.6"/>',
+	// ↗ — 밖으로(새 창 · 릴리스 페이지).
+	external: '<path d="M5 11 11.2 4.8M6.6 4.8h4.6v4.6"/>',
+	// ⤓ — 받기.
+	download: '<path d="M8 2.8v7.4M4.8 7 8 10.2 11.2 7M3.4 13.2h9.2"/>',
+	// ✎ — 고치기.
+	edit: '<path d="M3 13l.6-2.7 7.1-7.1a1.3 1.3 0 0 1 1.9 1.9l-7.1 7.1z"/><path d="M9.7 4.2l2.1 2.1"/>',
+	// ☰ — 메뉴 · 목록 보기 · 도구 펼치기.
+	menu: '<path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4"/>',
+	// ⚙ — 설정.
+	// 톱니 8개 — 바깥 6.3 · 안 4.7 반지름(해 모양으로 보이지 않게 이를 붙였다).
+	settings:
+		'<path d="M6.78 3.46 7.01 1.78h1.98l.23 1.68 1.13.47 1.35-1.03 1.4 1.4-1.03 1.35.47 1.13 1.68.23v1.98l-1.68.23-.47 1.13 1.03 1.35-1.4 1.4-1.35-1.03-1.13.47-.23 1.68H7.01l-.23-1.68-1.13-.47-1.35 1.03-1.4-1.4 1.03-1.35-.47-1.13-1.68-.23V7.01l1.68-.23.47-1.13L2.9 4.3l1.4-1.4 1.35 1.03z"/><circle cx="8" cy="8" r="1.9"/>',
+	// ⟲ — 다시 색인.
+	refresh: '<path d="M3.3 8a4.7 4.7 0 1 0 1.4-3.4"/><path d="M3.1 2.7v2.6h2.6"/>',
+	// ▦ ⊞ — 아이콘 보기 · 격자.
+	grid: '<rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1"/><path d="M8 2.6v10.8M2.6 8h10.8"/>',
+	// ⊟ — 정렬.
+	arrange: '<rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1"/><path d="M5.2 8h5.6"/>',
+	// ↕ ↔ — 보드 방향.
+	vertical: '<path d="M8 2.6v10.8M5.4 5.2 8 2.6l2.6 2.6M5.4 10.8 8 13.4l2.6-2.6"/>',
+	horizontal: '<path d="M2.6 8h10.8M5.2 5.4 2.6 8l2.6 2.6M10.8 5.4 13.4 8l-2.6 2.6"/>',
+	// ↩ ↪ — 되돌리기 · 다시 하기(댓글의 '답글 대상' 도 ↩).
+	undo: '<path d="M5.6 3.6 2.8 6.4l2.8 2.8"/><path d="M3 6.4h6.4a3.3 3.3 0 0 1 0 6.6H7"/>',
+	redo: '<path d="M10.4 3.6 13.2 6.4l-2.8 2.8"/><path d="M13 6.4H6.6a3.3 3.3 0 0 0 0 6.6H9"/>',
+	// ⇥ — 도구줄 접기.
+	'collapse-right': '<path d="M2.6 8h8.2M7.8 5l3 3-3 3M13.2 3.6v8.8"/>'
 };
 
 /**

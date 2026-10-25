@@ -49,7 +49,7 @@
 			}}
 			aria-label={expanded ? 'collapse' : 'expand'}
 		>
-			{expanded ? '▼' : '▶'}
+			<Icon name={expanded ? 'caret-down' : 'caret-right'} size="1em" />
 		</button>
 	{/if}
 
@@ -65,11 +65,15 @@
 			class="discussion-count unresolved"
 			title={`미해결 토론 ${quest.discussion_unresolved}개`}
 		>
-			<span class="dc-icon">✗</span><span>{quest.discussion_unresolved}</span>
+			<span class="dc-icon"><Icon name="close" size="1em" /></span><span
+				>{quest.discussion_unresolved}</span
+			>
 		</span>
 	{:else if (quest.discussion_resolved ?? 0) > 0}
 		<span class="discussion-count resolved" title={`해결된 토론 ${quest.discussion_resolved}개`}>
-			<span class="dc-icon">✓</span><span>{quest.discussion_resolved}</span>
+			<span class="dc-icon"><Icon name="check" size="1em" /></span><span
+				>{quest.discussion_resolved}</span
+			>
 		</span>
 	{/if}
 
@@ -87,7 +91,7 @@
 		<span
 			class="urgency-warn"
 			title={`urgency 원본값 ${quest.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. 파일 정정 필요.`}
-			>⚠</span
+			><Icon name="warn" size="1em" /></span
 		>
 	{/if}
 

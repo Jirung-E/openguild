@@ -9,6 +9,8 @@
   문구는 페이지 시절 한국어로 박혀 있던 것을 옮기며 i18n 으로 바꿨다.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -75,7 +77,7 @@
 		<div class="modal-head">
 			<h2 class="modal-title">{t('ncm.newCampaign', $locale)}</h2>
 			<button class="close-btn" onclick={onclose} aria-label={t('common.cancel', $locale)}
-				>×</button
+				><Icon name="close" size="1em" /></button
 			>
 		</div>
 

@@ -14,6 +14,8 @@
   찾기 바 자신은 `data-find-skip` 이라 자기 글자를 자기가 찾지 않는다.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { onDestroy } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import {
@@ -256,20 +258,20 @@
 		onclick={() => step(-1)}
 		disabled={matches.length === 0}
 		title={t('find.prev', $locale)}
-		aria-label={t('find.prev', $locale)}>↑</button
+		aria-label={t('find.prev', $locale)}><Icon name="up" size="1em" /></button
 	>
 	<button
 		class="find-btn"
 		onclick={() => step(1)}
 		disabled={matches.length === 0}
 		title={t('find.next', $locale)}
-		aria-label={t('find.next', $locale)}>↓</button
+		aria-label={t('find.next', $locale)}><Icon name="down" size="1em" /></button
 	>
 	<button
 		class="find-btn"
 		onclick={close}
 		title={t('find.close', $locale)}
-		aria-label={t('find.close', $locale)}>✕</button
+		aria-label={t('find.close', $locale)}><Icon name="close" size="1em" /></button
 	>
 </div>
 

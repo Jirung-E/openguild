@@ -770,7 +770,9 @@
 			     쓰고, 그쪽은 `?from=` fallback 이 필요하다(BUG-015 / DEV-011). -->
 			{#if !editMode}
 				<div class="top-actions">
-					<button class="btn" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn" onclick={enterEditMode}
+						><Icon name="edit" size="1em" /> {t('detail.edit', $locale)}</button
+					>
 					<button class="btn btn-danger" onclick={openDeleteModal}
 						><Icon name="trash" /> {t('detail.delete', $locale)}</button
 					>
@@ -958,7 +960,7 @@
 							disabled={changingStatus || s.id === detail.status_id}
 							data-testid="status-btn-{s.id}"
 						>
-							{#if s.id === statusFlashId}✓
+							{#if s.id === statusFlashId}<Icon name="check" size="1em" />
 							{/if}{statusLabel(s, $locale)}
 						</button>
 					{/each}
@@ -1014,7 +1016,7 @@
 								<button
 									class="prereq-rm"
 									title={t('qd.detachFromParent', $locale)}
-									onclick={detachParent}>×</button
+									onclick={detachParent}><Icon name="close" size="1em" /></button
 								>
 							{/if}
 						</div>
@@ -1064,7 +1066,7 @@
 										<button
 											class="prereq-rm"
 											title={t('qd.detachFromParent', $locale)}
-											onclick={() => detachSubQuest(sq.id)}>×</button
+											onclick={() => detachSubQuest(sq.id)}><Icon name="close" size="1em" /></button
 										>
 									{/if}
 								</div>
@@ -1109,7 +1111,8 @@
 										<button
 											class="prereq-rm"
 											title={t('qd.removePrereq', $locale)}
-											onclick={() => removePrerequisite(pq.id)}>×</button
+											onclick={() => removePrerequisite(pq.id)}
+											><Icon name="close" size="1em" /></button
 										>
 									{/if}
 								</div>
@@ -1159,7 +1162,8 @@
 										<button
 											class="prereq-rm"
 											title={t('qd.removeSuccessor', $locale)}
-											onclick={() => removeSuccessor(sq.id)}>×</button
+											onclick={() => removeSuccessor(sq.id)}
+											><Icon name="close" size="1em" /></button
 										>
 									{/if}
 								</div>
@@ -1252,7 +1256,8 @@
 									<button
 										class="prereq-rm"
 										title={t('qd.unlinkCampaign', $locale)}
-										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button
+										onclick={() => unlinkCampaign(c.campaign_slug)}
+										><Icon name="close" size="1em" /></button
 									>
 								{/if}
 							</div>
@@ -1287,7 +1292,8 @@
 										class="tag-rm"
 										title={t('quest.tags.remove', $locale)}
 										onclick={() => removeTag(tag)}
-										aria-label={`${t('quest.tags.remove', $locale)}: ${tag}`}>×</button
+										aria-label={`${t('quest.tags.remove', $locale)}: ${tag}`}
+										><Icon name="close" size="1em" /></button
 									>
 								{/if}
 							</span>
@@ -1360,7 +1366,7 @@
 							$locale
 						)}{/if}
 				</h3>
-				<button class="x" onclick={closeCombo}>×</button>
+				<button class="x" onclick={closeCombo}><Icon name="close" size="1em" /></button>
 			</div>
 			{#if candidatesLoading}
 				<div class="combo-state">{t('qd.loadingCandidates', $locale)}</div>
@@ -1390,7 +1396,7 @@
 		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: closeCampaignCombo }}>
 			<div class="modal-head">
 				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
-				<button class="x" onclick={closeCampaignCombo}>×</button>
+				<button class="x" onclick={closeCampaignCombo}><Icon name="close" size="1em" /></button>
 			</div>
 			<CampaignCombobox
 				campaigns={campaignCandidates}
@@ -1431,7 +1437,7 @@
 			<div class="modal-head">
 				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
 				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
-					>×</button
+					><Icon name="close" size="1em" /></button
 				>
 			</div>
 			<p class="del-msg">
@@ -1488,7 +1494,9 @@
 			use:modalFocus={{ onEscape: () => { if (!deleting) deleteModal = false; } }}>
 			<div class="modal-head">
 				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
-				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}>×</button>
+				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}
+					><Icon name="close" size="1em" /></button
+				>
 			</div>
 			<p class="del-msg">{t('quest.delete.msg', $locale)}</p>
 			{#if detail.sub_quests.length > 0}
@@ -1559,7 +1567,7 @@
 				title={t('common.jumpTop', $locale)}
 				aria-label={t('common.jumpTop', $locale)}
 			>
-				<span class="jb-icon">↑</span>
+				<span class="jb-icon"><Icon name="up" size="1em" /></span>
 				<span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
 			</button>
 		{/if}

@@ -8,6 +8,8 @@
   색인(index.db `doc_links`)은 reindex 가 만든다. 여기서는 조회만 한다.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { backlinksApi, type Backlink, type BacklinkKind } from '$lib/api/backlinks';
 	import { locale, t } from '$lib/stores/locale';
 	import { KIND_LABEL, refHref } from '$lib/stores/questIndex';
@@ -77,7 +79,7 @@
 					? t('backlinks.expand', $locale)
 					: t('backlinks.collapse', $locale)}
 			>
-				<span class="toggle-icon" class:collapsed>▼</span>
+				<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
 				<h2 class="bl-title">{t('backlinks.title', $locale)}</h2>
 			</button>
 			<span class="bl-count">{entries.length}</span>

@@ -13,6 +13,8 @@
   본문 미리보기는 선택 시점에 상세 API 로 지연 로드.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import DocRowActions from './DocRowActions.svelte';
 	import { goto, afterNavigate } from '$app/navigation';
@@ -643,7 +645,7 @@
 			<button
 				class="dp-x"
 				onclick={() => (preview = null)}
-				title={t('palette.backToListTitle', $locale)}>✕</button
+				title={t('palette.backToListTitle', $locale)}><Icon name="close" size="1em" /></button
 			>
 		</div>
 		<div class="dp-meta">

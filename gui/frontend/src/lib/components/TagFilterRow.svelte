@@ -12,6 +12,8 @@
   줄었는지 알 수 없고 되돌릴 수단도 없다 — 원래 불편보다 나쁜 상태가 된다.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import {
 		loadTagFilterOpen,
@@ -63,7 +65,9 @@
 		aria-expanded={open}
 		title={open ? t('tagFilter.collapse', $locale) : t('tagFilter.expand', $locale)}
 	>
-		<span class="tag-toggle-icon" class:collapsed={!open}>▾</span>
+		<span class="tag-toggle-icon" class:collapsed={!open}
+			><Icon name="caret-down-sm" size="1em" /></span
+		>
 		{t('tagFilter.label', $locale)}
 		<span class="tag-toggle-count">{total}</span>
 	</button>

@@ -10,6 +10,8 @@
   허용한다. DEV-394: [다시 읽기] 는 디스크의 정의로 다시 꽂는다(자동 감지는 없다).
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '../Icon.svelte';
 	import { onMount, tick } from 'svelte';
 	// DEV-379/380: 조회는 어디서든(브라우저 포함), 허용/철회는 로컬 길드를 연 데스크톱에서만.
 	import {
@@ -719,7 +721,12 @@
 									aria-expanded={sourceOpen(src)}
 									onclick={() => toggleSource(src)}
 								>
-									<span class="src-caret" aria-hidden="true">{sourceOpen(src) ? '▾' : '▸'}</span>
+									<span class="src-caret" aria-hidden="true"
+										><Icon
+											name={sourceOpen(src) ? 'caret-down-sm' : 'caret-right-sm'}
+											size="1em"
+										/></span
+									>
 									<strong>{src.name}</strong>
 									<span class="src-count">
 										{t('plugins.sourceCount', $locale).replace(

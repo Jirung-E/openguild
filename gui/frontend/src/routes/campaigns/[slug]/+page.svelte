@@ -523,10 +523,13 @@
 							disabled={bannerBusy}
 							title={t('campaign.bannerRemove', $locale)}
 						>
-							<Icon name="image" /> ×
+							<Icon name="image" />
+							<Icon name="close" size="1em" />
 						</button>
 					{/if}
-					<button class="btn" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn" onclick={enterEditMode}
+						><Icon name="edit" size="1em" /> {t('detail.edit', $locale)}</button
+					>
 					<button class="btn btn-danger" onclick={askDeleteCampaign}
 						><Icon name="trash" /> {t('detail.delete', $locale)}</button
 					>
@@ -678,7 +681,7 @@
 							<button
 								class="rm"
 								title={t('detail.delete', $locale)}
-								onclick={() => askRemoveChecklist(idx)}>×</button
+								onclick={() => askRemoveChecklist(idx)}><Icon name="close" size="1em" /></button
 							>
 						</li>
 					{/each}
@@ -778,7 +781,7 @@
 							<button
 								class="rm"
 								title={t('campaign.unlinkQuest', $locale)}
-								onclick={() => unlinkQuest(q.quest_id)}>×</button
+								onclick={() => unlinkQuest(q.quest_id)}><Icon name="close" size="1em" /></button
 							>
 						</li>
 					{/each}
@@ -822,7 +825,7 @@
 				title={t('common.jumpTop', $locale)}
 				aria-label={t('common.jumpTop', $locale)}
 			>
-				<span class="jb-icon">↑</span><span class="jb-label"
+				<span class="jb-icon"><Icon name="up" size="1em" /></span><span class="jb-label"
 					>{t('common.jumpTopShort', $locale)}</span
 				>
 			</button>
@@ -869,7 +872,9 @@
 		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => (comboOpen = false) }}>
 			<div class="modal-head">
 				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
-				<button class="x" onclick={() => (comboOpen = false)}>×</button>
+				<button class="x" onclick={() => (comboOpen = false)}
+					><Icon name="close" size="1em" /></button
+				>
 			</div>
 			<QuestCombobox
 				quests={linkableQuests}

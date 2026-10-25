@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import { questsApi } from '$lib/api/quests';
@@ -495,7 +497,9 @@
 			<h2 class="modal-title">
 				{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}
 			</h2>
-			<button class="close-btn" onclick={onclose} aria-label={t('nqm.close', $locale)}>×</button>
+			<button class="close-btn" onclick={onclose} aria-label={t('nqm.close', $locale)}
+				><Icon name="close" size="1em" /></button
+			>
 		</div>
 
 		{#if loading}
@@ -657,7 +661,7 @@
 													type="button"
 													onclick={() => removeRelation(row.mode, quest.id)}
 													aria-label={`${quest.quest_id} ${t('nqm.relationRemove', $locale)}`}
-													>×</button
+													><Icon name="close" size="1em" /></button
 												>
 											{/if}
 										</span>

@@ -1,6 +1,6 @@
 +++
 created_at = "2026-10-11T02:02:56+09:00"
-updated_at = "2026-10-11T02:33:08+09:00"
+updated_at = "2026-10-25T10:54:34+09:00"
 +++
 # 디자인 언어 — DEV-427
 
@@ -16,6 +16,9 @@ GUI 를 디자인하거나 고칠 때는 도서관 **[[BOOK-009]] 디자인 언�
 - 버튼은 공통 클래스 `.btn` (+ `btn-primary` · `btn-danger` · `btn-warning` · `btn-quiet` · `btn-sm`) 을
   쓴다 — 화면마다 버튼 모양을 새로 정하지 않는다. 배치(margin 등)만 화면이 정한다([[DEV-428]]).
 - 입력칸은 `.input`, 잠깐 뜨는 작은 창은 `.popup`, 모달은 `.modal-box` + 막 `var(--backdrop)` ([[DEV-440]]).
+- 둘 중 하나 고르기는 `.seg`(+ `.seg.sm`), 검색칸은 `SearchField`([검색 | 쿼리]) ([[DEV-452]] · [[DEV-453]]).
+- 아이콘은 `Icon`(SVG, 도형은 `utils/icon-paths.ts`) — 글자 기호(☰ ⚙ × ▼ …)를 아이콘으로 쓰지 않는다. 글자 자리에는
+  `size="1em"`. 곱셈 기호 · 안내 글처럼 글자인 것은 그 줄에 `glyph-ok` ([[DEV-454]], `check:no-emoji` 가 막는다).
 
 `npm run check:tokens` 가 리터럴과 화면별 공통 부품 모양을 막는다(`just test` · CI 에 포함).
 

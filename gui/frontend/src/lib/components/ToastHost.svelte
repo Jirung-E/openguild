@@ -10,6 +10,8 @@
   껍데기 컴포넌트를 흡수·제거).
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import {
@@ -208,12 +210,15 @@
 				{n.message}
 				{#if n.count > 1}
 					<!-- DEV-266: 중복 억제 — 같은 알림 재발생 횟수 뱃지. -->
+					<!-- glyph-ok: 횟수 표시(×3) — 아이콘이 아니라 곱셈 기호다 -->
 					<span class="count">×{n.count}</span>
 				{/if}
 			</button>
 		{:else if n.kind === 'update'}
 			<div class="card upd" class:err={$updateState.status === 'error'} role="status">
-				<button class="card-x" title={t('update.close', $locale)} onclick={() => dismissUpdate()}>×</button>
+				<button class="card-x" title={t('update.close', $locale)} onclick={() => dismissUpdate()}
+					><Icon name="close" size="1em" /></button
+				>
 				{#if $updateState.status === 'checking'}
 					<p class="t-title">{t('update.checking', $locale)}</p>
 				{:else if $updateState.status === 'uptodate'}
@@ -249,10 +254,11 @@
 					class="card-x"
 					onclick={() => dismissSchema(schemaSig(n.binaryVersion, n.aheadVersions))}
 					aria-label={t('update.close', $locale)}
-					title={t('update.close', $locale)}>×</button
+					title={t('update.close', $locale)}><Icon name="close" size="1em" /></button
 				>
 				<div class="msg">
-					<strong>⚠ 이 길드 DB 가 현재 GUI 버전보다 새롭습니다</strong>
+					<strong><Icon name="warn" size="1em" /> 이 길드 DB 가 현재 GUI 버전보다 새롭습니다</strong
+					>
 					<span class="detail">
 						현재 GUI: <code>v{n.binaryVersion}</code>
 						{#if n.latestKnown != null}
@@ -265,7 +271,9 @@
 						적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.
 					</span>
 				</div>
-				<button class="btn btn-warning btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
+				<button class="btn btn-warning btn-update" onclick={openRelease}>
+					최신 버전 받기 <Icon name="external" size="1em" />
+				</button>
 			</div>
 		{/if}
 	{/each}

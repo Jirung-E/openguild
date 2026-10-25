@@ -117,3 +117,38 @@ describe('makeQuestNodeSvgUrl — 기한 아이콘 (DEV-302)', () => {
 		expect(svg).not.toContain(ICON_SHAPES.campaign);
 	});
 });
+
+// DEV-454: 글자 아이콘(☰ ⚙ × ▼ …)을 옮긴 도형들 — 빠지면 화면이 빈 자리가 된다.
+describe('DEV-454 — 옛 글자 아이콘의 SVG', () => {
+	it('옮긴 아이콘이 다 있고 글자가 아니라 도형이다', () => {
+		const moved: IconName[] = [
+			'close',
+			'check',
+			'warn',
+			'caret-down',
+			'caret-up',
+			'caret-left',
+			'caret-right',
+			'caret-down-sm',
+			'caret-right-sm',
+			'down',
+			'external',
+			'download',
+			'edit',
+			'menu',
+			'settings',
+			'refresh',
+			'grid',
+			'arrange',
+			'vertical',
+			'horizontal',
+			'undo',
+			'redo',
+			'collapse-right'
+		];
+		for (const name of moved) {
+			expect(ICON_SHAPES[name], name).toMatch(/<(path|circle|rect)\b/);
+			expect(ICON_SHAPES[name], name).not.toMatch(/[☰⚙⟲✎×▼▶◀▲↑↓✓✗✕⚠]/);
+		}
+	});
+});

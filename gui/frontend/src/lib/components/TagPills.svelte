@@ -5,6 +5,8 @@
   둬(리스크 최소화) 이 컴포넌트는 library/rules 전용으로 시작.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import type { QuestTagDef } from '$lib/types';
 	import type { TagEdit } from '$lib/api/quests';
 	// DEV-205(2차): i18n.
@@ -80,7 +82,8 @@
 								class="tag-rm"
 								title={t('tagPills.removeTitle', $locale)}
 								onclick={() => removeTag(tag)}
-								aria-label={`${tag} ${t('tagPills.removeTitle', $locale)}`}>×</button
+								aria-label={`${tag} ${t('tagPills.removeTitle', $locale)}`}
+								><Icon name="close" size="1em" /></button
 							>
 						{/if}
 					</span>

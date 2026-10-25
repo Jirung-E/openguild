@@ -14,6 +14,8 @@
   - mode="month" 면 YYYY-MM 값 + 12개월 그리드 팝업(작업기록 월 뷰 용).
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { locale, t } from '$lib/stores/locale';
 
 	let {
@@ -166,9 +168,19 @@
 	{#if open}
 		<div class="popup df-pop" role="dialog" aria-label={t('common.pickDate', $locale)}>
 			<div class="df-nav">
-				<button type="button" class="df-nav-btn" onclick={() => (mode === 'month' ? (viewYear -= 1) : stepMonth(-1))} aria-label="◀">◀</button>
+				<button
+					type="button"
+					class="df-nav-btn"
+					onclick={() => (mode === 'month' ? (viewYear -= 1) : stepMonth(-1))}
+					aria-label={t('datefield.prev', $locale)}><Icon name="caret-left" size="1em" /></button
+				>
 				<span class="df-head">{headerLabel}</span>
-				<button type="button" class="df-nav-btn" onclick={() => (mode === 'month' ? (viewYear += 1) : stepMonth(1))} aria-label="▶">▶</button>
+				<button
+					type="button"
+					class="df-nav-btn"
+					onclick={() => (mode === 'month' ? (viewYear += 1) : stepMonth(1))}
+					aria-label={t('datefield.next', $locale)}><Icon name="caret-right" size="1em" /></button
+				>
 			</div>
 			{#if mode === 'date'}
 				<div class="df-grid days">

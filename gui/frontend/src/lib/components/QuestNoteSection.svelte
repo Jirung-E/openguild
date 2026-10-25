@@ -12,6 +12,8 @@
   `mode` prop 은 호환을 위해 받지만 무시 — 항상 memo 동작.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { onDestroy } from 'svelte';
 	import ComposeDock from './ComposeDock.svelte';
 	import ComposeDockToggle from './ComposeDockToggle.svelte';
@@ -184,12 +186,13 @@
 			aria-expanded={!collapsed}
 			title={collapsed ? t('note.expand', $locale) : t('note.collapse', $locale)}
 		>
-			<span class="toggle-icon" class:collapsed>▼</span>
+			<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
 			<h2 class="section-title note-memo">{label.heading}</h2>
 		</button>
 		{#if !collapsed && !editMode && !loading && !loadError}
 			<button class="sec-add-btn" onclick={enterEdit}>
-				{content && content.trim() ? `✎ ${t('detail.edit', $locale)}` : `+ ${label.emptyAction}`}
+				{#if content && content.trim()}<Icon name="edit" size="1em" />
+					{t('detail.edit', $locale)}{:else}+ {label.emptyAction}{/if}
 			</button>
 			<!-- DEV-189: 표시 높이 모드 토글 (고정 ↔ 확장). 내용 있을 때만. -->
 			{#if content && content.trim()}

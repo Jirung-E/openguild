@@ -6,6 +6,8 @@
    - 우상단 "+ 새 캠페인" 버튼
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -279,8 +281,12 @@
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
-							<button title="up" onclick={() => moveOrder(c, -1)}>↑</button>
-							<button title="down" onclick={() => moveOrder(c, 1)}>↓</button>
+							<button title="up" onclick={() => moveOrder(c, -1)}
+								><Icon name="up" size="1em" /></button
+							>
+							<button title="down" onclick={() => moveOrder(c, 1)}
+								><Icon name="down" size="1em" /></button
+							>
 						</div>
 					{/if}
 				</li>

@@ -1250,12 +1250,12 @@
 				<button
 					class:on={isMode('tree')}
 					onclick={() => setViewMode('tree')}
-					title={t('library.treeView', $locale)}>☰</button
+					title={t('library.treeView', $locale)}><Icon name="menu" size="1em" /></button
 				>
 				<button
 					class:on={isMode('explorer')}
 					onclick={() => setViewMode('explorer')}
-					title={t('library.iconView', $locale)}>▦</button
+					title={t('library.iconView', $locale)}><Icon name="grid" size="1em" /></button
 				>
 			</div>
 			<button class="btn btn-sm" onclick={openCreateFolder}>{t('library.newFolder', $locale)}</button>
@@ -1295,7 +1295,8 @@
 					class="sort-dir"
 					onclick={() => (docSortDesc = !docSortDesc)}
 					title={docSortDesc ? t('library.sortDesc', $locale) : t('library.sortAsc', $locale)}
-					aria-label={t('library.sortDirAria', $locale)}>{docSortDesc ? '↓' : '↑'}</button
+					aria-label={t('library.sortDirAria', $locale)}
+					><Icon name={docSortDesc ? 'down' : 'up'} size="1em" /></button
 				>
 			</div>
 		</div>
@@ -1538,7 +1539,7 @@
 							class="tile-act"
 							title={t('library.folderRenameSubmit', $locale)}
 							aria-label={`${f.name} — ${t('library.folderRenameSubmit', $locale)}`}
-							onclick={() => openRenameFolder(f.path)}>✎</button
+							onclick={() => openRenameFolder(f.path)}><Icon name="edit" size="1em" /></button
 						>
 					</span>
 				{/each}
@@ -1600,12 +1601,12 @@
 							<button
 								class:on={isMode('tree')}
 								onclick={() => setViewMode('tree')}
-								title={t('library.treeView', $locale)}>☰</button
+								title={t('library.treeView', $locale)}><Icon name="menu" size="1em" /></button
 							>
 							<button
 								class:on={isMode('explorer')}
 								onclick={() => setViewMode('explorer')}
-								title={t('library.iconView', $locale)}>▦</button
+								title={t('library.iconView', $locale)}><Icon name="grid" size="1em" /></button
 							>
 						</div>
 					</div>
@@ -1657,7 +1658,8 @@
 								class="sort-dir"
 								onclick={() => (docSortDesc = !docSortDesc)}
 								title={docSortDesc ? t('library.sortDesc', $locale) : t('library.sortAsc', $locale)}
-								aria-label={t('library.sortDirAria', $locale)}>{docSortDesc ? '↓' : '↑'}</button
+								aria-label={t('library.sortDirAria', $locale)}
+								><Icon name={docSortDesc ? 'down' : 'up'} size="1em" /></button
 							>
 						</div>
 					</div>

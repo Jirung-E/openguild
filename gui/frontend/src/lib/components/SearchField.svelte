@@ -14,6 +14,8 @@
 </script>
 
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import type { Snippet } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
 
@@ -107,7 +109,7 @@
 					? t('filter.clearSearch', $locale)
 					: t('filter.clearQuery', $locale)}
 				onclick={() => (mode === 'search' ? (search = '') : (query = ''))}
-				data-testid="{tid}-clear">×</button
+				data-testid="{tid}-clear"><Icon name="close" size="1em" /></button
 			>
 		{/if}
 	</label>

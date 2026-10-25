@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '../Icon.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onMount } from 'svelte';
@@ -271,7 +273,7 @@
 								<td style="text-align: center;">
 									{#if s.counts_as_done}
 										<span class="done-mark" title={t('adminStatuses.countsAsDoneMark', $locale)}
-											>✓</span
+											><Icon name="check" size="1em" /></span
 										>
 									{:else}
 										<span class="dim">—</span>

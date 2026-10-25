@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	// DEV-453: 보드 · 목록 전환.
 	import QuestViewSwitch from './QuestViewSwitch.svelte';
 	import { onMount } from 'svelte';
@@ -677,7 +679,8 @@
 				class="sort-dir"
 				onclick={() => (sortDesc = !sortDesc)}
 				title={sortDesc ? t('questList.sortDesc', $locale) : t('questList.sortAsc', $locale)}
-				aria-label={t('questList.sortDir', $locale)}>{sortDesc ? '↓' : '↑'}</button
+				aria-label={t('questList.sortDir', $locale)}
+				><Icon name={sortDesc ? 'down' : 'up'} size="1em" /></button
 			>
 		</div>
 		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->

@@ -5,6 +5,8 @@
   create/update/delete/rename. rename 만 old→new 를 가진다.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
 	import type { SidecarHistoryEntry } from '$lib/types';
@@ -59,7 +61,7 @@
 			aria-expanded={!collapsed}
 			title={collapsed ? t('history.expand', $locale) : t('history.collapse', $locale)}
 		>
-			<span class="toggle-icon" class:collapsed>▼</span>
+			<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
 			<h2 class="section-title">{t('history.title', $locale)}</h2>
 		</button>
 		{#if entries.length > 0}

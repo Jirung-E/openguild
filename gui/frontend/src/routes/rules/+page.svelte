@@ -9,6 +9,8 @@
   `.guild/rules/general.md` 로 마이그레이션됨.
 -->
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from '$lib/components/Icon.svelte';
 	import PaneResizer from '$lib/components/PaneResizer.svelte';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import { onMount, onDestroy } from 'svelte';
@@ -470,9 +472,8 @@
 						{#if !editMode}
 							<div class="top-actions">
 								<button class="btn" onclick={enterEdit}>
-									{selectedContent && selectedContent.trim()
-										? `✎ ${t('detail.edit', $locale)}`
-										: t('rules.writeBtn', $locale)}
+									{#if selectedContent && selectedContent.trim()}<Icon name="edit" size="1em" />
+										{t('detail.edit', $locale)}{:else}{t('rules.writeBtn', $locale)}{/if}
 								</button>
 								<button class="btn" onclick={openRename}>{t('rules.rename', $locale)}</button>
 								<button class="btn btn-danger" onclick={askDeleteSelected}

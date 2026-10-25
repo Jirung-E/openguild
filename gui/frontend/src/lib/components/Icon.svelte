@@ -20,7 +20,17 @@
 	// 문자열로 조립하는 코드도 같은 도형을 써야 하므로 여기 인라인하지 않는다.
 	import { ICON_SHAPES, type IconName } from '$lib/utils/icon-paths';
 
-	let { name, size = 14, title }: { name: IconName; size?: number; title?: string } = $props();
+	let {
+		name,
+		size = 14,
+		title
+	}: {
+		name: IconName;
+		/** px 숫자(rem 으로 바꾼다) 또는 CSS 길이 — DEV-454: `'1em'` 이면 둘레 글자 크기를 따른다(옛 글자
+		 *  아이콘 자리에 그대로 들어간다). */
+		size?: number | string;
+		title?: string;
+	} = $props();
 
 	// BUG-254: `size` 는 호출측이 px 숫자로 준다(예: `size={12}`). 그대로 SVG 의
 	// width/height 속성에 넣으면 **px 단위**라 UI 배율(root font-size)을 따라가지
@@ -28,7 +38,7 @@
 	//
 	// 호출부를 전부 고치는 대신 여기서 rem 으로 환산한다. 16 으로 나누므로
 	// 기본 배율에서는 **기존과 정확히 같은 크기**다(size=14 → 0.875rem = 14px).
-	const px = $derived(`${size / 16}rem`);
+	const px = $derived(typeof size === 'number' ? `${size / 16}rem` : size);
 </script>
 
 <svg

@@ -3682,14 +3682,18 @@
 										<span
 											class="urgency-warning"
 											title={`${t('board.urgencyClampPre', $locale)}${q.urgency}${t('board.urgencyClampPost', $locale)}`}
-											>⚠</span
+											><Icon name="warn" size="1em" /></span
 										>
 									{/if}
 									<span class="node-metrics">
 										{#if unresolved > 0}
-											<span class="pill xs discussion-count unresolved">✗ {unresolved}</span>
+											<span class="pill xs discussion-count unresolved"
+												><Icon name="close" size="1em" /> {unresolved}</span
+											>
 										{:else if resolved > 0}
-											<span class="pill xs discussion-count resolved">✓ {resolved}</span>
+											<span class="pill xs discussion-count resolved"
+												><Icon name="check" size="1em" /> {resolved}</span
+											>
 										{/if}
 										{#if (q.comment_count ?? 0) > 0}
 											<span class="comment-count"
@@ -3754,7 +3758,7 @@
 					>
 				</div>
 				<button class="card-close" onclick={closeExpanded} title={t('board.closeEsc', $locale)}
-					>×</button
+					><Icon name="close" size="1em" /></button
 				>
 			</div>
 
@@ -3887,7 +3891,7 @@
 	<div class="toolbar" class:collapsed={toolbarCollapsed} class:has-newquest={!!onNewQuest}>
 		{#if !toolbarCollapsed}
 			<button class="tb-btn" onclick={fitView} title={t('board.fitView', $locale)}
-				><span class="icon">⊞</span></button
+				><span class="icon"><Icon name="grid" size="1em" /></span></button
 			>
 			<button
 				class="tb-btn"
@@ -3900,7 +3904,12 @@
 					$locale
 				)}
 			>
-				<span class="icon">{boardOrientation === 'columns' ? '↕' : '↔'}</span>
+				<span class="icon"
+					><Icon
+						name={boardOrientation === 'columns' ? 'vertical' : 'horizontal'}
+						size="1em"
+					/></span
+				>
 				<span>{t(boardOrientation === 'columns' ? 'board.columns' : 'board.rows', $locale)}</span>
 			</button>
 			<div class="tb-sep"></div>
@@ -3910,7 +3919,7 @@
 				disabled={undoStack.length === 0}
 				title={t('board.undo', $locale)}
 			>
-				<span class="icon">↩</span>
+				<span class="icon"><Icon name="undo" size="1em" /></span>
 				{#if undoStack.length > 0}<span class="count">{undoStack.length}</span>{/if}
 			</button>
 			<button
@@ -3919,7 +3928,7 @@
 				disabled={redoStack.length === 0}
 				title={t('board.redo', $locale)}
 			>
-				<span class="icon">↪</span>
+				<span class="icon"><Icon name="redo" size="1em" /></span>
 				{#if redoStack.length > 0}<span class="count">{redoStack.length}</span>{/if}
 			</button>
 			<div class="tb-sep"></div>
@@ -3929,7 +3938,9 @@
 				onclick={toggleGridSnap}
 				title={t('board.gridSnap', $locale)}
 			>
-				<span class="icon">⊞</span><span>{t('board.snapBtn', $locale)}</span>
+				<span class="icon"><Icon name="grid" size="1em" /></span><span
+					>{t('board.snapBtn', $locale)}</span
+				>
 			</button>
 			<div class="tb-sep"></div>
 			<select
@@ -3967,7 +3978,9 @@
 				onclick={() => (showHideModal = true)}
 				title={t('board.settingsTitle', $locale)}
 			>
-				<span class="icon">⚙</span><span>{t('board.settings', $locale)}</span>
+				<span class="icon"><Icon name="settings" size="1em" /></span><span
+					>{t('board.settings', $locale)}</span
+				>
 			</button>
 			<div class="tb-sep"></div>
 			<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
@@ -3986,7 +3999,9 @@
 						? t('board.arrangeGroupTitle', $locale)
 						: t('board.arrangeFlatTitle', $locale)}
 				>
-					<span class="icon">⊟</span><span>{t('board.arrangeToolbarBtn', $locale)}</span>
+					<span class="icon"><Icon name="arrange" size="1em" /></span><span
+						>{t('board.arrangeToolbarBtn', $locale)}</span
+					>
 				</button>
 				<select
 					class="tb-select tb-mode"
@@ -4009,7 +4024,9 @@
 				? t('board.toolbarExpand', $locale)
 				: t('board.toolbarCollapseShort', $locale)}
 		>
-			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
+			<span class="icon"
+				><Icon name={toolbarCollapsed ? 'menu' : 'collapse-right'} size="1em" /></span
+			>
 		</button>
 	</div>
 </div>
@@ -4063,7 +4080,7 @@
 				<button
 					class="hide-close"
 					onclick={() => (showHideModal = false)}
-					aria-label={t('common.close', $locale)}>×</button
+					aria-label={t('common.close', $locale)}><Icon name="close" size="1em" /></button
 				>
 			</div>
 			<p class="hide-help">
@@ -4097,7 +4114,11 @@
 										aria-label={t(
 											boardOrientation === 'columns' ? 'board.moveLeft' : 'board.moveUp',
 											$locale
-										)}>{boardOrientation === 'columns' ? '◀' : '▲'}</button
+										)}
+										><Icon
+											name={boardOrientation === 'columns' ? 'caret-left' : 'caret-up'}
+											size="1em"
+										/></button
 									>
 									<button
 										class="reorder-btn"
@@ -4110,7 +4131,11 @@
 										aria-label={t(
 											boardOrientation === 'columns' ? 'board.moveRight' : 'board.moveDown',
 											$locale
-										)}>{boardOrientation === 'columns' ? '▶' : '▼'}</button
+										)}
+										><Icon
+											name={boardOrientation === 'columns' ? 'caret-right' : 'caret-down'}
+											size="1em"
+										/></button
 									>
 								</td>
 								<td>

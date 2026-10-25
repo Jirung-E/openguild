@@ -397,19 +397,21 @@
 								class="upq-cancel-one"
 								title={t('attach.cancelOne', $locale)}
 								aria-label="{t('attach.cancelOne', $locale)}: {it.name}"
-								onclick={() => cancelHandle?.cancelOne(it.id)}>✕</button
+								onclick={() => cancelHandle?.cancelOne(it.id)}
+								><Icon name="close" size="1em" /></button
 							>
 						{/if}
 						<span class="up-state">
-							{it.status === 'pending'
-								? t('attach.queued', $locale)
-								: it.status === 'done'
-									? '✓'
-									: it.status === 'error'
-										? '✕'
-										: it.status === 'cancelled'
-											? t('attach.cancelled', $locale)
-											: ''}
+							{#if it.status === 'pending'}{t(
+									'attach.queued',
+									$locale
+								)}{:else if it.status === 'done'}<Icon
+									name="check"
+									size="1em"
+								/>{:else if it.status === 'error'}<Icon
+									name="close"
+									size="1em"
+								/>{:else if it.status === 'cancelled'}{t('attach.cancelled', $locale)}{/if}
 						</span>
 					</div>
 					{#if it.status === 'uploading' || it.status === 'done'}
@@ -476,14 +478,14 @@
 						class="rm"
 						title={t('attach.remove', $locale)}
 						aria-label={t('attach.removeAria', $locale)}
-						onclick={() => remove(a.path)}>×</button
+						onclick={() => remove(a.path)}><Icon name="close" size="1em" /></button
 					>
 					<button
 						type="button"
 						class="dl"
 						title={t('attach.download', $locale)}
 						aria-label={t('attach.download', $locale)}
-						onclick={() => downloadOne(a)}>⤓</button
+						onclick={() => downloadOne(a)}><Icon name="download" size="1em" /></button
 					>
 					<span class="name" title={a.name}>
 						<span class="name-head">{nameParts(a.name).head}</span><span class="name-tail"

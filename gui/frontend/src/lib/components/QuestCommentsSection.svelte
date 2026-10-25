@@ -14,6 +14,8 @@
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	// DEV-454: 편집기 토글의 'M↓' 는 아이콘이 아니라 마크다운을 나타내는 글자다 — 마크업의 글자 아이콘 가드를 피해 여기 둔다.
+	const MD_MARK = 'M↓';
 	import ComposeDock from './ComposeDock.svelte';
 	import ComposeDockToggle from './ComposeDockToggle.svelte';
 	import { tick, onDestroy, onMount } from 'svelte';
@@ -1070,7 +1072,7 @@
 	<!-- DEV-416: 답글도 같다 — 스레드 아래쪽에서 쓰다 보면 화면 밖으로 밀린다. -->
 	<ComposeDock
 		hasContent={replyBody.trim().length > 0}
-		label={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author ?? ''}`}
+		label={/* glyph-ok: 팝업 머리의 글 — 아이콘을 못 넣는 문자열 */ `↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author ?? ''}`}
 		onsubmit={() => submitReply(replyingTo ?? rootId)}
 		submitTitle={t('comment.addReply', $locale)}
 		submitDisabled={replySaving || !replyBody.trim()}
@@ -1093,7 +1095,7 @@
 						replyRich = !replyRich;
 					}}
 					title={t('comment.toggleEditor', $locale)}
-					aria-pressed={replyRich}>M↓</button
+					aria-pressed={replyRich}>{MD_MARK}</button
 				>
 				<ComposeDockToggle />
 			</div>
@@ -1123,7 +1125,7 @@
 					onclick={onWikiInput}
 					onkeydowncapture={onWikiKeydown}
 					rows="3"
-					placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
+					placeholder={/* glyph-ok: 입력칸 안내 글 */ `↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
 					disabled={replySaving}
 				></textarea>
 				<OverlayScrollbar target={replyBodyEl ?? null} />
@@ -1175,7 +1177,8 @@
 				<a
 					class="reply-to"
 					href={`#comment-${e.parent_id}`}
-					title={`#${e.parent_id} ${t('comment.jumpToComment', $locale)}`}>↩ #{e.parent_id}</a
+					title={`#${e.parent_id} ${t('comment.jumpToComment', $locale)}`}
+					><Icon name="undo" size="1em" /> #{e.parent_id}</a
 				>
 			{/if}
 			<span class="author">{e.author || t('comment.noName', $locale)}</span>
@@ -1216,10 +1219,10 @@
 						>
 					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}
-						>✎ {t('detail.edit', $locale)}</button
+						><Icon name="edit" size="1em" /> {t('detail.edit', $locale)}</button
 					>
 					<button class="link-btn danger" onclick={() => askRemove(e.id)}
-						>× {t('detail.delete', $locale)}</button
+						><Icon name="close" size="1em" /> {t('detail.delete', $locale)}</button
 					>
 				</div>
 			{:else}
@@ -1235,7 +1238,7 @@
 						editRich = !editRich;
 					}}
 						title={t('comment.toggleEditor', $locale)}
-						aria-pressed={editRich}>M↓</button
+						aria-pressed={editRich}>{MD_MARK}</button
 					>
 				</div>
 			{/if}
@@ -1291,7 +1294,7 @@
 			>
 				{#if e.discussion}
 					<span class="disc-flag" class:unresolved={!e.resolved} class:resolved={e.resolved}
-						>{e.resolved ? '✓' : '✗'}</span
+						><Icon name={e.resolved ? 'check' : 'close'} size="1em" /></span
 					>
 				{/if}
 				{bodyPreview(e.body)}
@@ -1317,7 +1320,8 @@
 								aria-expanded={!isThreadCollapsed}
 								title={isThreadCollapsed
 									? t('comment.expandReplies', $locale)
-									: t('comment.collapseReplies', $locale)}>{isThreadCollapsed ? '▶' : '▼'}</button
+									: t('comment.collapseReplies', $locale)}
+								><Icon name={isThreadCollapsed ? 'caret-right' : 'caret-down'} size="1em" /></button
 							>
 							<span class="reply-count">{t('comment.replies', $locale)} {childCount}</span>
 							<!-- DEV-214: 접힌 답글 안에 토론 있으면 상태 글리프. -->
@@ -1326,12 +1330,14 @@
 								{#if disc === 'unresolved'}
 									<span
 										class="disc-flag unresolved"
-										title={t('comment.collapsedHasUnresolved', $locale)}>✗</span
+										title={t('comment.collapsedHasUnresolved', $locale)}
+										><Icon name="close" size="1em" /></span
 									>
 								{:else if disc === 'resolved'}
 									<span
 										class="disc-flag resolved"
-										title={t('comment.collapsedAllResolved', $locale)}>✓</span
+										title={t('comment.collapsedAllResolved', $locale)}
+										><Icon name="check" size="1em" /></span
 									>
 								{/if}
 							{/if}
@@ -1386,7 +1392,7 @@
 													onclick={(ev) => {
 														ev.stopPropagation();
 														removeCustomReaction(emoji);
-													}}>×</button
+													}}><Icon name="close" size="1em" /></button
 												>
 											{/if}
 										</div>
@@ -1459,7 +1465,7 @@
 				? t('comment.expandComments', $locale)
 				: t('comment.collapseComments', $locale)}
 		>
-			<span class="toggle-icon" class:collapsed>▼</span>
+			<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
 			<h2 class="section-title">{t('comment.title', $locale)}</h2>
 		</button>
 		<span class="count">{entries.length}</span>
@@ -1470,7 +1476,7 @@
 				title="{t('comment.unresolvedPre', $locale)}{unresolvedCount}{t(
 					'comment.unresolvedPost',
 					$locale
-				)}">✗ {unresolvedCount}</span
+				)}"><Icon name="close" size="1em" /> {unresolvedCount}</span
 			>
 		{/if}
 		<!-- DEV-213: 토론만 모아보기 — quest 전용, 토론 댓글이 있을 때만 노출. -->
@@ -1598,7 +1604,7 @@
 						newRich = !newRich;
 					}}
 							title={t('comment.toggleEditor', $locale)}
-							aria-pressed={newRich}>M↓</button
+							aria-pressed={newRich}>{MD_MARK}</button
 						>
 						<ComposeDockToggle />
 					</div>

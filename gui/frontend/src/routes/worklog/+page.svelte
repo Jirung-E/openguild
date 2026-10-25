@@ -439,7 +439,8 @@
 						ariaLabel={t('worklogPage.rangeEndAria', $locale)}
 					/>
 				{:else}
-					<button onclick={() => step(-1)} aria-label={t('worklogPage.prevAria', $locale)}>◀</button
+					<button onclick={() => step(-1)} aria-label={t('worklogPage.prevAria', $locale)}
+						><Icon name="caret-left" size="1em" /></button
 					>
 					{#if unit === 'month'}
 						<!-- 월 뷰는 월만 고름 (admin 요청) — DateField month 모드. -->
@@ -461,7 +462,9 @@
 					{#if unit === 'week'}
 						<span class="range-label">{rangeLabel}</span>
 					{/if}
-					<button onclick={() => step(1)} aria-label={t('worklogPage.nextAria', $locale)}>▶</button>
+					<button onclick={() => step(1)} aria-label={t('worklogPage.nextAria', $locale)}
+						><Icon name="caret-right" size="1em" /></button
+					>
 					<button onclick={goToday}>{t('worklogPage.today', $locale)}</button>
 				{/if}
 			</div>
@@ -569,7 +572,9 @@
 										aria-expanded={open}
 										title={dg.slug}
 									>
-										<span class="toggle-icon" class:collapsed={!open}>▼</span>
+										<span class="toggle-icon" class:collapsed={!open}
+											><Icon name="caret-down" size="1em" /></span
+										>
 									</button>
 									<span class="ts">{groupTimeLabel(dg)}</span>
 									<a class="slug doclink" href={dg.href}>{dg.slug}</a>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	// DEV-454: 글자 아이콘 대신 SVG.
+	import Icon from './Icon.svelte';
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { adminApi } from '$lib/api/admin';
@@ -334,7 +336,7 @@
 					onclick={() => (moreOpen = !moreOpen)}
 					title={t('nav.more', $locale)}
 					aria-label={t('nav.more', $locale)}
-					aria-expanded={moreOpen}>☰</button
+					aria-expanded={moreOpen}><Icon name="menu" size="1em" /></button
 				>
 				{#if moreOpen}
 					<div class="popup more-menu">
@@ -468,14 +470,13 @@
 					: t('nav.reindex.hint', $locale)}
 			aria-label="Reindex"
 		>
-			{#if reindexState.status === 'running'}
-				⟳
-			{:else if reindexState.status === 'done'}
-				✓
+			<!-- DEV-454: 글자(⟳ ✓ ⚠ ⟲) 대신 SVG — 도는 중은 버튼째 돌린다(.running). -->
+			{#if reindexState.status === 'done'}
+				<Icon name="check" size="1em" />
 			{:else if reindexState.status === 'error'}
-				⚠
+				<Icon name="warn" size="1em" />
 			{:else}
-				⟲
+				<Icon name="refresh" size="1em" />
 			{/if}
 		</button>
 		<!-- DEV-084 → DEV-138: ⚙ 가 바로 페이지 이동 대신 퀵메뉴 dropdown.
@@ -487,7 +488,7 @@
 				onclick={() => (quickMenuOpen = !quickMenuOpen)}
 				title={t('nav.settings', $locale)}
 				aria-label={t('nav.settings', $locale)}
-				aria-expanded={quickMenuOpen}>⚙</button
+				aria-expanded={quickMenuOpen}><Icon name="settings" size="1em" /></button
 			>
 			{#if quickMenuOpen}
 				<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
