@@ -63,6 +63,19 @@ ${StrLoc}
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"
 !define MANUKEY "Software\${MANUFACTURER}"
 !define MANUPRODUCTKEY "${MANUKEY}\${PRODUCTNAME}"
+
+; BUG-375: 앱이 통째로 가진 리소스 폴더(tauri.conf.json 의 bundle.resources 와 짝)를 비운다 — 설치 직전과
+; 제거 때. 빌드마다 이름(해시)이 바뀌는 파일(frontend/build/_app/immutable/…)은 덮어쓰기로는 안 지워지고,
+; 제거는 이번 빌드의 목록만 지워서 업데이트마다 쌓였다(제거 뒤 942개 · 33MB). 이름이 우리 것인 경로만
+; 통째로 지운다 — `$INSTDIR\docs` 같은 흔한 이름은 사용자가 고른 설치 폴더의 다른 것일 수 있어 /r 로
+; 지우지 않고, 옛 버전이 남긴 파일만 이름으로 지운다.
+!macro ClearOwnedResources
+  RMDir /r "$INSTDIR\gui\frontend\build"
+  RMDir /r "$INSTDIR\skills\openguild-plugin"
+  ; DEV-264 에서 없앤 옛 문서
+  Delete "$INSTDIR\docs\AGENTS_OPENGUILD_USAGE.md"
+!macroend
+
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 !define STARTMENUFOLDER "{{start_menu_folder}}"
@@ -672,6 +685,9 @@ Section "-Core" SecCore
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
 
+  ; BUG-375: 새로 채우기 전에 옛 리소스를 비운다(업데이트 포함).
+  !insertmacro ClearOwnedResources
+
   ; Copy resources
   {{#each resources_dirs}}
     CreateDirectory "$INSTDIR\\{{this}}"
@@ -940,6 +956,9 @@ Section Uninstall
     Delete "$INSTDIR\\{{this}}"
   {{/each}}
 
+  ; BUG-375: 이번 빌드의 목록에 없는 옛 리소스까지 — 그래야 아래 RMDir 로 폴더가 비워져 지워진다.
+  !insertmacro ClearOwnedResources
+
   ; Delete app associations
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
@@ -1026,6 +1045,13 @@ Section Uninstall
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+
+    ; BUG-375: 아주 옛 버전(0.1 무렵)이 설치 폴더에 두던 최근 목록 — 지금은 ~/.openguild 에 있다. 이게 남으면
+    ; 설치 폴더가 비지 않아 끝까지 남는다.
+    Delete "$INSTDIR\openguild\data\recents.json"
+    RMDir "$INSTDIR\openguild\data"
+    RMDir "$INSTDIR\openguild"
+    RMDir "$INSTDIR"
   ${EndIf}
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
