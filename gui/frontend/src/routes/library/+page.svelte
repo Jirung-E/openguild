@@ -830,8 +830,10 @@
 		bandMode = e.metaKey || e.ctrlKey ? 'toggle' : e.shiftKey ? 'add' : 'replace';
 		gridEl.setPointerCapture(e.pointerId);
 		e.preventDefault(); // 글자 긁어 고르기가 같이 일어나지 않게.
-		// preventDefault 로 포커스가 안 옮겨지므로, 방향키로 남긴 포커스 테두리를 직접 거둔다.
-		if (document.activeElement instanceof HTMLElement && gridEl.contains(document.activeElement))
+		// preventDefault 로 포커스가 안 옮겨지므로 직접 거둔다 — 방향키로 남긴 타일의 테두리뿐 아니라
+		// 검색칸 같은 **밖의** 입력칸도. 빈 곳을 누르면 포커스가 풀리는 게 보통이다(BUG-372: 격자 안의
+		// 것만 거둬서 검색칸에 포커스가 남았다).
+		if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body)
 			document.activeElement.blur();
 	}
 	function bandMove(e: PointerEvent) {
