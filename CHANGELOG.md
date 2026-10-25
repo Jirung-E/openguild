@@ -106,12 +106,14 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     `due`(overdue · none · 날짜 비교 — 필수 기한과 진행 중 캠페인의 끝 날 중 이른 것) ·
     `parent` · `commented`(마지막 댓글 날짜 — 댓글은 갱신 시각을 안 바꾼다)
   - 캠페인: `status` · `start` · `end`(`end:overdue`) · `quest`. 도서관: `tag` · `folder` · `updated`
-  - 화면: 퀘스트 목록(고급 안) · 보드 설정의 필터 · 캠페인 목록 · 도서관. 주소 `?q=` 에 실려
-    새로고침·공유에 남는다. CLI `quest|campaign|library list -q`, 서버 `?q=`
+  - 화면: 검색칸 앞의 **[검색 | 쿼리]** 에서 고른다 — 퀘스트 목록 · 보드 설정의 필터 · 캠페인 목록 ·
+    도서관. 틀리면 칸이 빨개지고 이유와 `?` 쓰는 법이 나온다. 주소 `?q=` 에 실려 새로고침·공유에
+    남는다. CLI `quest|campaign|library list -q`, 서버 `?q=`
   - `quest list --commented-after/--before` — 댓글이 달린 때로 거르기
   (DEV-446, DEV-447, DEV-448, DEV-451, DEV-452)
 - **태그 필터** — 퀘스트 목록·보드·도서관에서 태그로 거른다(여러 개면 모두 가진 것만).
   CLI `quest list --tag`, `library list --tag` (REQ-027)
+- 캠페인 목록에 검색 — 제목 · 설명 · 번호 (DEV-452)
 - **형광펜** — 읽기 화면(퀘스트·캠페인 본문, 댓글, 메모, 규칙, 도서관)에서 글을 골라 칠한다.
   본문은 안 바뀌고 `.guild/highlights/` 에 따로 남는다(git 에 안 올라감). CLI
   `quest|campaign|rule|library highlight list|add|remove` — 에이전트는 사용자가 시킬 때만
@@ -143,6 +145,12 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   만들어 붙인다 (DEV-395, DEV-396)
 - `index.db` 가 망가져 있으면(`database disk image is malformed`) 열 때 `backups/index.db.corrupt`
   로 옮기고 파일에서 새로 만든다 — 전에는 `reindex` 마저 막혀 길드가 안 열렸다 (DEV-450)
+- `openguild check update` — 새 버전이 나왔는지 알려 준다(앱과 같은 `latest.json`, 설치는 안 함). CLI ·
+  서버만 쓰는 사람을 위해. 길드 밖에서도 돈다 (DEV-187)
+- **지우기** — Windows 제거 프로그램이 `~/.openguild` 의 설치 사본도 치우고, "앱 데이터 삭제" 를 고르면
+  이 기계의 설정(최근 길드 · 플러그인 허용 · 설정값 등)도 지운다. macOS CLI · 서버 tar.gz 에
+  `uninstall.sh`(`--app` · `--settings`). 길드 폴더와 플러그인이 남긴 기록(`plugin-data`)은 건드리지
+  않는다 (DEV-327)
 
 ### Changed
 
@@ -155,7 +163,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 - 보드에서 노드를 다른 레인으로 옮기면 **화면이 먼저** 바뀐다 — 전에는 상태 변경 저장이 끝날
   때까지 기다려 한참 뒤에 바뀌곤 했다 (BUG-351)
 - 버튼 · 입력칸 · 팝업 · 모달을 한 벌의 공통 부품으로 — 크기·간격·모서리가 화면마다 조금씩
-  다르던 것을 맞췄다 (DEV-427, DEV-428, DEV-440)
+  다르던 것을 맞췄다. 도서관 검색칸도 다른 검색칸과 같은 모양 (DEV-427, DEV-428, DEV-440, DEV-452)
+- 메뉴의 '퀘스트 보드' · '퀘스트 목록' 이 **'퀘스트'** 하나로 — 두 화면 오른쪽 위 같은 자리의
+  [보드 | 목록] 으로 오가고, 메뉴는 마지막에 본 쪽으로 간다. 옛 주소는 그대로 열린다 (DEV-453)
+- 글자로 그리던 아이콘(☰ ⚙ ⟲ ✎ × ▼ ▶ ↑ ↓ ✓ ⚠ 등 약 100곳)이 SVG — OS · 글꼴과 상관없이 같은
+  모양 · 크기로 보인다 (DEV-454)
 - 퀘스트 목록의 자식 접기/펴기 삼각형을 키웠다 (BUG-368)
 - `library new|update|list` 의 폴더 플래그가 `--folder` — 개념 이름과 맞췄다. 옛
   `--path` 도 된다. `list --folder` 는 서버에서 거른다(원격에서 도서관 전체를 받지
