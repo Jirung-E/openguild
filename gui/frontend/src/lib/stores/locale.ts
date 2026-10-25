@@ -167,8 +167,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 
 	// DEV-205 모듈1: Nav 탭 + 액션.
 	'nav.home': { ko: '홈', en: 'Home' },
-	'nav.board': { ko: '퀘스트 보드', en: 'Quest Board' },
-	'nav.list': { ko: '퀘스트 목록', en: 'Quest List' },
 	// DEV-453: 보드 · 목록은 한 메뉴 — 페이지 안에서 고른다.
 	'nav.quests': { ko: '퀘스트', en: 'Quests' },
 	'nav.viewBoard': { ko: '보드', en: 'Board' },
@@ -717,9 +715,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'adminStatuses.deleteFailedPre': { ko: '삭제 실패: ', en: 'Failed to delete: ' },
 
 	// DEV-205 모듈5: Admin — 태그 정의 관리.
-	// DEV-392: 태그 목록 페이지 — 사용 현황 + 색·설명 편집(예전엔 관리 페이지에 따로 있었다).
+	// DEV-392: 태그 페이지 — 사용 현황 + 색·설명 편집(예전엔 관리 페이지에 따로 있었다).
 	// 화면에는 "정의" 라는 말을 쓰지 않는다 — 코드 용어(tag def)라 무엇을 하는 버튼인지 안 읽힌다(admin 지적).
-	'tags.title': { ko: '태그 목록', en: 'Tags' },
+	// DEV-455: 페이지 이름에서 '목록' 을 뺀다(퀘스트 목록 페이지가 퀘스트로 합쳐졌다).
+	'tags.title': { ko: '태그', en: 'Tags' },
 	'tags.count': { ko: '{n}개 태그', en: '{n} tags' },
 	'tags.filterPlaceholder': { ko: '태그 검색…', en: 'Search tags…' },
 	'tags.newDef': { ko: '+ 새 태그', en: '+ New tag' },
@@ -1723,9 +1722,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-276: 최근 본 문서 드롭다운.
 	'titlebar.recent': { ko: '최근 본 문서', en: 'Recently viewed' },
 	'titlebar.newQuest': { ko: '퀘스트 추가', en: 'New quest' },
-	'titlebar.menuCampaigns': { ko: '캠페인 목록', en: 'Campaigns' },
-	'titlebar.menuWorklog': { ko: '작업기록', en: 'Worklog' },
-	'titlebar.menuTags': { ko: '태그 목록', en: 'Tags' },
+	'titlebar.menuCampaigns': { ko: '캠페인', en: 'Campaigns' },
+	'titlebar.menuWorklog': { ko: '작업 기록', en: 'Work Log' },
+	'titlebar.menuTags': { ko: '태그', en: 'Tags' },
 
 	// DEV-205: 새 퀘스트 모달 (NewQuestModal).
 	'nqm.newQuest': { ko: '새 퀘스트', en: 'New Quest' },
