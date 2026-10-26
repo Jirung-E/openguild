@@ -204,6 +204,8 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   `--search-comments` · `--search-attachments` 를 서버에 안 보내던 문제 (BUG-369, BUG-370)
 - `quest|campaign|library show` 가 첨부를 안 싣던 문제 — 에이전트가 첨부를 못 봤다 (BUG-295)
 - 출력을 `head` 로 자르면 CLI 가 panic 하던 문제 (BUG-367)
+- `--guild .` · `--guild ../g` 처럼 상대 경로를 주면 길드를 못 찾던 문제, 길드 폴더에서 그냥 띄운
+  서버가 훅에 길드 위치를 `.` 로 넘겨 훅이 부른 `openguild` 가 실패하던 문제 (BUG-377)
 - CLI 표(`--table`)에 한글이 앞 컬럼에 오면 열이 어긋나던 문제 (BUG-353)
 - 댓글 본문에 댓글 구분자(`<!-- og-comment … -->`)를 적으면 작성자·시각·번호를 지정한
   위조 댓글이 생기던 문제 (BUG-283)

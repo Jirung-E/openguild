@@ -325,9 +325,7 @@ fn resolve_bind_ip(raw: &str) -> Result<std::net::IpAddr> {
 struct GuildCtx {
     /// `.guild` 메타
     guild: guild_file::GuildFile,
-    /// 길드 디렉토리 (GUILD_PATH 또는 ".")
-    guild_path: String,
-    /// 절대경로 (출력용)
+    /// 절대경로 — 출력에도, 길드를 여는 데도 쓴다(BUG-377).
     abs_path: PathBuf,
 }
 
@@ -363,13 +361,11 @@ fn load_guild() -> Result<GuildCtx> {
             return Err(err);
         }
     };
-    let abs_path = std::fs::canonicalize(&guild_path)
-        .unwrap_or_else(|_| PathBuf::from(&guild_path));
-    Ok(GuildCtx {
-        guild,
-        guild_path,
-        abs_path,
-    })
+    // BUG-377: 길드는 **절대 경로로** 연다. `GUILD_PATH` 가 없으면 "." 인데 그대로 열면 훅에
+    // `OPENGUILD_GUILD_DIR=.` 가 넘어가, 훅이 `cd` 하면 길드를 잃는다(BUG-330 이 이 값을 둔 까닭).
+    // 윈도우의 `\\?\` 는 뗀다(BUG-294 — 훅에 넘기는 경로 · sqlite 경로가 깨진다).
+    let abs_path = PathBuf::from(openguild_core::recents::normalize_abs(Path::new(&guild_path)));
+    Ok(GuildCtx { guild, abs_path })
 }
 
 // ─────────────────────── host ───────────────────────
@@ -382,7 +378,7 @@ async fn run_host(
 ) -> Result<()> {
     let ctx = load_guild()?;
     // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
-    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let store = openguild_core::Store::open(&ctx.abs_path).await?;
     if let Some(aside) = &store.index_recovered {
         eprintln!(
             "⚠ index.db(캐시)가 망가져 있어 파일에서 새로 만들었습니다 — 옛 파일: {}",

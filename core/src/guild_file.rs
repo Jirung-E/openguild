@@ -108,7 +108,22 @@ pub fn find_from_cwd() -> Option<PathBuf> {
 /// 유지한다. 즉 GUI 로 한 번도 안 연 길드는 이름으로 못 찾는다 — 알려진 한계.
 /// 경로로 지정하면 항상 동작하니 폴백은 있다.
 pub fn resolve_guild_ref(raw: &str) -> Result<PathBuf> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    resolve_guild_ref_from(raw, &cwd)
+}
+
+/// BUG-377: 상대 경로를 `cwd` 기준으로 푼다 — 시험이 작업 폴더(프로세스 전체)를 안 바꾸고도
+/// 재현할 수 있게 떼어 둔다.
+fn resolve_guild_ref_from(raw: &str, cwd: &Path) -> Result<PathBuf> {
+    // BUG-377: `find_from` 은 절대 경로를 돌려주므로 상대 경로(`.` · `../g`)를 그대로 견주면 늘
+    // 어긋나 이름 찾기로 넘어갔고 "no .guild file at ." 로 끝났다. 절대 경로로 바꿔 견주고 그것을
+    // 쓴다 — `..` 가 남지 않게 정규화한다(플러그인 동의처럼 경로 글자로 길드를 가리는 곳이 있다).
     let pb = PathBuf::from(raw);
+    let pb = if pb.is_absolute() {
+        pb
+    } else {
+        PathBuf::from(crate::recents::normalize_abs(&cwd.join(&pb)))
+    };
     if find_from(&pb).is_some_and(|f| f == pb) {
         return Ok(pb);
     }
@@ -323,6 +338,25 @@ mod tests {
         .unwrap();
         let resolved = resolve_guild_ref(dir.to_str().unwrap()).unwrap();
         assert_eq!(resolved, dir);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-377: `--guild .` · `--guild ../g` 처럼 상대 경로도 길드를 찾고, 돌려주는 것은 `..` 없는 절대 경로다.
+    #[test]
+    fn resolve_guild_ref_accepts_relative_path() {
+        let dir = tmp_dir();
+        fs::write(
+            dir.join("m.guild"),
+            "name = \"M\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        let sub = dir.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        let want = PathBuf::from(crate::recents::normalize_abs(&dir));
+        assert_eq!(resolve_guild_ref_from(".", &dir).unwrap(), want);
+        let up = format!("../{}", dir.file_name().unwrap().to_str().unwrap());
+        assert_eq!(resolve_guild_ref_from(&up, &dir).unwrap(), want);
+        assert_eq!(resolve_guild_ref_from("..", &sub).unwrap(), want);
         let _ = fs::remove_dir_all(&dir);
     }
 
