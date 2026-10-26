@@ -74,6 +74,11 @@ ${StrLoc}
   RMDir /r "$INSTDIR\skills\openguild-plugin"
   ; DEV-264 에서 없앤 옛 문서
   Delete "$INSTDIR\docs\AGENTS_OPENGUILD_USAGE.md"
+  ; 아주 옛 버전(0.1 무렵)이 설치 폴더에 두던 최근 목록 — 지금은 ~/.openguild 에 있고 앱은 이 자리를 안 읽는다.
+  ; 예전에는 '앱 데이터 삭제' 를 골랐을 때만 지워서, 안 고르면 이 파일 하나 때문에 설치 폴더가 끝까지 남았다(윈도우 확인).
+  Delete "$INSTDIR\openguild\data\recents.json"
+  RMDir "$INSTDIR\openguild\data"
+  RMDir "$INSTDIR\openguild"
 !macroend
 
 ; BUG-376: 설정 앱(GUI)에서 지우면 레지스트리 삭제만 셋 다 안 됐다(같은 구역의 파일 삭제 · 레지스트리 읽기는
@@ -1058,13 +1063,6 @@ Section Uninstall
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
-
-    ; BUG-375: 아주 옛 버전(0.1 무렵)이 설치 폴더에 두던 최근 목록 — 지금은 ~/.openguild 에 있다. 이게 남으면
-    ; 설치 폴더가 비지 않아 끝까지 남는다.
-    Delete "$INSTDIR\openguild\data\recents.json"
-    RMDir "$INSTDIR\openguild\data"
-    RMDir "$INSTDIR\openguild"
-    RMDir "$INSTDIR"
   ${EndIf}
 
   ; BUG-376: 진단 기록(위 매크로 설명).
