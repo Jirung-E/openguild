@@ -111,6 +111,18 @@ fn handler_line(h: &view::HandlerView) -> String {
     } else {
         crate::tf!("바뀐 뒤", "after")
     };
+    // DEV-458: 시간마다 — "1h 마다 퀘스트 `status:open` →".
+    let when_part = match (&h.every, &h.query) {
+        (Some(every), Some(q)) => {
+            let of = match h.of.as_deref() {
+                Some("campaign") => crate::tf!("캠페인", "campaigns"),
+                Some("library") => crate::tf!("도서관", "library"),
+                _ => crate::tf!("퀘스트", "quests"),
+            };
+            crate::tf!("{every} 마다 {of} `{q}`", "every {every}, {of} `{q}`")
+        }
+        _ => format!("{stage} {}", h.events.join(" ")),
+    };
     let what = match (&h.call, &h.action) {
         (Some(f), _) => format!("{f}()"),
         (None, Some(name)) => name.clone(),
@@ -119,7 +131,7 @@ fn handler_line(h: &view::HandlerView) -> String {
             _ => crate::tf!("(없음)", "(none)"),
         },
     };
-    let mut line = format!("{stage} {} → {what}", h.events.join(" "));
+    let mut line = format!("{when_part} → {what}");
     if !h.when.is_empty() {
         line.push_str(&crate::tf!(
             " (조건: {})",

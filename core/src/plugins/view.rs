@@ -66,7 +66,7 @@ pub struct PluginView {
 pub struct HandlerView {
     /// `id`, 없으면 "N번째 줄".
     pub label: String,
-    /// `pre` | `post`
+    /// `pre` | `post` | `every`(DEV-458)
     pub stage: String,
     pub events: Vec<String>,
     /// 부르는 스크립트 함수.
@@ -85,6 +85,13 @@ pub struct HandlerView {
     /// DEV-415: 든 묶음. 묶음의 조건 · 데이터는 이미 `when` · `with` 에 합쳐져 있다.
     #[serde(default)]
     pub group: Option<String>,
+    /// DEV-458: 시간마다 도는 줄 — 간격 · 쿼리 · 대상(`quest` · `campaign` · `library`). 이때 `stage` 는 `every`.
+    #[serde(default)]
+    pub every: Option<String>,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub of: Option<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
     /// `action_kind`/`action_target` 이 찬다.
     pub action: Option<String>,
@@ -227,7 +234,14 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
             };
             HandlerView {
                 label: h.label(i),
-                stage: if h.pre.is_empty() { "post" } else { "pre" }.into(),
+                stage: if h.every.is_some() {
+                    "every"
+                } else if h.pre.is_empty() {
+                    "post"
+                } else {
+                    "pre"
+                }
+                .into(),
                 events: h.patterns().to_vec(),
                 call: h.call.clone(),
                 with: h.with.clone(),
@@ -250,6 +264,12 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                 run_after: h.run_after.clone(),
                 run_before: h.run_before.clone(),
                 group: h.group.clone(),
+                every: h.every.clone(),
+                query: h.query.clone(),
+                of: h
+                    .every
+                    .as_ref()
+                    .map(|_| h.of.unwrap_or_default().as_str().to_string()),
                 action,
                 action_kind,
                 action_target,

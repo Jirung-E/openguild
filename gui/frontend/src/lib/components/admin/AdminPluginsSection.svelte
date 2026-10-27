@@ -429,12 +429,28 @@
 						<ol class="plugin-lines" aria-label={t('plugins.lines', $locale)}>
 							{#each p.handlers as h, i (i)}
 								<li>
-									<span class="line-when"
-										>{h.stage === 'pre'
-											? t('plugins.stagePre', $locale)
-											: t('plugins.stagePost', $locale)}
-										{h.events.join(' ')}</span
-									>
+									{#if h.stage === 'every'}
+										<!-- DEV-458: 이벤트 대신 시간마다 — 간격과 받을 목록의 쿼리. -->
+										<span class="line-when"
+											>{t('plugins.stageEvery', $locale).replace('{every}', h.every ?? '')}
+											{t(
+												h.of === 'campaign'
+													? 'plugins.ofCampaign'
+													: h.of === 'library'
+														? 'plugins.ofLibrary'
+														: 'plugins.ofQuest',
+												$locale
+											)}
+											<code>{h.query}</code></span
+										>
+									{:else}
+										<span class="line-when"
+											>{h.stage === 'pre'
+												? t('plugins.stagePre', $locale)
+												: t('plugins.stagePost', $locale)}
+											{h.events.join(' ')}</span
+										>
+									{/if}
 									<Icon name="arrow-right" size="1em" />
 									<code class="plugin-target"
 										>{h.call

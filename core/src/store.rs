@@ -334,7 +334,12 @@ impl Store {
         if loaded.active.is_empty() {
             self.events.clear_sink();
         } else {
-            let rt = crate::plugins::runtime::PluginRuntime::new(loaded.active.clone(), delivery);
+            let mut rt =
+                crate::plugins::runtime::PluginRuntime::new(loaded.active.clone(), delivery);
+            // DEV-458: 시간마다 도는 줄은 계속 살아 있는 앱 · 서버에서만.
+            if scope != crate::plugins::Scope::Cli {
+                rt.start_schedule(self.clone());
+            }
             self.events.set_sink(std::sync::Arc::new(rt));
         }
         loaded

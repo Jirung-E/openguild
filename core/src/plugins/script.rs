@@ -442,6 +442,14 @@ pub trait Hooks: Send + Sync {
     /// 설정값을 이 시험 동안만 바꾼다. 설정이 동작을 바꾸는 플러그인은(REQ-021) 이게 없으면
     /// 기본값 하나만 시험할 수 있다.
     fn set_config(&self, key: &str, value: Value);
+
+    /// DEV-458: 시간마다 도는 줄(`every`) 하나를 주어진 목록으로 돌린다 — 길드 없이, 쿼리 대신 시험이 목록을 준다.
+    fn tick(&self, _line: &str, _items: Value) -> Result<Value, String> {
+        Err(crate::tf!(
+            "이 시험 실행기는 tick 을 모릅니다",
+            "this test runner does not support tick"
+        ))
+    }
 }
 
 /// 시험 파일에만 있는 함수들. `fire` 는 위 훅으로 가고, `assert*` 는 **던진다** — 던지면 그
@@ -459,6 +467,23 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
         "fire",
         move |name: &str, payload: Dynamic, with: Dynamic| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
             fire(&*h, name, payload, with)
+        },
+    );
+    let h = hooks.clone();
+    e.register_fn(
+        "tick",
+        move |line: &str, items: Dynamic| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+            let items = from_dynamic(&items).map_err(|e| -> Box<rhai::EvalAltResult> {
+                crate::tf!(
+                    "tick(\"{line}\"): 목록을 옮기지 못했습니다 — {e}",
+                    "tick(\"{line}\"): could not convert the list — {e}"
+                )
+                .into()
+            })?;
+            let out = h
+                .tick(line, items)
+                .map_err(|e| -> Box<rhai::EvalAltResult> { e.into() })?;
+            Ok(to_dynamic(&out))
         },
     );
     let h = hooks.clone();

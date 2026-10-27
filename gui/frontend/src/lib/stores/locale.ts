@@ -256,6 +256,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.runBefore': { ko: '{ids} 앞', en: 'before {ids}' },
 	// DEV-415: 든 묶음 — 묶음의 조건 · 읽는 것은 이미 이 줄에 합쳐져 보인다.
 	'plugins.group': { ko: '묶음', en: 'group' },
+	// DEV-458: 시간마다 도는 줄 — "1h 마다 퀘스트 `status:open`".
+	'plugins.stageEvery': { ko: '{every} 마다', en: 'Every {every}' },
+	'plugins.ofQuest': { ko: '퀘스트', en: 'quests' },
+	'plugins.ofCampaign': { ko: '캠페인', en: 'campaigns' },
+	'plugins.ofLibrary': { ko: '도서관', en: 'library' },
 	'plugins.env': { ko: '쓰는 환경변수', en: 'Environment variables' },
 	'plugins.envNote': { ko: '이름만 — 값은 이 화면에 오지 않습니다', en: 'names only — values never reach this screen' },
 	'plugins.imports': { ko: '불러오는 파일', en: 'Also loads' },

@@ -87,6 +87,37 @@ permissions = ["notify"]          # only for notify()/backup()
 | `run_after` / `run_before` | Line or group `id`s in the same plugin that must run before / after this one. Only between lines that run in the same place (`pre`, `post`, `post` + `wait`). Lines without an order keep the written order; when two `pre` lines change the same field, the one that runs later wins. Unknown ids, self-references, mixed places and circles are load errors. |
 | `timeout_ms` / `on_timeout` / `on_error` | Time budget, and what to do when it is exceeded or the script throws: `continue` (default) or `block` (`pre` lines only). |
 
+### A scheduled line
+
+Instead of `pre` / `post`, a line can run **on a schedule** and receive a list:
+
+```toml
+[[handlers]]
+    id    = "overdue"
+    every = "1h"                                    # s · m · h · d, at least 1m
+    query = "status:open,in_progress due:overdue"   # the list query, same as `quest list -q`
+    of    = "quest"                                 # quest (default) · campaign · library
+    call  = "overdue"                               # fn overdue(e) — e.items
+```
+
+| Field | Meaning |
+|---|---|
+| `every` | Interval. Runs only in the **app (`gui`) and the server** — the CLI exits when a command ends. `plugin check` warns when `scope` has neither. |
+| `query` | Required. The list query syntax (`status:` `tag:` `due:` …, the keys of `of`). Parsed at load, so a typo is a load error with the same message the list screens show. |
+| `of` | Which list: `quest` (default), `campaign`, `library`. |
+
+The function gets `e` as usual: `e.event` is `"every"`, `e.items` the matching list, `e.count`, plus
+`e.line`, `e.every`, `e.query`, `e.of`. Items are short summaries — quests: `id title status type
+urgency tags desired_due required_due campaign_due updated_at comment_count`; campaigns: `id title
+status start end`; library: `id title folder tags updated_at`. **Nothing matches → nothing is
+called.** An `action` line sends that event JSON as the body. `pre`, `post`, `when`, `with`, `wait`,
+`group` and orders cannot be used on a scheduled line.
+
+Each line's last run time is kept per machine in `~/.openguild/plugin-schedule/` and claimed under a
+file lock, so an app and a server open on the same guild run it **once**. Other machines run their
+own. With no record yet (just allowed) it runs within seconds; time missed while the app was closed is
+made up **once** on start, not once per missed interval.
+
 `action.post.body_env` — `{ chat_id = "TELEGRAM_CHAT_ID" }` — injects env values into named
 top-level body keys. Scripts have no I/O, so they cannot read the environment; APIs that want a
 private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so
@@ -175,6 +206,9 @@ map you pass instead of guild files (so tests need no guild). Prefix the name wi
 before phase. It returns `#{ lines, commands, blocked, changes, problems }`; `problems` holds the
 failures that are otherwise only reported (undeclared permission, unknown action name, a throwing
 script).
+
+`tick("line id", [items])` runs a scheduled (`every`) line with the list you give instead of the
+query — `#{ lines, commands, problems }`. An empty list calls nothing, as in real runs.
 
 ## CLI
 

@@ -121,6 +121,13 @@ pub fn plugin_schema() -> Value {
                         "description": "이 줄보다 **나중에** 돌아야 하는 줄의 `id`. 순서가 돌고 돌면 불러올 때 오류."
                     },
                     "group": { "type": "string", "description": "든 묶음(`[[groups]]` 의 `id`) — 묶음의 조건 · 데이터 · 순서가 이 줄에도 걸린다." },
+                    "every": {
+                        "type": "string",
+                        "pattern": "^\\s*[0-9]+\\s*[smhd]\\s*$",
+                        "description": "이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`(최소 1m). 앱 · 서버에서만 돈다. `pre` · `post` · `when` · `with` · `wait` · `group` · 순서와 같이 못 쓴다."
+                    },
+                    "query": { "type": "string", "description": "`every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법(`status:open due:overdue`). 함수는 `e.items` 로 받는다. 맞는 것이 없으면 안 부른다." },
+                    "of": { "enum": ["quest", "campaign", "library"], "description": "`query` 를 걸 목록. 기본 `quest`." },
                     "pre": {
                         "type": "array",
                         "items": { "$ref": "#/$defs/preEvent" },
@@ -288,6 +295,9 @@ mod tests {
             "run_after",
             "run_before",
             "group",
+            "every",
+            "query",
+            "of",
             "pre",
             "post",
             "call",

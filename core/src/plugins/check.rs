@@ -98,6 +98,18 @@ pub fn check_dir(dir: &Path, guild_root: Option<&Path>) -> Report {
     r.warnings.extend(super::order::unused_orders(&def));
     // DEV-415: 줄이 하나도 안 든 묶음.
     r.warnings.extend(super::groups::empty_groups(&def));
+    // DEV-458: 시간마다 도는 줄은 앱 · 서버에서만 돈다 — CLI 는 명령이 끝나면 꺼진다.
+    if def.handlers.iter().any(|h| h.every.is_some())
+        && !def
+            .scope
+            .iter()
+            .any(|s| matches!(s, super::Scope::Gui | super::Scope::Server))
+    {
+        r.warnings.push(crate::tf!(
+            "`every` 줄은 앱(gui) · 서버(server)에서만 돕니다 — `scope` 에 둘 다 없어 이 줄은 돌 곳이 없습니다",
+            "`every` lines run only in the app (gui) and the server — `scope` has neither, so these lines never run"
+        ));
+    }
 
     if r.ok() {
         // 검사에 통과했으면 **무엇을 하게 되는지**까지 보여 준다. 허용 화면과 같은 말이다.

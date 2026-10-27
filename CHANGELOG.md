@@ -47,6 +47,9 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     상태)을 싣는다 (DEV-374, DEV-386, DEV-388, DEV-398, DEV-404, DEV-391)
   - `scope` 로 어디서 돌지 명시(`cli` / `gui` / `server` — `server` 에 걸면 그 서버를
     쓰는 모두에게 적용) (DEV-375)
+  - **시간마다 도는 줄** — `every = "1h"` 와 목록 쿼리(`query = "status:open due:overdue"`, 캠페인 ·
+    도서관도)를 적으면 맞는 목록을 받아 돈다(맞는 것이 없으면 안 돈다). 앱 · 서버에서만, 같은 기계에서
+    둘 다 열어도 한 번 (REQ-026, DEV-458)
   - 동작은 `post`(HTTP)와 `run`(프로그램, 이벤트는 stdin) 둘. `run` 은 운영체제마다
     다른 명령(`windows` / `macos` / `linux`)을 적을 수 있고, **길드 폴더에서** 돌며 길드 위치와
     대상(`OPENGUILD_GUILD_DIR`, `OG_TARGET_ID` …)을 환경변수로 받아 `openguild` 를 다시 부를 수

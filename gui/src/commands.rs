@@ -1341,7 +1341,11 @@ pub fn init_and_open_guild(
     // DEV-379: 길드를 바꿨으면 플러그인도 그 길드 것으로 갈아 끼운다 —
     // 이전 길드의 플러그인이 새 길드의 이벤트를 받으면 안 된다.
     crate::install_plugins_for_gui(&store);
-    app.unmanage::<openguild_core::Store>();
+    // DEV-458: 옛 길드의 플러그인을 뗀다 — 실행기가 버려져야 그 길드의 시간마다 도는 줄과 전달 스레드가 멈춘다.
+    // 실행기가 Store 사본을 들고 있어서, 떼지 않으면 Store 를 내려놓아도 둘이 서로를 붙잡고 계속 돈다.
+    if let Some(old) = app.unmanage::<openguild_core::Store>() {
+        old.events.clear_sink();
+    }
     app.manage(store);
     // DEV-087 fix2: 새/초기화한 길드 디렉토리를 asset protocol scope 에 추가
     // (open_guild_in_current_window 와 동일 이유 — 배너/첨부 asset:// 차단 방지).
@@ -1443,8 +1447,10 @@ pub fn open_guild_in_current_window(
     // 와 같은 swap 누락 패턴이므로 여기 함께 둔다.)
     crate::install_plugins_for_gui(&new_store);
 
-    // 3-4. 기존 store 해제 + 새 store 등록.
-    app.unmanage::<openguild_core::Store>();
+    // 3-4. 기존 store 해제 + 새 store 등록. DEV-458: 옛 길드의 플러그인도 뗀다(위 init 과 같은 까닭).
+    if let Some(old) = app.unmanage::<openguild_core::Store>() {
+        old.events.clear_sink();
+    }
     app.manage(new_store);
 
     // DEV-087 fix2: 새 길드의 디렉토리를 asset protocol scope 에 추가.

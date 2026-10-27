@@ -48,6 +48,8 @@ pub mod order;
 // DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
 pub mod related;
 pub mod runtime;
+// DEV-458(REQ-026): 시간마다 도는 줄 — `every` + `query`.
+pub mod schedule;
 pub mod script;
 // DEV-399: 길드 밖 폴더에서도 가져다 쓴다 — 소스 등록 + 이 길드에서 쓰기.
 pub mod sources;
@@ -275,6 +277,15 @@ pub struct Handler {
     /// 순서는 이 줄에도 걸린다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// DEV-458(REQ-026): 이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`. 있으면 `pre` · `post` 를 안 쓴다([`schedule`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub every: Option<String>,
+    /// DEV-458: `every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// DEV-458: 쿼리를 걸 목록 — `quest`(기본) · `campaign` · `library`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of: Option<schedule::Of>,
     /// 바뀌기 **전**에 볼 이벤트 패턴. `post` 와 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre: Vec<String>,
@@ -361,6 +372,10 @@ impl Handler {
     /// 이 줄이 그 이벤트에 걸리나.
     pub fn wants(&self, name: &str, phase: crate::events::Phase) -> bool {
         use crate::events::Phase;
+        // DEV-458: 시간마다 도는 줄은 자기 차례의 이벤트만, 다른 줄은 그 이벤트를 안 받는다(`*` 로도).
+        if self.every.is_some() || name == schedule::EVENT {
+            return self.every.is_some() && name == schedule::EVENT && phase == Phase::Post;
+        }
         if self.phase() != phase {
             return false;
         }
@@ -1255,10 +1270,24 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
             }
         }
         let phase = h.phase();
+        // DEV-458: 시간마다 도는 줄은 자기 검사를 따로 한다 — 이벤트 · 조건 · 연결 데이터가 없다.
+        let scheduled = h.every.is_some();
+        if scheduled {
+            if let Err(m) = schedule::validate_line(h) {
+                return bad(format!("{who}: {m}"));
+            }
+        } else if h.query.is_some() || h.of.is_some() {
+            return bad(crate::tf!(
+                "{who}: `query` · `of` 는 시간마다 도는 줄(`every`)에만 씁니다",
+                "{who}: `query` and `of` are only for lines that run on a schedule (`every`)"
+            ));
+        }
         match (h.pre.is_empty(), h.post.is_empty()) {
+            _ if scheduled => {}
             (true, true) => {
                 return bad(crate::tf!(
-                    "{who}: 언제 부를지가 없습니다 — `post`(바뀐 뒤) 나 `pre`(바뀌기 전) 에 이벤트를 적으세요", "{who}: no trigger — put an event in `post` (after the change) or `pre` (before the change)"
+                    "{who}: 언제 부를지가 없습니다 — `post`(바뀐 뒤) 나 `pre`(바뀌기 전) 에 이벤트를 적거나, `every` 로 시간마다 돌리세요",
+                    "{who}: no trigger — put an event in `post` (after the change) or `pre` (before the change), or run it on a schedule with `every`"
                 ));
             }
             (false, false) => {
@@ -1297,6 +1326,10 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 }
             }
             (None, Some(ActionRef::Inline(_))) => {}
+        }
+        // 나머지(기다리기 · 조건 · 연결 데이터 · 이벤트 이름)는 이벤트에 걸리는 줄의 것이다.
+        if scheduled {
+            continue;
         }
         // DEV-407: 기다리기와 막기 정책은 단계가 정한다.
         if h.wait && phase == Phase::Pre {

@@ -46,7 +46,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    fn take(&self) -> Vec<Value> {
+    pub(super) fn take(&self) -> Vec<Value> {
         self.seen.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
     }
 
@@ -136,6 +136,69 @@ impl Hooks for Fire {
             o.insert(key.to_string(), value);
         }
     }
+
+    fn tick(&self, line: &str, items: Value) -> Result<Value, String> {
+        let over = self.overrides.lock().map(|o| o.clone()).unwrap_or_default();
+        tick_with(&self.plugin, line, items, &over)
+    }
+}
+
+/// DEV-458: 시간마다 도는 줄(`every`) 하나를 `items` 로 돌린다 — 쿼리 대신 시험이 목록을 준다. 맞는 것이 없을 때
+/// 안 부르는 것은 실제와 같다(빈 목록이면 줄이 안 불린다).
+pub fn tick_with(
+    p: &Plugin,
+    line: &str,
+    items: Value,
+    config: &BTreeMap<String, Value>,
+) -> Result<Value, String> {
+    let Some(i) = p
+        .def
+        .handlers
+        .iter()
+        .position(|h| h.every.is_some() && h.id.as_deref() == Some(line))
+    else {
+        return Err(crate::tf!(
+            "`{line}` 은 시간마다 도는 줄(`every`)의 `id` 가 아닙니다",
+            "`{line}` is not the `id` of a scheduled (`every`) line"
+        ));
+    };
+    let items = match items {
+        Value::Array(a) => a,
+        Value::Null => Vec::new(),
+        other => {
+            return Err(crate::tf!(
+                "tick 의 목록은 배열이어야 합니다 (받은 것: {other})",
+                "the tick list must be an array (got: {other})"
+            ));
+        }
+    };
+    let recorder = Recorder::default();
+    let log = Mutex::new(Vec::new());
+    let mut probe = Probe::default();
+    let mut cfg: BTreeMap<String, Value> = super::values::resolve(&p.guild_root, &p.def)
+        .into_iter()
+        .filter_map(|(k, r)| r.value.map(|v| (k, v)))
+        .collect();
+    cfg.extend(config.iter().map(|(k, v)| (k.clone(), v.clone())));
+    if !items.is_empty() {
+        super::schedule::run_line(
+            p,
+            i,
+            items,
+            &p.def.name,
+            &cfg,
+            &BTreeMap::new(),
+            &recorder,
+            &log,
+            Some(&mut probe),
+        );
+    }
+    let problems = log.lock().map(|l| l.clone()).unwrap_or_default();
+    Ok(json!({
+        "lines": probe.lines,
+        "commands": recorder.take(),
+        "problems": problems,
+    }))
 }
 
 /// 이벤트 하나를 흘려 보고 무슨 일이 났는지 돌려준다.
@@ -435,6 +498,51 @@ fn title_two(e) { #{ title: "둘" } }
             pre["changes"]["title"], "하나",
             "뒤에 도는 줄의 값이 남아야 한다"
         );
+        let _ = std::fs::remove_dir_all(&g);
+    }
+
+    /// DEV-458: `tick` 은 시간마다 도는 줄을 주어진 목록으로 돌린다 — 빈 목록이면 안 부른다.
+    #[test]
+    fn tick_runs_a_scheduled_line_with_the_given_items() {
+        let def = r#"
+name = "p"
+scope = ["gui"]
+scripts = ["main.rhai"]
+permissions = ["notify"]
+
+[[handlers]]
+id = "마감"
+every = "1h"
+query = "due:overdue"
+call = "late"
+"#;
+        let script = r#"
+fn late(e) { for q in e.items { notify(q.id + " 마감 지남"); } }
+"#;
+        let test_src = r#"
+fn test_two_late() {
+    let r = tick("마감", [#{ id: "DEV-1" }, #{ id: "DEV-2" }]);
+    assert_eq(r.commands.len(), 2);
+    assert_eq(r.commands[0].body, "DEV-1 마감 지남");
+    assert_eq(tick("마감", []).lines.len(), 0);
+}
+"#;
+        let g = guild(
+            "tick",
+            &[
+                (MANIFEST, def),
+                ("main.rhai", script),
+                ("main.test.rhai", test_src),
+            ],
+        );
+        let p = loaded(&g);
+        let r = tick_with(&p, "마감", json!([{ "id": "DEV-9" }]), &BTreeMap::new()).unwrap();
+        assert_eq!(r["lines"], json!(["마감"]));
+        assert_eq!(r["commands"][0]["kind"], "notify");
+        assert!(tick_with(&p, "없음", json!([]), &BTreeMap::new()).is_err());
+        let results = run_tests(&p).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results.iter().all(|t| t.failure.is_none()), "{results:?}");
         let _ = std::fs::remove_dir_all(&g);
     }
 

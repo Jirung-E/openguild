@@ -416,6 +416,30 @@ error (both could never hold). The group's `with` comes first in the function's
 arguments. `run_after` / `run_before` may name a group (all its lines that run in
 the same place), and a group may carry its own `run_after` / `run_before`.
 
+## On a schedule
+
+"Remind me about overdue quests every morning" is not an event — nothing changes. Use a
+**scheduled line** with the same query the list screens use:
+
+```toml
+[[handlers]]
+    id    = "overdue"
+    every = "1d"
+    query = "status:open,in_progress due:overdue"
+    call  = "overdue"
+```
+
+```rhai
+fn overdue(e) {
+    for q in e.items { notify(`${q.id} ${q.title} is overdue`); }
+}
+```
+
+It runs only in the app and the server (put `gui` or `server` in `scope`), once per interval per
+machine even when both are open, and not at all when nothing matches. Test it with
+`tick("overdue", [#{ id: "DEV-1", title: "x" }])` — no guild needed. Prefer a long interval: a
+scheduled notice that fires every few minutes becomes noise the user turns off.
+
 ## Verifying (do this before handing it over)
 
 Never point the first test at the real service. Check the definition, run the

@@ -177,12 +177,12 @@ struct Worker {
 
 /// REQ-021: 이 이벤트가 볼 설정값을 **한 번만** 읽는다. 스크립트와 치환이 같은 값을 봐야 한다 —
 /// 두 번 읽으면 그 사이에 사용자가 고친 값이 반쪽만 반영된다.
-type Values = (
+pub(super) type Values = (
     std::collections::BTreeMap<String, serde_json::Value>,
     std::collections::BTreeMap<String, String>,
 );
 
-fn values_for(p: &Plugin) -> Values {
+pub(super) fn values_for(p: &Plugin) -> Values {
     let resolved = super::values::resolve(&p.guild_root, &p.def);
     let cfg = resolved
         .iter()
@@ -467,6 +467,8 @@ pub struct PluginRuntime {
     /// 한 줄에 모으면 먼저 끝난 변경이 아직 잠금을 쥔 남의 줄까지 돌려서, 그 줄이 남의 문서를 고치려다
     /// 기다리게 된다(BUG-339 가 없앤 것이 돌아온다). 작업 밖(CLI 의 `block_on`)은 `None` 한 칸이다.
     waiting: Mutex<Vec<(Option<tokio::task::Id>, Job)>>,
+    /// DEV-458: 시간마다 도는 줄의 스레드 — 이 실행기가 버려지면(다시 불러오기 · 길드 바꾸기) 함께 멈춘다.
+    ticker: Option<super::schedule::Ticker>,
 }
 
 /// DEV-381: 문제 목록의 상한. 서버는 몇 달씩 도는 프로세스라 상한이 없으면
@@ -497,6 +499,16 @@ impl PluginRuntime {
             problems,
             worker,
             waiting: Mutex::new(Vec::new()),
+            ticker: None,
+        }
+    }
+
+    /// DEV-458: 시간마다 도는 줄을 돌리기 시작한다 — 앱 · 서버만 부른다(CLI 는 명령이 끝나면 꺼진다). 그런 줄이
+    /// 없으면 아무것도 안 띄운다.
+    pub fn start_schedule(&mut self, store: crate::Store) {
+        if let Some(d) = self.delivery.clone() {
+            self.ticker =
+                super::schedule::start(store, self.plugins.clone(), d, self.problems.clone());
         }
     }
 

@@ -25,10 +25,14 @@ enum Slot {
     Pre,
     Post,
     PostWait,
+    /// DEV-458: 시간마다 — 줄마다 따로 돈다.
+    Every,
 }
 
 fn slot(h: &Handler) -> Slot {
-    if !h.pre.is_empty() {
+    if h.every.is_some() {
+        Slot::Every
+    } else if !h.pre.is_empty() {
         Slot::Pre
     } else if h.wait {
         Slot::PostWait
@@ -41,6 +45,7 @@ fn slot_name(s: Slot) -> String {
     match s {
         Slot::Pre => crate::tf!("바뀌기 전(pre)", "before (pre)"),
         Slot::Post => crate::tf!("바뀐 뒤(post)", "after (post)"),
+        Slot::Every => crate::tf!("시간마다(every)", "scheduled (every)"),
         Slot::PostWait => crate::tf!(
             "바뀐 뒤 기다리는 줄(post + wait)",
             "after, waited for (post + wait)"
