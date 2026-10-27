@@ -273,6 +273,9 @@ impl Script {
         let mut out: Vec<(String, usize)> = self
             .ast
             .iter_functions()
+            // DEV-411 다시: 클로저(`|q| q.id`)도 rhai 안에서는 `anon$…` 이름의 함수가 된다. 사람이 지은 함수가 아니라
+            // 줄이 부를 수도 없으니 뺀다 — 안 빼면 `plugin check` 가 "부르는 줄이 없습니다" 로 잘못 짚었다.
+            .filter(|f| !f.name.starts_with("anon$"))
             .map(|f| (f.name.to_string(), f.params.len()))
             .collect();
         out.sort();

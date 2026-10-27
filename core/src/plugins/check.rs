@@ -373,6 +373,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEV-411 다시: 클로저는 rhai 안에서 `anon$…` 함수가 된다 — "부르는 줄이 없습니다" 로 짚으면 안 된다.
+    #[test]
+    fn a_closure_is_not_an_unused_function() {
+        let dir = folder(
+            "closure",
+            OK,
+            &[(
+                "main.rhai",
+                "fn h(e) { notify(`${[1, 2].map(|x| x * 2)}`) }",
+            )],
+        );
+        let r = check_dir(&dir, None);
+        assert!(r.ok(), "{:?}", r.errors);
+        assert!(r.warnings.is_empty(), "헛경고가 났다: {:?}", r.warnings);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_folder_without_a_manifest_says_so() {
         let dir = folder("bare", "", &[]);
