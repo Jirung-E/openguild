@@ -134,6 +134,21 @@ fn handler_line(h: &view::HandlerView) -> String {
             h.with.join(", ")
         ));
     }
+    // DEV-414: 순서를 적은 줄 — 적힌 순서와 다를 수 있으니 보여 준다.
+    if !h.run_after.is_empty() {
+        line.push_str(&crate::tf!(
+            " · {} 다음",
+            " · after {}",
+            h.run_after.join(", ")
+        ));
+    }
+    if !h.run_before.is_empty() {
+        line.push_str(&crate::tf!(
+            " · {} 앞",
+            " · before {}",
+            h.run_before.join(", ")
+        ));
+    }
     // `pre` 줄은 언제나 기다린다 — 그래야 막거나 값을 바꿀 수 있다.
     if h.wait || h.stage == "pre" {
         line.push_str(&crate::tf!(" · 끝날 때까지 기다림", " · waits for it to finish"));

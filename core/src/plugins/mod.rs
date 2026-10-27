@@ -41,6 +41,8 @@ pub mod delivery;
 pub mod guild;
 // DEV-409: 스크립트가 쓰는 길드 정보 — 상태·타입의 화면 이름, 길드 이름, 링크.
 pub mod info;
+// DEV-414: 한 이벤트에 걸린 줄들의 순서 — `run_after` / `run_before`.
+pub mod order;
 // DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
 pub mod related;
 pub mod runtime;
@@ -238,7 +240,7 @@ pub struct PluginDef {
     /// 기록한다. `send`/`run` 은 어디로 나가는지가 `[actions]` 에 다 보이므로 여기 안 적는다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
-    /// 언제 무엇을 할지 — 적힌 순서대로 돈다.
+    /// 언제 무엇을 할지 — 적힌 순서대로 돈다(DEV-414: `run_after` · `run_before` 로 바꿀 수 있다).
     pub handlers: Vec<Handler>,
     /// REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들.
     ///
@@ -250,13 +252,20 @@ pub struct PluginDef {
 }
 
 /// 핸들러 한 줄 — "언제" 하나와 "무엇" 하나.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Handler {
-    /// 줄 이름. 화면·오류 메시지가 이 줄을 가리킬 때 쓰고, 나중에 순서 지정([[DEV-414]])이
+    /// 줄 이름. 화면·오류 메시지가 이 줄을 가리킬 때 쓰고, 순서 지정(`run_after` · `run_before`)이
     /// 이 이름으로 한다. 없으면 몇 번째 줄인지로 부른다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// DEV-414: 이 줄보다 **먼저** 돌아야 하는 줄들(`id`) — 같은 플러그인 안에서만. 적지 않은 줄끼리는
+    /// 적힌 순서다([`order`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub run_after: Vec<String>,
+    /// DEV-414: 이 줄보다 **나중에** 돌아야 하는 줄들.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub run_before: Vec<String>,
     /// 바뀌기 **전**에 볼 이벤트 패턴. `post` 와 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre: Vec<String>,
@@ -1339,6 +1348,10 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 ));
             }
         }
+    }
+    // DEV-414: 순서 — 없는 줄 · 자기 자신 · 도는 자리가 다른 줄 · 돌고 도는 순서는 적재 때 막는다.
+    if let Err(m) = order::run_order(def) {
+        return bad(m);
     }
     Ok(())
 }

@@ -210,7 +210,7 @@ fn ask_handlers(
     });
 }
 
-/// DEV-403: 한 플러그인의 줄을 **적힌 순서대로** 본다. 걸린 줄마다 함수를 부르고 그 함수가 적은
+/// DEV-403: 한 플러그인의 줄을 **순서대로**(DEV-414: `run_after` · `run_before`, 없으면 적힌 순서) 본다. 걸린 줄마다 함수를 부르고 그 함수가 적은
 /// 일을 차례로 실행하거나, 줄에 적힌 동작을 실행한다. 한 줄의 실패는 기록하고 다음 줄로 간다.
 fn run_handlers(
     p: &Plugin,
@@ -258,7 +258,12 @@ pub(super) fn run_lines(
     let mut related_cache: std::collections::HashMap<String, serde_json::Value> = Default::default();
     // 이벤트 JSON 은 조건이 있는 줄이 하나라도 있을 때만 만든다.
     let mut event_json: Option<serde_json::Value> = None;
-    for (i, h) in p.def.handlers.iter().enumerate() {
+    // DEV-414: `run_after` · `run_before` 를 따른 순서(적지 않은 줄끼리는 적힌 순서). 적재가 검증했으므로
+    // 실패하지 않는다 — 시험이 정의를 손으로 바꾼 경우만 적힌 순서로 돈다.
+    let order =
+        super::order::run_order(&p.def).unwrap_or_else(|_| (0..p.def.handlers.len()).collect());
+    for i in order {
+        let h = &p.def.handlers[i];
         if !h.wants(event.name, event.phase) || !pick(h) {
             continue;
         }
@@ -744,6 +749,7 @@ mod tests {
                 Some(_) => None,
                 None => Some(ActionRef::Inline(out())),
             },
+            ..Default::default()
         }
     }
 

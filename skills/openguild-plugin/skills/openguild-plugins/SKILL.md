@@ -79,7 +79,8 @@ Ask, or infer from what they said:
 ### 2. One line, or several?
 
 A definition is a list of **lines** (`[[handlers]]`), each one "when to look,
-what to do". One plugin can hold many, and they run in the order written. Prefer
+what to do". One plugin can hold many, and they run in the order written unless a
+line says otherwise with `run_after` / `run_before` (below). Prefer
 several small lines over one function with a switch inside — each line carries
 its own events, its own condition and its own time budget, and the consent
 screen and error messages name them one by one.
@@ -97,6 +98,30 @@ screen and error messages name them one by one.
     with = ["subject"]           # fn on_comment(e, subject)
     call = "on_comment"
 ```
+
+When the order matters — one `pre` line fills in a field and another checks it, or a
+backup must be taken before a notice goes out — name the lines and say so:
+
+```toml
+[[handlers]]
+    id        = "check-title"
+    run_after = ["fill-title"]   # needs the title the other line puts in
+    pre       = ["quest.created"]
+    call      = "check_title"
+
+[[handlers]]
+    id   = "fill-title"
+    pre  = ["quest.created"]
+    call = "fill_title"
+```
+
+`run_after` / `run_before` name other lines' `id`s in the **same plugin**, and only lines
+that run in the same place: `pre` with `pre`, `post` with `post`, waited `post` (`wait`)
+with waited `post`. Lines without an order keep the written order, so the result is
+always the same — when two `pre` lines change the same field, the one that runs later
+wins. A missing `id`, a line ordered against itself, lines in different places, or a
+circle is a load error; `openguild plugin check` also warns when two ordered lines never
+fire on the same event (the order does nothing).
 
 ### 3. Does it need a script?
 

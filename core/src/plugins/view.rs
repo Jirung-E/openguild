@@ -77,6 +77,11 @@ pub struct HandlerView {
     pub wait: bool,
     /// REQ-025: 이 줄이 불릴 조건 — `["change.to = done, closed"]` 처럼 사람이 읽을 한 줄씩.
     pub when: Vec<String>,
+    /// DEV-414: 이 줄보다 먼저 돌아야 하는 줄 / 나중에 돌아야 하는 줄(`id`).
+    #[serde(default)]
+    pub run_after: Vec<String>,
+    #[serde(default)]
+    pub run_before: Vec<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
     /// `action_kind`/`action_target` 이 찬다.
     pub action: Option<String>,
@@ -239,6 +244,8 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                         format!("{k} = {shown}")
                     })
                     .collect(),
+                run_after: h.run_after.clone(),
+                run_before: h.run_before.clone(),
                 action,
                 action_kind,
                 action_target,

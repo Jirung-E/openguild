@@ -69,7 +69,7 @@ permissions = ["notify"]          # only for notify()/backup()
 | `scripts` | `.rhai` files. Their functions share one namespace; a duplicate name (same arity) is a load error. |
 | `permissions` | `notify` / `backup` — what the script may ask the *guild* to do. Calling one that is not declared fails that line and is reported. `send`/`run` need no permission: `[actions]` already shows where they go. |
 | `actions` | Named destinations: `post` (HTTP) or `run` (process, event JSON on **stdin**). |
-| `handlers` | The lines, in order. |
+| `handlers` | The lines, in written order unless `run_after` / `run_before` say otherwise. |
 | `inputs` | Values the user must supply: `{key, label, type, help, secret, default, options}`. `type` is `text`/`checkbox`/`select`/`number`. Rendered as widgets in Admin → Plugins and stored per guild in `~/.openguild/plugin-values.json` (0600, never committed). Read them as `${KEY}` (always a string), in the script as `config("KEY")` (keeps its type), or — for `run` — as an environment variable of the child. Resolution: stored value → process environment → `default`. |
 
 ### A line
@@ -81,7 +81,8 @@ permissions = ["notify"]          # only for notify()/backup()
 | `when` | Conditions, all of which must hold: `"change.to" = ["done", "closed"]`. A listed value matches any of them; a field that is itself a list matches if it contains the value. Paths that cannot exist for this line's events are rejected at load. |
 | `with` | Related data the function receives after the event: `subject`, `parent`, `children`, `prereqs`, `campaigns`, `quests`. What is available is decided by the **subject kind** of the event (`openguild plugin events` prints it per event), read straight from `.guild/` files. On an **action line** (no script) the data is also sent to the receiver, under the body's `with` key (`with.subject.title`, `.tags`, `.status`) — so a webhook for `comment.added` knows which quest the comment is on. Lines without `with` send the event as before and read nothing extra. |
 | `wait` | Wait for this line to finish before the command returns. Off by default — one slow hook must not stall the guild. `pre` lines always wait. The line runs **after** the guild's lock is released, so it may call `openguild` on the same guild. |
-| `id` | Line name, used by screens and error messages. |
+| `id` | Line name, used by screens and error messages, and by other lines' `run_after` / `run_before`. |
+| `run_after` / `run_before` | Line `id`s in the same plugin that must run before / after this one. Only between lines that run in the same place (`pre`, `post`, `post` + `wait`). Lines without an order keep the written order; when two `pre` lines change the same field, the one that runs later wins. Unknown ids, self-references, mixed places and circles are load errors. |
 | `timeout_ms` / `on_timeout` / `on_error` | Time budget, and what to do when it is exceeded or the script throws: `continue` (default) or `block` (`pre` lines only). |
 
 `action.post.body_env` — `{ chat_id = "TELEGRAM_CHAT_ID" }` — injects env values into named

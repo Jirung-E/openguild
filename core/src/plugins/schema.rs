@@ -79,7 +79,17 @@ pub fn plugin_schema() -> Value {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                    "id": { "type": "string", "description": "줄 이름. 화면과 오류 메시지가 이 줄을 가리킬 때 쓴다." },
+                    "id": { "type": "string", "description": "줄 이름. 화면과 오류 메시지가 이 줄을 가리킬 때 쓰고, 다른 줄의 `run_after` · `run_before` 가 이 이름으로 순서를 적는다." },
+                    "run_after": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "이 줄보다 **먼저** 돌아야 하는 줄의 `id` — 같은 플러그인 안에서, 같은 자리(pre · post · post+wait)끼리만. 적지 않은 줄끼리는 적힌 순서."
+                    },
+                    "run_before": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "이 줄보다 **나중에** 돌아야 하는 줄의 `id`. 순서가 돌고 돌면 불러올 때 오류."
+                    },
                     "pre": {
                         "type": "array",
                         "items": { "$ref": "#/$defs/preEvent" },
@@ -232,7 +242,7 @@ mod tests {
             assert!(root.contains(&f.to_string()), "스키마에 `{f}` 가 없다");
         }
         let h = declared(&s["$defs"]["handler"]["properties"]);
-        for f in ["id", "pre", "post", "call", "action", "with", "when", "wait", "timeout_ms", "on_timeout", "on_error"] {
+        for f in ["id", "run_after", "run_before", "pre", "post", "call", "action", "with", "when", "wait", "timeout_ms", "on_timeout", "on_error"] {
             assert!(h.contains(&f.to_string()), "스키마의 줄에 `{f}` 가 없다");
         }
     }

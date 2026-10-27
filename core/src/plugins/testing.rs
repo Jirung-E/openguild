@@ -372,6 +372,72 @@ fn guard(e) { if e.quest.id == "DEV-9" { return "지우지 마세요" } }
         let _ = std::fs::remove_dir_all(&g);
     }
 
+    /// DEV-414: 줄은 `run_after` · `run_before` 를 따른다 — 적지 않은 줄끼리는 적힌 순서. 바뀌기 전 줄 둘이 같은
+    /// 칸을 고치면 이 순서에서 뒤에 도는 줄의 값이 남는다.
+    #[test]
+    fn lines_run_in_the_declared_order() {
+        let def = r#"
+name = "p"
+scope = ["cli"]
+scripts = ["main.rhai"]
+
+[[handlers]]
+id = "a"
+run_after = ["c"]
+post = ["quest.created"]
+call = "noop"
+
+[[handlers]]
+id = "b"
+post = ["quest.created"]
+call = "noop"
+
+[[handlers]]
+id = "c"
+post = ["quest.created"]
+call = "noop"
+
+[[handlers]]
+id = "제목1"
+run_after = ["제목2"]
+pre = ["quest.created"]
+call = "title_one"
+
+[[handlers]]
+id = "제목2"
+pre = ["quest.created"]
+call = "title_two"
+"#;
+        let script = r#"
+fn noop(e) { }
+fn title_one(e) { #{ title: "하나" } }
+fn title_two(e) { #{ title: "둘" } }
+"#;
+        let g = guild("order", &[(MANIFEST, def), ("main.rhai", script)]);
+        let p = loaded(&g);
+        let post = fire(
+            &p,
+            "quest.created",
+            json!({ "quest": { "id": "DEV-1" } }),
+            Value::Null,
+        )
+        .unwrap();
+        assert_eq!(post["lines"], json!(["b", "c", "a"]));
+        let pre = fire(
+            &p,
+            "pre:quest.created",
+            json!({ "quest": { "id": "DEV-1" } }),
+            Value::Null,
+        )
+        .unwrap();
+        assert_eq!(pre["lines"], json!(["제목2", "제목1"]));
+        assert_eq!(
+            pre["changes"]["title"], "하나",
+            "뒤에 도는 줄의 값이 남아야 한다"
+        );
+        let _ = std::fs::remove_dir_all(&g);
+    }
+
     /// 바뀌기 전 줄은 막은 이유를 돌려준다.
     #[test]
     fn a_pre_line_reports_what_it_blocked() {

@@ -478,6 +478,7 @@ fn def(action: Action) -> PluginDef {
             post: vec!["quest.created".into()],
             call: None,
             action: Some(ActionRef::Inline(action)),
+            ..Default::default()
         }],
         inputs: Vec::new(),
     }

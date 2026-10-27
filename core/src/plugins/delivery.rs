@@ -671,6 +671,7 @@ mod tests {
                     post: vec!["quest.created".into()],
                     call: None,
                     action: Some(crate::plugins::ActionRef::Inline(action)),
+                    ..Default::default()
                 }],
                 inputs: Vec::new(),
             },

@@ -449,6 +449,17 @@
 											>{t('plugins.reads', $locale)}: {h.with.join(', ')}</span
 										>
 									{/if}
+									<!-- DEV-414: 순서를 적은 줄은 적힌 순서와 다르게 돌 수 있다 — 보여 준다. -->
+									{#if h.run_after?.length}
+										<span class="line-label"
+											>{t('plugins.runAfter', $locale).replace('{ids}', h.run_after.join(', '))}</span
+										>
+									{/if}
+									{#if h.run_before?.length}
+										<span class="line-label"
+											>{t('plugins.runBefore', $locale).replace('{ids}', h.run_before.join(', '))}</span
+										>
+									{/if}
 									{#if h.wait || h.stage === 'pre'}
 										<span class="line-label">{t('plugins.waits', $locale)}</span>
 									{/if}

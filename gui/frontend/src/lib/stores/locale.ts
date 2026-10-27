@@ -251,6 +251,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.waits': { ko: '기다림', en: 'waits' },
 	// DEV-410: `pre` 줄은 막거나 값을 바꿀 수 있다 — 허용 전에 알아야 하는 가장 센 것.
 	'plugins.canBlock': { ko: '막거나 값을 바꿀 수 있음', en: 'may block it or change values' },
+	// DEV-414: 순서를 적은 줄 — 적힌 순서와 다르게 돌 수 있다.
+	'plugins.runAfter': { ko: '{ids} 다음', en: 'after {ids}' },
+	'plugins.runBefore': { ko: '{ids} 앞', en: 'before {ids}' },
 	'plugins.env': { ko: '쓰는 환경변수', en: 'Environment variables' },
 	'plugins.envNote': { ko: '이름만 — 값은 이 화면에 오지 않습니다', en: 'names only — values never reach this screen' },
 	'plugins.imports': { ko: '불러오는 파일', en: 'Also loads' },
