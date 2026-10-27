@@ -470,7 +470,13 @@ pub(super) fn start(
             }
         });
     if let Err(e) = spawned {
-        eprintln!("[openguild] 주기 실행 스레드를 못 띄웠습니다: {e}");
+        eprintln!(
+            "[openguild] {}",
+            crate::tf!(
+                "주기 실행 스레드를 못 띄웠습니다: {e}",
+                "could not start the schedule thread: {e}"
+            )
+        );
         return None;
     }
     Some(Ticker { stop })
