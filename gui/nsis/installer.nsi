@@ -81,6 +81,44 @@ ${StrLoc}
   RMDir "$INSTDIR\openguild"
 !macroend
 
+; BUG-378: Tauri 의 APP_ASSOCIATE / APP_UNASSOCIATE(FileAssociation.nsh) 대신 쓴다. 그쪽은 연결할 때마다 지금
+; 기본값을 `<클래스>_backup` 에 적어서, 이미 openguild 가 깔린 위에 다시 깔면(업데이트 · 재설치) 백업이 **자기
+; 자신**이 된다. 풀 때 그 백업을 되돌리고 클래스 키는 지우므로 `.guild` 가 방금 지운 클래스를 가리키는 끊긴
+; 연결로 남았다(윈도우 확인). 그래서 자기 클래스는 백업하지 않고, 풀 때는 지금 우리 것일 때만 손댄다.
+; 문자열 비교(`==` · `!=`)는 대소문자를 안 가린다 — 옛 버전의 `OpenGuild Guild File` 도 같은 것으로 본다.
+!macro OgAssociate EXT FILECLASS DESCRIPTION ICON COMMANDTEXT COMMAND
+  ReadRegStr $R0 SHCTX "Software\Classes\.${EXT}" ""
+  ${If} $R0 != ""
+  ${AndIf} $R0 != "${FILECLASS}"
+    WriteRegStr SHCTX "Software\Classes\.${EXT}" "${FILECLASS}_backup" "$R0"
+  ${EndIf}
+  WriteRegStr SHCTX "Software\Classes\.${EXT}" "" "${FILECLASS}"
+
+  WriteRegStr SHCTX "Software\Classes\${FILECLASS}" "" `${DESCRIPTION}`
+  WriteRegStr SHCTX "Software\Classes\${FILECLASS}\DefaultIcon" "" `${ICON}`
+  WriteRegStr SHCTX "Software\Classes\${FILECLASS}\shell" "" "open"
+  WriteRegStr SHCTX "Software\Classes\${FILECLASS}\shell\open" "" `${COMMANDTEXT}`
+  WriteRegStr SHCTX "Software\Classes\${FILECLASS}\shell\open\command" "" `${COMMAND}`
+!macroend
+
+!macro OgUnassociate EXT FILECLASS
+  ReadRegStr $R0 SHCTX "Software\Classes\.${EXT}" ""
+  ReadRegStr $R1 SHCTX "Software\Classes\.${EXT}" "${FILECLASS}_backup"
+  DeleteRegValue SHCTX "Software\Classes\.${EXT}" "${FILECLASS}_backup"
+  ; 그사이 다른 앱이 `.guild` 를 가져갔으면 그대로 둔다.
+  ${If} $R0 == "${FILECLASS}"
+    ${If} $R1 != ""
+    ${AndIf} $R1 != "${FILECLASS}"
+      WriteRegStr SHCTX "Software\Classes\.${EXT}" "" "$R1"
+    ${Else}
+      DeleteRegValue SHCTX "Software\Classes\.${EXT}" ""
+    ${EndIf}
+  ${EndIf}
+  ; 다른 것(OpenWithProgids 등)이 남아 있으면 키는 둔다.
+  DeleteRegKey /ifempty SHCTX "Software\Classes\.${EXT}"
+  DeleteRegKey SHCTX "Software\Classes\${FILECLASS}"
+!macroend
+
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 !define STARTMENUFOLDER "{{start_menu_folder}}"
@@ -758,7 +796,7 @@ Section "Desktop App (GUI)" SecGui
   ; Create file associations (only meaningful with GUI installed)
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
-       !insertmacro APP_ASSOCIATE "{{ext}}" "{{or association.name ext}}" "{{association-description association.description ext}}" "$INSTDIR\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
+       !insertmacro OgAssociate "{{ext}}" "{{or association.name ext}}" "{{association-description association.description ext}}" "$INSTDIR\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
     {{/each}}
   {{/each}}
 
@@ -967,7 +1005,7 @@ Section Uninstall
   ; Delete app associations
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
-      !insertmacro APP_UNASSOCIATE "{{ext}}" "{{or association.name ext}}"
+      !insertmacro OgUnassociate "{{ext}}" "{{or association.name ext}}"
     {{/each}}
   {{/each}}
 
