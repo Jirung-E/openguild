@@ -107,6 +107,8 @@ export interface PluginHandler {
 	/** DEV-414: 이 줄보다 먼저 / 나중에 도는 줄(`id`). */
 	run_after: string[];
 	run_before: string[];
+	/** DEV-415: 든 묶음. 묶음의 조건 · 읽는 것은 이미 `when` · `with` 에 합쳐져 있다. */
+	group: string | null;
 	/** DEV-407: 이 줄을 기다리나. `pre` 줄은 언제나 기다린다. */
 	wait: boolean;
 	/** 이름 붙인 동작을 가리키면 그 이름. */

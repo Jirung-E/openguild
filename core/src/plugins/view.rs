@@ -82,6 +82,9 @@ pub struct HandlerView {
     pub run_after: Vec<String>,
     #[serde(default)]
     pub run_before: Vec<String>,
+    /// DEV-415: 든 묶음. 묶음의 조건 · 데이터는 이미 `when` · `with` 에 합쳐져 있다.
+    #[serde(default)]
+    pub group: Option<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
     /// `action_kind`/`action_target` 이 찬다.
     pub action: Option<String>,
@@ -246,6 +249,7 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                     .collect(),
                 run_after: h.run_after.clone(),
                 run_before: h.run_before.clone(),
+                group: h.group.clone(),
                 action,
                 action_kind,
                 action_target,

@@ -134,6 +134,10 @@ fn handler_line(h: &view::HandlerView) -> String {
             h.with.join(", ")
         ));
     }
+    // DEV-415: 든 묶음 — 조건 · 데이터는 위에 이미 합쳐져 있다.
+    if let Some(g) = &h.group {
+        line.push_str(&crate::tf!(" · 묶음 {g}", " · group {g}"));
+    }
     // DEV-414: 순서를 적은 줄 — 적힌 순서와 다를 수 있으니 보여 준다.
     if !h.run_after.is_empty() {
         line.push_str(&crate::tf!(

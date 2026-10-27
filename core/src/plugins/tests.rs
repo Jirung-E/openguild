@@ -481,6 +481,7 @@ fn def(action: Action) -> PluginDef {
             ..Default::default()
         }],
         inputs: Vec::new(),
+        groups: Vec::new(),
     }
 }
 

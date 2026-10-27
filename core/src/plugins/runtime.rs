@@ -764,6 +764,7 @@ mod tests {
                 actions: Default::default(),
                 handlers: vec![handler(on, None)],
                 inputs: Vec::new(),
+                groups: Vec::new(),
             },
             dir: std::path::PathBuf::from("/tmp/none"),
             guild_root: std::env::temp_dir(),

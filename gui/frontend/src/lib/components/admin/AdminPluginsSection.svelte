@@ -449,6 +449,9 @@
 											>{t('plugins.reads', $locale)}: {h.with.join(', ')}</span
 										>
 									{/if}
+									{#if h.group}
+										<span class="line-label">{t('plugins.group', $locale)}: {h.group}</span>
+									{/if}
 									<!-- DEV-414: 순서를 적은 줄은 적힌 순서와 다르게 돌 수 있다 — 보여 준다. -->
 									{#if h.run_after?.length}
 										<span class="line-label"

@@ -96,6 +96,8 @@ pub fn check_dir(dir: &Path, guild_root: Option<&Path>) -> Report {
     warn_stray_scripts(dir, &def, &mut r);
     // DEV-414: 함께 걸리는 일이 없는 두 줄 사이의 순서.
     r.warnings.extend(super::order::unused_orders(&def));
+    // DEV-415: 줄이 하나도 안 든 묶음.
+    r.warnings.extend(super::groups::empty_groups(&def));
 
     if r.ok() {
         // 검사에 통과했으면 **무엇을 하게 되는지**까지 보여 준다. 허용 화면과 같은 말이다.

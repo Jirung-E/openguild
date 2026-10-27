@@ -66,7 +66,12 @@ pub fn plugin_schema() -> Value {
                 "type": "array",
                 "minItems": 1,
                 "items": { "$ref": "#/$defs/handler" },
-                "description": "언제 무엇을 할지 — 적힌 순서대로 돈다."
+                "description": "언제 무엇을 할지 — 적힌 순서대로 돈다(`run_after` · `run_before` 로 바꿀 수 있다)."
+            },
+            "groups": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/group" },
+                "description": "줄 묶음 — 여러 줄이 같이 쓰는 조건(`when`) · 연결 데이터(`with`) · 순서. 줄은 `group` 으로 든다."
             },
             "inputs": {
                 "type": "array",
@@ -75,6 +80,31 @@ pub fn plugin_schema() -> Value {
             }
         },
         "$defs": {
+            "group": {
+                "type": "object",
+                "required": ["id"],
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "string", "description": "묶음 이름 — 줄의 `group` 과 순서가 이 이름으로 가리킨다. 줄 이름과 겹칠 수 없다." },
+                    "when": {
+                        "type": "object",
+                        "description": "든 줄마다 더해지는 조건. 줄이 같은 칸을 다른 값으로 적으면 불러올 때 오류.",
+                        "additionalProperties": {
+                            "anyOf": [
+                                { "type": ["string", "number", "boolean"] },
+                                { "type": "array", "items": { "type": ["string", "number", "boolean"] } }
+                            ]
+                        }
+                    },
+                    "with": {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/with" },
+                        "description": "든 줄마다 더해지는 연결 데이터 — 함수 인자에서 줄의 것보다 앞에 온다."
+                    },
+                    "run_after": { "type": "array", "items": { "type": "string" }, "description": "묶음의 줄들이 이 줄 · 묶음보다 먼저 돌아야 한다." },
+                    "run_before": { "type": "array", "items": { "type": "string" }, "description": "묶음의 줄들이 이 줄 · 묶음보다 나중에 돌아야 한다." }
+                }
+            },
             "handler": {
                 "type": "object",
                 "additionalProperties": false,
@@ -90,6 +120,7 @@ pub fn plugin_schema() -> Value {
                         "items": { "type": "string" },
                         "description": "이 줄보다 **나중에** 돌아야 하는 줄의 `id`. 순서가 돌고 돌면 불러올 때 오류."
                     },
+                    "group": { "type": "string", "description": "든 묶음(`[[groups]]` 의 `id`) — 묶음의 조건 · 데이터 · 순서가 이 줄에도 걸린다." },
                     "pre": {
                         "type": "array",
                         "items": { "$ref": "#/$defs/preEvent" },
@@ -238,11 +269,36 @@ mod tests {
                 .unwrap_or_default()
         };
         let root = declared(&s["properties"]);
-        for f in ["name", "description", "scope", "scripts", "permissions", "actions", "handlers", "inputs"] {
+        for f in [
+            "name",
+            "description",
+            "scope",
+            "scripts",
+            "permissions",
+            "actions",
+            "handlers",
+            "groups",
+            "inputs",
+        ] {
             assert!(root.contains(&f.to_string()), "스키마에 `{f}` 가 없다");
         }
         let h = declared(&s["$defs"]["handler"]["properties"]);
-        for f in ["id", "run_after", "run_before", "pre", "post", "call", "action", "with", "when", "wait", "timeout_ms", "on_timeout", "on_error"] {
+        for f in [
+            "id",
+            "run_after",
+            "run_before",
+            "group",
+            "pre",
+            "post",
+            "call",
+            "action",
+            "with",
+            "when",
+            "wait",
+            "timeout_ms",
+            "on_timeout",
+            "on_error",
+        ] {
             assert!(h.contains(&f.to_string()), "스키마의 줄에 `{f}` 가 없다");
         }
     }

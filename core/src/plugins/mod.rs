@@ -41,6 +41,8 @@ pub mod delivery;
 pub mod guild;
 // DEV-409: 스크립트가 쓰는 길드 정보 — 상태·타입의 화면 이름, 길드 이름, 링크.
 pub mod info;
+// DEV-415: 줄 묶음 — 같은 조건 · 데이터 · 순서를 한 번만 적는다.
+pub mod groups;
 // DEV-414: 한 이벤트에 걸린 줄들의 순서 — `run_after` / `run_before`.
 pub mod order;
 // DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
@@ -242,6 +244,9 @@ pub struct PluginDef {
     pub permissions: Vec<String>,
     /// 언제 무엇을 할지 — 적힌 순서대로 돈다(DEV-414: `run_after` · `run_before` 로 바꿀 수 있다).
     pub handlers: Vec<Handler>,
+    /// DEV-415: 줄 묶음 — 여러 줄이 같이 쓰는 조건 · 데이터 · 순서. 줄은 `group` 으로 든다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<groups::Group>,
     /// REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들.
     ///
     /// 이름·설명·선택지는 **플러그인 작성자만 안다.** 코어가 `${GITHUB_TOKEN}`
@@ -266,6 +271,10 @@ pub struct Handler {
     /// DEV-414: 이 줄보다 **나중에** 돌아야 하는 줄들.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub run_before: Vec<String>,
+    /// DEV-415: 든 묶음(`[[groups]]` 의 `id`). 묶음의 조건 · 데이터는 적재 때 이 줄에 합쳐지고, 묶음 이름으로 적은
+    /// 순서는 이 줄에도 걸린다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// 바뀌기 **전**에 볼 이벤트 패턴. `post` 와 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre: Vec<String>,
@@ -1111,6 +1120,8 @@ pub fn parse_def(raw: &str) -> AppResult<PluginDef> {
     let mut def: PluginDef = toml::from_str(raw)
         .map_err(|e| AppError::BadRequest(crate::tf!("{MANIFEST} 형식 오류: {e}", "{MANIFEST} format error: {e}")))?;
     normalize(&mut def);
+    // DEV-415: 묶음의 조건 · 데이터를 줄마다 합친다 — 그 뒤의 검증은 합친 줄을 본다.
+    groups::expand(&mut def)?;
     validate(&def)?;
     Ok(def)
 }

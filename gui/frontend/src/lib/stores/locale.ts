@@ -254,6 +254,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-414: 순서를 적은 줄 — 적힌 순서와 다르게 돌 수 있다.
 	'plugins.runAfter': { ko: '{ids} 다음', en: 'after {ids}' },
 	'plugins.runBefore': { ko: '{ids} 앞', en: 'before {ids}' },
+	// DEV-415: 든 묶음 — 묶음의 조건 · 읽는 것은 이미 이 줄에 합쳐져 보인다.
+	'plugins.group': { ko: '묶음', en: 'group' },
 	'plugins.env': { ko: '쓰는 환경변수', en: 'Environment variables' },
 	'plugins.envNote': { ko: '이름만 — 값은 이 화면에 오지 않습니다', en: 'names only — values never reach this screen' },
 	'plugins.imports': { ko: '불러오는 파일', en: 'Also loads' },

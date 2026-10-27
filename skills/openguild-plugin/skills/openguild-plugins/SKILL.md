@@ -389,6 +389,33 @@ is on, so ask for it: `with = ["subject"]` and `"subject.tags" = "notify"`. The
 receiver then also gets that document in the body under `with.subject` (title,
 tags, status) — the event itself only carries `target: {kind, id}`.
 
+When several lines repeat the same condition, put it in a **group** once:
+
+```toml
+[[groups]]
+    id   = "notify"
+    with = ["subject"]
+    [groups.when]
+        "subject.tags" = "notify"
+
+[[handlers]]
+    group = "notify"
+    post  = ["comment.added"]
+    call  = "on_comment"         # fn on_comment(e, subject)
+
+[[handlers]]
+    group = "notify"
+    post  = ["attachment.added"]
+    action = "out"
+```
+
+A group's `when` and `with` are merged into each of its lines when the plugin
+loads — the consent screen shows every line with the merged condition and its
+group name. A line that gives the same condition key a different value is a load
+error (both could never hold). The group's `with` comes first in the function's
+arguments. `run_after` / `run_before` may name a group (all its lines that run in
+the same place), and a group may carry its own `run_after` / `run_before`.
+
 ## Verifying (do this before handing it over)
 
 Never point the first test at the real service. Check the definition, run the

@@ -57,24 +57,63 @@ pub fn run_order(def: &PluginDef) -> Result<Vec<usize>, String> {
         .enumerate()
         .filter_map(|(i, h)| h.id.as_deref().map(|id| (id, i)))
         .collect();
+    // DEV-415: 묶음 이름 → 든 줄들.
+    let members = |gid: &str| -> Vec<usize> {
+        def.handlers
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| h.group.as_deref() == Some(gid))
+            .map(|(i, _)| i)
+            .collect()
+    };
+    let is_group = |x: &str| def.groups.iter().any(|g| g.id == x);
     let mut succ: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut indeg = vec![0usize; n];
     for (i, h) in def.handlers.iter().enumerate() {
         let who = h.label(i);
-        let find = |id: &str| {
-            by_id.get(id).copied().ok_or_else(|| {
-                crate::tf!(
-                    "{who}: 순서에 적은 줄 `{id}` 가 없습니다 — 같은 플러그인의 줄 `id` 를 적으세요",
-                    "{who}: the line `{id}` named in the order does not exist — use a line `id` from the same plugin"
-                )
-            })
-        };
-        let mut edges = Vec::new();
-        for id in &h.run_after {
-            edges.push((find(id)?, i));
+        // 줄이 직접 적은 것, 그리고 든 묶음이 적은 것(`inherited`). 묶음의 순서는 그 묶음의 줄 가운데 **같은 자리**에서
+        // 도는 줄에만 걸린다 — 묶음에는 `pre` 줄과 `post` 줄이 섞일 수 있다.
+        let group = h
+            .group
+            .as_deref()
+            .and_then(|g| def.groups.iter().find(|x| x.id == g));
+        let mut refs: Vec<(&str, bool, bool)> = Vec::new(); // (이름, 이 줄이 뒤인가, 묶음에서 왔나)
+        refs.extend(h.run_after.iter().map(|x| (x.as_str(), true, false)));
+        refs.extend(h.run_before.iter().map(|x| (x.as_str(), false, false)));
+        if let Some(g) = group {
+            refs.extend(g.run_after.iter().map(|x| (x.as_str(), true, true)));
+            refs.extend(g.run_before.iter().map(|x| (x.as_str(), false, true)));
         }
-        for id in &h.run_before {
-            edges.push((i, find(id)?));
+        let mut edges = Vec::new();
+        for (x, after, inherited) in refs {
+            let targets: Vec<usize> = if let Some(&j) = by_id.get(x) {
+                if inherited {
+                    // 묶음이 적은 순서는 그 줄 자신 · 자리가 다른 줄에는 그냥 안 걸린다.
+                    if j == i || slot(&def.handlers[j]) != slot(h) {
+                        continue;
+                    }
+                }
+                vec![j]
+            } else if is_group(x) {
+                if h.group.as_deref() == Some(x) {
+                    return Err(crate::tf!(
+                        "{who}: 자기가 든 묶음 `{x}` 와는 순서를 적을 수 없습니다",
+                        "{who}: a line cannot be ordered against its own group `{x}`"
+                    ));
+                }
+                members(x)
+                    .into_iter()
+                    .filter(|&j| j != i && slot(&def.handlers[j]) == slot(h))
+                    .collect()
+            } else {
+                return Err(crate::tf!(
+                    "{who}: 순서에 적은 `{x}` 가 없습니다 — 같은 플러그인의 줄 `id` 나 묶음 `id` 를 적으세요",
+                    "{who}: `{x}` named in the order does not exist — use a line or group `id` from the same plugin"
+                ));
+            };
+            for j in targets {
+                edges.push(if after { (j, i) } else { (i, j) });
+            }
         }
         for (a, b) in edges {
             if a == b {
@@ -155,10 +194,21 @@ pub fn unused_orders(def: &PluginDef) -> Vec<String> {
     let mut out = Vec::new();
     for (i, h) in def.handlers.iter().enumerate() {
         for id in h.run_after.iter().chain(&h.run_before) {
-            let Some(&j) = by_id.get(id.as_str()) else {
-                continue;
+            // DEV-415: 묶음 이름이면 그 묶음의 줄 가운데 하나라도 함께 걸리면 된다.
+            let targets: Vec<usize> = match by_id.get(id.as_str()) {
+                Some(&j) => vec![j],
+                None => def
+                    .handlers
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, x)| x.group.as_deref() == Some(id.as_str()))
+                    .map(|(j, _)| j)
+                    .collect(),
             };
-            if !overlap(h, &def.handlers[j]) {
+            if targets.is_empty() {
+                continue;
+            }
+            if !targets.iter().any(|&j| overlap(h, &def.handlers[j])) {
                 out.push(crate::tf!(
                     "{}: `{id}` 와의 순서를 적었지만 두 줄이 같은 이벤트에 함께 걸리는 일이 없습니다 — 이 순서는 아무 일도 안 합니다",
                     "{}: it is ordered against `{id}`, but the two lines never fire on the same event — the order does nothing",
@@ -242,6 +292,29 @@ mod tests {
         ));
         let e = run_order(&d).unwrap_err();
         assert!(e.contains("wait"), "{e}");
+    }
+
+    /// DEV-415: 묶음 이름으로 적은 순서는 그 묶음의 줄들에, 묶음이 적은 순서는 든 줄마다 걸린다.
+    #[test]
+    fn group_names_order_their_lines() {
+        let raw = format!(
+            "name = \"o\"\nscope = [\"cli\"]\n[actions.out.post]\nurl = \"https://example.com\"\n\
+             [[groups]]\nid = \"G\"\nrun_after = [\"x\"]\n\
+             [[handlers]]\nid = \"a\"\ngroup = \"G\"\n{LINE}\
+             [[handlers]]\nid = \"c\"\nrun_before = [\"G\"]\n{LINE}\
+             [[handlers]]\nid = \"b\"\ngroup = \"G\"\n{LINE}\
+             [[handlers]]\nid = \"x\"\n{LINE}"
+        );
+        let d = crate::plugins::parse_def(&raw).unwrap();
+        // G(a, b) 는 x 다음, c 는 G 앞 — c, x 가 먼저(적힌 순서), 그다음 a, b.
+        assert_eq!(ids(&d, &run_order(&d).unwrap()), ["c", "x", "a", "b"]);
+
+        // 자기가 든 묶음과의 순서는 오류.
+        let bad = raw.replace(
+            "id = \"a\"\ngroup = \"G\"\n",
+            "id = \"a\"\ngroup = \"G\"\nrun_after = [\"G\"]\n",
+        );
+        assert!(crate::plugins::parse_def(&bad).is_err());
     }
 
     #[test]

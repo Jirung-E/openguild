@@ -674,6 +674,7 @@ mod tests {
                     ..Default::default()
                 }],
                 inputs: Vec::new(),
+                groups: Vec::new(),
             },
             dir,
             guild_root,
