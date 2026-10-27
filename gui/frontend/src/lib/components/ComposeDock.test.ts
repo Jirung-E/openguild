@@ -402,3 +402,78 @@ describe('DEV-442 팝업 켜기/끄기', () => {
 		expect(localStorage.getItem('openguild.composeDock')).toBe('false');
 	});
 });
+
+// DEV-424(admin): 마우스로 보내기 단추를 찾지 않고 **Ctrl+Enter**(맥은 ⌘Enter 도)로 바로 보낸다.
+describe('DEV-424 Ctrl+Enter 로 보낸다', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		localStorage.clear();
+		// 앞 묶음(DEV-442)이 팝업을 꺼 둔 채 끝날 수 있다.
+		composeDockEnabled.set(true);
+	});
+
+	function press(el: Element, o: KeyboardEventInit) {
+		const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...o });
+		el.dispatchEvent(e);
+		return e;
+	}
+
+	it('입력칸에서 Ctrl+Enter · ⌘Enter 면 보낸다', async () => {
+		const sent: number[] = [];
+		const { getByRole } = render(ComposeDockHarness, {
+			withSubmit: true,
+			onsubmitSpy: () => sent.push(1)
+		});
+		expect(press(getByRole('textbox'), { ctrlKey: true }).defaultPrevented).toBe(true);
+		press(getByRole('textbox'), { metaKey: true });
+		expect(sent).toEqual([1, 1]);
+	});
+
+	it('그냥 Enter 와 한글 조합 중인 Enter 는 보내지 않는다', async () => {
+		const sent: number[] = [];
+		const { getByRole } = render(ComposeDockHarness, {
+			withSubmit: true,
+			onsubmitSpy: () => sent.push(1)
+		});
+		press(getByRole('textbox'), {});
+		press(getByRole('textbox'), { ctrlKey: true, isComposing: true });
+		expect(sent).toEqual([]);
+	});
+
+	it('보낼 수 없을 때는 안 간다 — 단추와 같은 규칙', async () => {
+		const sent: number[] = [];
+		const { getByRole } = render(ComposeDockHarness, {
+			withSubmit: true,
+			submitDisabled: true,
+			onsubmitSpy: () => sent.push(1)
+		});
+		press(getByRole('textbox'), { ctrlKey: true });
+		expect(sent).toEqual([]);
+	});
+
+	it('보내기가 없는 자리에서는 아무 일도 없다', async () => {
+		const { getByRole } = render(ComposeDockHarness, {});
+		expect(press(getByRole('textbox'), { ctrlKey: true }).defaultPrevented).toBe(false);
+	});
+
+	it('위키 링크 후보가 Enter 를 가져가면 보내지 않는다', async () => {
+		const sent: number[] = [];
+		const { getByRole } = render(ComposeDockHarness, {
+			withSubmit: true,
+			onsubmitSpy: () => sent.push(1)
+		});
+		// 댓글 입력칸의 후보 고르기(onWikiKeydown)가 하는 것과 같다 — 입력칸에서 잡고 전파를 끊는다.
+		getByRole('textbox').addEventListener('keydown', (e) => e.stopImmediatePropagation(), true);
+		press(getByRole('textbox'), { ctrlKey: true });
+		expect(sent).toEqual([]);
+	});
+
+	it('보내기 단추 툴팁에 단축키가 있다', async () => {
+		const r = render(ComposeDockHarness, { hasContent: true, withSubmit: true });
+		r.getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		notify!(0);
+		await tick();
+		const send = document.querySelector('.dock-btn.send') as HTMLButtonElement;
+		expect(send.title).toMatch(/보내기 \((Ctrl\+Enter|⌘Enter)\)/);
+	});
+});

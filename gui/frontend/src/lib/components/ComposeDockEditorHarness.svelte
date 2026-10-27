@@ -2,9 +2,10 @@
 <script lang="ts">
 	import ComposeDock from './ComposeDock.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
+	let { onsubmitSpy }: { onsubmitSpy?: () => void } = $props();
 	let value = $state('쓰던 글');
 </script>
 
-<ComposeDock hasContent={true}>
+<ComposeDock hasContent={true} onsubmit={onsubmitSpy}>
 	<MarkdownEditor bind:value onError={() => {}} mediaOnly />
 </ComposeDock>

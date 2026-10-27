@@ -106,3 +106,27 @@ describe('BUG-360 팝업 안의 마크다운 편집기', () => {
 		expect(wrap.style.height, '팝업 높이가 제자리 편집기에 남았다').toBe('420px');
 	});
 });
+
+// DEV-424: 편집기(CodeMirror)에서도 먹어야 한다. CodeMirror 는 자기 keymap 이 Mod-Enter 에 '빈 줄 넣기' 를
+// 걸어 두어, 먼저 받지 않으면 빈 줄이 생긴 뒤에 보내진다.
+describe('DEV-424 편집기에서 Ctrl+Enter', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		localStorage.clear();
+	});
+
+	it('보내고, 빈 줄은 안 생긴다', async () => {
+		const sent: number[] = [];
+		render(Harness, { onsubmitSpy: () => sent.push(1) });
+		await tick();
+		const content = document.querySelector('.cm-content') as HTMLElement;
+		const lines = () => document.querySelectorAll('.cm-line').length;
+		const before = lines();
+		content.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })
+		);
+		await tick();
+		expect(sent).toEqual([1]);
+		expect(lines(), 'CodeMirror 가 빈 줄을 넣었다').toBe(before);
+	});
+});

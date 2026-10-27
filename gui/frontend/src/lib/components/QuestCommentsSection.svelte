@@ -76,6 +76,7 @@
 	// DEV-235: 접기 상태(답글/본문) 영속 — 보드의 collapsedLanes(DEV-105) 와
 	// 같은 길드별 namespace 패턴.
 	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
+	import { submitShortcutLabel } from '$lib/utils/submit-shortcut';
 
 	loadQuestIndex();
 	// DEV-171: caret 위치 팝업 — 활성 textarea + 후보 + 화면 좌표 + 선택 index.
@@ -1138,6 +1139,7 @@
 					class="btn btn-primary"
 					onclick={() => submitReply(replyingTo ?? rootId)}
 					disabled={replySaving || !replyBody.trim()}
+					title={`${t('compose.shortcut', $locale)}: ${submitShortcutLabel()}`}
 				>
 					{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
 				</button>
@@ -1646,7 +1648,12 @@
 					{/if}
 					{#if saveError}<p class="state err">{saveError}</p>{/if}
 					<div class="actions">
-						<button class="btn btn-primary" onclick={add} disabled={saving || !newBody.trim()}>
+						<button
+							class="btn btn-primary"
+							onclick={add}
+							disabled={saving || !newBody.trim()}
+							title={`${t('compose.shortcut', $locale)}: ${submitShortcutLabel()}`}
+						>
 							{saving ? t('comment.adding', $locale) : t('comment.addComment', $locale)}
 						</button>
 					</div>

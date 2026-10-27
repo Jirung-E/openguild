@@ -31,6 +31,7 @@
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
 	// 공통 MarkdownEditor 컴포넌트로 단일화.
 	import MarkdownEditor from './MarkdownEditor.svelte';
+	import { submitShortcutLabel } from '$lib/utils/submit-shortcut';
 
 	// `mode` prop 은 호환성을 위해 받지만 동작 분기 X — 항상 memo.
 	// svelte 가 "초기값만 캡쳐" 경고 안 내도록 destructure 에서 제외.
@@ -249,7 +250,12 @@
 						/>
 					</div>
 					<div class="actions">
-						<button class="btn btn-primary" onclick={() => save()} disabled={saving}>
+						<button
+							class="btn btn-primary"
+							onclick={() => save()}
+							disabled={saving}
+							title={`${t('compose.shortcut', $locale)}: ${submitShortcutLabel()}`}
+						>
 							{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 						</button>
 						<button class="btn" onclick={cancelEdit} disabled={saving}

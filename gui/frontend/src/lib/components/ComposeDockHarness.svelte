@@ -7,11 +7,13 @@
 		hasContent = false,
 		withSubmit = false,
 		withToggle = false,
+		submitDisabled = false,
 		onsubmitSpy
 	}: {
 		hasContent?: boolean;
 		withSubmit?: boolean;
 		withToggle?: boolean;
+		submitDisabled?: boolean;
 		onsubmitSpy?: () => void;
 	} = $props();
 </script>
@@ -20,7 +22,7 @@
 	{hasContent}
 	onsubmit={withSubmit ? (onsubmitSpy ?? (() => {})) : undefined}
 	submitTitle="보내기"
-	submitDisabled={false}
+	{submitDisabled}
 >
 	<!-- DEV-442: 실제 호출부는 [M↓] 옆에 둔다. -->
 	{#if withToggle}<ComposeDockToggle />{/if}

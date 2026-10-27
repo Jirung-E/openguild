@@ -1211,6 +1211,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'compose.compact': { ko: '좁게 보기', en: 'Compact' },
 	'compose.expand': { ko: '넓게 보기', en: 'Expand' },
 	'compose.send': { ko: '보내기', en: 'Send' },
+	// DEV-424: 보내기 · 저장 단추의 툴팁 — 뒤에 `Ctrl+Enter`(맥은 `⌘Enter`)가 붙는다.
+	'compose.shortcut': { ko: '단축키', en: 'Shortcut' },
 	// BUG-316(admin): 팝업에서 **원래 자리로 화면을 옮긴다** — 닫기(원래 자리로 되돌리기)와
 	// 다르다. 이건 글을 계속 쓰면서 그 자리를 눈으로 보고 싶을 때 쓴다.
 	'compose.locate': { ko: '현재 위치로', en: 'Scroll to its place' },

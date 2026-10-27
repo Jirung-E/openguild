@@ -43,6 +43,7 @@
 	import { locale, t } from '$lib/stores/locale';
 	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
 	import { composeDockEnabled } from '$lib/stores/composeDockEnabled';
+	import { isSubmitShortcut, submitShortcutLabel } from '$lib/utils/submit-shortcut';
 
 	let {
 		/** 쓰던 글이 있나 — 포커스를 잃어도 붙여 둘지 정한다. */
@@ -373,6 +374,26 @@
 		if (on instanceof HTMLElement && box?.contains(on)) on.blur();
 		focused = false;
 	}
+
+	/**
+	 * DEV-424: Ctrl+Enter(맥은 ⌘Enter 도)로 바로 보낸다 — 보내기 단추와 같은 규칙이다. `onsubmit` 이 없으면
+	 * 아무 일도 없고, `submitDisabled` 면 안 간다. 한글 조합 중인 Enter 는 `isSubmitShortcut` 이 거른다.
+	 */
+	function trySubmit(e: KeyboardEvent) {
+		if (!onsubmit || !isSubmitShortcut(e)) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (!submitDisabled) onsubmit();
+	}
+	// CodeMirror 는 자기 keymap 이 Mod-Enter 를 먼저 먹는다(빈 줄 넣기) — 그쪽은 내려가기 전에 받는다.
+	function onKeydownCapture(e: KeyboardEvent) {
+		if (e.target instanceof Element && e.target.closest('.cm-editor')) trySubmit(e);
+	}
+	// textarea 는 올라올 때 받는다 — 위키 링크 후보가 떠 있으면 Enter 는 후보 고르기 몫이다(그쪽이 전파를 끊는다).
+	function onKeydown(e: KeyboardEvent) {
+		trySubmit(e);
+	}
+	const shortcut = submitShortcutLabel();
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -382,6 +403,8 @@
 	bind:this={slot}
 	onfocusin={onFocusIn}
 	onfocusout={onFocusOut}
+	onkeydowncapture={onKeydownCapture}
+	onkeydown={onKeydown}
 >
 	<!-- BUG-315: 붙어 있는 동안에도 **제자리에 남는** 표식. 보이지도 눌리지도 않는다 —
 	     "입력칸이 돌아갈 자리가 보이나" 를 재는 데만 쓴다. -->
@@ -416,8 +439,9 @@
 							type="button"
 							onclick={onsubmit}
 							disabled={submitDisabled}
-							title={submitTitle || t('compose.send', $locale)}
+							title={`${submitTitle || t('compose.send', $locale)} (${shortcut})`}
 							aria-label={submitTitle || t('compose.send', $locale)}
+							aria-keyshortcuts="Control+Enter Meta+Enter"
 						>
 							<!-- BUG-312: 글자(↵ × ⌃)로 그리면 글꼴마다 기준선이 달라 동그라미 안에서
 							     제각각 치우친다(admin). 그림으로 그리면 가운데가 가운데다. -->
