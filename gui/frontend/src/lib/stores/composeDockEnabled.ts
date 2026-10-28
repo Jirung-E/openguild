@@ -1,16 +1,17 @@
 // DEV-442: 댓글 · 메모 팝업([[ComposeDock]])을 켜고 끈다(admin).
 //
-// DEV-459(admin): **입력창 종류마다 따로** 기억한다 — 댓글 · 답글 · 메모. 예전에는 앱 전체에 값이
-// 하나라 메모에서 끄면 댓글도 같이 꺼졌다. 다시 켜도 남는다. 기본은 켜짐이라 꺼 둔 곳만 'false' 가
-// 적혀 있다.
+// DEV-459(admin): **댓글 · 답글 / 메모** 둘로 나눠 기억한다. 예전에는 앱 전체에 값이 하나라 메모에서
+// 끄면 댓글도 같이 꺼졌다. 답글은 댓글과 한 값이다 — 같은 대화에 쓰는 입력창이다. 다시 켜도 남는다.
+// 기본은 켜짐이라 꺼 둔 곳만 'false' 가 적혀 있다.
 
 import { writable } from 'svelte/store';
 
-export type ComposeDockKind = 'comment' | 'reply' | 'memo';
+/** `comment` 는 댓글과 답글이 함께 쓴다. */
+export type ComposeDockKind = 'comment' | 'memo';
 
 /** DEV-442 때의 값 하나 — 종류별 값이 아직 없으면 이걸 따른다(꺼 둔 사람이 갑자기 켜진 것을 보지 않게). */
 const OLD_KEY = 'openguild.composeDock';
-const KINDS: ComposeDockKind[] = ['comment', 'reply', 'memo'];
+const KINDS: ComposeDockKind[] = ['comment', 'memo'];
 
 function keyOf(kind: ComposeDockKind): string {
 	return `${OLD_KEY}.${kind}`;

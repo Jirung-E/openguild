@@ -403,20 +403,20 @@ describe('DEV-442 팝업 켜기/끄기', () => {
 		expect(localStorage.getItem('openguild.composeDock.comment')).toBe('false');
 	});
 
-	// DEV-459(admin): 댓글이랑 메모랑 팝업 토글이 동기화되지 않게.
-	it('종류마다 따로다 — 댓글에서 꺼도 답글 · 메모는 켜져 있다', async () => {
+	// DEV-459(admin): 댓글이랑 메모랑 팝업 토글이 동기화되지 않게 — 답글은 댓글과 한 값.
+	it('댓글 · 답글과 메모는 따로다 — 댓글에서 꺼도 메모는 켜져 있다', async () => {
 		render(ComposeDockHarness, { withToggle: true });
 		toggle().click();
 		await tick();
-		expect(get(composeDockEnabled)).toEqual({ comment: false, reply: true, memo: true });
+		expect(get(composeDockEnabled)).toEqual({ comment: false, memo: true });
 		expect(localStorage.getItem('openguild.composeDock.memo')).toBeNull();
 	});
 
-	it('예전 값 하나(꺼 둠)는 세 곳 모두의 처음 값이 된다 — 따로 정한 곳은 그 값', () => {
+	it('예전 값 하나(꺼 둠)는 두 곳 모두의 처음 값이 된다 — 따로 정한 곳은 그 값', () => {
 		localStorage.setItem('openguild.composeDock', 'false');
-		localStorage.setItem('openguild.composeDock.reply', 'true');
+		localStorage.setItem('openguild.composeDock.memo', 'true');
 		resetComposeDock();
-		expect(get(composeDockEnabled)).toEqual({ comment: false, reply: true, memo: false });
+		expect(get(composeDockEnabled)).toEqual({ comment: false, memo: true });
 	});
 });
 

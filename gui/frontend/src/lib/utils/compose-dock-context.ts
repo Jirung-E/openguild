@@ -15,6 +15,6 @@ export const COMPOSE_DOCK = Symbol('compose-dock');
 export interface ComposeDockContext {
 	/** 지금 팝업으로 떠 있나. */
 	docked: () => boolean;
-	/** DEV-459: 어느 입력창인가 — 안쪽의 켜기/끄기 버튼([[ComposeDockToggle]])이 이 값의 것을 바꾼다. */
+	/** DEV-459: 댓글 · 답글인가 메모인가 — 안쪽의 켜기/끄기 버튼([[ComposeDockToggle]])이 이 값의 것을 바꾼다. */
 	kind: ComposeDockKind;
 }
