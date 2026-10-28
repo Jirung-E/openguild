@@ -15,6 +15,7 @@ openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 | `desktop-notify` | 하나 (스크립트 없이) | `run` | 없음 (이벤트 JSON 그대로) | — | post |
 | `deleted-audit` | 둘 (하나는 **막는다**) | `run` | 있음 | — | **pre** |
 | `backup-archive` | 하나 | `run` | 있음 (경로만 넘김) | — | post |
+| `claude-session` | 하나 (**댓글 명령**) | `run` | 있음 | — | **pre** |
 
 `telegram-quest-status` 와 `deleted-audit` 에는 **시험 파일**(`main.test.rhai`)이 함께 있다.
 `openguild plugin test examples/plugins/<이름>` 으로 돌려 본다 — 아무것도 밖으로 안 나간다.
@@ -271,3 +272,36 @@ claude -p | openguild --guild $env:OPENGUILD_GUILD_DIR quest comment add `
 | 물음은 잘 갔는데 **답글 한글이 전부 `?`** | 명령을 도는 파워셸은 따로 뜬 프로세스라 인코딩이 따로다 — 거기서도 UTF-8 로 둔다 |
 | **없는 명령 이름**이 '명령'(성공)으로 남고 답글은 없음 | 실행 파일이 안 떠서 종료 코드가 비었다 — 비었으면 명령의 성공 여부(`$?`)를 본다 |
 | `Write-Output "가 나"` 가 두 낱말로, `cmd /c "… & …"` 는 해석 오류 | 파워셸 5.1 이 명령 글을 넘길 때 안쪽 `"` 를 떨군다 — 글을 인코딩해서(`-EncodedCommand`) 넘긴다 |
+
+---
+
+## claude-session
+
+**퀘스트에 `/session` 댓글을 달면 이 컴퓨터의 터미널에서 그 퀘스트의 claude 세션을 연다**(DEV-464).
+퀘스트마다 세션을 하나씩 두고 일할 때, 퀘스트 화면에서 바로 그 세션으로 간다.
+
+| 그 이름(퀘스트 번호)의 세션이 | 띄우는 명령 |
+|---|---|
+| 없으면 | `claude -n DEV-001` — 그 이름으로 새로 만든다 |
+| 하나면 | `claude -r <세션 id>` — 그 세션을 잇는다 |
+| 여럿이면 | `claude -r DEV-001` — claude 가 그 이름으로 거른 고르기 목록을 띄운다 |
+
+세션은 claude 를 띄운 **폴더마다** 따로 모인다(`~/.claude/projects/…`). 설정의 **세션 폴더**를 비우면
+길드 폴더(`.guild` 파일이 있는 곳)다. 이름은 세션 파일마다 **마지막으로 붙은 이름**을 본다 — `/rename` 으로
+바꾼 세션은 새 이름으로 찾는다.
+
+**댓글 명령**의 예다. 바뀌기 전(pre) 줄이 댓글이 저장되기 전에 본문을 보고, 명령이면 `run` 을 맡긴 뒤
+
+- **막는다**(기본): 댓글이 남지 않는다. 대신 앱에는 막은 이유(“터미널에서 DEV-001 세션을 엽니다…”)가 오류처럼
+  뜨고 입력칸의 글이 그대로 남는다.
+- **기록 한 줄로 바꾼다**(설정 `명령 댓글은` → 기록): 오류 없이 “터미널에서 `DEV-001` 세션을 열었습니다” 가
+  댓글로 남는다.
+
+막혀도 함수가 맡긴 `run` 은 돈다 — 그래서 막으면서 터미널을 열 수 있다.
+
+터미널: 맥은 '터미널' 앱(처음 한 번 macOS 가 '제어 허용' 을 묻는다), 리눅스는 `x-terminal-emulator` 또는
+`gnome-terminal`, 윈도우는 Windows Terminal(`wt.exe`)이 있으면 그것, 없으면 파워셸 창.
+서버(`server`)에서는 안 돌린다 — 창이 서버 기계에 뜬다.
+
+`CLAUDE_SESSION_DRY_RUN=1` 이면 창을 열지 않고 띄울 명령만 적는다.
+

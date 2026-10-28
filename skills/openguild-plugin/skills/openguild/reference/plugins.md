@@ -20,11 +20,12 @@ chose.
 
 ## Ready-made examples
 
-`examples/plugins/` in the repo holds five working plugins to copy — a multi-line one
+`examples/plugins/` in the repo holds six working plugins to copy — a multi-line one
 (`telegram-quest-status`, with tests), one that hands discussion comments to an AI or another
 program on this machine (`discussion-to-ai`, with tests), a `run` one without a script
-(`desktop-notify`), one that blocks in the `pre` phase (`deleted-audit`), and one that archives
-backups (`backup-archive`).
+(`desktop-notify`), one that blocks in the `pre` phase (`deleted-audit`), one that archives
+backups (`backup-archive`), and a **comment command** (`claude-session`: a `/session` comment opens the
+quest's `claude` session in a terminal instead of being posted).
 Read `examples/plugins/README.md` before writing one from scratch.
 
 ## Definition
