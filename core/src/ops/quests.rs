@@ -634,7 +634,13 @@ pub async fn change_status(
     if let Some(reason) = ask_status_pre(store, id, &body.status_slug).await {
         return Err(crate::error::AppError::BadRequest(reason));
     }
-    let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
+    // DEV-463: 든 캠페인의 이력에도 쓴다('연결 퀘스트 모두 완료') — 그 캠페인들도 잠근다.
+    let _g = super::lock_resolved(store, || async move {
+        let mut keys = quest_key(store, id).await?;
+        keys.extend(super::campaigns::campaign_keys_of_quest(store, id).await?);
+        Ok(keys)
+    })
+    .await?;
     // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
     // updated_at 모두 변동 없음.
     // DEV-048: slug 기반 비교로 변경 — body.status_slug 와 현재 status.slug 직접 비교.
@@ -717,6 +723,7 @@ pub async fn change_status(
     .map_err(crate::error::AppError::Internal)?;
 
     let new_status_slug = body.status_slug.clone();
+    let campaigns_before = super::campaigns::quests_done_before(store, id).await?;
     let quest = sql::change_status(&store.index_pool, id, body).await?;
 
     // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: status slug 저장.
@@ -747,6 +754,7 @@ pub async fn change_status(
     .map_err(crate::error::AppError::Internal)?;
 
     write_quest_file(store, &quest, false).await?;
+    super::campaigns::note_quests_all_done(store, &campaigns_before).await?;
     store.emit_post(ev::QUEST_STATUS_CHANGED, || {
         json!({
             "quest": payload::quest(&quest),

@@ -1502,7 +1502,7 @@ enum CampaignCmd {
         #[arg(long = "end")]
         ended_at: Option<String>,
     },
-    #[command(about = tf!("캠페인 상태 변경 이력 — 최신 → 과거 순 (quest history 와 대칭).", "Campaign status change history — newest to oldest (mirrors quest history)."))]
+    #[command(about = tf!("캠페인 변경 이력 — 상태 · 체크리스트(추가 · 체크 · 해제 · 삭제) · 체크리스트 모두 완료 · 연결 퀘스트 모두 완료. 최신 → 과거 순.", "Campaign change history — status, checklist (added, checked, unchecked, removed), checklist complete, all linked quests done. Newest to oldest."))]
     History { slug: String },
     #[command(about = tf!("상태 변경 → active", "Change status → active"))]
     Start { slug: String },
@@ -5932,7 +5932,33 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                     let old = h.old_value.as_deref().unwrap_or("∅");
                     let new = h.new_value.as_deref().unwrap_or("∅");
                     let rel = openguild_core::time::format_relative(&h.ts).unwrap_or_else(|| "—".into());
-                    println!("{}  {:<10} {} → {}", h.ts, rel, old, new);
+                    // DEV-463: 체크리스트 · '모두 완료' 순간은 이름표와 값 하나.
+                    let label = match h.op.as_str() {
+                        "checklist_add" => Some(tf!("체크리스트 추가", "checklist item added")),
+                        "checklist_check" => Some(tf!("체크", "checked")),
+                        "checklist_uncheck" => Some(tf!("체크 해제", "unchecked")),
+                        "checklist_remove" => {
+                            Some(tf!("체크리스트 삭제", "checklist item removed"))
+                        }
+                        "checklist_all_done" => {
+                            Some(tf!("체크리스트 모두 완료", "checklist complete"))
+                        }
+                        "quests_all_done" => {
+                            Some(tf!("연결 퀘스트 모두 완료", "all linked quests done"))
+                        }
+                        _ => None,
+                    };
+                    match label {
+                        Some(l) => {
+                            let v = h
+                                .new_value
+                                .as_deref()
+                                .or(h.old_value.as_deref())
+                                .unwrap_or("");
+                            println!("{}  {:<10} {l}: {v}", h.ts, rel);
+                        }
+                        None => println!("{}  {:<10} {} → {}", h.ts, rel, old, new),
+                    }
                 }
                 println!("-- {} entries", history.len());
             }

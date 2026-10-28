@@ -8,7 +8,7 @@ openguild campaign list [--status active|done] [-q 'end:overdue quest:DEV-001']
 openguild campaign show <slug>
 openguild campaign new --title "..." [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 openguild campaign update <slug> [--title ...] [--description-file <PATH>] [--start ...] [--end ...]
-openguild campaign history <slug>
+openguild campaign history <slug>    # status, checklist changes, and the moments the checklist / all linked quests became done
 openguild campaign delete <slug> --yes
 openguild campaign start <slug>
 openguild campaign end <slug>

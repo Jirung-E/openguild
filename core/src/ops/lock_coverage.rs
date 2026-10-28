@@ -86,6 +86,10 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("campaigns", "set_checklist_checked_by_index", Docs),
     ("campaigns", "remove_checklist_by_index", Docs),
     ("campaigns", "write_campaign_file", Helper),
+    // DEV-463: 퀘스트 상태 변경(잠금을 쥔 채)이 든 캠페인의 이력을 남길 때 쓴다.
+    ("campaigns", "campaign_keys_of_quest", Read),
+    ("campaigns", "quests_done_before", Helper),
+    ("campaigns", "note_quests_all_done", Helper),
     ("counter", "check_and_fix_counters", Guild),
     ("comments", "get_comments", Read),
     ("comments", "set_comments", Docs),

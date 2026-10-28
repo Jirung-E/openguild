@@ -11,7 +11,7 @@ use serde_json::json;
 
 use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
-use crate::events::{Phase, names as ev, payload};
+use crate::events::{names as ev, payload};
 use crate::models::{
     CampaignChecklistItem, CampaignDetail, CampaignRow, CreateCampaignRequest,
     UpdateCampaignRequest,
@@ -111,6 +111,16 @@ pub async fn update_campaign(
     let new_status = body.status.clone();
 
     let description_explicit = body.description.is_some();
+    // DEV-463: 본문을 직접 고쳐도 체크리스트가 바뀐다 — 바뀌기 전에 '모두 체크' 였나.
+    let checked_before = if description_explicit {
+        let prev = sql::fetch_by_id(&store.index_pool, id)
+            .await?
+            .description
+            .unwrap_or_default();
+        Some(all_checked(&extract_checklist_items(&prev)))
+    } else {
+        None
+    };
     let camp = sql::update(&store.index_pool, id, body).await?;
     write_campaign_file(store, &camp, description_explicit).await?;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
@@ -120,31 +130,20 @@ pub async fn update_campaign(
     if let (Some(old), Some(new)) = (old_status, new_status)
         && old != new
     {
-        let ts = crate::time::now_local_iso8601();
-        sqlx::query(
-            "INSERT INTO campaign_history (campaign_id, campaign_slug, ts, op, old_value, new_value)
-             VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .bind(id)
-        .bind(&camp.campaign_slug)
-        .bind(&ts)
-        .bind("change_status")
-        .bind(&old)
-        .bind(&new)
-        .execute(&store.index_pool)
-        .await?;
-        // DEV-180 패턴: 파일 사이드카에도 append — 파일이 진리원.
-        crate::repo::history::append(
-            &store.paths,
+        record_history(
+            store,
+            id,
             &camp.campaign_slug,
-            &crate::repo::history::HistoryEntry {
-                ts,
-                op: "change_status".into(),
-                old: Some(old),
-                new: Some(new),
-            },
+            "change_status",
+            Some(old),
+            Some(new),
         )
-        .map_err(AppError::Internal)?;
+        .await?;
+    }
+    // DEV-463: 본문을 직접 고쳐 마지막 칸을 체크한 것도 '모두 체크' 다.
+    if let Some(before) = checked_before {
+        let after = extract_checklist_items(camp.description.as_deref().unwrap_or(""));
+        note_checklist_all_done(store, id, &camp.campaign_slug, before, &after).await?;
     }
 
     // DEV-388: 상태 이력까지 남긴 뒤가 이 mutation 의 끝이다.
@@ -382,9 +381,15 @@ pub async fn unlink_quest_by_slug(
     .await
     .map_err(AppError::Internal)?;
 
+    // DEV-463: 남은 하나뿐인 미완료 퀘스트를 떼어 내면 남은 것이 모두 완료가 된다.
+    let before = {
+        let (total, done) = quest_done_counts(store, campaign_id).await?;
+        total > 0 && done == total
+    };
     sql::unlink_quest(&store.index_pool, campaign_id, qid).await?;
     let camp = sql::fetch_by_id(&store.index_pool, campaign_id).await?;
     write_campaign_file(store, &camp, false).await?;
+    note_quests_all_done(store, &[(campaign_id, camp.campaign_slug.clone(), before)]).await?;
     store.emit_post(ev::CAMPAIGN_QUEST_UNLINKED, || {
         json!({
             "campaign": payload::campaign(&camp),
@@ -422,6 +427,7 @@ pub async fn add_checklist_line(
     } else {
         new_file_for(&camp)
     };
+    // DEV-463: 새 항목은 체크가 안 된 채 붙는다 — '모두 체크' 를 만들 수는 없다.
     let new_body = append_checklist_to_body(&cf.body, text);
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
@@ -442,6 +448,15 @@ pub async fn add_checklist_line(
                 "no checklist after add (sync failed?)"
             ))
         })?;
+    record_history(
+        store,
+        campaign_id,
+        &camp.campaign_slug,
+        "checklist_add",
+        None,
+        Some(item.text.clone()),
+    )
+    .await?;
     // DEV-388: 어느 줄이 붙었는지를 싣는다 — 인덱스만 주면 구독자가 파일을
     // 다시 읽어야 한다. 저장된 뒤의 값(파서가 정규화한 text)을 쓴다.
     store.emit_post(ev::CAMPAIGN_CHECKLIST_ADDED, || {
@@ -485,14 +500,11 @@ pub async fn set_checklist_checked_by_index(
     }
     let mut cf = CampaignFile::read(&path).map_err(AppError::Internal)?;
     // DEV-388: 구독자에게 인덱스만 주면 그 숫자가 무엇이었는지 알 수 없다.
-    // 본문을 훑는 비용은 구독자가 있을 때만 문다.
-    let text = if store.events_wanted(ev::CAMPAIGN_CHECKLIST_CHECKED, Phase::Post) {
-        extract_checklist_items(&cf.body)
-            .get(one_based_idx - 1)
-            .map(|i| i.text.clone())
-    } else {
-        None
-    };
+    // DEV-463: 이력에도 무슨 항목인지 남기므로 늘 훑는다.
+    let before_items = extract_checklist_items(&cf.body);
+    let prev = before_items.get(one_based_idx - 1).map(|i| i.checked);
+    let text = before_items.get(one_based_idx - 1).map(|i| i.text.clone());
+    let all_before = all_checked(&before_items);
     let new_body = set_checklist_checked_in_body(&cf.body, one_based_idx, checked)?;
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
@@ -501,6 +513,25 @@ pub async fn set_checklist_checked_by_index(
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    // DEV-463: 이미 그 상태였으면(다시 체크) 이력은 안 남긴다.
+    if prev != Some(checked) {
+        let op = if checked {
+            "checklist_check"
+        } else {
+            "checklist_uncheck"
+        };
+        record_history(
+            store,
+            campaign_id,
+            &camp.campaign_slug,
+            op,
+            None,
+            text.clone(),
+        )
+        .await?;
+        note_checklist_all_done(store, campaign_id, &camp.campaign_slug, all_before, &items)
+            .await?;
+    }
     store.emit_post(ev::CAMPAIGN_CHECKLIST_CHECKED, || {
         json!({
             "campaign": payload::campaign(&camp),
@@ -535,14 +566,10 @@ pub async fn remove_checklist_by_index(
         return Err(AppError::NotFound(format!("file not found: {}", path.display())));
     }
     let mut cf = CampaignFile::read(&path).map_err(AppError::Internal)?;
-    // DEV-388: 지워진 줄은 **지우기 전 본문에만** 있다. 구독자가 없으면 훑지도 않는다.
-    let text = if store.events_wanted(ev::CAMPAIGN_CHECKLIST_REMOVED, Phase::Post) {
-        extract_checklist_items(&cf.body)
-            .get(one_based_idx - 1)
-            .map(|i| i.text.clone())
-    } else {
-        None
-    };
+    // DEV-388: 지워진 줄은 **지우기 전 본문에만** 있다. DEV-463: 이력에도 남기므로 늘 훑는다.
+    let before_items = extract_checklist_items(&cf.body);
+    let text = before_items.get(one_based_idx - 1).map(|i| i.text.clone());
+    let all_before = all_checked(&before_items);
     let new_body = remove_checklist_in_body(&cf.body, one_based_idx)?;
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
@@ -551,6 +578,17 @@ pub async fn remove_checklist_by_index(
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    record_history(
+        store,
+        campaign_id,
+        &camp.campaign_slug,
+        "checklist_remove",
+        text.clone(),
+        None,
+    )
+    .await?;
+    // 체크 안 된 마지막 항목을 지우면 남은 것이 모두 체크된 상태가 된다.
+    note_checklist_all_done(store, campaign_id, &camp.campaign_slug, all_before, &items).await?;
     store.emit_post(ev::CAMPAIGN_CHECKLIST_REMOVED, || {
         json!({
             "campaign": payload::campaign(&camp),
@@ -732,6 +770,148 @@ fn set_checked_marker(line: &str, checked: bool) -> String {
     let bullet_ch = &rest[..2]; // "- " / "* " / "+ "
     let marker = if checked { "[x]" } else { "[ ]" };
     format!("{lead}{bullet_ch}{marker}{after}")
+}
+
+// ─────────────────────── 이력(DEV-226 · DEV-463) ───────────────────────
+
+/// 캠페인 이력 한 줄 — index 의 `campaign_history` 와 파일 사이드카(`.guild/history/{slug}.jsonl`, 진리원) 둘 다.
+async fn record_history(
+    store: &Store,
+    id: i64,
+    slug: &str,
+    op: &str,
+    old: Option<String>,
+    new: Option<String>,
+) -> AppResult<()> {
+    let ts = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO campaign_history (campaign_id, campaign_slug, ts, op, old_value, new_value)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind(slug)
+    .bind(&ts)
+    .bind(op)
+    .bind(&old)
+    .bind(&new)
+    .execute(&store.index_pool)
+    .await?;
+    // DEV-180 패턴: 파일 사이드카에도 append — 파일이 진리원.
+    crate::repo::history::append(
+        &store.paths,
+        slug,
+        &crate::repo::history::HistoryEntry {
+            ts,
+            op: op.into(),
+            old,
+            new,
+        },
+    )
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// 체크리스트가 하나라도 있고 모두 체크됐나.
+fn all_checked(items: &[crate::repo::ChecklistLine]) -> bool {
+    !items.is_empty() && items.iter().all(|i| i.checked)
+}
+
+/// DEV-463(admin): 체크리스트가 **모두 체크된 순간**을 남긴다 — 바뀌기 전에는 아니었고 지금(`after`)은 그렇다.
+/// 새 값은 `체크/전체`.
+async fn note_checklist_all_done(
+    store: &Store,
+    id: i64,
+    slug: &str,
+    before: bool,
+    after: &[crate::repo::ChecklistLine],
+) -> AppResult<()> {
+    if before || !all_checked(after) {
+        return Ok(());
+    }
+    let n = after.len();
+    record_history(
+        store,
+        id,
+        slug,
+        "checklist_all_done",
+        None,
+        Some(format!("{n}/{n}")),
+    )
+    .await
+}
+
+/// 연결된 (안 지워진) 퀘스트 수와 그중 완료(`counts_as_done`) 수 — 캠페인 진행 막대와 같은 셈(DEV-093).
+async fn quest_done_counts(store: &Store, id: i64) -> AppResult<(i64, i64)> {
+    Ok(sqlx::query_as(
+        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN qs.counts_as_done = 1 THEN 1 ELSE 0 END), 0)
+           FROM campaign_quests cq
+           JOIN quests q ON q.id = cq.quest_id
+           JOIN quest_statuses qs ON qs.id = q.status_id
+          WHERE cq.campaign_id = ? AND q.deleted_at IS NULL",
+    )
+    .bind(id)
+    .fetch_one(&store.index_pool)
+    .await?)
+}
+
+/// 이 퀘스트가 든 캠페인들 — 각각의 (id, slug, 지금 연결 퀘스트가 모두 완료인가).
+///
+/// 퀘스트 상태를 바꾸는 쪽이 **바꾸기 전에** 불러 두고, 바꾼 뒤 [`note_quests_all_done`] 에 넘긴다.
+pub(crate) async fn quests_done_before(
+    store: &Store,
+    quest_id: i64,
+) -> AppResult<Vec<(i64, String, bool)>> {
+    let rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT c.id, c.campaign_slug FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
+          WHERE cq.quest_id = ? AND c.deleted_at IS NULL",
+    )
+    .bind(quest_id)
+    .fetch_all(&store.index_pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (id, slug) in rows {
+        let (total, done) = quest_done_counts(store, id).await?;
+        out.push((id, slug, total > 0 && done == total));
+    }
+    Ok(out)
+}
+
+/// DEV-463(admin): 연결된 퀘스트가 **모두 완료된 순간**을 남긴다 — 퀘스트 상태가 바뀌어서든, 남은 것을 떼어
+/// 내서든. 새 값은 `완료/전체`.
+pub(crate) async fn note_quests_all_done(
+    store: &Store,
+    before: &[(i64, String, bool)],
+) -> AppResult<()> {
+    for (id, slug, was) in before {
+        if *was {
+            continue;
+        }
+        let (total, done) = quest_done_counts(store, *id).await?;
+        if total > 0 && done == total {
+            record_history(
+                store,
+                *id,
+                slug,
+                "quests_all_done",
+                None,
+                Some(format!("{done}/{total}")),
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+/// 퀘스트가 든 캠페인들의 열쇠 — 퀘스트 상태 변경이 그 캠페인들의 이력에도 쓴다(DEV-463).
+pub(crate) async fn campaign_keys_of_quest(store: &Store, quest_id: i64) -> AppResult<Vec<DocKey>> {
+    let slugs: Vec<String> = sqlx::query_scalar(
+        "SELECT c.campaign_slug FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
+          WHERE cq.quest_id = ? AND c.deleted_at IS NULL",
+    )
+    .bind(quest_id)
+    .fetch_all(&store.index_pool)
+    .await?;
+    Ok(slugs.iter().map(|s| DocKey::campaign(s)).collect())
 }
 
 /// DEV-432: 캠페인 행 id → 문서 열쇠. 없으면 빈 목록 — 변경이 잠근 뒤 "없음" 으로 끝난다.
@@ -962,6 +1142,168 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(e, AppError::BadRequest(_)), "{bad}: {e:?}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // DEV-463(admin): 체크리스트 변경 · 모두 체크 · 연결 퀘스트 모두 완료를 이력에 남긴다.
+    async fn history_store(label: &str) -> (std::path::PathBuf, Store, i64) {
+        let dir = std::env::temp_dir().join(format!(
+            "og-chist-{label}-{}-{}",
+            std::process::id(),
+            crate::test_seq()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::repo::seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        let camp = create_campaign(
+            &store,
+            CreateCampaignRequest {
+                title: "캠프".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        (dir, store, camp.id)
+    }
+
+    async fn ops_of(store: &Store, id: i64) -> Vec<(String, Option<String>, Option<String>)> {
+        let mut v: Vec<_> = sql::list_history(&store.index_pool, id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|h| (h.op, h.old_value, h.new_value))
+            .collect();
+        v.reverse(); // 오래된 것부터
+        v
+    }
+
+    fn op(
+        o: &str,
+        old: Option<&str>,
+        new: Option<&str>,
+    ) -> (String, Option<String>, Option<String>) {
+        (o.into(), old.map(Into::into), new.map(Into::into))
+    }
+
+    #[tokio::test]
+    async fn checklist_changes_and_the_all_checked_moment_are_recorded() {
+        let (dir, store, id) = history_store("check").await;
+        add_checklist_line(&store, id, "하나").await.unwrap();
+        add_checklist_line(&store, id, "둘").await.unwrap();
+        set_checklist_checked_by_index(&store, id, 1, true)
+            .await
+            .unwrap();
+        set_checklist_checked_by_index(&store, id, 1, true)
+            .await
+            .unwrap(); // 이미 체크 — 안 남는다
+        set_checklist_checked_by_index(&store, id, 2, true)
+            .await
+            .unwrap(); // 여기서 모두 체크
+        set_checklist_checked_by_index(&store, id, 2, false)
+            .await
+            .unwrap();
+        add_checklist_line(&store, id, "셋").await.unwrap();
+        remove_checklist_by_index(&store, id, 3).await.unwrap();
+        // 체크 안 된 둘을 지우면 남은 하나가 모두 체크 — 지워서 된 것도 그 순간이다.
+        remove_checklist_by_index(&store, id, 2).await.unwrap();
+        assert_eq!(
+            ops_of(&store, id).await,
+            vec![
+                op("checklist_add", None, Some("하나")),
+                op("checklist_add", None, Some("둘")),
+                op("checklist_check", None, Some("하나")),
+                op("checklist_check", None, Some("둘")),
+                op("checklist_all_done", None, Some("2/2")),
+                op("checklist_uncheck", None, Some("둘")),
+                op("checklist_add", None, Some("셋")),
+                op("checklist_remove", Some("셋"), None),
+                op("checklist_remove", Some("둘"), None),
+                op("checklist_all_done", None, Some("1/1")),
+            ]
+        );
+        // 파일(진리원)에도 같은 줄 수.
+        let side = crate::repo::history::read_all(&crate::repo::history::history_path(
+            &store.paths,
+            "C-001",
+        ))
+        .unwrap();
+        assert_eq!(side.len(), 10);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn checking_the_last_box_by_editing_the_body_is_the_all_checked_moment() {
+        let (dir, store, id) = history_store("body").await;
+        let set = |d: &str| UpdateCampaignRequest {
+            description: Some(d.into()),
+            ..Default::default()
+        };
+        update_campaign(&store, id, set("- [x] 하나\n- [ ] 둘\n"))
+            .await
+            .unwrap();
+        update_campaign(&store, id, set("- [x] 하나\n- [x] 둘\n"))
+            .await
+            .unwrap();
+        update_campaign(&store, id, set("- [x] 하나\n- [x] 둘\n\n끝.\n"))
+            .await
+            .unwrap(); // 이미 모두 — 안 남는다
+        assert_eq!(
+            ops_of(&store, id).await,
+            vec![op("checklist_all_done", None, Some("2/2"))]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn the_moment_all_linked_quests_are_done_is_recorded() {
+        let (dir, store, id) = history_store("quests").await;
+        let mut qids = Vec::new();
+        for t in ["가", "나", "다"] {
+            let q = crate::ops::create_quest(
+                &store,
+                crate::models::CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: t.into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+            link_quest_by_slug(&store, id, &q.quest_id).await.unwrap();
+            qids.push((q.id, q.quest_id));
+        }
+        let done = |s: &str| crate::models::ChangeStatusRequest {
+            status_slug: s.into(),
+        };
+        crate::ops::change_status(&store, qids[0].0, done("done"))
+            .await
+            .unwrap();
+        crate::ops::change_status(&store, qids[1].0, done("done"))
+            .await
+            .unwrap();
+        assert!(ops_of(&store, id).await.is_empty(), "아직 하나 남았다");
+        // 남은 하나를 떼어 내면 모두 완료.
+        unlink_quest_by_slug(&store, id, &qids[2].1).await.unwrap();
+        // 되돌렸다가 다시 완료하면 그 순간도 남는다.
+        crate::ops::change_status(&store, qids[1].0, done("open"))
+            .await
+            .unwrap();
+        crate::ops::change_status(&store, qids[1].0, done("done"))
+            .await
+            .unwrap();
+        assert_eq!(
+            ops_of(&store, id).await,
+            vec![
+                op("quests_all_done", None, Some("2/2")),
+                op("quests_all_done", None, Some("2/2"))
+            ]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

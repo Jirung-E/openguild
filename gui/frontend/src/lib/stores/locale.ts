@@ -1164,6 +1164,13 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'history.empty': { ko: '변경 이력 없음.', en: 'No change history.' },
 	'history.loadFailed': { ko: '이력 로드 실패', en: 'Failed to load history' },
 	'history.none': { ko: '(없음)', en: '(none)' },
+	// DEV-463: 캠페인 이력 — 체크리스트와 '모두 완료' 순간.
+	'history.checklistAdd': { ko: '체크리스트 추가', en: 'Checklist item added' },
+	'history.checklistCheck': { ko: '체크', en: 'Checked' },
+	'history.checklistUncheck': { ko: '체크 해제', en: 'Unchecked' },
+	'history.checklistRemove': { ko: '체크리스트 삭제', en: 'Checklist item removed' },
+	'history.checklistAllDone': { ko: '체크리스트 모두 완료', en: 'Checklist complete' },
+	'history.questsAllDone': { ko: '연결 퀘스트 모두 완료', en: 'All linked quests done' },
 	// REQ-007: 변경 이력 섹션 접기 토글. 기본은 접힘 — 항상 필요한 정보가
 	// 아닌데 상세 페이지 하단을 길게 차지한다.
 	// REQ-008: backlink 섹션 — 이 문서를 참조하는 문서.

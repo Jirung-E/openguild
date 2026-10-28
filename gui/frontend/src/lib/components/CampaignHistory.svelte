@@ -64,12 +64,22 @@
 		return 'var(--text-faint)';
 	}
 
+	// DEV-463: 체크리스트 · '모두 완료' 순간 — 이름표와 값 하나(항목 글, 또는 `완료/전체`)로 보인다.
+	const SINGLE: Record<string, string> = {
+		checklist_add: 'history.checklistAdd',
+		checklist_check: 'history.checklistCheck',
+		checklist_uncheck: 'history.checklistUncheck',
+		checklist_remove: 'history.checklistRemove',
+		checklist_all_done: 'history.checklistAllDone',
+		quests_all_done: 'history.questsAllDone'
+	};
+
 	function opLabel(op: string): string {
 		switch (op) {
 			case 'change_status':
 				return '';
 			default:
-				return op;
+				return SINGLE[op] ? t(SINGLE[op], $locale) : op;
 		}
 	}
 </script>
@@ -120,6 +130,8 @@
 								{statusLabel(e.new_value)}
 							</span>
 						</span>
+					{:else if SINGLE[e.op]}
+						<span class="ch-change">{e.new_value ?? e.old_value ?? ''}</span>
 					{:else}
 						<span class="ch-change">
 							{e.old_value ?? '∅'} <span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
