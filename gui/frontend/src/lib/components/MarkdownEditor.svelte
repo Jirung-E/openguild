@@ -28,7 +28,7 @@
 	import { keymap, type ViewUpdate } from '@codemirror/view';
 	import { Prec } from '@codemirror/state';
 	import { redo } from '@codemirror/commands';
-	import { theme } from '$lib/stores/theme';
+	import { effectiveTheme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	import { indentExtensions } from '$lib/utils/editor-indent';
 	import { editorSettings } from '$lib/stores/editorSettings';
@@ -337,7 +337,7 @@
 					autoFormat: untrack(() => $editorSettings.autoFormat)
 				}),
 				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
-				editorThemeCompartment.of(editorThemeExtension(untrack(() => $theme))),
+				editorThemeCompartment.of(editorThemeExtension(untrack(() => $effectiveTheme))),
 				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions.)
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
 				// DEV-130: tab/space + 2/4칸 들여쓰기.
@@ -402,7 +402,7 @@
 
 	// 테마 변경 — 재생성 없이 확장만 교체 (커서/스크롤/undo 보존).
 	$effect(() => {
-		const t = $theme;
+		const t = $effectiveTheme;
 		view?.dispatch({
 			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
 		});

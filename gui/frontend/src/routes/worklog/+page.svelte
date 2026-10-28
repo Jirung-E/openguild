@@ -34,7 +34,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
-	import { theme } from '$lib/stores/theme';
+	import { effectiveTheme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	import { indentExtensions } from '$lib/utils/editor-indent';
 	import { editorSettings } from '$lib/stores/editorSettings';
@@ -254,7 +254,7 @@
 			extensions: [
 				basicSetup,
 				markdown(),
-				editorThemeCompartment.of(editorThemeExtension($theme)),
+				editorThemeCompartment.of(editorThemeExtension($effectiveTheme)),
 				crossLinkAutocomplete(),
 				indentExtensions($editorSettings),
 				EditorView.theme({
@@ -268,7 +268,7 @@
 		});
 	}
 	$effect(() => {
-		const t = $theme;
+		const t = $effectiveTheme;
 		editorView?.dispatch({
 			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
 		});
