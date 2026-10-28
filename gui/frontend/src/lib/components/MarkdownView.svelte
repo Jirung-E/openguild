@@ -287,8 +287,14 @@
 	}
 
 	/** 고른 글이 이 글 안이면 [형광펜] 을 띄운다. */
-	function onSelectEnd() {
+	function onSelectEnd(e?: MouseEvent) {
 		if (!hlOn || !container) return;
+		// BUG-379: 오른쪽 · 가운데 버튼은 고르기가 아니다 — WebKit 은 우클릭하면 그 단어를 골라 버려서, 이미
+		// 칠한 글에 [형광펜] 이 떴다.
+		if (e && e.button !== 0) {
+			if (e.button === 2) onMarkContext(e);
+			return;
+		}
 		// 마우스를 뗀 직후에는 선택이 아직 안 굳은 브라우저가 있다 — 한 틱 뒤에 본다.
 		setTimeout(() => {
 			const sel = window.getSelection();
@@ -381,6 +387,25 @@
 		const h = markAtPoint(e.clientX, e.clientY);
 		removeAt = h ? { x: e.clientX, y: e.clientY, h } : null;
 		if (h) addAt = null;
+	}
+
+	/**
+	 * BUG-379(admin): 칠한 곳을 **우클릭**하면 [지우기] — 링크도. 링크는 왼쪽 클릭이 이동이라 그 길로는 지울 수
+	 * 없었다. 앱은 우클릭 메뉴를 통째로 막아 두므로(`contextmenu` 가 여기까지 안 온다) 버튼을 뗄 때 받는다.
+	 * 칠하지 않은 곳의 우클릭은 그대로 둔다.
+	 */
+	function onMarkContext(e: MouseEvent) {
+		if (!hlOn || placed.length === 0) return;
+		const h = markAtPoint(e.clientX, e.clientY);
+		if (!h) return;
+		// 우클릭이 고른 단어는 버린다 — 남겨 두면 다음 클릭이 '고르는 중' 으로 읽힌다.
+		window.getSelection()?.removeAllRanges();
+		addAt = null;
+		removeAt = { x: e.clientX, y: e.clientY, h };
+	}
+	/** 브라우저로 볼 때는 우클릭 메뉴가 살아 있다 — 칠한 곳에서는 [지우기] 와 겹치지 않게 막는다. */
+	function onContextMenu(e: MouseEvent) {
+		if (hlOn && placed.length > 0 && markAtPoint(e.clientX, e.clientY)) e.preventDefault();
 	}
 
 	// 바깥을 누르거나, Esc 거나, 화면이 움직이면 띄운 버튼을 닫는다 — 버튼은 화면 좌표에 붙어 있다.
@@ -590,6 +615,7 @@
 	onmouseout={onContainerOut}
 	onclick={onContainerClick}
 	onmouseup={onSelectEnd}
+	oncontextmenu={onContextMenu}
 	onkeyup={(e) => {
 		if (e.shiftKey) onSelectEnd();
 	}}
