@@ -900,7 +900,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// 우하단 floating 점프 버튼 (퀘스트/캠페인 상세 공통).
 	'common.jumpTop': { ko: '맨 위로', en: 'Back to top' },
 	// BUG-318: 휴대폰에서는 브라우저가 주는 크기 손잡이를 못 쓴다 — 직접 둔 손잡이.
-	'common.resizeBox': { ko: '높이 조절 (끌거나 ↑↓)', en: 'Resize (drag or ↑↓)' },
+	// DEV-460: Shift 를 누르고 끌면 2배.
+	'common.resizeBox': {
+		ko: '높이 조절 (끌거나 ↑↓ · Shift 로 끌면 2배)',
+		en: 'Resize (drag or ↑↓ · Shift-drag for 2×)'
+	},
 	'common.jumpTopShort': { ko: '위', en: 'Top' },
 	'common.jumpComments': { ko: '댓글로 이동', en: 'Jump to comments' },
 	'common.jumpCommentsShort': { ko: '댓글', en: 'Comments' },

@@ -215,3 +215,49 @@ describe('BUG-318 크기 손잡이', () => {
 		expect(() => drag(50)).not.toThrow();
 	});
 });
+
+// DEV-460(admin): 손잡이가 화면 아래쪽이면 마우스가 더 못 내려가 원하는 만큼 못 키운다 — Shift 를 누르고 끌면 2배.
+describe('DEV-460 Shift 로 끌면 2배', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		document.documentElement.style.fontSize = '16px';
+	});
+
+	function moves(steps: { y: number; shift?: boolean }[]) {
+		const g = grip();
+		g.setPointerCapture = () => {};
+		g.releasePointerCapture = () => {};
+		g.dispatchEvent(new FakePointerEvent('pointerdown', { clientY: 100, bubbles: true }));
+		for (const s of steps) {
+			g.dispatchEvent(
+				new FakePointerEvent('pointermove', { clientY: s.y, shiftKey: !!s.shift, bubbles: true })
+			);
+		}
+		g.dispatchEvent(new FakePointerEvent('pointerup', { bubbles: true }));
+	}
+
+	it('Shift 를 누르고 끌면 움직인 거리의 2배', async () => {
+		const el = targetEl(200);
+		render(SizeGrip, { props: { target: el } });
+		await tick();
+		moves([{ y: 160, shift: true }]);
+		expect(el.style.height).toBe('320px');
+	});
+
+	it('끄는 도중 Shift 를 누르거나 떼도 튀지 않는다 — 그 사이 움직인 만큼만 곱한다', async () => {
+		const el = targetEl(200);
+		render(SizeGrip, { props: { target: el } });
+		await tick();
+		moves([{ y: 150 }, { y: 150, shift: true }, { y: 200, shift: true }, { y: 220 }]);
+		// 50 + 0 + 50×2 + 20
+		expect(el.style.height).toBe('370px');
+	});
+
+	it('한계에 걸렸다가 되돌리면 곧바로 줄어든다', async () => {
+		const el = targetEl(100);
+		render(SizeGrip, { props: { target: el, max: 18.75 } }); // 300px
+		await tick();
+		moves([{ y: 600 }, { y: 580 }]);
+		expect(el.style.height).toBe('280px');
+	});
+});

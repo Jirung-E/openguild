@@ -107,8 +107,18 @@
 	});
 
 	let dragging = $state(false);
-	let startY = 0;
-	let startH = 0;
+	/** 지난번 포인터 위치와 그때까지 정한 높이 — 움직인 만큼씩 더한다(DEV-460). */
+	let lastY = 0;
+	let curH = 0;
+
+	/**
+	 * DEV-460(admin): 손잡이가 화면 아래쪽에 있으면 마우스가 더 못 내려가 원하는 만큼 못 키운다. 손잡이 자리는
+	 * 그대로 두고 **Shift 를 누르고 끌면 2배로** 움직인다.
+	 *
+	 * 시작점과의 차이에 곱하면 끄는 도중 Shift 를 누르거나 뗄 때 크기가 툭 튄다 — 그래서 움직일 때마다 그 사이의
+	 * 거리만 곱해 더한다.
+	 */
+	const SHIFT_GAIN = 2;
 
 	function limit(h: number): number {
 		const r = rem();
@@ -134,8 +144,8 @@
 
 	function down(e: PointerEvent) {
 		if (!target) return;
-		startY = e.clientY;
-		startH = target.getBoundingClientRect().height;
+		lastY = e.clientY;
+		curH = target.getBoundingClientRect().height;
 		dragging = true;
 		// 손가락이 떠나도 이 손잡이가 계속 받는다 — 빠르게 끌면 손가락이 손잡이 밖으로 나간다.
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -145,9 +155,12 @@
 
 	function move(e: PointerEvent) {
 		if (!dragging) return;
-		const dy = e.clientY - startY;
-		// 위쪽 손잡이는 올릴수록 커진다.
-		apply(startH + (atTop ? -dy : dy));
+		const dy = (e.clientY - lastY) * (e.shiftKey ? SHIFT_GAIN : 1);
+		lastY = e.clientY;
+		// 위쪽 손잡이는 올릴수록 커진다. 한계에 걸리면 그 값에서 다시 시작한다 — 넘친 만큼 쌓아 두면 되돌릴 때
+		// 한참 끌어야 줄기 시작한다.
+		curH = limit(curH + (atTop ? -dy : dy));
+		apply(curH);
 	}
 
 	function up(e: PointerEvent) {
