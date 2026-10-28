@@ -8,9 +8,13 @@
 // 손잡이를 놓는 것은 부르는 쪽(댓글 폼 등)이고 그쪽은 팝업인지 모른다. 사이에 값을 끼워
 // 넘기는 대신 문맥으로 알린다 — 팝업 안에 있으면 손잡이가 알아서 방향을 바꾼다.
 
+import type { ComposeDockKind } from '$lib/stores/composeDockEnabled';
+
 export const COMPOSE_DOCK = Symbol('compose-dock');
 
 export interface ComposeDockContext {
 	/** 지금 팝업으로 떠 있나. */
 	docked: () => boolean;
+	/** DEV-459: 어느 입력창인가 — 안쪽의 켜기/끄기 버튼([[ComposeDockToggle]])이 이 값의 것을 바꾼다. */
+	kind: ComposeDockKind;
 }

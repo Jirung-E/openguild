@@ -6,6 +6,6 @@
 	let value = $state('쓰던 글');
 </script>
 
-<ComposeDock hasContent={true} onsubmit={onsubmitSpy}>
+<ComposeDock kind="comment" hasContent={true} onsubmit={onsubmitSpy}>
 	<MarkdownEditor bind:value onError={() => {}} mediaOnly />
 </ComposeDock>

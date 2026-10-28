@@ -1072,6 +1072,7 @@
 	     호출 위치(스레드 하단 vs 특정 level-1 그룹 옆)만 다름. -->
 	<!-- DEV-416: 답글도 같다 — 스레드 아래쪽에서 쓰다 보면 화면 밖으로 밀린다. -->
 	<ComposeDock
+		kind="reply"
 		hasContent={replyBody.trim().length > 0}
 		label={/* glyph-ok: 팝업 머리의 글 — 아이콘을 못 넣는 문자열 */ `↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author ?? ''}`}
 		onsubmit={() => submitReply(replyingTo ?? rootId)}
@@ -1587,6 +1588,7 @@
 
 			<!-- 새 top-level 댓글 — DEV-416: 화면 밖으로 밀리면 아래에 붙는다. -->
 			<ComposeDock
+				kind="comment"
 				hasContent={newBody.trim().length > 0}
 				onsubmit={add}
 				submitTitle={t('comment.addComment', $locale)}

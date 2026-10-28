@@ -1,25 +1,28 @@
 <!--
   DEV-442: 댓글 · 메모 팝업([[ComposeDock]]) 켜기/끄기 — [M↓] 옆에 둔다(admin).
 
-  켜져 있으면 [M↓] 처럼 칠해진다. 앱 전체에 하나뿐인 값이라 어느 입력창에서 눌러도 같다.
+  켜져 있으면 [M↓] 처럼 칠해진다. DEV-459: 값은 입력창 종류(댓글 · 답글 · 메모)마다 따로다 —
+  어느 종류인지는 감싼 [[ComposeDock]] 이 문맥으로 알려 준다.
 -->
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { composeDockEnabled, toggleComposeDock } from '$lib/stores/composeDockEnabled';
+	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
 
-	const title = $derived(
-		$composeDockEnabled ? t('compose.dockOn', $locale) : t('compose.dockOff', $locale)
-	);
+	const kind = getContext<ComposeDockContext | undefined>(COMPOSE_DOCK)?.kind ?? 'comment';
+	const on = $derived($composeDockEnabled[kind]);
+	const title = $derived(on ? t('compose.dockOn', $locale) : t('compose.dockOff', $locale));
 </script>
 
 <button
 	type="button"
 	class="dock-toggle"
-	class:active={$composeDockEnabled}
-	onclick={toggleComposeDock}
+	class:active={on}
+	onclick={() => toggleComposeDock(kind)}
 	{title}
 	aria-label={title}
-	aria-pressed={$composeDockEnabled}
+	aria-pressed={on}
 >
 	<!-- 화면(큰 틀) 아래에 붙은 입력창(아래 막대). -->
 	<svg

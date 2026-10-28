@@ -19,6 +19,7 @@
 </script>
 
 <ComposeDock
+	kind="comment"
 	{hasContent}
 	onsubmit={withSubmit ? (onsubmitSpy ?? (() => {})) : undefined}
 	submitTitle="보내기"

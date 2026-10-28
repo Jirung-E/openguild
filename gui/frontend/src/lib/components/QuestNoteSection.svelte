@@ -223,6 +223,7 @@
 				<!-- DEV-416: 본문을 보면서 메모를 쓰다 보면 편집기가 화면 밖으로 밀린다 —
 				     그때는 화면 아래에 붙여 둔다(글자를 쳐도 스크롤이 안 튀도록). -->
 				<ComposeDock
+					kind="memo"
 					hasContent={editText.trim().length > 0}
 					label={label.heading}
 					onsubmit={() => save()}

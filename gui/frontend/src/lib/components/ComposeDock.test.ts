@@ -13,7 +13,8 @@ async function settled() {
 	await tick();
 }
 import ComposeDockHarness from './ComposeDockHarness.svelte';
-import { composeDockEnabled } from '$lib/stores/composeDockEnabled';
+import { get } from 'svelte/store';
+import { composeDockEnabled, resetComposeDock } from '$lib/stores/composeDockEnabled';
 
 // jsdom 에는 IntersectionObserver 가 없다 — 시험이 직접 "얼마나 보이나" 를 흘려 넣는다.
 // 비율인 것이 중요하다: **한 귀퉁이라도 잘리면** 붙어야 한다(admin).
@@ -356,7 +357,7 @@ describe('DEV-442 팝업 켜기/끄기', () => {
 		document.body.innerHTML = '';
 		localStorage.clear();
 		// 값은 모듈에 하나 — 시험끼리 새지 않게 켜짐으로 되돌린다.
-		composeDockEnabled.set(true);
+		resetComposeDock();
 	});
 
 	function toggle() {
@@ -399,7 +400,23 @@ describe('DEV-442 팝업 켜기/끄기', () => {
 		render(ComposeDockHarness, { withToggle: true });
 		toggle().click();
 		await tick();
-		expect(localStorage.getItem('openguild.composeDock')).toBe('false');
+		expect(localStorage.getItem('openguild.composeDock.comment')).toBe('false');
+	});
+
+	// DEV-459(admin): 댓글이랑 메모랑 팝업 토글이 동기화되지 않게.
+	it('종류마다 따로다 — 댓글에서 꺼도 답글 · 메모는 켜져 있다', async () => {
+		render(ComposeDockHarness, { withToggle: true });
+		toggle().click();
+		await tick();
+		expect(get(composeDockEnabled)).toEqual({ comment: false, reply: true, memo: true });
+		expect(localStorage.getItem('openguild.composeDock.memo')).toBeNull();
+	});
+
+	it('예전 값 하나(꺼 둠)는 세 곳 모두의 처음 값이 된다 — 따로 정한 곳은 그 값', () => {
+		localStorage.setItem('openguild.composeDock', 'false');
+		localStorage.setItem('openguild.composeDock.reply', 'true');
+		resetComposeDock();
+		expect(get(composeDockEnabled)).toEqual({ comment: false, reply: true, memo: false });
 	});
 });
 
@@ -409,7 +426,7 @@ describe('DEV-424 Ctrl+Enter 로 보낸다', () => {
 		document.body.innerHTML = '';
 		localStorage.clear();
 		// 앞 묶음(DEV-442)이 팝업을 꺼 둔 채 끝날 수 있다.
-		composeDockEnabled.set(true);
+		resetComposeDock();
 	});
 
 	function press(el: Element, o: KeyboardEventInit) {

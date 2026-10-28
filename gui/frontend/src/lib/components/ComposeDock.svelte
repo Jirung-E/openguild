@@ -11,7 +11,7 @@
   ## 언제 붙나
 
       붙는다 = **입력칸**이 조금이라도 가려짐 && (포커스가 있거나 쓴 글이 있다) && 닫기를 안 눌렀다
-             && 팝업을 꺼 두지 않았다(DEV-442 — [M↓] 옆 버튼, 앱 전체에 하나)
+             && 팝업을 꺼 두지 않았다(DEV-442 — [M↓] 옆 버튼, DEV-459: 댓글 · 답글 · 메모마다 따로)
 
   처음에는 "완전히 화면 밖" 일 때만 붙였는데, 반쯤 걸친 상태가 제일 불편하다(admin) — 입력칸은
   보이는데 커서 줄이 안 보여서 결국 스크롤이 튄다. 그래서 **한 귀퉁이라도 잘리면** 붙인다.
@@ -42,10 +42,12 @@
 	import { setContext } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
-	import { composeDockEnabled } from '$lib/stores/composeDockEnabled';
+	import { composeDockEnabled, type ComposeDockKind } from '$lib/stores/composeDockEnabled';
 	import { isSubmitShortcut, submitShortcutLabel } from '$lib/utils/submit-shortcut';
 
 	let {
+		/** DEV-459: 어느 입력창인가 — 팝업 켜기/끄기를 이 종류마다 따로 기억한다. */
+		kind,
 		/** 쓰던 글이 있나 — 포커스를 잃어도 붙여 둘지 정한다. */
 		hasContent = false,
 		/** 붙었을 때 상자 위에 붙일 이름(누구에게 쓰는 중인지 등). */
@@ -56,6 +58,7 @@
 		submitDisabled = false,
 		children
 	}: {
+		kind: ComposeDockKind;
 		hasContent?: boolean;
 		label?: string;
 		onsubmit?: () => void;
@@ -119,7 +122,7 @@
 	let sticky = $state(false);
 	// DEV-442: 꺼 두면(입력창의 팝업 버튼) 안 붙는다 — 붙어 있다가 끄면 제자리로 돌아간다.
 	const want = $derived(
-		$composeDockEnabled && !fullyVisible && !dismissed && (focused || hasContent)
+		$composeDockEnabled[kind] && !fullyVisible && !dismissed && (focused || hasContent)
 	);
 	$effect(() => {
 		const w = want;
@@ -142,7 +145,12 @@
 	const docked = $derived(sticky);
 
 	// BUG-323: 안쪽의 크기 손잡이가 이걸 보고 위로 갈지 아래로 갈지 정한다.
-	setContext<ComposeDockContext>(COMPOSE_DOCK, { docked: () => docked });
+	setContext<ComposeDockContext>(COMPOSE_DOCK, {
+		docked: () => docked,
+		get kind() {
+			return kind;
+		}
+	});
 
 	// 붙은 상자는 본문 칸과 같은 폭·같은 가로 위치를 쓴다 — 창 전체로 늘리면 글 읽는 폭과
 	// 어긋나 보인다.
