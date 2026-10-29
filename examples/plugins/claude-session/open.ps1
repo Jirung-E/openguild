@@ -24,12 +24,40 @@ $root = $env:CLAUDE_CONFIG_DIR
 if (-not $root) { $root = Join-Path $HOME '.claude' }
 $store = Join-Path (Join-Path $root 'projects') ($dir -replace '[^A-Za-z0-9]', '-')
 
-# Sessions whose LAST title is this name (a session can be renamed later).
+# Count sessions with this name the way `claude -r <name>` picks them (claude 2.1): read only the first and
+# last 64KB of each file (fast even with many large session files); the name is the last customTitle in the
+# tail, else in the head, else the auto title (aiTitle). Case and surrounding spaces are ignored.
+function Get-Ends([string]$path) {
+    $n = 65536
+    $fs = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
+    try {
+        $buf = New-Object byte[] $n
+        $read = $fs.Read($buf, 0, $n)
+        $head = [Text.Encoding]::UTF8.GetString($buf, 0, $read)
+        $tail = $head
+        if ($fs.Length -gt $n) {
+            [void]$fs.Seek($fs.Length - $n, 'Begin')
+            $read = $fs.Read($buf, 0, $n)
+            $tail = [Text.Encoding]::UTF8.GetString($buf, 0, $read)
+        }
+        return @($head, $tail)
+    } finally { $fs.Dispose() }
+}
+function Get-Last([string]$text, [string]$key) {
+    $ms = [regex]::Matches($text, '"' + $key + '": ?"([^"]*)"')
+    if ($ms.Count -gt 0) { return $ms[$ms.Count - 1].Groups[1].Value }
+    return $null
+}
+$want = $name.ToLowerInvariant()
 $ids = @()
 if (Test-Path -LiteralPath $store) {
     Get-ChildItem -LiteralPath $store -Filter *.jsonl | ForEach-Object {
-        $last = Select-String -LiteralPath $_.FullName -Pattern '"type":"custom-title"' -SimpleMatch | Select-Object -Last 1
-        if ($last -and $last.Line.Contains('"customTitle":"' + $name + '"')) { $ids += $_.BaseName }
+        try { $head, $tail = Get-Ends $_.FullName } catch { return }
+        $t = Get-Last $tail 'customTitle'
+        if (-not $t) { $t = Get-Last $head 'customTitle' }
+        if (-not $t) { $t = Get-Last $tail 'aiTitle' }
+        if (-not $t) { $t = Get-Last $head 'aiTitle' }
+        if ($t -and $t.Trim().ToLowerInvariant() -eq $want) { $ids += $_.BaseName }
     }
 }
 if ($ids.Count -eq 0) { $claude = @('-n', $name) }

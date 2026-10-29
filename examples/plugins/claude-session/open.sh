@@ -19,18 +19,27 @@ dir=${PROJECT_DIR:-${OPENGUILD_GUILD_DIR:-.}}
 dir=$(cd "$dir" && pwd -P)
 store="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(printf '%s' "$dir" | sed 's/[^A-Za-z0-9]/-/g')"
 
-# 이 이름의 세션 — 세션 파일마다 **마지막으로 붙은 이름**이 이것인 것(이름은 나중에 바꿀 수 있다).
+# 이 이름의 세션 — claude 가 `-r 이름` 으로 고르는 방식과 같게 센다(claude 2.1 기준):
+# 파일의 앞 · 뒤 64KB 만 읽고(그래서 큰 세션 파일이 많아도 빠르다), 이름은 뒤쪽의 마지막 customTitle,
+# 없으면 앞쪽의 것, 그것도 없으면 자동 제목(aiTitle). 대소문자와 앞뒤 공백은 가리지 않는다.
+# 64KB 로 자르면 글자가 중간에서 끊길 수 있다 — sed 가 '잘못된 바이트'로 멈추지 않게 바이트로 읽는다(LC_ALL=C).
+last_of() { LC_ALL=C sed -n "s/.*\"$1\": \{0,1\}\"\([^\"]*\)\".*/\1/p" | tail -n 1; }
+title_of() {
+	t=$(tail -c 65536 "$1" | last_of customTitle)
+	[ -n "$t" ] || t=$(head -c 65536 "$1" | last_of customTitle)
+	[ -n "$t" ] || t=$(tail -c 65536 "$1" | last_of aiTitle)
+	[ -n "$t" ] || t=$(head -c 65536 "$1" | last_of aiTitle)
+	printf '%s' "$t" | LC_ALL=C sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
+want=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
 count=0
 id=
 for f in "$store"/*.jsonl; do
 	[ -f "$f" ] || continue
-	last=$(grep '"type":"custom-title"' "$f" | tail -n 1 || true)
-	case $last in
-	*"\"customTitle\":\"$name\""*)
+	if [ "$(title_of "$f")" = "$want" ]; then
 		count=$((count + 1))
 		id=$(basename "$f" .jsonl)
-		;;
-	esac
+	fi
 done
 
 case $count in
