@@ -205,6 +205,21 @@
 		}
 	}
 
+	/**
+	 * BUG-385: **찾기 칸 밖에서도 Esc 로 닫는다**(admin: 찾기 칸에 포커스가 있을 때만 먹었다).
+	 * 본문을 눌러 읽다 보면 포커스는 이미 찾기 칸을 떠나 있다.
+	 *
+	 * 다른 것이 먼저 Esc 를 쓴 경우는 건드리지 않는다 — 이미 처리한 Esc(`defaultPrevented`,
+	 * 찾기 칸 자신도 여기 해당), 한글 조합 중인 Esc, 모달 · 팔레트가 떠 있을 때(그 창을 닫는
+	 * Esc 다).
+	 */
+	function onWindowKeyDown(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+		if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+		e.preventDefault();
+		close();
+	}
+
 	// 질의가 바뀌면 다시 찾는다.
 	//
 	// **`$effect` 로 하면 안 된다.** `recompute()` 는 `matches`/`current` 를
@@ -258,6 +273,8 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<svelte:window onkeydown={onWindowKeyDown} />
+
 <div class="find-bar" role="search" {...{ 'data-find-skip': '' }} onkeydown={onKeyDown}>
 	<input
 		bind:this={inputEl}

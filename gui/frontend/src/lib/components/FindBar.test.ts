@@ -99,6 +99,45 @@ describe('FindBar — 강조 정리', () => {
 		expect(registry.map.has('og-find-current')).toBe(false);
 	});
 
+	// BUG-385: 본문을 눌러 포커스가 찾기 칸을 떠나도 Esc 로 닫혀야 한다.
+	it('찾기 칸 밖에서 누른 Escape 로도 닫힌다', async () => {
+		const onclose = vi.fn();
+		await mount(onclose);
+		await search('hello');
+		await fireEvent.keyDown(document.body, { key: 'Escape' });
+		expect(onclose).toHaveBeenCalledTimes(1);
+		expect(registry.map.has('og-find')).toBe(false);
+	});
+
+	it('찾기 칸 안의 Escape 는 한 번만 닫는다', async () => {
+		const onclose = vi.fn();
+		await mount(onclose);
+		await fireEvent.keyDown(screen.getByRole('search'), { key: 'Escape' });
+		expect(onclose).toHaveBeenCalledTimes(1);
+	});
+
+	it('모달이 떠 있으면 그 Escape 는 모달 몫이다 — 찾기는 그대로', async () => {
+		const onclose = vi.fn();
+		await mount(onclose);
+		const dlg = document.createElement('div');
+		dlg.setAttribute('role', 'dialog');
+		document.body.appendChild(dlg);
+		await fireEvent.keyDown(dlg, { key: 'Escape' });
+		dlg.remove();
+		expect(onclose).not.toHaveBeenCalled();
+	});
+
+	it('이미 처리한 Escape 는 건드리지 않는다', async () => {
+		const onclose = vi.fn();
+		await mount(onclose);
+		const box = document.querySelector('main') as HTMLElement;
+		const stop = (e: KeyboardEvent) => e.preventDefault();
+		box.addEventListener('keydown', stop);
+		await fireEvent.keyDown(box, { key: 'Escape' });
+		box.removeEventListener('keydown', stop);
+		expect(onclose).not.toHaveBeenCalled();
+	});
+
 	// BUG-268: 레지스트리에서 빼는 것만으로는 화면이 안 지워지는 환경이 있다
 	// (WebKit 계열의 무효화 문제로 보인다). Highlight 자체를 비워야 그 자리가
 	// 확실히 다시 그려진다. **비우기가 delete 보다 먼저** 나가야 한다 —
