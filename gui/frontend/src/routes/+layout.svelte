@@ -29,6 +29,7 @@
 	import { onMount, tick } from 'svelte';
 	// DEV-276: 최근 본 문서 추적.
 	import { recordRecentDocHref } from '$lib/stores/recentDocs';
+	import { forwardRecentDoc, listenRecentDocs } from '$lib/utils/recent-doc-relay';
 	import Nav from '$lib/components/Nav.svelte';
 	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
 	// decorations:false 와 세트). 네이티브 타이틀바 테마 어긋남 원천 해소.
@@ -309,13 +310,28 @@
 	// 모든 문서가 같게 보임). 이제 표시 시점에 cross-link 인덱스에서 조회
 	// (recentDocTitle) — 정확하고 이름 변경도 자동 반영.
 	function trackRecentDoc() {
-		// 자식창(단일 문서 보기)은 목록을 쌓을 필요 없음 — 새 창으로 연 문서는 연 쪽 창이
-		// 기록한다(BUG-352, openInWindow).
-		if ($isChildWindow) return;
-		recordRecentDocHref($page.url.pathname + $page.url.search);
+		const href = $page.url.pathname + $page.url.search;
+		// 자식창(단일 문서 보기)에는 '최근' 단추가 없다 — 본 문서를 메인 창에 알려 그 목록에 올린다
+		// (DEV-468). 새 창을 여는 순간은 연 쪽 창이 따로 기록한다(BUG-352, openInWindow).
+		if ($isChildWindow) {
+			void forwardRecentDoc(href);
+			return;
+		}
+		recordRecentDocHref(href);
 	}
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);
+	// DEV-468: 메인 창은 자식 창이 알린 문서를 받는다.
+	onMount(() => {
+		if ($isChildWindow) return;
+		let stop: (() => void) | null = null;
+		let gone = false;
+		void listenRecentDocs().then((f) => (gone ? f() : (stop = f)));
+		return () => {
+			gone = true;
+			stop?.();
+		};
+	});
 
 	// DEV-355: 네비게이션마다 현재 길드를 항목 state 에 남긴다. popstate 로
 	// 다른 길드의 항목에 도달하면 그 길드를 다시 연 뒤 reload 한다. reload 가
