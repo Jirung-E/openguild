@@ -49,7 +49,7 @@
 	import { initFonts } from '$lib/stores/fontSettings';
 	// REQ-018: 페이지 내 검색 (Ctrl/Cmd+F).
 	import FindBar from '$lib/components/FindBar.svelte';
-	import { isFindablePath } from '$lib/utils/find-in-page';
+	import { FIND_PARAM, isFindablePath } from '$lib/utils/find-in-page';
 	import { hdrLimit, applyHdrLimitToDocument } from '$lib/stores/hdrSettings';
 	import { contentWidth, contentWidthCss } from '$lib/stores/contentWidth';
 	import {
@@ -81,6 +81,8 @@
 	// REQ-018: 찾기 바. 문서형 화면(긴 글을 읽는 곳)에서만 연다.
 	let findOpen = $state(false);
 	let findable = $derived(isFindablePath($page.url.pathname));
+	// DEV-467: 주소의 `?find=` 로 열 때 찾기 바에 넣을 검색어(Cmd+F 로 열면 빈 값).
+	let findInitial = $state('');
 
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
@@ -519,6 +521,7 @@
 			if (!findable) return;
 			e.preventDefault();
 			// 이미 열려 있으면 입력칸으로 포커스를 되돌린다(브라우저와 같은 습관).
+			findInitial = '';
 			findOpen = false;
 			void tick().then(() => (findOpen = true));
 		};
@@ -529,6 +532,20 @@
 	// 다른 화면으로 가면 닫는다 — 잡아 둔 Range 가 통째로 남의 문서 것이 된다.
 	$effect(() => {
 		if (!findable) findOpen = false;
+	});
+
+	// DEV-467: 검색 팔레트가 본문 · 댓글에서 찾은 문서를 `?find=검색어` 로 연다 — 찾기 바를 그 검색어로
+	// 띄우고 주소에서는 뗀다(뒤로 가기 · 새로고침 때 다시 뜨지 않게, 최근 목록 · 링크 복사에 안 섞이게).
+	afterNavigate(() => {
+		const term = $page.url.searchParams.get(FIND_PARAM);
+		if (!term) return;
+		const url = new URL($page.url);
+		url.searchParams.delete(FIND_PARAM);
+		replaceState(url, $page.state);
+		if (!isFindablePath(url.pathname)) return;
+		findInitial = term;
+		findOpen = false;
+		void tick().then(() => (findOpen = true));
 	});
 
 	// DEV-335: 첨부 이미지 HDR 표시 제한 — `<html>` 의 `--hdr-limit` 갱신.
@@ -699,7 +716,7 @@
 	<OverlayScrollbar target={mainEl ?? null} />
 {/if}
 {#if findOpen}
-	<FindBar root={mainEl ?? null} onclose={() => (findOpen = false)} />
+	<FindBar root={mainEl ?? null} initial={findInitial} onclose={() => (findOpen = false)} />
 {/if}
 <!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
      업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->

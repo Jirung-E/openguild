@@ -16,6 +16,7 @@ import {
 	matchToRange,
 	stepIndex,
 	isFindablePath,
+	withFindParam,
 	SKIP_ATTR
 } from './find-in-page';
 
@@ -178,5 +179,21 @@ describe('isFindablePath — 어디서 열 것인가', () => {
 
 	it('캠페인 **생성 폼**은 문서가 아니다 — 입력칸뿐이라 찾을 글이 없다', () => {
 		expect(isFindablePath('/campaigns/new')).toBe(false);
+	});
+});
+
+describe('DEV-467 withFindParam — 문서 주소에 찾을 검색어를 붙인다', () => {
+	it('쿼리가 없는 주소 · 있는 주소 모두에 붙이고, 한글 · 공백은 인코딩한다', () => {
+		expect(withFindParam('/quests/DEV-001', '사과 배')).toBe(
+			'/quests/DEV-001?find=%EC%82%AC%EA%B3%BC+%EB%B0%B0'
+		);
+		expect(withFindParam('/rules?slug=a', 'x')).toBe('/rules?slug=a&find=x');
+		const back = new URL(withFindParam('/library?id=BOOK-001', '사과 배'), 'http://x');
+		expect(back.searchParams.get('id')).toBe('BOOK-001');
+		expect(back.searchParams.get('find')).toBe('사과 배');
+	});
+
+	it('빈 검색어면 그대로', () => {
+		expect(withFindParam('/quests/DEV-001', '')).toBe('/quests/DEV-001');
 	});
 });

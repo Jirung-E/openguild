@@ -196,3 +196,17 @@ export function isFindablePath(pathname: string): boolean {
 	if (pathname.startsWith('/campaigns/') && pathname !== '/campaigns/new') return true;
 	return pathname === '/rules' || pathname === '/library' || pathname === '/worklog';
 }
+
+/**
+ * DEV-467: 문서를 열면서 찾기 바를 이 검색어로 띄우라는 쿼리 이름 — 검색 팔레트가 본문 · 댓글에서 찾은
+ * 문서를 열 때 붙이고, 레이아웃이 읽어 찾기 바를 띄운 뒤 주소에서 뗀다. 새 창도 같은 길(`winTarget`)로 간다.
+ */
+export const FIND_PARAM = 'find';
+
+/** `href`(쿼리 포함 가능)에 찾을 검색어를 붙인다. 빈 검색어면 그대로. */
+export function withFindParam(href: string, term: string): string {
+	if (!term) return href;
+	const url = new URL(href, 'http://x');
+	url.searchParams.set(FIND_PARAM, term);
+	return url.pathname + url.search + url.hash;
+}

@@ -200,3 +200,13 @@ describe('BUG-382 FindBar — 검색어를 알리고, 펼쳐져 처음 찾으면
 		rect.mockRestore();
 	});
 });
+
+describe('DEV-467 FindBar — initial 로 열면 곧바로 찾는다', () => {
+	it('검색어가 입력칸에 들어가고 일치 수가 나온다', async () => {
+		const FindBar = (await import('./FindBar.svelte')).default;
+		const root = document.querySelector('main') as HTMLElement;
+		render(FindBar, { props: { root, onclose: () => {}, initial: 'hello' } });
+		expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('hello');
+		await vi.waitFor(() => expect(screen.getByText('1/2')).toBeTruthy());
+	});
+});

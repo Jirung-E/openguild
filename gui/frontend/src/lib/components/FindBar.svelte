@@ -16,7 +16,7 @@
 <script lang="ts">
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { findQuery } from '$lib/stores/findQuery';
 	import {
@@ -29,7 +29,13 @@
 		type Match
 	} from '$lib/utils/find-in-page';
 
-	let { root, onclose }: { root: HTMLElement | null; onclose: () => void } = $props();
+	// DEV-467: `initial` — 열자마자 찾을 검색어(검색 팔레트에서 연 문서). 문서가 아직 그려지는 중이어도
+	// 아래 MutationObserver 가 다시 찾고, 처음 찾았을 때 그리로 간다.
+	let {
+		root,
+		onclose,
+		initial = ''
+	}: { root: HTMLElement | null; onclose: () => void; initial?: string } = $props();
 
 	let query = $state('');
 	let matches = $state<Match[]>([]);
@@ -230,6 +236,13 @@
 			mo.disconnect();
 			if (reTimer) clearTimeout(reTimer);
 		};
+	});
+
+	onMount(() => {
+		if (!initial) return;
+		query = initial;
+		findQuery.set(initial);
+		recompute();
 	});
 
 	// 열리면 곧바로 입력할 수 있어야 한다.

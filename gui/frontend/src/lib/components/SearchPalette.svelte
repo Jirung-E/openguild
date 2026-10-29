@@ -39,6 +39,7 @@
 	import { KIND_ALIASES } from '$lib/stores/questIndex';
 	// DEV-255: 결과 열기 방식(미리보기/자식윈도우/페이지이동) 선택 — 공용 헬퍼.
 	import { openInWindow, openInPage } from '$lib/utils/open-item';
+	import { withFindParam } from '$lib/utils/find-in-page';
 	// DEV-205(3차): i18n — KIND_LABEL(ko 고정) 대신 t() 기반 kindLabel().
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-294: recent 모드에서 최근 본 문서 순서 소스.
@@ -437,16 +438,25 @@
 		}
 	}
 
+	/**
+	 * DEV-467: 본문 · 댓글 등에서만 맞은 문서(강화 검색 — 제목 · 번호 · 태그로는 안 맞은 것)는 열면서
+	 * 찾기 바를 그 검색어로 띄운다 → 찾은 곳으로 바로 간다. 제목 등으로 맞은 문서는 그냥 연다.
+	 */
+	function targetHref(it: Item): string {
+		if (!wideWhyByKey.has(hitKey(it.kind, it.label))) return it.href;
+		return withFindParam(it.href, parsed.term);
+	}
+
 	// DEV-255: 페이지로 이동 — 현재 창 라우팅 + 팔레트 닫기(기존 동작 유지).
 	function goItem(it: Item) {
-		openInPage(it.href);
+		openInPage(targetHref(it));
 		onclose();
 	}
 
 	// DEV-255: 항목별 새 창 — 팔레트는 열어둔 채 유지(여러 개 동시에 띄우고
 	// 비교하는 사용 흐름 지원, AskUserQuestion 결정).
 	function windowItem(it: Item) {
-		void openInWindow(it.href, displayName(it));
+		void openInWindow(targetHref(it), displayName(it));
 	}
 
 	// 표시 이름 — 규칙처럼 title 이 비면 label 만(중복/후행 공백 방지).
