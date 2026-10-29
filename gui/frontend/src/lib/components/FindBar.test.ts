@@ -147,3 +147,26 @@ describe('FindBar — 강조 정리', () => {
 		expect(registry.map.has('og-find-current')).toBe(false);
 	});
 });
+
+describe('BUG-381 FindBar — 내용이 바뀌어 다시 찾을 때는 스크롤하지 않는다', () => {
+	it('질의를 넣으면 찾은 곳으로 가고, 그 뒤 DOM 이 바뀌어도 다시 끌고 가지 않는다', async () => {
+		// 찾은 곳이 화면 아래에 있다 — 이동 경로를 탄다.
+		const below = { top: 5000, bottom: 5020, left: 0, right: 10, width: 10, height: 20 } as DOMRect;
+		const rect = vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(below);
+		const scroll = vi.fn();
+		Element.prototype.scrollIntoView = scroll;
+		await mount();
+		await search('hello');
+		expect(scroll).toHaveBeenCalledTimes(1);
+
+		// 사용자가 스크롤하는 동안 화면 일부가 다시 그려진다.
+		document.querySelector('main')!.appendChild(document.createElement('div'));
+		await new Promise((r) => setTimeout(r, 300));
+		expect(scroll).toHaveBeenCalledTimes(1);
+
+		// 다음으로 넘기면 다시 간다.
+		await fireEvent.keyDown(screen.getByRole('search'), { key: 'Enter' });
+		expect(scroll).toHaveBeenCalledTimes(2);
+		rect.mockRestore();
+	});
+});

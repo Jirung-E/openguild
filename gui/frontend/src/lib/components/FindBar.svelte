@@ -154,6 +154,11 @@
 		anchor?.scrollIntoView({ block: 'center', behavior: 'auto' });
 	}
 
+	/**
+	 * `keepCurrent` 는 내용이 바뀌어 다시 찾는 경로(아래 MutationObserver)다 — 그때는 **칠하기만 하고
+	 * 스크롤하지 않는다**(BUG-381). 화면에 따라 스크롤만 해도 DOM 이 바뀌는데(지연 렌더 등), 그때마다
+	 * 찾은 곳으로 다시 끌고 가서 사용자가 스크롤할 수 없었다. 스크롤은 질의를 바꾸거나 넘길 때만.
+	 */
 	function recompute(keepCurrent = false) {
 		const target = root ?? document.querySelector('main');
 		segments = target ? buildSegments(target) : [];
@@ -164,7 +169,7 @@
 		else if (keepCurrent && prev >= 0) current = Math.min(prev, next.length - 1);
 		else current = 0;
 		paint();
-		revealCurrent();
+		if (!keepCurrent) revealCurrent();
 	}
 
 	function step(delta: number) {
