@@ -16,6 +16,7 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
+	import SizeGrip from '$lib/components/SizeGrip.svelte';
 	// DEV-130 #2: 본문 textarea Tab = 들여쓰기 (설정 반영).
 	import { tabInsert } from '$lib/actions/tab-insert';
 	import { locale, t } from '$lib/stores/locale';
@@ -34,6 +35,7 @@
 	let startedAt = $state('');
 	let endedAt = $state('');
 	let description = $state('');
+	let bodyInput: HTMLTextAreaElement | undefined = $state();
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
@@ -115,12 +117,14 @@
 				<span class="lab">{t('ncm.body', $locale)}</span>
 				<textarea class="input"
 					use:tabInsert
+					bind:this={bodyInput}
 					bind:value={description}
 					rows="8"
 					disabled={saving}
 					placeholder={t('ncm.bodyPlaceholder', $locale)}
 				></textarea>
 			</label>
+			<SizeGrip target={bodyInput} />
 
 			{#if error}<div class="error">{error}</div>{/if}
 
@@ -212,7 +216,9 @@
 	}
 	textarea {
 		font-family: var(--font-mono);
-		resize: vertical;
+		/* BUG-384: 브라우저가 구석에 그려 주던 손잡이 대신 아래 [[SizeGrip]] — 휴대폰에서도 되고,
+		   다른 입력칸과 같은 손잡이다. 기본값이 `both` 라 끈다고 적어야 꺼진다(BUG-320). */
+		resize: none;
 		min-height: 6.5rem;
 	}
 	.period-row {

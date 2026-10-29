@@ -34,6 +34,7 @@
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
 	import QuestCombobox from './QuestCombobox.svelte';
+	import SizeGrip from './SizeGrip.svelte';
 	import { showToast } from '$lib/stores/toast';
 
 	let {
@@ -315,6 +316,7 @@
 	// 제목 input 자동 focus — autofocus 속성 대신 명시적 .focus() 호출
 	// (a11y_autofocus 경고 회피 + 같은 UX).
 	let titleInput: HTMLInputElement | undefined = $state();
+	let descInput: HTMLTextAreaElement | undefined = $state();
 
 	// DEV-060: 템플릿 선택 — Tauri 전용 (local 파일 기반, CLI 와 동일 정책).
 	import { detectEnvironment } from '$lib/api/transport';
@@ -624,6 +626,7 @@
 						<textarea
 							use:tabInsert
 							class="input ta"
+							bind:this={descInput}
 							rows="5"
 							placeholder={t('nqm.descPlaceholder', $locale)}
 							bind:value={description}
@@ -633,6 +636,7 @@
 							onkeydowncapture={onWikiKeydown}
 						></textarea>
 					</label>
+					<SizeGrip target={descInput} />
 				</div>
 
 				<details class="relations-field">
@@ -1012,7 +1016,9 @@
 	.ta {
 		width: 100%;
 		box-sizing: border-box;
-		resize: vertical;
+		/* BUG-384: 브라우저가 구석에 그려 주던 손잡이 대신 아래 [[SizeGrip]] — 휴대폰에서도 되고,
+		   다른 입력칸과 같은 손잡이다. 기본값이 `both` 라 끈다고 적어야 꺼진다(BUG-320). */
+		resize: none;
 		font-family: var(--font-mono);
 		line-height: var(--lh-body);
 	}

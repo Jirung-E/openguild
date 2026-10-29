@@ -85,6 +85,7 @@
 	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
+	import SizeGrip from '$lib/components/SizeGrip.svelte';
 	// DEV-272: 글꼴 설정.
 	import {
 		uiFont,
@@ -187,6 +188,7 @@
 	}
 
 	let importText = $state('');
+	let importInput: HTMLTextAreaElement | undefined = $state();
 	let importing = $state(false);
 	function importPresets() {
 		try {
@@ -805,10 +807,12 @@
 						<div class="ct-import">
 							<textarea
 								class="input ct-import-text"
+								bind:this={importInput}
 								rows="4"
 								placeholder={t('settings.importJsonPlaceholder', $locale)}
 								bind:value={importText}
 							></textarea>
+							<SizeGrip target={importInput} />
 							<div class="ct-actions">
 								<button class="th-btn" onclick={importPresets} disabled={!importText.trim()}>
 									{t('settings.import', $locale)}
@@ -1229,7 +1233,9 @@
 	.ct-import-text {
 		width: 100%;
 		font-family: var(--font-mono);
-		resize: vertical;
+		/* BUG-384: 브라우저가 구석에 그려 주던 손잡이 대신 아래 [[SizeGrip]] — 휴대폰에서도 되고,
+		   다른 입력칸과 같은 손잡이다. 기본값이 `both` 라 끈다고 적어야 꺼진다(BUG-320). */
+		resize: none;
 	}
 	.ct-tokens {
 		display: grid;

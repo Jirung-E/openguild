@@ -261,3 +261,41 @@ describe('DEV-460 Shift 로 끌면 2배', () => {
 		expect(el.style.height).toBe('280px');
 	});
 });
+
+// BUG-384: 브라우저 손잡이(CSS `resize`)가 남은 입력칸이 있었다(admin: "아직도 구형 핸들을
+// 쓰고 있는 곳이 있다"). 손잡이는 이것 하나로 — 새 입력칸이 옛 손잡이로 돌아가지 않게 묶는다.
+describe('옛 손잡이가 남은 곳이 없다', () => {
+	async function sources(): Promise<{ path: string; text: string }[]> {
+		const { readFileSync, readdirSync } = await import('node:fs');
+		const { fileURLToPath } = await import('node:url');
+		const { dirname, join, resolve } = await import('node:path');
+		const src = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+		const out: { path: string; text: string }[] = [];
+		const walk = (dir: string) => {
+			for (const e of readdirSync(dir, { withFileTypes: true })) {
+				const p = join(dir, e.name);
+				if (e.isDirectory()) walk(p);
+				// 손잡이 자신(설명에 옛 방식을 적어 둠)과 시험용 틀은 뺀다.
+				else if (/\.(svelte|css)$/.test(e.name) && !/(Harness|SizeGrip)\.svelte$/.test(e.name))
+					out.push({ path: p.slice(src.length + 1), text: readFileSync(p, 'utf8') });
+			}
+		};
+		walk(src);
+		return out;
+	}
+
+	it('CSS 로 브라우저 손잡이를 켜는 곳이 없다', async () => {
+		const bad = (await sources())
+			.filter((f) => /resize:\s*(both|vertical|horizontal|block|inline)/.test(f.text))
+			.map((f) => f.path);
+		expect(bad).toEqual([]);
+	});
+
+	it('textarea 가 있는 화면은 브라우저 손잡이를 끄고 SizeGrip 을 둔다', async () => {
+		const bad = (await sources())
+			.filter((f) => f.path.endsWith('.svelte') && f.text.includes('<textarea'))
+			.filter((f) => !/resize:\s*none/.test(f.text) || !f.text.includes('<SizeGrip'))
+			.map((f) => f.path);
+		expect(bad).toEqual([]);
+	});
+});
