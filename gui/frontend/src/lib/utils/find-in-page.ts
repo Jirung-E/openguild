@@ -27,6 +27,10 @@ export interface Match {
  *
  * `<script>`/`<style>` 은 당연하고, `<textarea>`/`<input>` 은 값이 텍스트
  * 노드가 아니라 여기서 안 잡힌다(편집 중인 글은 편집기 자신의 찾기가 맡는다).
+ *
+ * `<button>` 도 뺀다(BUG-386, admin: '취소' 를 찾았더니 상태 변경 단추의 '취소됨'이
+ * 걸렸다). 단추 글자는 문서 내용이 아니라 조작 장치의 이름이다 — 편집 · 삭제 · 취소 ·
+ * 상태 단추가 본문 사이에 끼어 찾기 수만 늘린다.
  */
 const SKIP_TAGS = new Set([
 	'SCRIPT',
@@ -34,6 +38,7 @@ const SKIP_TAGS = new Set([
 	'NOSCRIPT',
 	'TEMPLATE',
 	'TEXTAREA',
+	'BUTTON',
 	'INPUT',
 	'SELECT',
 	'OPTION',

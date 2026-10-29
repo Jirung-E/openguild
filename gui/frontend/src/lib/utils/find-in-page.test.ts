@@ -54,6 +54,13 @@ describe('buildSegments', () => {
 		expect(buildSegments(root).map((s) => s.text)).toEqual(['본문']);
 	});
 
+	it('단추 글자는 안 본다 — 상태 변경 단추의 "취소됨" 이 걸리면 안 된다(BUG-386)', () => {
+		const root = mount(
+			'<p>주문 취소 요청</p><div><button>취소됨</button><button>취소</button></div>'
+		);
+		expect(buildSegments(root).map((s) => s.text)).toEqual(['주문 취소 요청']);
+	});
+
 	it('aria-hidden / hidden 도 뺀다', () => {
 		const root = mount('<p>본문</p><p aria-hidden="true">숨김</p><p hidden>숨김2</p>');
 		expect(buildSegments(root).map((s) => s.text)).toEqual(['본문']);
