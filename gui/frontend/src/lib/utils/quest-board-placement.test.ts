@@ -187,6 +187,32 @@ describe('DEV-420 화살표는 아래로', () => {
 		expect(out.get(2)!.y).toBe(600);
 	});
 
+	// BUG-383: 완료 레인처럼 다른 레인이 길다고 새 퀘스트가 그 깊이까지 내려가면 안 된다.
+	it('다른 레인이 길어도 새 퀘스트는 자기 레인 위쪽에 선다', () => {
+		const quests = [q(1, 3), q(2, 1), q(3, 1)];
+		const stored = new Map([
+			[1, { x: 2100, y: 5000 }], // 셋째 레인(완료) 깊숙이
+			[2, { x: 100, y: 0 }]
+		]);
+		const out = autoPlace(quests, stored, lanes, M, []);
+		expect(out.get(3)!.y).toBe(M.rowStep);
+	});
+
+	it('선행이 다른 레인 아래쪽에 있으면 그보다는 아래에 — 화살표는 그대로 아래로', () => {
+		const quests = [q(1, 2), q(2, 1)];
+		const stored = new Map([[1, { x: 1100, y: 700 }]]);
+		const edges = [{ quest_id: 2, prerequisite_id: 1 }];
+		const out = autoPlace(quests, stored, lanes, M, edges);
+		expect(out.get(2)!.y).toBe(800);
+	});
+
+	it('레인은 저장된 x 가 아니라 지금 상태로 본다 — 완료로 옮긴 노드의 x 는 옛 레인에 남는다', () => {
+		const quests = [q(1, 3), q(2, 1)];
+		const stored = new Map([[1, { x: 100, y: 5000 }]]); // 열림 레인에 있다가 완료로 감
+		const out = autoPlace(quests, stored, lanes, M, []);
+		expect(out.get(2)!.y).toBe(0);
+	});
+
 	// 고리가 있으면 **전부를 아래로 향하게 하는 것은 불가능하다**(수학적으로). 여기서 지키는
 	// 것은 두 가지다 — 아무도 자리를 잃지 않고, 고리 밖의 흐름은 그대로 아래로 간다.
 	it('고리가 있어도 자리를 잃지 않고, 고리 밖 흐름은 아래로', () => {

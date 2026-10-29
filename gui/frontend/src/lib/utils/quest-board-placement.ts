@@ -64,7 +64,7 @@ export type PlacementMetrics = {
  *
  * - 입력 배열의 **순서와 무관**하다(id 오름차순으로 채운다).
  * - 저장된 노드가 있는 레인은 **그 아래부터** 채운다 — 손으로 옮겨 둔 노드와
- *   겹치지 않게.
+ *   겹치지 않게. 상관없는 레인의 노드는 보지 않는다(BUG-383).
  */
 export function autoPlace(
 	quests: readonly PlacementQuest[],
@@ -74,18 +74,33 @@ export function autoPlace(
 	/** DEV-420: 선행 관계. 안 주면 예전처럼 순서대로만 채운다(깊이 전부 0과 같다). */
 	edges: readonly PlacementEdge[] = []
 ): Map<number, BoardPoint> {
+	const unplaced = quests.filter((q) => !stored.has(q.id)).sort((a, b) => a.id - b.id);
+
 	// 자동 배치를 시작할 y — 손으로 옮겨 둔 노드보다 아래에서 시작한다.
 	//
 	// 레인마다 따로 잡지 않고 **가장 아래 것 하나**를 기준으로 삼는다: 띠가 레인을 가로지르기
 	// 때문에, 레인마다 시작점이 다르면 같은 깊이가 서로 다른 높이에 놓여 화살표가 위로 갈 수
 	// 있다(그걸 막자고 띠를 만든 것이다).
+	//
+	// BUG-383: 다만 **볼 노드는 새로 놓을 것과 상관있는 것뿐**이다 — 놓일 레인에 있는 노드와,
+	// 놓일 것의 선행. 예전엔 보드 전체의 가장 아래 노드를 봤다. BUG-284 로 모든 노드가 고정돼
+	// 있으니 완료 레인 하나만 길어도, 새 퀘스트는 비어 있는 자기 레인의 그 깊이까지
+	// 내려갔다(admin: "새로 생성되는 퀘스트가 보드의 저 아래에 생성된다"). 다른 레인의 노드와는
+	// 겹칠 수 없고, 선행만 위에 있으면 화살표도 아래로 간다.
+	const lanesUsed = new Set(unplaced.map((q) => laneOf.get(q.status_id) ?? 0));
+	const unplacedIds = new Set(unplaced.map((q) => q.id));
+	const prereqs = new Set(
+		edges.filter((e) => unplacedIds.has(e.quest_id)).map((e) => e.prerequisite_id)
+	);
 	let startY = m.initialY;
 	for (const q of quests) {
 		const p = stored.get(q.id);
-		if (p) startY = Math.max(startY, p.y + m.rowStep);
+		if (!p) continue;
+		// 레인은 저장된 x 가 아니라 **지금 상태**로 본다 — 상태를 바꾼 노드의 x 는 옛 레인에
+		// 남아 있고, 그리는 쪽이 적재 때 지금 레인으로 옮겨 그린다.
+		if (lanesUsed.has(laneOf.get(q.status_id) ?? 0) || prereqs.has(q.id))
+			startY = Math.max(startY, p.y + m.rowStep);
 	}
-
-	const unplaced = quests.filter((q) => !stored.has(q.id)).sort((a, b) => a.id - b.id);
 	const depth = depthOf(quests, edges);
 
 	// 깊이별로 레인마다 몇 칸이 필요한가 → 그 띠의 높이(줄 수).
