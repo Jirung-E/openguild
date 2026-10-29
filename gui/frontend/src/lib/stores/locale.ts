@@ -1221,6 +1221,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'comment.anonymous': { ko: '(익명)', en: '(anonymous)' },
 	'comment.discussion': { ko: '토론', en: 'Discussion' },
 	'comment.bodyRequired': { ko: '본문을 입력하세요.', en: 'Please enter a body.' },
+	// DEV-465: 플러그인이 댓글 대신 다른 일을 했다(댓글 명령) — 뒤에 플러그인의 문장이 붙는다.
+	'comment.pluginInstead': {
+		ko: '플러그인이 대신 처리했습니다 — ',
+		en: 'A plugin handled it instead — '
+	},
 	'comment.bodyMarkdown': { ko: '본문 (markdown)', en: 'Body (markdown)' },
 	'comment.writePlaceholder': {
 		ko: '댓글 작성 (markdown 사용 가능)',

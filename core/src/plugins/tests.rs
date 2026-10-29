@@ -3722,6 +3722,52 @@ async fn a_campaign_comment_can_be_blocked_like_a_quest_comment() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-465: **대신 처리함** — `#{instead: ...}` 는 댓글을 남기지 않지만 막은 것과 다르게 `Instead` 로 끝난다
+/// (받는 쪽이 오류가 아닌 안내로 보인다). 다른 칸을 함께 적어도 바꾸지 않는다.
+#[tokio::test]
+async fn a_pre_handler_can_handle_a_comment_instead() {
+    let (g, home, store) = guild_with(
+        "comment-instead",
+        "name = \"cmd\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[[handlers]]\n    pre  = [\"comment.added\"]\n    call = \"cmd\"\n",
+        r#"fn cmd(e) { if e.comment.body == "/session" { return #{ instead: "세션을 엽니다", body: "x" }; } }"#,
+    )
+    .await;
+
+    let q = crate::ops::quests::create_quest(&store, quest_req("퀘스트"))
+        .await
+        .unwrap();
+    let err = crate::ops::comments::add_comment_entry(
+        &store,
+        &q.quest_id,
+        "admin".into(),
+        "/session".into(),
+        None,
+        false,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(&err, crate::error::AppError::Instead(m) if m == "세션을 엽니다"),
+        "{err:?}"
+    );
+    crate::ops::comments::add_comment_entry(
+        &store,
+        &q.quest_id,
+        "admin".into(),
+        "보통 글".into(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let all = crate::ops::comments::list_comment_entries(&store, &q.quest_id).unwrap();
+    assert_eq!(all.len(), 1, "{all:?}");
+    assert_eq!(all[0].body, "보통 글");
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// 첫 일감에서 멈춰 서는 전달 — 뒤의 일감이 **늦게** 돌게 만든다.
 struct HeldProbe {
     hold: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,

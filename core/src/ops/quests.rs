@@ -291,8 +291,9 @@ pub async fn create_quest(store: &Store, mut body: CreateQuestRequest) -> AppRes
             }
         })
     });
-    if let Some(reason) = pre.blocked {
-        return Err(crate::error::AppError::BadRequest(reason));
+    // DEV-465: 막았거나 플러그인이 대신 처리했다.
+    if let Some(e) = pre.refusal() {
+        return Err(e);
     }
     if let Some(t) = pre.text("title") {
         body.title = t;
@@ -610,7 +611,7 @@ pub fn list_quest_tags(store: &Store, slug: &str) -> AppResult<Vec<String>> {
 ///
 /// **잠금 밖에서** 부른다(답이 밖으로 나갔다 올 수도 있는 시간이다). 묻는 데 쓸 현재 상태를
 /// 읽는 것도 여기 안에 둔다 — 잠금 안에서 하는 검증용 읽기와 구분된다.
-async fn ask_status_pre(store: &Store, id: i64, to: &str) -> Option<String> {
+async fn ask_status_pre(store: &Store, id: i64, to: &str) -> Option<crate::error::AppError> {
     if !store.events_wanted(ev::QUEST_STATUS_CHANGED, Phase::Pre) {
         return None;
     }
@@ -622,7 +623,7 @@ async fn ask_status_pre(store: &Store, id: i64, to: &str) -> Option<String> {
                 "change": payload::change(q.status_slug.clone(), to.to_string()),
             })
         })
-        .blocked
+        .refusal()
 }
 
 pub async fn change_status(
@@ -631,8 +632,8 @@ pub async fn change_status(
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
     // DEV-407: 바뀌기 전에 묻는다 — "리뷰 태그가 없으면 완료 못 함" 같은 규칙이 여기 붙는다.
-    if let Some(reason) = ask_status_pre(store, id, &body.status_slug).await {
-        return Err(crate::error::AppError::BadRequest(reason));
+    if let Some(e) = ask_status_pre(store, id, &body.status_slug).await {
+        return Err(e);
     }
     // DEV-463: 든 캠페인의 이력에도 쓴다('연결 퀘스트 모두 완료') — 그 캠페인들도 잠근다.
     let _g = super::lock_resolved(store, || async move {
@@ -998,14 +999,14 @@ pub async fn change_parent(
 /// BUG-339: **잠금 전에** 묻는다(생성 · 상태 변경 · 댓글과 같은 자리). 예전엔 잠금을 쥔 채 물어서, 그 훅이
 /// `openguild` 로 같은 길드를 고치려 하면 자기 자신을 기다리다 시한에 잘렸다. 묻는 사이 누가 그 퀘스트를
 /// 고치면 훅이 본 내용이 조금 낡을 수 있지만, 잠금 안에서 바깥을 기다리는 것보다 낫다.
-async fn ask_delete_pre(store: &Store, id: i64) -> Option<String> {
+async fn ask_delete_pre(store: &Store, id: i64) -> Option<crate::error::AppError> {
     if !store.events_wanted(ev::QUEST_DELETED, Phase::Pre) {
         return None;
     }
     let q = sql::fetch_by_id(&store.index_pool, id).await.ok()?;
     store
         .ask_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(&q) }))
-        .blocked
+        .refusal()
 }
 
 /// soft delete + cascade. 영향:
@@ -1015,8 +1016,8 @@ async fn ask_delete_pre(store: &Store, id: i64) -> Option<String> {
 /// - 삭제 대상과 prerequisite 관계로 연결된 alive quest 들: Prerequisites / Successors
 ///   표시에서 삭제 대상이 빠지도록 양쪽 파일 갱신.
 pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<()> {
-    if let Some(reason) = ask_delete_pre(store, id).await {
-        return Err(crate::error::AppError::BadRequest(reason));
+    if let Some(e) = ask_delete_pre(store, id).await {
+        return Err(e);
     }
     let _g = super::lock_resolved(store, || delete_keys(store, id, cascade_ids)).await?;
     // DEV-374: 삭제 뒤에는 무엇이었는지 알 수 없다 — 지우기 **전에** 잡아 둔다(잠금 안 — 막 바뀐 것까지).

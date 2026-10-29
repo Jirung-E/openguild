@@ -42,6 +42,15 @@ fn edit_err(e: openguild_core::AppError) -> String {
         other => other.to_string(),
     }
 }
+/// DEV-465: 플러그인이 변경 대신 다른 일을 했다 — 실패가 아니라 안내다. 프런트의 transport 가 이 꼬리표를 보고
+/// 서버의 202 `{"instead"}` 와 같은 것으로 풀어 준다.
+pub const PLUGIN_INSTEAD_TAG: &str = "PLUGIN_INSTEAD::";
+fn app_err(e: openguild_core::AppError) -> String {
+    match e {
+        openguild_core::AppError::Instead(msg) => format!("{PLUGIN_INSTEAD_TAG}{msg}"),
+        other => edit_err(other),
+    }
+}
 fn open_err(e: anyhow::Error) -> String {
     if let Some(openguild_core::AppError::IncompatibleGuild(msg)) =
         e.downcast_ref::<openguild_core::AppError>()
@@ -494,7 +503,7 @@ pub async fn create_quest(
     store: State<'_, Store>,
     body: CreateQuestRequest,
 ) -> Result<QuestRow, String> {
-    ops::create_quest(&store, body).await.map_err(err)
+    ops::create_quest(&store, body).await.map_err(app_err)
 }
 
 #[tauri::command]
@@ -512,7 +521,7 @@ pub async fn change_quest_status(
     id: i64,
     body: ChangeStatusRequest,
 ) -> Result<QuestRow, String> {
-    ops::change_status(&store, id, body).await.map_err(err)
+    ops::change_status(&store, id, body).await.map_err(app_err)
 }
 
 #[tauri::command]
@@ -593,7 +602,9 @@ pub async fn delete_quest(
     cascade: Option<Vec<i64>>,
 ) -> Result<(), String> {
     let cascade_ids = cascade.unwrap_or_default();
-    ops::delete_quest(&store, id, &cascade_ids).await.map_err(err)
+    ops::delete_quest(&store, id, &cascade_ids)
+        .await
+        .map_err(app_err)
 }
 
 #[tauri::command]
@@ -2262,7 +2273,7 @@ pub async fn add_comment(
         false,
     )
     .await
-    .map_err(err)
+    .map_err(app_err)
 }
 
 #[tauri::command]
@@ -2368,7 +2379,7 @@ pub async fn add_campaign_comment(
         parent_id,
     )
     .await
-    .map_err(err)
+    .map_err(app_err)
 }
 
 #[tauri::command]

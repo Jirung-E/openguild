@@ -39,6 +39,7 @@
 	import { saveShortcut } from '$lib/utils/save-shortcut';
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
+	import { isPluginInstead } from '$lib/api/pluginInstead';
 	import {
 		commentsApi as questCommentsApi,
 		campaignCommentsApi,
@@ -952,6 +953,12 @@
 			entries = [...entries, entry];
 			newBody = '';
 		} catch (e) {
+			// DEV-465: 플러그인이 댓글 대신 다른 일을 했다 — 오류가 아니다. 안내만 띄우고 입력을 비운다.
+			if (isPluginInstead(e)) {
+				showToast(t('comment.pluginInstead', $locale) + e.message, 'info');
+				newBody = '';
+				return;
+			}
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
@@ -1060,6 +1067,12 @@
 			entries = [...entries, entry];
 			cancelReply();
 		} catch (e) {
+			// DEV-465: 위 `add` 와 같다.
+			if (isPluginInstead(e)) {
+				showToast(t('comment.pluginInstead', $locale) + e.message, 'info');
+				cancelReply();
+				return;
+			}
 			replyError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			replySaving = false;

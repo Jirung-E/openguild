@@ -107,7 +107,11 @@ export class HttpTransport implements Transport {
 		if (contentLength === '0') return undefined as T;
 		const text = await res.text();
 		if (!text) return undefined as T;
-		return JSON.parse(text) as T;
+		const data = JSON.parse(text) as unknown;
+		// DEV-465: 플러그인이 대신 처리했다 — 본문은 만든 것이 아니라 `{"instead"}` 다.
+		const instead = pluginInsteadFromHttp(res.status, data);
+		if (instead) throw instead;
+		return data as T;
 	}
 }
 
@@ -126,6 +130,7 @@ export class HttpTransport implements Transport {
  */
 import { invoke } from '@tauri-apps/api/core';
 import { editConflictFromHttp, editConflictFromInvoke } from './editConflict';
+import { pluginInsteadFromHttp, pluginInsteadFromInvoke } from './pluginInstead';
 
 /**
  * BUG-211: `ListQuery`(core/src/models/quest.rs) 의 bool / 정수 필드.
@@ -977,7 +982,8 @@ export class TauriTransport implements Transport {
 			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
 			const msg = typeof e === 'string' ? e : ((e as { message?: string }).message ?? String(e));
 			// DEV-435: 편집 충돌 — 서버의 409 와 같은 모양으로 푼다.
-			throw editConflictFromInvoke(msg) ?? new Error(msg);
+			// DEV-465: 플러그인이 대신 처리했다 — 서버의 202 와 같은 것으로 푼다.
+			throw editConflictFromInvoke(msg) ?? pluginInsteadFromInvoke(msg) ?? new Error(msg);
 		}
 	}
 }

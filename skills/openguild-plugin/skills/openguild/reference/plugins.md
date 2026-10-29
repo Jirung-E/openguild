@@ -180,6 +180,10 @@ fn on_comment(e, subject) {
 
 A `pre` function speaks through its **return value**: a string is the reason to block, a map is
 the fields to change, `false` blocks without a reason. Returning nothing lets it through.
+`#{ instead: "sentence" }` means **handled instead** — nothing is saved, but it is not a failure:
+the app shows the sentence as a notice and clears the input, the CLI prints it and exits 0, the
+server answers `202 {"instead": ...}` (a comment command such as `/session` uses this). Like a
+block, it stops the later lines and plugins; commands the function queued still run.
 
 At most 32 queued commands per call; runaway scripts are stopped by an operation cap and a
 wall-clock limit. One line throwing stops that line only.
@@ -204,7 +208,7 @@ fn test_done_goes_out() {
 `fire(event, payload[, with])` runs the **real** line selection, `when`, `with` and ordering —
 the only differences are that commands are recorded instead of sent, and `with` comes from the
 map you pass instead of guild files (so tests need no guild). Prefix the name with `pre:` for the
-before phase. It returns `#{ lines, commands, blocked, changes, problems }`; `problems` holds the
+before phase. It returns `#{ lines, commands, blocked, instead, changes, problems }`; `problems` holds the
 failures that are otherwise only reported (undeclared permission, unknown action name, a throwing
 script).
 

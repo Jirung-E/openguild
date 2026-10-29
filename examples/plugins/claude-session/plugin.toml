@@ -38,10 +38,10 @@ scripts     = ["main.rhai"]
     key     = "REPLY"
     label   = "명령 댓글은"
     type    = "select"
-    default = "block"
-    help    = "막으면 댓글이 남지 않지만 앱에는 '막았습니다' 안내가 오류처럼 뜹니다. 기록으로 남기면 오류 없이 한 줄이 댓글로 남습니다."
+    default = "instead"
+    help    = "대신 처리하면 댓글은 남지 않고 '플러그인이 대신 처리했습니다' 안내만 뜹니다. 기록으로 남기면 한 줄이 댓글로 남습니다."
     options = [
-        { value = "block",  label = "막고 안내만 (댓글 안 남김)" },
+        { value = "instead", label = "대신 처리 (댓글 안 남김)" },
         { value = "record", label = "기록 한 줄로 바꿔 남기기" },
     ]
 

@@ -276,6 +276,7 @@ pub fn fire_with(
         "lines": probe.lines,
         "commands": recorder.take(),
         "blocked": answer.blocked,
+        "instead": answer.instead,
         "changes": answer.changes,
         // 조용히 넘어간 실패(권한 없음, 없는 동작 이름, 스크립트가 던짐)도 보여야 한다 —
         // 안 보이면 "왜 명령이 없지" 에서 멈춘다.

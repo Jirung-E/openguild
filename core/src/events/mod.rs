@@ -235,11 +235,28 @@ pub struct PreOutcome {
     pub blocked: Option<String>,
     /// 바꿀 칸 — 그 이벤트의 주된 문서(`quest`/`comment`)의 필드 이름.
     pub changes: Map<String, Value>,
+    /// DEV-465: 플러그인이 **대신 처리했다** — 변경은 하지 않지만 실패도 아니다(예: 댓글 `/session` 이
+    /// 댓글 대신 세션을 연다). 사용자에게 보일 문장. 막은 것과 같이 뒤 플러그인은 묻지 않는다.
+    pub instead: Option<String>,
 }
 
 impl PreOutcome {
     pub fn is_blocked(&self) -> bool {
         self.blocked.is_some()
+    }
+
+    /// DEV-465: 막았거나 대신 처리했다 — 어느 쪽이든 여기서 멈춘다.
+    pub fn stops(&self) -> bool {
+        self.blocked.is_some() || self.instead.is_some()
+    }
+
+    /// DEV-465: 변경을 멈춰야 하면 그 오류 — 막았으면 `BadRequest`, 대신 처리했으면 `Instead`.
+    pub fn refusal(&self) -> Option<crate::error::AppError> {
+        use crate::error::AppError;
+        if let Some(r) = &self.blocked {
+            return Some(AppError::BadRequest(r.clone()));
+        }
+        self.instead.clone().map(AppError::Instead)
     }
 
     /// 바뀐 글자 하나 — 없거나 글자가 아니면 `None`.

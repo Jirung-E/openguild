@@ -1599,6 +1599,15 @@ impl HttpClient {
     ) -> Result<T> {
         let status = res.status();
         let body = res.text().unwrap_or_default();
+        // DEV-465: 플러그인이 대신 처리했다 — 본문은 만든 것이 아니라 `{"instead": 문장}` 이다.
+        if status == reqwest::StatusCode::ACCEPTED
+            && let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+            && let Some(msg) = v.get("instead").and_then(|m| m.as_str())
+        {
+            return Err(anyhow::Error::new(openguild_core::AppError::Instead(
+                msg.to_string(),
+            )));
+        }
         if !status.is_success() {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
                 && let Some(err) = v.get("error").and_then(|e| e.as_str())
@@ -2554,6 +2563,8 @@ impl Backend {
                 ),
                 None => anyhow!("{}", c.message),
             },
+            // DEV-465: 실패가 아니다 — `main` 이 알아보고 안내만 찍고 정상 종료한다.
+            e @ openguild_core::AppError::Instead(_) => anyhow::Error::new(e),
             other => anyhow!("{other}"),
         })
     }
@@ -10767,6 +10778,19 @@ fn main() {
             std::panic::resume_unwind(p)
         });
     if let Err(e) = result {
+        // DEV-465: 플러그인이 대신 처리했다(댓글 명령 등) — 남긴 것은 없지만 실패가 아니다.
+        if let Some(openguild_core::AppError::Instead(msg)) =
+            e.downcast_ref::<openguild_core::AppError>()
+        {
+            println!(
+                "{}",
+                tf!(
+                    "플러그인이 대신 처리했습니다 — {msg}",
+                    "a plugin handled it instead — {msg}"
+                )
+            );
+            return;
+        }
         eprintln!("error: {e:#}");
         std::process::exit(1);
     }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { PluginInsteadError } from './pluginInstead';
 import {
 	detectEnvironment,
 	HttpTransport,
@@ -80,6 +81,15 @@ describe('HttpTransport', () => {
 		await expect(new HttpTransport().call({ method: 'GET', path: '/api/missing' })).rejects.toThrow(
 			'not found'
 		);
+	});
+
+	it('DEV-465: 202 `{instead}` 는 대신 처리함으로 던진다', async () => {
+		mockFetch(202, { instead: '세션을 엽니다' });
+		const err = await new HttpTransport()
+			.call({ method: 'POST', path: '/api/x', body: {} })
+			.catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(PluginInsteadError);
+		expect((err as Error).message).toBe('세션을 엽니다');
 	});
 
 	it('204 No Content 는 undefined', async () => {

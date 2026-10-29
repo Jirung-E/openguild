@@ -267,8 +267,8 @@ pub(super) fn run_lines(
         if !h.wants(event.name, event.phase) || !pick(h) {
             continue;
         }
-        // 이미 막혔으면 뒤 줄은 묻지 않는다 — 첫 거절에서 멈춘다.
-        if answer.as_ref().is_some_and(|a| a.is_blocked()) {
+        // 이미 막혔으면(DEV-465: 대신 처리했어도) 뒤 줄은 묻지 않는다 — 첫 거절에서 멈춘다.
+        if answer.as_ref().is_some_and(|a| a.stops()) {
             return;
         }
         let who = h.label(i);
@@ -338,6 +338,17 @@ pub(super) fn run_lines(
                     }
                     serde_json::Value::Bool(false) => {
                         a.blocked = Some(crate::tf!("{name}: {who} 가 막았습니다", "{name}: {who} blocked it"));
+                    }
+                    // DEV-465: `#{instead: "..."}` — 바꾸지 않고 대신 처리했다. 다른 칸은 보지 않는다.
+                    serde_json::Value::Object(m)
+                        if m.get("instead")
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|s| !s.trim().is_empty()) =>
+                    {
+                        a.instead = m
+                            .get("instead")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
                     }
                     serde_json::Value::Object(m) => {
                         for (k, v) in m {
@@ -598,6 +609,11 @@ impl EventSink for PluginRuntime {
                     if let Some(reason) = mine.blocked {
                         out.blocked = Some(reason);
                         return out; // 하나라도 막으면 거기서 끝난다.
+                    }
+                    // DEV-465: 대신 처리한 것도 거기서 끝난다 — 뒤 플러그인이 또 처리하지 않게.
+                    if mine.instead.is_some() {
+                        out.instead = mine.instead;
+                        return out;
                     }
                 }
                 Err(_) => note(

@@ -203,8 +203,9 @@ pub async fn add_comment_entry(
             "comment": { "author": author, "body": body, "parent_id": parent_id },
         })
     });
-    if let Some(reason) = pre.blocked {
-        return Err(crate::error::AppError::BadRequest(reason));
+    // DEV-465: 막았거나 플러그인이 대신 처리했다(댓글 명령).
+    if let Some(e) = pre.refusal() {
+        return Err(e);
     }
     if let Some(t) = pre.text("body") {
         body = t;

@@ -29,6 +29,11 @@ impl IntoResponse for HttpError {
             AppError::EditConflict(c) => {
                 return (StatusCode::CONFLICT, Json(json!({ "error": c.message, "conflict": c }))).into_response();
             }
+            // DEV-465: 플러그인이 대신 처리했다 — 만든 것은 없지만 실패가 아니다. 받는 쪽은 `instead` 를 보고
+            // 안내로 보인다(본문이 만든 것의 모양이 아니므로 그대로 읽으면 안 된다).
+            AppError::Instead(msg) => {
+                return (StatusCode::ACCEPTED, Json(json!({ "instead": msg }))).into_response();
+            }
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             // DEV-064: 길드가 서버보다 새 schema — 서버 업데이트 필요.
@@ -105,6 +110,17 @@ mod tests {
         let (status, body) = body_text(resp).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(body.contains("urgency"));
+    }
+
+    /// DEV-465: 대신 처리함 — 실패가 아니라 202, 본문은 `error` 가 아니라 `instead`.
+    #[tokio::test]
+    async fn instead_maps_to_202_with_the_sentence() {
+        let resp = HttpError(AppError::Instead("세션을 엽니다".into())).into_response();
+        let (status, body) = body_text(resp).await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["instead"], "세션을 엽니다");
+        assert!(v.get("error").is_none(), "{body}");
     }
 
     #[tokio::test]
