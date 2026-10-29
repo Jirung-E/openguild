@@ -10,6 +10,7 @@ import { readable } from 'svelte/store';
 import QuestCommentsSection from './QuestCommentsSection.svelte';
 import { commentsApi } from '$lib/api/comments';
 import type { CommentEntry } from '$lib/api/comments';
+import { findQuery } from '$lib/stores/findQuery';
 
 vi.mock('$app/stores', () => ({
 	page: readable({ url: new URL('http://localhost/quests/DEV-001') })
@@ -104,5 +105,45 @@ describe('QuestCommentsSection — 토론만 + 전체 접기 (BUG-178)', () => {
 			expect(container.querySelectorAll('.entry-card').length).toBe(1);
 		});
 		expect(replyCount(container)).toBe(0);
+	});
+});
+
+describe('BUG-382 페이지 내 검색어가 든 접힌 댓글은 잠시 펼친다', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		findQuery.set('');
+		vi.mocked(commentsApi.listComments).mockResolvedValue({
+			entries: [entry(1), entry(2, { parent_id: 1, body: '답글 바늘' }), entry(3)]
+		});
+	});
+
+	const bodies = (c: HTMLElement) => c.querySelectorAll('.entry-body').length;
+
+	it('전체 접기 뒤 검색어가 든 답글과 그 스레드만 펼치고, 검색을 닫으면 다시 접는다', async () => {
+		const { container } = await renderSection();
+		container.querySelector<HTMLButtonElement>('.collapse-all-btn')!.click();
+		await vi.waitFor(() => expect(bodies(container)).toBe(0));
+
+		findQuery.set('바늘');
+		await vi.waitFor(() => expect(replyCount(container)).toBe(1));
+		expect(bodies(container)).toBe(1);
+		expect(container.querySelector('.entry-body')!.textContent).toContain('답글 바늘');
+
+		findQuery.set('');
+		await vi.waitFor(() => expect(bodies(container)).toBe(0));
+		expect(replyCount(container)).toBe(0);
+	});
+
+	it('댓글 영역을 통째로 접어도 검색어가 든 댓글이 있으면 펼친다', async () => {
+		const { container } = await renderSection();
+		container.querySelector<HTMLButtonElement>('.section-toggle')!.click();
+		await vi.waitFor(() => expect(container.querySelector('.entry-list')).toBeNull());
+
+		findQuery.set('없는 글');
+		await new Promise((r) => setTimeout(r, 20));
+		expect(container.querySelector('.entry-list')).toBeNull();
+
+		findQuery.set('바늘');
+		await vi.waitFor(() => expect(container.querySelector('.entry-list')).not.toBeNull());
 	});
 });

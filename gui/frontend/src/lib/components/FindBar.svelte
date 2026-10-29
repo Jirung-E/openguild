@@ -18,6 +18,7 @@
 	import Icon from './Icon.svelte';
 	import { onDestroy } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
+	import { findQuery } from '$lib/stores/findQuery';
 	import {
 		buildSegments,
 		findMatches,
@@ -169,7 +170,8 @@
 		else if (keepCurrent && prev >= 0) current = Math.min(prev, next.length - 1);
 		else current = 0;
 		paint();
-		if (!keepCurrent) revealCurrent();
+		// 보이는 곳에 없다가 접힌 댓글이 펼쳐져 처음 찾았을 때(BUG-382)는 그리로 간다.
+		if (!keepCurrent || prev < 0) revealCurrent();
 	}
 
 	function step(delta: number) {
@@ -181,6 +183,7 @@
 
 	function close() {
 		clearHighlights();
+		findQuery.set('');
 		onclose();
 	}
 
@@ -205,6 +208,8 @@
 	// 부르면 그런 되먹임이 없다.
 	function onInput(e: Event) {
 		query = (e.currentTarget as HTMLInputElement).value;
+		// BUG-382: 접힌 댓글이 검색어가 든 것을 펼친다 — 펼쳐지면 아래 MutationObserver 가 다시 찾는다.
+		findQuery.set(query);
 		recompute();
 	}
 
@@ -233,7 +238,10 @@
 		inputEl?.select();
 	});
 
-	onDestroy(clearHighlights);
+	onDestroy(() => {
+		clearHighlights();
+		findQuery.set('');
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->

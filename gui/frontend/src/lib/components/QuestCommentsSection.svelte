@@ -40,6 +40,7 @@
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
 	import { isPluginInstead } from '$lib/api/pluginInstead';
+	import { findQuery, hasFindText } from '$lib/stores/findQuery';
 	import {
 		commentsApi as questCommentsApi,
 		campaignCommentsApi,
@@ -819,6 +820,26 @@
 		};
 	});
 
+	// BUG-382: 페이지 내 검색어가 든 댓글 — 접혀 있어도 **잠시** 펼친다(찾기는 화면 글자만 읽는다).
+	// 저장된 접기 상태(collapsed · collapsedRoots · collapsedBodies)는 그대로 두고 그리기만 바꾼다 —
+	// 찾기를 닫으면 다시 접힌다. 본문은 마크다운 원문으로 보므로 화면 글자보다 조금 넓게 걸릴 수 있다.
+	let findHits = $derived.by(() => {
+		const q = $findQuery;
+		if (!q) return new Set<number>();
+		return new Set(entries.filter((e) => hasFindText(e.body, q)).map((e) => e.id));
+	});
+	/** 섹션이 실제로 접혀 보이는지. */
+	let sectionShut = $derived(collapsed && findHits.size === 0);
+	/** 이 root 의 답글이 실제로 접혀 보이는지. */
+	function threadShut(rootId: number): boolean {
+		if (!collapsedRoots.has(rootId)) return false;
+		return !(groups.childrenByRoot.get(rootId) ?? []).some((c) => findHits.has(c.id));
+	}
+	/** 이 댓글 본문이 실제로 접혀 보이는지. */
+	function bodyShut(id: number): boolean {
+		return collapsedBodies.has(id) && !findHits.has(id);
+	}
+
 	// DEV-234: 고정된 root 댓글을 맨 위로 — 고정끼리/일반끼리는 원래 순서
 	// (id 순, groups.roots 가 이미 그 순서) 유지. stable sort (Array#sort 는
 	// stable 보장) 이라 안전.
@@ -1184,8 +1205,8 @@
 			<button
 				class="entry-no"
 				onclick={() => toggleBodyCollapsed(e.id)}
-				aria-expanded={!collapsedBodies.has(e.id)}
-				title={collapsedBodies.has(e.id)
+				aria-expanded={!bodyShut(e.id)}
+				title={bodyShut(e.id)
 					? `#${e.id} ${t('comment.expandBody', $locale)}`
 					: `#${e.id} ${t('comment.collapseBody', $locale)}`}>#{e.id}</button
 			>
@@ -1301,7 +1322,7 @@
 					>{t('common.cancel', $locale)}</button
 				>
 			</div>
-		{:else if collapsedBodies.has(e.id)}
+		{:else if bodyShut(e.id)}
 			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침.
 			     DEV-214: 이 entry 자신이 토론이면 상태 글리프를 미리보기 앞에. -->
 			<button
@@ -1328,7 +1349,7 @@
 				<div class="foot-left">
 					{#if !isReply}
 						{@const childCount = (groups.childrenByRoot.get(e.id) ?? []).length}
-						{@const isThreadCollapsed = collapsedRoots.has(e.id)}
+						{@const isThreadCollapsed = threadShut(e.id)}
 						{#if childCount > 0}
 							<!-- 삼각형만 클릭 — '답글 n' 텍스트는 표시 전용. -->
 							<button
@@ -1477,17 +1498,19 @@
 			type="button"
 			class="section-toggle"
 			onclick={toggleCollapsed}
-			aria-expanded={!collapsed}
-			title={collapsed
+			aria-expanded={!sectionShut}
+			title={sectionShut
 				? t('comment.expandComments', $locale)
 				: t('comment.collapseComments', $locale)}
 		>
-			<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
+			<span class="toggle-icon" class:collapsed={sectionShut}
+				><Icon name="caret-down" size="1em" /></span
+			>
 			<h2 class="section-title">{t('comment.title', $locale)}</h2>
 		</button>
 		<span class="count">{entries.length}</span>
 		<!-- DEV-214: 섹션이 접혀 있어도 미해결 토론은 보이게 (완료 차단과 직결). -->
-		{#if collapsed && unresolvedCount > 0}
+		{#if sectionShut && unresolvedCount > 0}
 			<span
 				class="disc-flag unresolved"
 				title="{t('comment.unresolvedPre', $locale)}{unresolvedCount}{t(
@@ -1497,7 +1520,7 @@
 			>
 		{/if}
 		<!-- DEV-213: 토론만 모아보기 — quest 전용, 토론 댓글이 있을 때만 노출. -->
-		{#if scope === 'quest' && !collapsed && discussionCount > 0}
+		{#if scope === 'quest' && !sectionShut && discussionCount > 0}
 			<!-- REQ-017: 라벨이 **지금 상태**를 그대로 말한다. 다음 단계는 title
 			     로만 알린다 — 라벨까지 미래형이면 지금이 뭔지 헷갈린다.
 			     `aria-pressed` 는 눌림/안눌림 2단계용이라 3단계에는 안 맞는다.
@@ -1517,7 +1540,7 @@
 			</button>
 		{/if}
 		<!-- DEV-190: 전체 접기/펼치기 — 모든 댓글 답글+본문 일괄. 섹션 토글과 별개. -->
-		{#if !collapsed && entries.length > 0}
+		{#if !sectionShut && entries.length > 0}
 			<button
 				class="collapse-all-btn"
 				onclick={toggleCollapseAll}
@@ -1531,7 +1554,7 @@
 		{/if}
 	</div>
 
-	{#if !collapsed}
+	{#if !sectionShut}
 		{#if loading}
 			<p class="state">Loading…</p>
 		{:else if loadError}
@@ -1548,7 +1571,7 @@
 							     상태가 무조건 무시됐다 — 전체접기를 눌러도 답글이 그대로 펼쳐져
 							     있었다. dim(필터의 표현)과 접기(사용자가 누른 동작)는 다른 축이라
 							     필터가 접기를 덮어쓸 이유가 없다(DEV-213 은 '숨기지 말 것'까지다). -->
-							{@const isCollapsed = collapsedRoots.has(root.id)}
+							{@const isCollapsed = threadShut(root.id)}
 							<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분.
 							     DEV-234: pinned 면 강조 테두리(하이라이트) 도 함께. -->
 							<li class="entry-card" class:pinned={root.pinned}>

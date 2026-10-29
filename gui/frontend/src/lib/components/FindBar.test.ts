@@ -170,3 +170,33 @@ describe('BUG-381 FindBar — 내용이 바뀌어 다시 찾을 때는 스크롤
 		rect.mockRestore();
 	});
 });
+
+describe('BUG-382 FindBar — 검색어를 알리고, 펼쳐져 처음 찾으면 그리로 간다', () => {
+	it('입력하면 findQuery 에 싣고 닫으면 비운다', async () => {
+		const { findQuery } = await import('$lib/stores/findQuery');
+		const { get } = await import('svelte/store');
+		await mount();
+		await search('hello');
+		expect(get(findQuery)).toBe('hello');
+		await fireEvent.click(screen.getByRole('button', { name: /닫기|close/i }));
+		expect(get(findQuery)).toBe('');
+	});
+
+	it('보이는 곳에 없던 글이 펼쳐져 나타나면 그리로 스크롤한다', async () => {
+		const below = { top: 5000, bottom: 5020, left: 0, right: 10, width: 10, height: 20 } as DOMRect;
+		const rect = vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(below);
+		const scroll = vi.fn();
+		Element.prototype.scrollIntoView = scroll;
+		await mount();
+		await search('needle');
+		expect(scroll).not.toHaveBeenCalled();
+
+		// 접힌 댓글이 펼쳐진 것처럼 — 찾는 글이 DOM 에 새로 생긴다.
+		const p = document.createElement('p');
+		p.textContent = 'a needle here';
+		document.querySelector('main')!.appendChild(p);
+		await new Promise((r) => setTimeout(r, 300));
+		expect(scroll).toHaveBeenCalledTimes(1);
+		rect.mockRestore();
+	});
+});
