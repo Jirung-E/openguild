@@ -10,6 +10,7 @@ export type NavPageId =
 	| 'quests'
 	| 'rules'
 	| 'library'
+	| 'search'
 	| 'campaigns'
 	| 'worklog'
 	| 'tags'
@@ -27,7 +28,9 @@ export const ALL_NAV_PAGES: readonly NavPageId[] = [
 	'admin',
 	'campaigns',
 	'worklog',
-	'tags'
+	'tags',
+	// REQ-040: 전체 문서 검색 — 상단바에 올릴 수 있다. ☰ 메뉴에서는 맨 뒤(관리가 맨 위인 순서를 지킨다).
+	'search'
 ];
 
 export const DEFAULT_NAV_PAGES: readonly NavPageId[] = ['home', 'quests', 'rules', 'library'];
@@ -40,6 +43,7 @@ export const NAV_PAGE_LABEL_KEY: Record<NavPageId, string> = {
 	quests: 'nav.quests',
 	rules: 'nav.rules',
 	library: 'nav.library',
+	search: 'nav.search',
 	campaigns: 'titlebar.menuCampaigns',
 	worklog: 'titlebar.menuWorklog',
 	tags: 'titlebar.menuTags',

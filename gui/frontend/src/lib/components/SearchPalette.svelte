@@ -40,6 +40,8 @@
 	// DEV-255: 결과 열기 방식(미리보기/자식윈도우/페이지이동) 선택 — 공용 헬퍼.
 	import { openInWindow, openInPage } from '$lib/utils/open-item';
 	import { withFindParam } from '$lib/utils/find-in-page';
+	// REQ-040: 팔레트는 빨리 가기 — 찾아보기는 검색 페이지로.
+	import { searchPageHref } from '$lib/utils/search-page';
 	// DEV-205(3차): i18n — KIND_LABEL(ko 고정) 대신 t() 기반 kindLabel().
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-294: recent 모드에서 최근 본 문서 순서 소스.
@@ -648,6 +650,18 @@
 		{#if rowsEl}
 			<OverlayScrollbar target={rowsEl} />
 		{/if}
+		<!-- REQ-040: 검색어를 들고 검색 페이지로 — 본문 · 댓글까지, 종류별로 찾아본다. -->
+		{#if parsed.term && !parsed.term.startsWith('#')}
+			<button
+				type="button"
+				class="all-results"
+				data-testid="palette-all-results"
+				onclick={() => {
+					openInPage(searchPageHref(parsed.term));
+					onclose();
+				}}>{t('palette.allResults', $locale).replace('{q}', parsed.term)}</button
+			>
+		{/if}
 	{:else}
 		<div class="dp-head">
 			<span class="ptype {preview.kind}">{kindLabel(preview.kind)}</span>
@@ -869,6 +883,21 @@
 	}
 	.rows::-webkit-scrollbar {
 		display: none;
+	}
+	.all-results {
+		display: block;
+		width: 100%;
+		padding: var(--sp-8) var(--sp-16);
+		border: none;
+		border-top: var(--bw) solid var(--border);
+		background: transparent;
+		color: var(--accent);
+		font-size: var(--fs-sm);
+		text-align: left;
+		cursor: pointer;
+	}
+	.all-results:hover {
+		background: var(--bg-subtle);
 	}
 	.empty {
 		padding: var(--sp-16);

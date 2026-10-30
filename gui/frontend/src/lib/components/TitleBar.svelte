@@ -534,6 +534,9 @@
 		{:else if id === 'rules'}
 			<path d="M4 2.5h5.5l2.5 2.5v8.5H4z" />
 			<path d="M6 7.2h4M6 9.6h4M6 12h2.4" />
+		{:else if id === 'search'}
+			<circle cx="7" cy="7" r="4.3" />
+			<path d="m10.2 10.2 3.3 3.3" />
 		{:else if id === 'library'}
 			<path d="M2.8 3h2.6v10H2.8zM6.4 3H9v10H6.4z" />
 			<path d="m10.2 3.6 2.3-.6 2.5 9.6-2.3.6z" />

@@ -22,6 +22,7 @@
 	// DEV-452 (REQ-039): 검색칸 — 퀘스트 목록과 같은 부품([검색 | 쿼리]), 키만 캠페인 것.
 	import SearchField, { type SearchMode } from '$lib/components/SearchField.svelte';
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
+	import { CAMPAIGN_QUERY_KEYS } from '$lib/utils/query-keys';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -58,12 +59,6 @@
 	// DEV-452: 검색 · 쿼리 — 둘 다 코어가 거르고(`GET /api/campaigns?q=`), 여기는 맞는 번호만 받아
 	// 상태 선택과 **그리고**로 겹친다. 검색은 글 전체를 따옴표로 묶은 쿼리다(제목 · 설명 · 번호에서 찾는다).
 	// 틀린 동안은 거르지 않는다(퀘스트 목록과 같다). 주소 `?search=` · `?q=` 에 실린다.
-	const CAMPAIGN_QUERY_KEYS = [
-		['status', 'status:active', 'campaignList.queryHelpStatus'],
-		['start', 'start:>=2026-10-01', 'campaignList.queryHelpStart'],
-		['end', 'end:overdue', 'campaignList.queryHelpEnd'],
-		['quest', 'quest:DEV-001', 'campaignList.queryHelpQuest']
-	] as const;
 	const initialSearch = $page.url.searchParams.get('search') ?? '';
 	const initialQuery = $page.url.searchParams.get('q') ?? '';
 	let search = $state(initialSearch);

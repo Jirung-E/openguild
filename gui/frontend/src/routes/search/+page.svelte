@@ -1,0 +1,388 @@
+<!--
+  REQ-040: 전체 문서 검색 페이지 — /search.
+
+  팔레트는 빨리 가기(제목 · 최근 본 문서), 여기는 찾아보기다. 퀘스트 · 캠페인 · 도서관 · 규칙을 한 번에, 본문 ·
+  댓글 · 첨부 이름까지 본다.
+
+  - 검색: 서버의 강화 검색(`/api/search`, REQ-009)을 그대로 쓴다 — 어디서 맞았는지와 발췌가 온다. 메모는 개인
+    기록이라 '메모 포함' 을 켤 때만 본다(서버 기본과 같다).
+  - 쿼리: 종류마다 키가 달라(REQ-039) 한 종류를 골랐을 때 그 목록 화면의 쿼리를 쓴다. 규칙은 쿼리가 없고,
+    '전체' 에서는 쓰지 않는다.
+  - 순서: 제목 · 번호에서 맞은 것이 먼저.
+  - 줄은 다른 목록과 같이 미리보기 · 새 창 · 이동([[DocLink]]). 본문 등에서만 맞은 문서는 찾기 바를 띄운 채 연다.
+  - 주소에 `q` · `kind` · `mode` · `memo` 를 싣는다 — 새로고침 · 공유에 남는다.
+-->
+<script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	import { searchApi, type SearchField as Field } from '$lib/api/search';
+	import { questsApi } from '$lib/api/quests';
+	import { campaignsApi } from '$lib/api/campaigns';
+	import { libraryApi } from '$lib/api/library';
+	import { locale, t } from '$lib/stores/locale';
+	import { LatestQuery } from '$lib/utils/enhanced-search';
+	import { highlightSegments } from '$lib/utils/highlight';
+	import SearchField from '$lib/components/SearchField.svelte';
+	import QueryNotes from '$lib/components/QueryNotes.svelte';
+	import DocLink from '$lib/components/DocLink.svelte';
+	import {
+		CAMPAIGN_QUERY_KEYS,
+		LIBRARY_QUERY_KEYS,
+		QUEST_QUERY_KEYS,
+		type QueryKeyRow
+	} from '$lib/utils/query-keys';
+	import {
+		SEARCH_TABS,
+		canQuery,
+		countByTab,
+		openHref,
+		readSearchState,
+		rowsOfTab,
+		searchStateParams,
+		sortRows,
+		type SearchKind,
+		type SearchRow,
+		type SearchTab
+	} from '$lib/utils/search-page';
+
+	const initial = readSearchState($page.url.searchParams);
+	let search = $state(initial.mode === 'search' ? initial.q : '');
+	let query = $state(initial.mode === 'query' ? initial.q : '');
+	let mode = $state(initial.mode);
+	let tab = $state<SearchTab>(initial.tab);
+	let memo = $state(initial.memo);
+	let helpOpen = $state(false);
+
+	let rows = $state<SearchRow[]>([]);
+	/** 결과가 이 글의 것인가 — 다른 글의 결과를 보이지 않는다. */
+	let rowsFor = $state('');
+	let loading = $state(false);
+	let error = $state<string | null>(null);
+
+	const term = $derived((mode === 'query' ? query : search).trim());
+	const queryBlocked = $derived(mode === 'query' && !canQuery(tab));
+
+	const QUERY_KEYS_OF: Record<string, { keys: readonly QueryKeyRow[]; rules: string }> = {
+		quest: { keys: QUEST_QUERY_KEYS, rules: 'filter.queryHelpRules' },
+		campaign: { keys: CAMPAIGN_QUERY_KEYS, rules: 'campaignList.queryHelpRules' },
+		book: { keys: LIBRARY_QUERY_KEYS, rules: 'library.queryHelpRules' }
+	};
+
+	interface Ask {
+		mode: 'search' | 'query';
+		term: string;
+		kind: SearchKind | null;
+		memo: boolean;
+	}
+	const latest = new LatestQuery<Ask, SearchRow[]>(async (a) => {
+		if (a.mode === 'search') {
+			const fields: Field[] = ['body', 'comment', 'attachment'];
+			if (a.memo) fields.push('memo');
+			const hits = await searchApi.enhanced(a.term, fields);
+			return sortRows(hits);
+		}
+		const plain = (kind: SearchKind, id: string, title: string): SearchRow => ({
+			kind,
+			id,
+			title,
+			matched_in: [],
+			excerpt: ''
+		});
+		switch (a.kind) {
+			case 'quest':
+				return (await questsApi.matchQuery(a.term)).map((q) => plain('quest', q.quest_id, q.title));
+			case 'campaign':
+				return (await campaignsApi.matchQuery(a.term)).map((c) =>
+					plain('campaign', c.campaign_slug, c.title)
+				);
+			case 'book':
+				return (await libraryApi.matchQuery(a.term)).map((b) => plain('book', b.book_id, b.title));
+			default:
+				return [];
+		}
+	});
+	onDestroy(() => latest.cancel());
+
+	// 검색어 · 모드 · 종류(쿼리일 때만) · 메모가 바뀌면 다시 묻는다. 검색은 종류와 상관없이 한 번에 받아
+	// 탭에서 나눈다 — 탭을 옮겨도 다시 묻지 않고, 탭마다 개수가 보인다.
+	$effect(() => {
+		const ask: Ask = {
+			mode,
+			term,
+			kind: mode === 'query' && canQuery(tab) ? tab : null,
+			memo
+		};
+		const key = JSON.stringify(ask);
+		if (!ask.term || queryBlocked) {
+			latest.cancel();
+			rows = [];
+			rowsFor = key;
+			loading = false;
+			error = null;
+			return;
+		}
+		loading = true;
+		latest.run(
+			ask,
+			(res) => {
+				rows = res;
+				rowsFor = key;
+				loading = false;
+				error = null;
+			},
+			(e) => {
+				rows = [];
+				rowsFor = key;
+				loading = false;
+				error = e instanceof Error ? e.message : String(e);
+			}
+		);
+	});
+
+	// 주소에 싣는다 — 새로고침 · 공유한 링크가 같은 결과를 연다.
+	$effect(() => {
+		const want = searchStateParams({ q: term, tab, mode, memo }).toString();
+		const url = new URL(window.location.href);
+		if (url.search.replace(/^\?/, '') === want) return;
+		goto(`${url.pathname}${want ? `?${want}` : ''}`, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+	});
+
+	const counts = $derived(countByTab(rows));
+	const shown = $derived(rowsOfTab(rows, tab));
+	/** 쿼리는 한 종류의 결과라 다른 탭의 개수는 모른다. */
+	const countKnown = (k: SearchTab) => mode === 'search' || k === tab;
+
+	function tabLabel(k: SearchTab): string {
+		return k === 'all' ? t('search.tabAll', $locale) : t(`kind.${k}`, $locale);
+	}
+</script>
+
+<svelte:head>
+	<title>{t('search.title', $locale)}</title>
+</svelte:head>
+
+<div class="wrap">
+	<header>
+		<h1>{t('search.title', $locale)}</h1>
+	</header>
+
+	<div class="bar">
+		<SearchField
+			bind:search
+			bind:query
+			bind:mode
+			bind:helpOpen
+			queryError={mode === 'query' && !queryBlocked ? error : null}
+			placeholder={t('search.placeholder', $locale)}
+			testids={{ search: 'doc-search', query: 'doc-query' }}
+			grow
+		>
+			{#snippet options()}
+				<label class="opt" title={t('search.memoHint', $locale)}>
+					<input type="checkbox" bind:checked={memo} data-testid="doc-search-memo" />
+					{t('search.memo', $locale)}
+				</label>
+			{/snippet}
+		</SearchField>
+	</div>
+	{#if mode === 'query' && canQuery(tab)}
+		<QueryNotes
+			{error}
+			open={helpOpen}
+			keys={QUERY_KEYS_OF[tab].keys}
+			rulesKey={QUERY_KEYS_OF[tab].rules}
+			testid="doc-query"
+		/>
+	{/if}
+
+	<div class="tabs" role="tablist" aria-label={t('search.tabsAria', $locale)}>
+		{#each SEARCH_TABS as k (k)}
+			<button
+				type="button"
+				role="tab"
+				class="tab"
+				class:on={tab === k}
+				aria-selected={tab === k}
+				data-testid="doc-search-tab-{k}"
+				onclick={() => (tab = k)}
+			>
+				{tabLabel(k)}
+				{#if term && !queryBlocked && countKnown(k) && rowsFor}
+					<span class="n">{counts[k]}</span>
+				{/if}
+			</button>
+		{/each}
+	</div>
+
+	{#if queryBlocked}
+		<p class="state" data-testid="doc-query-blocked">{t('search.queryNeedsKind', $locale)}</p>
+	{:else if !term}
+		<p class="state">{t('search.hint', $locale)}</p>
+	{:else if error && mode === 'search'}
+		<p class="state error" role="alert">{error}</p>
+	{:else if loading && shown.length === 0}
+		<p class="state">{t('search.loading', $locale)}</p>
+	{:else if shown.length === 0 && !error}
+		<p class="state">{t('search.empty', $locale)}</p>
+	{:else}
+		<ul class="results" data-testid="doc-search-results" aria-busy={loading}>
+			{#each shown as r (`${r.kind}:${r.id}`)}
+				<li class="row">
+					<DocLink
+						kind={r.kind}
+						id={r.id}
+						slug={r.kind === 'rule' ? r.id : undefined}
+						title={r.title}
+						href={openHref(r, mode === 'search' ? term : '')}
+						class="row-link"
+					>
+						<span class="kind {r.kind}">{t(`kind.${r.kind}`, $locale)}</span>
+						{#if r.kind !== 'rule'}
+							<span class="id">{r.id}</span>
+						{/if}
+						<span class="title">{r.kind === 'rule' ? r.id : r.title}</span>
+						{#if r.matched_in.length}
+							<span class="why">
+								{#each r.matched_in as f (f)}
+									<span class="f">{t(`search.field.${f}`, $locale)}</span>
+								{/each}
+							</span>
+						{/if}
+					</DocLink>
+					{#if r.excerpt}
+						<p class="excerpt">
+							{#each highlightSegments(r.excerpt, term) as seg, si (si)}
+								{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}
+							{/each}
+						</p>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</div>
+
+<style>
+	.wrap {
+		max-width: var(--content-max-width, 1100px);
+		margin: 0 auto;
+		padding: var(--sp-24);
+	}
+	header {
+		margin-bottom: var(--sp-16);
+	}
+	h1 {
+		font-size: var(--fs-xl);
+		font-weight: var(--fw-bold);
+		color: var(--text-strong);
+	}
+	.bar {
+		display: flex;
+		gap: var(--sp-12);
+		align-items: center;
+	}
+	.opt {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--sp-4);
+		font-size: var(--fs-sm);
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.tabs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-4);
+		margin: var(--sp-16) 0 var(--sp-12);
+		border-bottom: var(--bw) solid var(--border);
+	}
+	.tab {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--sp-6);
+		padding: var(--sp-6) var(--sp-12);
+		border: none;
+		border-bottom: 2px solid transparent;
+		background: none;
+		color: var(--text-muted);
+		font-size: var(--fs-md);
+		cursor: pointer;
+	}
+	.tab.on {
+		color: var(--text-strong);
+		border-bottom-color: var(--accent);
+	}
+	.n {
+		font-size: var(--fs-xs);
+		padding: 0 var(--sp-6);
+		border-radius: var(--r-pill, 999px);
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+	}
+	.state {
+		padding: var(--sp-32);
+		text-align: center;
+		color: var(--text-muted);
+	}
+	.state.error {
+		color: var(--danger);
+	}
+	.results {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.row {
+		padding: var(--sp-8) var(--sp-4);
+		border-bottom: var(--bw) solid var(--border-subtle, var(--border));
+	}
+	.row :global(.row-link) {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: var(--sp-8);
+		color: var(--text-strong);
+		text-decoration: none;
+	}
+	.row:hover .title {
+		text-decoration: underline;
+	}
+	.kind {
+		font-size: var(--fs-xs);
+		color: var(--text-muted);
+	}
+	.id {
+		font-family: var(--font-mono);
+		font-size: var(--fs-sm);
+		color: var(--text-muted);
+	}
+	.title {
+		font-weight: var(--fw-medium, 500);
+	}
+	.why {
+		display: inline-flex;
+		gap: var(--sp-4);
+	}
+	.f {
+		font-size: var(--fs-xs);
+		padding: 0 var(--sp-6);
+		border-radius: var(--r-sm);
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+	}
+	.excerpt {
+		margin: var(--sp-4) 0 0;
+		font-size: var(--fs-sm);
+		color: var(--text-muted);
+		overflow-wrap: anywhere;
+	}
+	mark {
+		background: var(--search-hit-bg);
+		color: var(--search-hit-text);
+	}
+</style>

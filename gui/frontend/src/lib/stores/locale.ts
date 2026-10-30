@@ -184,6 +184,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'nav.admin': { ko: '관리', en: 'Admin' },
 	'nav.rules': { ko: '규칙', en: 'Rules' },
 	'nav.library': { ko: '도서관', en: 'Library' },
+	// REQ-040: 전체 문서 검색 페이지.
+	'nav.search': { ko: '검색', en: 'Search' },
 	'nav.settings': { ko: '설정', en: 'Settings' },
 	'nav.more': { ko: '더 보기', en: 'More' },
 	// DEV-266: 알림 스택 상한 초과 축약 칩 — {n} 은 렌더 시 치환.
@@ -1950,6 +1952,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.newDoc': { ko: '+ 신규', en: '+ New' },
 	// REQ-012: 검색 팔레트 강화 검색 토글 + 매치 영역 라벨.
 	'palette.wideToggle': { ko: '넓게', en: 'Wide' },
+	// REQ-040: 팔레트 맨 아래 — 검색어를 들고 검색 페이지로.
+	'palette.allResults': {
+		ko: "'{q}' 모든 결과 보기 — 검색 페이지",
+		en: "See all results for '{q}' — search page"
+	},
 	'palette.wideToggleTitle': {
 		ko: '넓은 검색 — 댓글 / 첨부 이름까지 (서버 조회, 약간 느림)',
 		en: 'Wide search — includes comments / attachment names (server query, slightly slower)'
@@ -1958,6 +1965,30 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'search.field.comment': { ko: '댓글', en: 'comment' },
 	'search.field.attachment': { ko: '첨부', en: 'attachment' },
 	'search.field.memo': { ko: '메모', en: 'memo' },
+	// REQ-040: 검색 페이지.
+	'search.field.title': { ko: '제목', en: 'title' },
+	'search.title': { ko: '문서 검색', en: 'Search documents' },
+	'search.placeholder': {
+		ko: '퀘스트 · 캠페인 · 도서관 · 규칙의 제목 · 본문 · 댓글 · 첨부 이름',
+		en: 'Titles, bodies, comments and attachment names of quests, campaigns, library and rules'
+	},
+	'search.memo': { ko: '메모 포함', en: 'Include memos' },
+	'search.memoHint': {
+		ko: '메모는 이 기계에만 있는 개인 기록이라 켤 때만 찾습니다',
+		en: 'Memos are personal notes kept on this machine, so they are searched only when this is on'
+	},
+	'search.tabsAria': { ko: '종류', en: 'Kind' },
+	'search.tabAll': { ko: '전체', en: 'All' },
+	'search.queryNeedsKind': {
+		ko: '쿼리는 종류마다 키가 달라 퀘스트 · 캠페인 · 도서관 탭에서 씁니다',
+		en: 'Query keys differ by kind — pick the Quest, Campaign or Library tab to use a query'
+	},
+	'search.hint': {
+		ko: '찾을 말을 넣으세요 — 제목에서 맞은 문서가 먼저 나옵니다',
+		en: 'Type what to find — documents with a title match come first'
+	},
+	'search.loading': { ko: '찾는 중…', en: 'Searching…' },
+	'search.empty': { ko: '맞는 문서가 없습니다', en: 'No matching documents' },
 	'library.searchPlaceholder': { ko: '제목/본문 검색', en: 'Search title/body' },
 	// REQ-011: 도서관 검색 영역 확장. 도서관 문서엔 댓글이 없어 첨부 이름만 대상이다.
 	'library.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },

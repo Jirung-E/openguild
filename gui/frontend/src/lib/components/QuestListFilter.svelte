@@ -12,6 +12,7 @@
 	// DEV-452: 검색칸 하나에서 [검색 | 쿼리] — 보드 · 캠페인 · 도서관과 같이 쓴다.
 	import SearchField, { type SearchMode } from './SearchField.svelte';
 	import QueryNotes from './QueryNotes.svelte';
+	import { QUEST_QUERY_KEYS } from '$lib/utils/query-keys';
 	import type { TriState } from '$lib/utils/quest-list';
 
 	let {
@@ -90,17 +91,8 @@
 		if (query.trim() && !search.trim()) searchMode = 'query';
 	});
 
-	// DEV-447: 쿼리 도움말 — 키 목록. 값의 예는 CLI `quest list -q` 와 같다.
-	const QUERY_KEYS = [
-		['status', 'status:open,in_progress', 'filter.queryHelpStatus'],
-		['type', 'type:BUG', 'filter.queryHelpType'],
-		['tag', '-tag:wip', 'filter.queryHelpTag'],
-		['campaign', 'campaign:C-001', 'filter.queryHelpCampaign'],
-		['urgency', 'urgency:<=2', 'filter.queryHelpUrgency'],
-		['due', 'due:overdue', 'filter.queryHelpDue'],
-		['parent', 'parent:none', 'filter.queryHelpParent'],
-		['commented', 'commented:>=2026-10-20', 'filter.queryHelpCommented']
-	] as const;
+	// DEV-447: 쿼리 도움말 — 키 목록(REQ-040: 검색 페이지와 같이 쓴다).
+	const QUERY_KEYS = QUEST_QUERY_KEYS;
 
 	// DEV-033: 고급 행 접기. 필터 활성이면 라벨에 표시.
 	let advancedOpen = $state(false);

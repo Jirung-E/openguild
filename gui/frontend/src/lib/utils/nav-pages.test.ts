@@ -47,15 +47,22 @@ describe('DEV-456 상단바 페이지', () => {
 	});
 
 	it('상단바에 없는 페이지는 메뉴로', () => {
-		// 기본은 예전 ☰ 메뉴와 같은 순서.
-		expect(menuPages(normalizeNavPages(undefined))).toEqual(['admin', 'campaigns', 'worklog', 'tags']);
+		// 기본은 예전 ☰ 메뉴와 같은 순서, 검색 페이지(REQ-040)는 맨 뒤.
+		expect(menuPages(normalizeNavPages(undefined))).toEqual([
+			'admin',
+			'campaigns',
+			'worklog',
+			'tags',
+			'search'
+		]);
 		expect(menuPages(['home', 'campaigns'])).toEqual([
 			'quests',
 			'rules',
 			'library',
 			'admin',
 			'worklog',
-			'tags'
+			'tags',
+			'search'
 		]);
 	});
 

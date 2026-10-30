@@ -45,6 +45,7 @@
 	// DEV-452 (REQ-039): 검색칸 — 퀘스트 목록과 같은 부품([검색 | 쿼리]), 키만 도서관 것.
 	import SearchField, { type SearchMode } from '$lib/components/SearchField.svelte';
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
+	import { LIBRARY_QUERY_KEYS } from '$lib/utils/query-keys';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
@@ -134,11 +135,6 @@
 	}
 	// DEV-452: 쿼리 — 해석과 거르기는 코어가 하고(`GET /api/library?q=`), 여기는 맞는 번호만 받아
 	// 태그 줄 · 검색과 **그리고**로 겹친다. 틀린 동안은 거르지 않는다(퀘스트 목록과 같다).
-	const LIBRARY_QUERY_KEYS = [
-		['tag', 'tag:설계', 'library.queryHelpTag'],
-		['folder', '-folder:보관', 'library.queryHelpFolder'],
-		['updated', 'updated:>=2026-10-01', 'library.queryHelpUpdated']
-	] as const;
 	const initialQuery = $page.url.searchParams.get('q') ?? '';
 	let query = $state(initialQuery);
 	let searchMode = $state<SearchMode>(initialQuery.trim() ? 'query' : 'search');
