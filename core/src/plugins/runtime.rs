@@ -271,6 +271,13 @@ pub(super) fn run_lines(
         if answer.as_ref().is_some_and(|a| a.stops()) {
             return;
         }
+        // DEV-469: 댓글 명령 줄은 본문이 그 명령일 때만.
+        if let Some(c) = &h.command {
+            let json = event_json.get_or_insert_with(|| event.to_json());
+            if !super::order::command_matches(c, json, cfg) {
+                continue;
+            }
+        }
         let who = h.label(i);
         // REQ-025: 조건이 먼저다 — 통과해야 함수가 불리고 동작이 돈다.
         let needs: Vec<String> = h
@@ -788,6 +795,8 @@ mod tests {
                 name: name.into(),
                 scope: vec![Scope::Cli],
                 permissions: Vec::new(),
+                run_after: Vec::new(),
+                run_before: Vec::new(),
                 scripts: Vec::new(),
                 actions: Default::default(),
                 handlers: vec![handler(on, None)],

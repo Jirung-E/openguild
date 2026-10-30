@@ -62,6 +62,16 @@ pub fn plugin_schema() -> Value {
                 "additionalProperties": { "$ref": "#/$defs/action" },
                 "description": "이름 붙인 동작. 스크립트는 이름만 알고, 주소는 여기에만 있다."
             },
+            "run_after": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "이 플러그인보다 **먼저** 돌아야 하는 다른 플러그인의 `name`. 한 이벤트에 여러 플러그인이 걸리면 적지 않은 것끼리는 읽은 순서(길드 폴더 이름순, 그 뒤 소스). 없는 이름은 넘어간다."
+            },
+            "run_before": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "이 플러그인보다 **나중에** 돌아야 하는 다른 플러그인의 `name`. 바뀌기 전(pre) 단계에서 앞 플러그인이 막거나 대신 처리하면 뒤 플러그인은 그 이벤트를 못 본다."
+            },
             "handlers": {
                 "type": "array",
                 "minItems": 1,
@@ -126,6 +136,7 @@ pub fn plugin_schema() -> Value {
                         "pattern": "^\\s*[0-9]+\\s*[smhd]\\s*$",
                         "description": "이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`(최소 1m). 앱 · 서버에서만 돈다. `pre` · `post` · `when` · `with` · `wait` · `group` · 순서와 같이 못 쓴다."
                     },
+                    "command": { "type": "string", "description": "댓글 명령 — `comment.added` 만 보는 줄에서, 댓글 본문(앞뒤 공백 무시)이 정확히 이 글일 때만 돈다. `${COMMAND}` 처럼 입력값을 쓸 수 있다. 다른 플러그인과 같은 명령이면 경고가 뜬다." },
                     "query": { "type": "string", "description": "`every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법(`status:open due:overdue`). 함수는 `e.items` 로 받는다. 맞는 것이 없으면 안 부른다." },
                     "of": { "enum": ["quest", "campaign", "library"], "description": "`query` 를 걸 목록. 기본 `quest`." },
                     "pre": {

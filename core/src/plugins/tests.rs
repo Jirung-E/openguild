@@ -464,6 +464,8 @@ fn def(action: Action) -> PluginDef {
         description: None,
         scope: vec![Scope::Cli],
         permissions: Vec::new(),
+        run_after: Vec::new(),
+        run_before: Vec::new(),
         scripts: Vec::new(),
         actions: Default::default(),
         handlers: vec![Handler {
@@ -3878,4 +3880,160 @@ async fn another_change_finishing_does_not_run_my_waiting_lines() {
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// DEV-469: 같은 댓글 명령을 잡는 플러그인 둘 — `name` 이 다른 두 폴더를 길드에 둔다. `extra_a` 는 앞 플러그인 정의 맨
+/// 위에 덧붙일 줄(`run_after = [...]` 따위).
+async fn two_command_plugins(label: &str, extra_a: &str) -> (PathBuf, PathBuf, crate::Store) {
+    let home = fresh_tmp(&format!("{label}-home"));
+    let g = fresh_tmp(label);
+    crate::repo::seed_guild_dir(&g).unwrap();
+    for (name, extra, reply) in [("a-first", extra_a, "A"), ("b-second", "", "B")] {
+        let dir = plugins_dir(&g).join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(MANIFEST),
+            format!(
+                "name = \"{name}\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{extra}\n\n\
+                 [[handlers]]\n    pre     = [\"comment.added\"]\n    command = \"${{COMMAND}}\"\n    call    = \"cmd\"\n\n\
+                 [[inputs]]\n    key     = \"COMMAND\"\n    label   = \"명령\"\n    type    = \"text\"\n    default = \"/session\"\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("main.rhai"),
+            format!(r#"fn cmd(e) {{ #{{ instead: "{reply}" }} }}"#),
+        )
+        .unwrap();
+    }
+    let store = crate::Store::open(&g).await.unwrap();
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins(Scope::Cli, std::sync::Arc::new(runtime::DropDelivery));
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        assert!(l.errors.is_empty(), "{:?}", l.errors);
+        assert_eq!(l.active.len(), 2);
+    }
+    (g, home, store)
+}
+
+async fn instead_of(store: &crate::Store, body: &str) -> Option<String> {
+    let q = crate::ops::quests::create_quest(store, quest_req("퀘스트"))
+        .await
+        .unwrap();
+    match crate::ops::comments::add_comment_entry(
+        store,
+        &q.quest_id,
+        "admin".into(),
+        body.into(),
+        None,
+        false,
+    )
+    .await
+    {
+        Err(crate::error::AppError::Instead(m)) => Some(m),
+        Err(e) => panic!("{e:?}"),
+        Ok(_) => None,
+    }
+}
+
+/// DEV-469: 같은 명령을 둘이 잡으면 **읽은 순서(폴더 이름순)의 앞**이 대신 처리하고 뒤는 안 돈다. 명령이 아닌 댓글은
+/// 둘 다 안 건드린다(`command` 가 거른다).
+#[tokio::test]
+async fn the_first_plugin_handles_a_shared_command_and_the_rest_do_not_run() {
+    let (g, home, store) = two_command_plugins("cmd-shared", "").await;
+    assert_eq!(instead_of(&store, " /session ").await.as_deref(), Some("A"));
+    assert_eq!(instead_of(&store, "보통 글").await, None);
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// DEV-469: `run_after` 로 플러그인끼리의 순서를 바꾼다 — 이름이 앞이어도 뒤에 돈다.
+#[tokio::test]
+async fn run_after_puts_another_plugin_first() {
+    let (g, home, store) = two_command_plugins("cmd-after", "run_after = [\"b-second\"]").await;
+    assert_eq!(instead_of(&store, "/session").await.as_deref(), Some("B"));
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// DEV-469: 겹치는 명령은 화면(`status`)과 `plugin check` 가 경고한다 — 걸린 두 플러그인 모두에.
+#[tokio::test]
+async fn a_shared_command_is_a_warning_on_screen_and_in_check() {
+    let (g, home, store) = two_command_plugins("cmd-warn", "").await;
+    let _guard = env_lock();
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let st = view::status(&store, Scope::Cli, true).unwrap();
+    let reports = check::check_guild(&g);
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    assert_eq!(st.warnings.len(), 1, "{:?}", st.warnings);
+    assert!(
+        st.warnings[0].contains("/session") && st.warnings[0].contains("a-first, b-second"),
+        "{:?}",
+        st.warnings
+    );
+    assert_eq!(reports.len(), 2);
+    for r in &reports {
+        assert!(
+            r.warnings.iter().any(|w| w.contains("/session")),
+            "{}: {:?}",
+            r.name,
+            r.warnings
+        );
+    }
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// DEV-469: 명령이 다르면 경고하지 않는다.
+#[test]
+fn different_commands_are_not_a_warning() {
+    let g = fresh_tmp("cmd-differ");
+    let home = fresh_tmp("cmd-differ-home");
+    for (name, cmd) in [("a", "/one"), ("b", "/two")] {
+        let dir = plugins_dir(&g).join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(MANIFEST),
+            format!("name = \"{name}\"\nscope = [\"cli\"]\n\n[[handlers]]\n    post    = [\"comment.added\"]\n    command = \"{cmd}\"\n    action  = {{ post = {{ url = \"https://example.com\" }} }}\n"),
+        )
+        .unwrap();
+    }
+    let _guard = env_lock();
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let l = load_all(&g);
+    let w = order::cross_warnings(&l.needs_consent);
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    assert!(l.errors.is_empty(), "{:?}", l.errors);
+    assert_eq!(l.needs_consent.len(), 2);
+    assert!(w.is_empty(), "{w:?}");
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// DEV-469: `command` 는 `comment.added` 만 보는 줄에, 플러그인 순서는 **다른** 플러그인에.
+#[test]
+fn command_and_plugin_order_are_checked_at_load() {
+    let line = |head: &str, on: &str| {
+        format!(
+            "name = \"x\"\nscope = [\"cli\"]\n{head}\n\n[[handlers]]\n    post    = [\"{on}\"]\n    command = \"/go\"\n    action  = {{ post = {{ url = \"https://example.com\" }} }}\n"
+        )
+    };
+    let parse = |s: String| -> AppResult<PluginDef> {
+        let d: PluginDef = toml::from_str(&s).unwrap();
+        validate(&d).map(|_| d)
+    };
+    assert!(parse(line("", "comment.added")).is_ok());
+    let e = parse(line("", "quest.created")).unwrap_err().to_string();
+    assert!(e.contains("comment.added"), "{e}");
+    let e = parse(line("", "comment.*")).unwrap_err().to_string();
+    assert!(e.contains("comment.added"), "{e}");
+    let e = parse(line("run_after = [\"x\"]", "comment.added"))
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("run_after"), "{e}");
+    // 없는 플러그인 이름은 괜찮다 — 이 길드에 없을 수 있다.
+    assert!(parse(line("run_before = [\"nobody\"]", "comment.added")).is_ok());
 }

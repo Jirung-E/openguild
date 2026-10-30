@@ -1,6 +1,7 @@
 //! DEV-414: 한 이벤트에 여러 줄이 걸릴 때의 순서 — Bevy 의 `before` / `after` 와 같은 생각.
 //!
 //! 줄은 `run_after = ["다른 줄 id"]` · `run_before = [...]` 로 **같은 플러그인 안의** 다른 줄과의 순서를 적는다.
+//! 플러그인끼리의 순서는 정의 맨 위에 같은 이름의 칸으로 다른 플러그인의 `name` 을 적는다([`plugin_order`], DEV-469).
 //!
 //! # 적지 않은 줄끼리는 적힌 순서
 //!
@@ -16,7 +17,7 @@
 //! 줄은 도는 자리가 셋으로 나뉜다 — 바뀌기 전(`pre`, 변경 안에서), 바뀐 뒤(`post`, 전용 스레드), 바뀐 뒤 기다리는 줄
 //! (`post` + `wait`, 잠금이 풀린 뒤 부른 자리에서). 자리가 다르면 이미 순서가 정해져 있거나(`pre` 가 늘 먼저) 서로
 //! 다른 실이라 맞출 수 없다. 그래서 자리가 다른 줄 사이의 순서는 적재 때 오류다.
-use super::{Handler, PluginDef};
+use super::{Handler, Plugin, PluginDef};
 use std::collections::{BTreeSet, HashMap};
 
 /// 줄이 도는 자리.
@@ -225,6 +226,148 @@ pub fn unused_orders(def: &PluginDef) -> Vec<String> {
     out
 }
 
+/// DEV-469: **플러그인끼리**의 순서 — 정의 맨 위의 `run_after` · `run_before`(다른 플러그인의 `name`). 줄 순서와
+/// 같은 생각이다: 적지 않은 것끼리는 받은 순서(적재 순서 — 길드 폴더 이름순, 그 뒤 소스)를 지키고, 동시에 돌 수
+/// 있는 것 가운데 앞인 것을 먼저 고른다.
+///
+/// 순서는 바뀌기 전(`pre`) 단계에서 뜻이 크다 — 앞 플러그인이 막거나 대신 처리하면 뒤 플러그인은 그 이벤트를 못
+/// 본다. 없는 이름은 넘어간다(그 플러그인이 이 길드에 없을 수 있다). 순서가 돌고 돌면 그 플러그인들은 받은 순서로
+/// 두고 경고를 돌려준다 — 적재를 막으면 남이 만든 두 플러그인을 같이 못 쓰게 된다.
+pub fn plugin_order(plugins: &mut Vec<Plugin>) -> Vec<CrossWarning> {
+    let n = plugins.len();
+    let idx: HashMap<&str, usize> = plugins
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.def.name.as_str(), i))
+        .collect();
+    let mut succ: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut indeg = vec![0usize; n];
+    let mut edge = |a: usize, b: usize| {
+        if a != b && !succ[a].contains(&b) {
+            succ[a].push(b);
+            indeg[b] += 1;
+        }
+    };
+    for (i, p) in plugins.iter().enumerate() {
+        for x in &p.def.run_after {
+            if let Some(&j) = idx.get(x.as_str()) {
+                edge(j, i);
+            }
+        }
+        for x in &p.def.run_before {
+            if let Some(&j) = idx.get(x.as_str()) {
+                edge(i, j);
+            }
+        }
+    }
+    let mut ready: BTreeSet<usize> = (0..n).filter(|&i| indeg[i] == 0).collect();
+    let mut out = Vec::with_capacity(n);
+    while let Some(i) = ready.pop_first() {
+        out.push(i);
+        for &j in &succ[i] {
+            indeg[j] -= 1;
+            if indeg[j] == 0 {
+                ready.insert(j);
+            }
+        }
+    }
+    let mut warnings = Vec::new();
+    if out.len() < n {
+        let stuck: Vec<usize> = (0..n).filter(|i| !out.contains(i)).collect();
+        let names: Vec<String> = stuck.iter().map(|&i| plugins[i].def.name.clone()).collect();
+        warnings.push(CrossWarning {
+            message: crate::tf!(
+                "플러그인 순서가 돌고 돕니다 — {} 의 run_after · run_before 가 서로를 가리킵니다. 이 플러그인들은 읽은 순서로 돕니다",
+                "the plugin order is circular — the run_after / run_before of {} point at one another. These plugins run in load order",
+                names.join(", ")
+            ),
+            plugins: names,
+        });
+        out.extend(stuck);
+    }
+    let mut slots: Vec<Option<Plugin>> = std::mem::take(plugins).into_iter().map(Some).collect();
+    plugins.extend(out.into_iter().filter_map(|i| slots[i].take()));
+    warnings
+}
+
+/// DEV-469: 줄의 `command` 를 이 플러그인의 설정값으로 푼 것(앞뒤 공백 없이). 못 풀거나 비면 `None` — 그 줄은
+/// 안 돈다. 설정값(`config`)을 보므로 시험의 `set_config` 도 먹는다.
+pub fn resolved_command(
+    command: &str,
+    cfg: &std::collections::BTreeMap<String, serde_json::Value>,
+) -> Option<String> {
+    let subst: std::collections::BTreeMap<String, String> = cfg
+        .iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect();
+    super::expand_env_with(command, &subst)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// DEV-469: 댓글 본문이 그 명령인가 — 앞뒤 공백은 무시하고 나머지는 정확히 같아야 한다.
+pub fn command_matches(
+    command: &str,
+    event: &serde_json::Value,
+    cfg: &std::collections::BTreeMap<String, serde_json::Value>,
+) -> bool {
+    let Some(want) = resolved_command(command, cfg) else {
+        return false;
+    };
+    event
+        .pointer("/comment/body")
+        .and_then(|v| v.as_str())
+        .is_some_and(|b| b.trim() == want)
+}
+
+/// DEV-469: 여러 플러그인에 걸친 경고 하나와 걸린 플러그인들.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossWarning {
+    pub plugins: Vec<String>,
+    pub message: String,
+}
+
+/// DEV-469: 한 자리(컴포넌트)에서 같이 도는 플러그인들 사이의 경고 — 순서가 돌고 도는 것, 그리고 **같은 댓글
+/// 명령을 둘 이상이 잡는 것.** 명령은 줄에 `command` 로 적은 것만 안다(스크립트 안의 `if` 는 못 본다).
+///
+/// 겹치면 둘 다 돌 수도, 앞의 것만 돌 수도 있다 — 앞 플러그인이 막거나 대신 처리하면 거기서 끝나고, 본문만 바꾸면
+/// 뒤 플러그인도 **원래 본문을** 보고 또 처리한다. 어느 쪽이든 쓰는 사람이 기대한 것이 아니기 쉽다.
+pub fn cross_warnings(plugins: &[Plugin]) -> Vec<CrossWarning> {
+    let mut ordered = plugins.to_vec();
+    let mut out = plugin_order(&mut ordered);
+    // 명령 → 그 명령을 잡는 플러그인(순서대로, 한 번씩).
+    let mut by_command: Vec<(String, Vec<String>)> = Vec::new();
+    for p in &ordered {
+        let (cfg, _) = super::runtime::values_for(p);
+        for h in &p.def.handlers {
+            let Some(c) = h.command.as_deref().and_then(|c| resolved_command(c, &cfg)) else {
+                continue;
+            };
+            match by_command.iter_mut().find(|(k, _)| *k == c) {
+                Some((_, names)) if names.contains(&p.def.name) => {}
+                Some((_, names)) => names.push(p.def.name.clone()),
+                None => by_command.push((c, vec![p.def.name.clone()])),
+            }
+        }
+    }
+    for (c, names) in by_command {
+        if names.len() < 2 {
+            continue;
+        }
+        out.push(CrossWarning {
+            message: crate::tf!(
+                "댓글 명령 `{c}` 를 {} 가 같이 받습니다 — {} 가 먼저 돌고, 그쪽이 막거나 대신 처리하면 뒤 플러그인은 돌지 않습니다(본문만 바꾸면 뒤 플러그인도 또 처리합니다). 한쪽의 명령을 바꾸거나 `run_after` · `run_before` 로 순서를 정하세요",
+                "{} all take the comment command `{c}` — {} runs first; if it blocks or handles it instead, the later ones do not run (if it only changes the body, the later ones handle it again). Change one command, or set the order with `run_after` / `run_before`",
+                names.join(", "),
+                names[0]
+            ),
+            plugins: names,
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +475,68 @@ mod tests {
         let w = unused_orders(&d);
         assert_eq!(w.len(), 1, "{w:?}");
         assert!(w[0].starts_with("b:"), "{w:?}");
+    }
+
+    fn plugin(name: &str, after: &[&str], before: &[&str]) -> Plugin {
+        let mut d = def(&format!("[[handlers]]\n{LINE}"));
+        d.name = name.into();
+        d.run_after = after.iter().map(|s| s.to_string()).collect();
+        d.run_before = before.iter().map(|s| s.to_string()).collect();
+        Plugin {
+            def: d,
+            dir: Default::default(),
+            guild_root: Default::default(),
+            compiled: None,
+            script_src: None,
+            folder: Default::default(),
+            imports: Vec::new(),
+            source: None,
+        }
+    }
+
+    fn names(ps: &[Plugin]) -> Vec<&str> {
+        ps.iter().map(|p| p.def.name.as_str()).collect()
+    }
+
+    /// DEV-469: 적지 않은 것끼리는 받은 순서, 적은 것은 그대로 — 없는 이름은 넘어간다.
+    #[test]
+    fn plugins_keep_load_order_unless_told_otherwise() {
+        let mut ps = vec![
+            plugin("a", &[], &[]),
+            plugin("b", &[], &[]),
+            plugin("c", &[], &[]),
+        ];
+        assert!(plugin_order(&mut ps).is_empty());
+        assert_eq!(names(&ps), ["a", "b", "c"]);
+
+        let mut ps = vec![
+            plugin("a", &["c", "nobody"], &[]),
+            plugin("b", &[], &[]),
+            plugin("c", &[], &[]),
+        ];
+        assert!(plugin_order(&mut ps).is_empty());
+        assert_eq!(names(&ps), ["b", "c", "a"]);
+
+        let mut ps = vec![
+            plugin("a", &[], &[]),
+            plugin("b", &[], &[]),
+            plugin("c", &[], &["a"]),
+        ];
+        assert!(plugin_order(&mut ps).is_empty());
+        assert_eq!(names(&ps), ["b", "c", "a"]);
+    }
+
+    /// DEV-469: 순서가 돌고 돌아도 아무것도 빠지지 않는다 — 걸린 것들은 받은 순서로 두고 경고한다.
+    #[test]
+    fn a_plugin_cycle_keeps_everyone_and_warns() {
+        let mut ps = vec![
+            plugin("a", &["b"], &[]),
+            plugin("b", &["a"], &[]),
+            plugin("c", &[], &[]),
+        ];
+        let w = plugin_order(&mut ps);
+        assert_eq!(names(&ps), ["c", "a", "b"]);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].plugins, ["a", "b"]);
     }
 }

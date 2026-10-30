@@ -148,3 +148,69 @@ describe('REQ-032 예제 안내', () => {
 		expect(a!.getAttribute('href')).toBe('https://example.test/examples');
 	});
 });
+
+// DEV-469: 같은 댓글 명령을 둘이 잡으면 경고가 보이고, 줄의 명령과 플러그인끼리의 순서도 보인다.
+describe('DEV-469 플러그인끼리 겹침', () => {
+	it('경고 · 명령 · 순서가 보인다', async () => {
+		document.body.innerHTML = '';
+		sources.mockResolvedValue([]);
+		const handler = {
+			label: '세션 열기',
+			stage: 'pre',
+			events: ['comment.added'],
+			call: 'on_comment',
+			with: [],
+			when: [],
+			run_after: [],
+			run_before: [],
+			group: null,
+			every: null,
+			query: null,
+			of: null,
+			command: '${COMMAND}',
+			wait: false,
+			action: null,
+			action_kind: null,
+			action_target: null
+		};
+		status.mockResolvedValue({
+			plugins: [
+				{
+					name: 'my-commands',
+					description: null,
+					on: ['pre:comment.added'],
+					scope: ['gui'],
+					handlers: [handler],
+					actions: [],
+					scripts: [],
+					permissions: [],
+					imports: [],
+					env: [],
+					data_dir: null,
+					inputs: [],
+					script_src: null,
+					granted: true,
+					runs_here: true,
+					source: null,
+					run_after: ['claude-session'],
+					run_before: []
+				}
+			],
+			errors: [],
+			auto_allow: false,
+			manageable: true,
+			no_guild: false,
+			problems: [],
+			warnings: ['댓글 명령 `/session` 를 claude-session, my-commands 가 같이 받습니다'],
+			examples_url: 'https://example.test/examples'
+		});
+		render(AdminPluginsSection, { props: {} });
+		await tick();
+		await tick();
+		await new Promise((r) => setTimeout(r, 20));
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('claude-session, my-commands 가 같이 받습니다');
+		expect(text).toContain('${COMMAND}');
+		expect(text).toContain('claude-session 다음');
+	});
+});

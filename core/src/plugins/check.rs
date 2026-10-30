@@ -146,9 +146,34 @@ pub fn check_guild(guild_root: &Path) -> Vec<Report> {
     dirs.sort();
     let (used, _) = super::sources::used_dirs(guild_root);
     dirs.extend(used.into_iter().map(|(_, p)| p));
-    dirs.iter()
+    let mut reports: Vec<Report> = dirs
+        .iter()
         .map(|d| check_dir(d, Some(guild_root)))
-        .collect()
+        .collect();
+    // DEV-469: 플러그인끼리의 경고 — 같은 자리(cli · gui · server)에서 같이 도는 것끼리만 본다. 걸린 플러그인마다 단다.
+    let loaded = super::load_all(guild_root);
+    let all: Vec<super::Plugin> = loaded
+        .active
+        .into_iter()
+        .chain(loaded.needs_consent)
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    for scope in [super::Scope::Cli, super::Scope::Gui, super::Scope::Server] {
+        let here: Vec<super::Plugin> = all
+            .iter()
+            .filter(|p| p.def.scope.contains(&scope))
+            .cloned()
+            .collect();
+        for w in super::order::cross_warnings(&here) {
+            if !seen.insert(w.message.clone()) {
+                continue;
+            }
+            for r in reports.iter_mut().filter(|r| w.plugins.contains(&r.name)) {
+                r.warnings.push(w.message.clone());
+            }
+        }
+    }
+    reports
 }
 
 /// 스크립트 원문 전부를 한 덩이로. 아래 두 경고가 원문을 훑는 **어림짐작**이라 같이 쓴다.

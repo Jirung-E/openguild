@@ -424,6 +424,13 @@
 						{/if}
 						<div class="plugin-meta">
 							<span>{t('plugins.scope', $locale)}: {p.scope.join(', ')}</span>
+							<!-- DEV-469: 플러그인끼리의 순서 — 앞 플러그인이 막거나 대신 처리하면 뒤는 그 일을 못 본다. -->
+							{#if p.run_after?.length}
+								<span>{t('plugins.runAfter', $locale).replace('{ids}', p.run_after.join(', '))}</span>
+							{/if}
+							{#if p.run_before?.length}
+								<span>{t('plugins.runBefore', $locale).replace('{ids}', p.run_before.join(', '))}</span>
+							{/if}
 						</div>
 						<!-- DEV-403: 한 플러그인이 여러 줄을 갖는다 — 언제 → 무엇을, 적힌 순서대로. -->
 						<ol class="plugin-lines" aria-label={t('plugins.lines', $locale)}>
@@ -450,6 +457,11 @@
 												: t('plugins.stagePost', $locale)}
 											{h.events.join(' ')}</span
 										>
+										{#if h.command}
+											<span class="line-when"
+												>{t('plugins.command', $locale)} <code>{h.command}</code></span
+											>
+										{/if}
 									{/if}
 									<Icon name="arrow-right" size="1em" />
 									<code class="plugin-target"
@@ -716,6 +728,15 @@
 					</li>
 				{/each}
 			</ul>
+			<!-- DEV-469: 플러그인 여럿에 걸친 경고 — 같은 댓글 명령을 둘 이상이 잡으면 앞의 것만 돌기 쉽다. -->
+			{#if (pluginStatus?.warnings ?? []).length > 0}
+				<h3 class="plugin-broken-h">{t('plugins.warnings', $locale)}</h3>
+				<ul class="plugin-list">
+					{#each pluginStatus?.warnings ?? [] as w, i (i)}
+						<li class="plugin broken"><span>{w}</span></li>
+					{/each}
+				</ul>
+			{/if}
 			<!-- DEV-381: 전달 실패는 대개 설정 문제라 설정 옆에 있는 편이 낫다.
 			     토스트로 띄우면 시끄럽고, 안 보여주면 조용히 실패한다. -->
 			{#if (pluginStatus?.problems ?? []).length > 0}

@@ -23,9 +23,11 @@ scripts     = ["main.rhai"]
         args    = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${OPENGUILD_PLUGIN_DIR}/open.ps1"]
 
 [[handlers]]
-    id   = "세션 열기"
-    pre  = ["comment.added"]
-    call = "on_comment"
+    id      = "세션 열기"
+    pre     = ["comment.added"]
+    # 본문이 이 명령일 때만 돈다. 적어 두면 같은 명령을 잡는 다른 플러그인이 있을 때 경고가 뜬다(DEV-469).
+    command = "${COMMAND}"
+    call    = "on_comment"
 
 [[inputs]]
     key     = "COMMAND"

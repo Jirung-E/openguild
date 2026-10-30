@@ -657,6 +657,8 @@ mod tests {
                 name: "p".into(),
                 scope: vec![Scope::Cli],
                 permissions: Vec::new(),
+                run_after: Vec::new(),
+                run_before: Vec::new(),
                 scripts: Vec::new(),
                 actions: Default::default(),
                 handlers: vec![crate::plugins::Handler {

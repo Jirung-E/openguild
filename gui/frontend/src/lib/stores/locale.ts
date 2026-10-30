@@ -254,6 +254,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-414: 순서를 적은 줄 — 적힌 순서와 다르게 돌 수 있다.
 	'plugins.runAfter': { ko: '{ids} 다음', en: 'after {ids}' },
 	'plugins.runBefore': { ko: '{ids} 앞', en: 'before {ids}' },
+	// DEV-469: 댓글 본문이 이 글일 때만 도는 줄.
+	'plugins.command': { ko: '명령', en: 'command' },
 	// DEV-415: 든 묶음 — 묶음의 조건 · 읽는 것은 이미 이 줄에 합쳐져 보인다.
 	'plugins.group': { ko: '묶음', en: 'group' },
 	// DEV-458: 시간마다 도는 줄 — "1h 마다 퀘스트 `status:open`".
@@ -277,6 +279,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.hideScript': { ko: '접기', en: 'Hide' },
 	'plugins.broken': { ko: '읽지 못한 정의', en: 'Definitions that failed to load' },
 	'plugins.problems': { ko: '최근 전달 실패', en: 'Recent delivery failures' },
+	// DEV-469: 같은 댓글 명령을 둘 이상이 잡는 것 · 돌고 도는 플러그인 순서.
+	'plugins.warnings': { ko: '플러그인끼리 겹침', en: 'Plugins that overlap' },
 	// DEV-383: 예전엔 Rust 가 만든 한국어 문장이 그대로 렌더돼 영어 UI 에 끼었다.
 	'plugins.noGuild': {
 		ko: '아직 길드를 열지 않았습니다 — 플러그인은 이 기계에서 연 길드에만 적용됩니다.',

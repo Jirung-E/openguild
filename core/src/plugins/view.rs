@@ -59,6 +59,11 @@ pub struct PluginView {
     pub source: Option<String>,
     /// 그 폴더의 실제 경로 — 소스에서 온 것은 길드 밖이라 어디인지 알아야 한다.
     pub dir: String,
+    /// DEV-469: 이 플러그인보다 먼저 / 나중에 돌아야 하는 다른 플러그인.
+    #[serde(default)]
+    pub run_after: Vec<String>,
+    #[serde(default)]
+    pub run_before: Vec<String>,
 }
 
 /// 핸들러 한 줄.
@@ -92,6 +97,9 @@ pub struct HandlerView {
     pub query: Option<String>,
     #[serde(default)]
     pub of: Option<String>,
+    /// DEV-469: 댓글 명령 — 적힌 그대로(`${COMMAND}` 는 안 푼다).
+    #[serde(default)]
+    pub command: Option<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
     /// `action_kind`/`action_target` 이 찬다.
     pub action: Option<String>,
@@ -182,6 +190,9 @@ pub struct PluginStatus {
     /// 지금 깔린 것과 다른 문법을 보게 된다.
     #[serde(default)]
     pub examples_url: String,
+    /// DEV-469: 여기서 같이 도는 플러그인들 사이의 경고 — 같은 댓글 명령을 둘 이상이 잡거나, 순서가 돌고 돈다.
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// 이 빌드의 예제 폴더 주소.
@@ -214,6 +225,7 @@ impl PluginStatus {
             no_guild: true,
             problems: Vec::new(),
             examples_url: examples_url(),
+            warnings: Vec::new(),
         }
     }
 }
@@ -270,6 +282,7 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                     .every
                     .as_ref()
                     .map(|_| h.of.unwrap_or_default().as_str().to_string()),
+                command: h.command.clone(),
                 action,
                 action_kind,
                 action_target,
@@ -321,6 +334,8 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
         script_src: p.script_src.clone(),
         granted,
         runs_here: p.def.scope.contains(&scope),
+        run_after: p.def.run_after.clone(),
+        run_before: p.def.run_before.clone(),
     }
 }
 
@@ -396,6 +411,18 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
     let guild_root = &store.paths.guild_root;
     let loaded = super::load_all(guild_root);
     let granted = super::consent::load(guild_root)?;
+    // DEV-469: 아직 허락하지 않은 것도 넣는다 — 허락할지 정할 때 겹치는 것을 봐야 한다.
+    let here: Vec<Plugin> = loaded
+        .active
+        .iter()
+        .chain(&loaded.needs_consent)
+        .filter(|p| p.def.scope.contains(&scope))
+        .cloned()
+        .collect();
+    let warnings = super::order::cross_warnings(&here)
+        .into_iter()
+        .map(|w| w.message)
+        .collect();
     Ok(PluginStatus {
         plugins: loaded
             .active
@@ -411,6 +438,7 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
         // 안 읽어서, 훅이 조용히 실패해도 화면에 아무것도 안 떴다.
         problems: store.plugin_problems(),
         examples_url: examples_url(),
+        warnings,
     })
 }
 
@@ -420,6 +448,8 @@ mod examples_url_tests {
 
     /// DEV-385: 화면에 가는 상태의 칸은 이것뿐이다 — 없앤 자유 문장 칸(`notes`)이 되살아나면 여기서 걸린다.
     /// 프런트 시험은 고정한 응답을 흉내 내므로 이걸 못 잡는다(되살려도 통과했다 — 2026-10-22 확인).
+    /// `warnings`(DEV-469)는 `problems` 와 같은 갈래다 — 정의 여럿에 걸친 경고라 프런트가 만들 수 없고, 이 기계의
+    /// 언어로(`tf!`) 만든다.
     #[test]
     fn plugin_status_sends_only_known_fields() {
         let v = serde_json::to_value(PluginStatus::no_guild()).unwrap();
@@ -427,7 +457,16 @@ mod examples_url_tests {
         keys.sort();
         assert_eq!(
             keys,
-            vec!["auto_allow", "errors", "examples_url", "manageable", "no_guild", "plugins", "problems"]
+            vec![
+                "auto_allow",
+                "errors",
+                "examples_url",
+                "manageable",
+                "no_guild",
+                "plugins",
+                "problems",
+                "warnings"
+            ]
         );
     }
 

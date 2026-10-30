@@ -123,6 +123,11 @@ fn handler_line(h: &view::HandlerView) -> String {
         }
         _ => format!("{stage} {}", h.events.join(" ")),
     };
+    // DEV-469: 댓글 명령 — "바뀌기 전 comment.added `/session` →".
+    let when_part = match &h.command {
+        Some(c) => format!("{when_part} `{c}`"),
+        None => when_part,
+    };
     let what = match (&h.call, &h.action) {
         (Some(f), _) => format!("{f}()"),
         (None, Some(name)) => name.clone(),

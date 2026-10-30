@@ -299,6 +299,11 @@ claude -p | openguild --guild $env:OPENGUILD_GUILD_DIR quest comment add `
 
 댓글이 남지 않아도 함수가 맡긴 `run` 은 돈다 — 그래서 댓글 대신 터미널을 열 수 있다.
 
+줄에 `command = "${COMMAND}"` 를 적어 두어서(DEV-469) 본문이 그 명령일 때만 돌고, 같은 명령을 잡는 플러그인이
+또 있으면 관리 → 플러그인과 `openguild plugin check` 가 경고한다. 둘 다 바뀌기 전 줄이면 **먼저 도는 쪽만**
+처리한다(대신 처리하면 거기서 끝난다). 먼저 도는 쪽은 읽은 순서(길드 폴더 이름순, 그 뒤 소스)이고, 정의 맨 위의
+`run_after = ["claude-session"]` · `run_before = [...]` 로 바꾼다.
+
 터미널: 맥은 '터미널' 앱(처음 한 번 macOS 가 '제어 허용' 을 묻는다), 리눅스는 `x-terminal-emulator` 또는
 `gnome-terminal`, 윈도우는 Windows Terminal(`wt.exe`)이 있으면 그것, 없으면 파워셸 창.
 서버(`server`)에서는 안 돌린다 — 창이 서버 기계에 뜬다.

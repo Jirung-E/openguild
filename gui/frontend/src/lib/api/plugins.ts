@@ -65,6 +65,9 @@ export interface PluginView {
 	source?: string | null;
 	/** 플러그인 폴더의 실제 경로 — 소스에서 온 것은 길드 밖이다. */
 	dir?: string;
+	/** DEV-469: 이 플러그인보다 먼저 / 나중에 도는 다른 플러그인(`name`). */
+	run_after?: string[];
+	run_before?: string[];
 }
 
 /** DEV-400: 소스가 내놓는 플러그인 하나. */
@@ -114,6 +117,8 @@ export interface PluginHandler {
 	every: string | null;
 	query: string | null;
 	of: string | null;
+	/** DEV-469: 댓글 명령 — 본문이 이 글일 때만 돈다. 적힌 그대로(`${COMMAND}` 는 안 푼다). */
+	command?: string | null;
 	/** DEV-407: 이 줄을 기다리나. `pre` 줄은 언제나 기다린다. */
 	wait: boolean;
 	/** 이름 붙인 동작을 가리키면 그 이름. */
@@ -168,6 +173,8 @@ export interface PluginStatus {
 	problems: string[];
 	/** REQ-032: 이 버전의 예제 폴더 주소 — 설치본에는 예제가 안 들어간다. */
 	examples_url?: string;
+	/** DEV-469: 같이 도는 플러그인들 사이의 경고 — 같은 댓글 명령을 둘 이상이 잡거나, 순서가 돌고 돈다. */
+	warnings?: string[];
 }
 
 /** 허용/철회를 할 수 있는 상태인가 — 로컬 길드를 연 데스크톱에서만. */

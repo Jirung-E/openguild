@@ -123,6 +123,14 @@ wins. A missing `id`, a line ordered against itself, lines in different places, 
 circle is a load error; `openguild plugin check` also warns when two ordered lines never
 fire on the same event (the order does nothing).
 
+Between **plugins**, the same two keys go at the top of `plugin.toml` and name other
+plugins: `run_after = ["claude-session"]`. Unordered plugins run in load order (guild
+folders by name, then sources). In `pre`, the first plugin that blocks or handles instead
+ends it — the later ones never see the event. For a comment command, put
+`command = "/deploy"` (or `"${COMMAND}"`) on the line instead of only checking the body in
+the script: the line then runs only for that body, and two plugins taking the same command
+show up as a warning in Admin → Plugins and `openguild plugin check`.
+
 ### 3. Does it need a script?
 
 Only write a `.rhai` file if the answer is yes.

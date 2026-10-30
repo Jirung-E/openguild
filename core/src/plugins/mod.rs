@@ -244,6 +244,14 @@ pub struct PluginDef {
     /// 기록한다. `send`/`run` 은 어디로 나가는지가 `[actions]` 에 다 보이므로 여기 안 적는다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
+    /// DEV-469: 이 플러그인보다 **먼저** 돌아야 하는 다른 플러그인(`name`). 한 이벤트에 여러 플러그인이 걸리면
+    /// 적지 않은 것끼리는 읽은 순서(길드 폴더 이름순, 그 뒤 소스)다([`order::plugin_order`]). 없는 이름은
+    /// 넘어간다 — 그 플러그인이 이 길드에 없을 수 있다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub run_after: Vec<String>,
+    /// DEV-469: 이 플러그인보다 **나중에** 돌아야 하는 다른 플러그인.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub run_before: Vec<String>,
     /// 언제 무엇을 할지 — 적힌 순서대로 돈다(DEV-414: `run_after` · `run_before` 로 바꿀 수 있다).
     pub handlers: Vec<Handler>,
     /// DEV-415: 줄 묶음 — 여러 줄이 같이 쓰는 조건 · 데이터 · 순서. 줄은 `group` 으로 든다.
@@ -292,6 +300,11 @@ pub struct Handler {
     /// 바뀐 **뒤**에 볼 이벤트 패턴 — `quest.created`, `quest.*`, `*.created`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post: Vec<String>,
+    /// DEV-469: 댓글 명령 — `comment.added` 줄에서 본문(앞뒤 공백 무시)이 **정확히 이 글**일 때만 돈다.
+    /// `${COMMAND}` 처럼 입력값을 쓸 수 있다. 적어 두면 다른 플러그인과 같은 명령을 잡을 때 경고가 뜬다
+    /// ([`order::command_overlaps`]) — 스크립트 안의 `if` 로만 거르면 겹치는지 알 길이 없다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
     /// 부를 스크립트 함수 이름. `action` 과 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<String>,
@@ -893,6 +906,9 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
             }
         }
     }
+    // DEV-469: 도는 것들 사이의 순서(`run_after` · `run_before`). 돌고 도는 순서의 경고는 화면 · `plugin check` 가
+    // 따로 낸다([`order::cross_warnings`]) — 여기서는 읽은 순서로 둔다.
+    let _ = order::plugin_order(&mut out.active);
     out
 }
 
@@ -1200,6 +1216,16 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     }
     validate_handlers(def)?;
     validate_inputs(def)?;
+    // DEV-469: 플러그인끼리의 순서 — 자기 자신은 가리킬 수 없다(없는 이름은 적재 때 넘어간다).
+    for other in def.run_after.iter().chain(&def.run_before) {
+        if other.trim().is_empty() || *other == def.name {
+            return Err(AppError::BadRequest(crate::tf!(
+                "{}: `run_after` · `run_before` 에는 **다른** 플러그인의 `name` 을 적습니다 (받은 값: {other:?})",
+                "{}: `run_after` / `run_before` take the `name` of **another** plugin (got: {other:?})",
+                def.name
+            )));
+        }
+    }
     // 스크립트 경로는 플러그인 폴더 안이어야 한다. `../../..` 를 적으면
     // 정의만으로 임의 파일을 컴파일 대상으로 지정할 수 있게 된다.
     // (폴더 밖 코드를 쓰는 길은 스크립트 안의 `import` 다 — [[DEV-408]].)
@@ -1326,6 +1352,21 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 }
             }
             (None, Some(ActionRef::Inline(_))) => {}
+        }
+        // DEV-469: 댓글 명령은 댓글이 달릴 때만 뜻이 있다.
+        if let Some(c) = &h.command {
+            if c.trim().is_empty() {
+                return bad(crate::tf!(
+                    "{who}: `command` 가 비어 있습니다",
+                    "{who}: `command` is empty"
+                ));
+            }
+            if scheduled || h.patterns().iter().any(|p| p != ev::COMMENT_ADDED) {
+                return bad(crate::tf!(
+                    "{who}: `command` 는 `comment.added` 만 보는 줄에 씁니다",
+                    "{who}: `command` is only for lines that watch `comment.added` alone"
+                ));
+            }
         }
         // 나머지(기다리기 · 조건 · 연결 데이터 · 이벤트 이름)는 이벤트에 걸리는 줄의 것이다.
         if scheduled {
