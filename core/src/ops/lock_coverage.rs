@@ -185,7 +185,21 @@ fn lock_at(body: &str) -> Option<usize> {
 }
 
 fn takes_lock(body: &str) -> bool {
-    lock_at(body).is_some()
+    lock_at(&join_chains(body)).is_some()
+}
+
+/// DEV-472: rustfmt 가 메서드 줄을 나눈 것(`store\n        .lock_docs(`)을 한 줄로 — 위 글자 찾기가 서식에 따라
+/// 갈리지 않게.
+fn join_chains(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    for (i, line) in body.lines().enumerate() {
+        let t = line.trim_start();
+        if i > 0 && !t.starts_with('.') {
+            out.push('\n');
+        }
+        out.push_str(if t.starts_with('.') { t } else { line });
+    }
+    out
 }
 
 struct Fn {
@@ -329,7 +343,8 @@ fn guards_match_the_classification() {
         let src = SOURCES.iter().find(|(m, _)| m == module).unwrap().1;
         let fns = functions(src);
         let Some(f) = fns.get(*name) else { continue };
-        let body = inner(&f.body);
+        let joined = join_chains(inner(&f.body));
+        let body = joined.as_str();
         let holds = takes_lock(body);
         match kind {
             Guild | Docs => {
