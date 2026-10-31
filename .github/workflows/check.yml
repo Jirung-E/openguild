@@ -70,7 +70,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+
+      # DEV-472: 서식 — 전체를 한 번 정리했으니(.git-blame-ignore-revs) 이제부터는 어긋나면 실패.
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
 
       # ~/.cargo/registry 만 캐시 — target/ 은 PR 마다 깨끗하게.
       # (CLAUDE.md 의 정책과 일치.)
@@ -273,6 +277,10 @@ jobs:
       # 등록됐는지. 한 곳이 빠지면 그 검사는 조용히 안 돌아간다(BUG-251).
       - name: check guard registration parity
         run: npm run check:guards
+
+      # DEV-472: 서식 — 어긋나면 프런트 폴더에서 format 스크립트(prettier --write)로 고친다.
+      - name: check formatting (prettier)
+        run: npm run check:format
 
       - name: vitest
         run: npm test -- --run

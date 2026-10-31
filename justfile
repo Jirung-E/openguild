@@ -82,6 +82,7 @@ build-debug: build-frontend
 # 터졌다. 실제로 그렇게 한 번 겪었다. "CI 와 동일한 게이트" 라는 이 레시피의
 # 목적 자체가 무너지므로 debug 로 맞춘다.
 test-rust:
+    cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
 
@@ -103,6 +104,7 @@ test-frontend:
     cd gui/frontend && npm run check:viewport
     cd gui/frontend && npm run check:classes
     cd gui/frontend && npm run check:guards
+    cd gui/frontend && npm run check:format
     cd gui/frontend && npm test -- --run
     cd gui/frontend && npm run build
 

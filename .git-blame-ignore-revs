@@ -1,0 +1,5 @@
+# git blame 이 건너뛸 커밋 — 동작은 그대로이고 서식만 바꾼 것들. GitHub 은 이 파일을 알아서 읽는다.
+# 로컬에서도 쓰려면 한 번: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# DEV-472: 서식 정리 — Rust 전체 cargo fmt · 프런트 전체 prettier
+ac7eb2c1d0e40a56962968e3feaef18eb1782d6f
