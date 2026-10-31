@@ -8,13 +8,13 @@
 //! "파일 진리원, DB 캐시 없음" 패턴. 전역 공유(git tracked) — quest memo
 //! (개인, gitignored)와 구분해 note 로 명명 (admin 결정).
 
-use anyhow::{anyhow, Context};
-use serde_json::{json, Value};
+use anyhow::{Context, anyhow};
+use serde_json::{Value, json};
 
-use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{Phase, names as ev, payload};
-use crate::store::{journal, Store};
+use crate::lock::DocKey;
+use crate::store::{Store, journal};
 
 /// `YYYY-MM-DD` 형식 검증 — 파일명이 되므로 traversal 방지 겸.
 pub fn validate_date(date: &str) -> AppResult<()> {
@@ -195,11 +195,7 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
 
 /// 일별 활동 count (히트맵용 경량 집계). (date, count) 오름차순 —
 /// 활동 없는 날짜는 행 자체가 없음 (클라이언트가 0 채움).
-pub async fn daily_summary(
-    store: &Store,
-    from: &str,
-    to: &str,
-) -> AppResult<Vec<(String, i64)>> {
+pub async fn daily_summary(store: &Store, from: &str, to: &str) -> AppResult<Vec<(String, i64)>> {
     validate_date(from)?;
     validate_date(to)?;
     let rows: Vec<(String, i64)> = sqlx::query_as(
@@ -401,7 +397,9 @@ mod tests {
         crate::ops::quests::change_status(
             &store,
             q.id,
-            ChangeStatusRequest { status_slug: "done".into() },
+            ChangeStatusRequest {
+                status_slug: "done".into(),
+            },
         )
         .await
         .unwrap();
@@ -422,14 +420,23 @@ mod tests {
         assert_eq!(report.counts.status_changes, 1);
         assert_eq!(report.counts.comments, 1);
         assert_eq!(report.counts.done_transitions, 1, "open → done 전환");
-        assert!(report.activities.iter().any(|a| a.kind == "created" && a.summary == "작업기록 테스트"));
-        assert!(report
-            .activities
-            .iter()
-            .any(|a| a.kind == "comment" && a.summary.starts_with("claude: 진행 메모")));
+        assert!(
+            report
+                .activities
+                .iter()
+                .any(|a| a.kind == "created" && a.summary == "작업기록 테스트")
+        );
+        assert!(
+            report
+                .activities
+                .iter()
+                .any(|a| a.kind == "comment" && a.summary.starts_with("claude: 진행 메모"))
+        );
 
         // 기간 밖이면 빈 결과.
-        let empty = activities(&store, "2000-01-01", "2000-01-02").await.unwrap();
+        let empty = activities(&store, "2000-01-01", "2000-01-02")
+            .await
+            .unwrap();
         assert!(empty.activities.is_empty());
 
         // 히트맵 집계 — 오늘 4건 (created + status + 그 comment... created 1,
@@ -555,7 +562,9 @@ mod tests {
             get_note(&store, "2026-07-05").unwrap().as_deref(),
             Some("오늘 한 일 — 한글 노트")
         );
-        set_note(&store, "2026-07-03", "이전 노트".into()).await.unwrap();
+        set_note(&store, "2026-07-03", "이전 노트".into())
+            .await
+            .unwrap();
 
         let notes = list_notes(&store, "2026-07-01", "2026-07-31").unwrap();
         assert_eq!(
@@ -600,12 +609,19 @@ mod tests {
         let r = activities(&store, &d, &d).await.unwrap();
         assert_eq!(r.counts.doc_changes, 3, "활동: {:?}", r.activities);
         let kinds: Vec<&str> = r.activities.iter().map(|a| a.kind.as_str()).collect();
-        assert!(kinds.contains(&"rule") && kinds.contains(&"book"), "{kinds:?}");
+        assert!(
+            kinds.contains(&"rule") && kinds.contains(&"book"),
+            "{kinds:?}"
+        );
 
         // reindex 는 캐시를 파일에서 재구축한다 — 같은 이벤트가 두 번 세어지면 안 된다.
         crate::reindex::reindex(&store).await.unwrap();
         let after = activities(&store, &d, &d).await.unwrap();
-        assert_eq!(after.counts.doc_changes, 3, "reindex 후 중복: {:?}", after.activities);
+        assert_eq!(
+            after.counts.doc_changes, 3,
+            "reindex 후 중복: {:?}",
+            after.activities
+        );
 
         // rename 하면 지난 항목도 새 slug 를 가리켜야 (안 그러면 클릭해도 안 열린다).
         crate::ops::rules::rename_rule(&store, "my-rule", "renamed-rule")

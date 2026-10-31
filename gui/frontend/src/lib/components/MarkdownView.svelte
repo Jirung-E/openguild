@@ -351,7 +351,10 @@
 	function markAtPoint(x: number, y: number): Highlight | null {
 		type CaretDoc = Document & {
 			caretRangeFromPoint?: (x: number, y: number) => Range | null;
-			caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+			caretPositionFromPoint?: (
+				x: number,
+				y: number
+			) => { offsetNode: Node; offset: number } | null;
 		};
 		const doc = document as CaretDoc;
 		let node: Node | null = null;

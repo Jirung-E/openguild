@@ -244,7 +244,11 @@ export function lookupRef(id: string): IndexedRef | null {
 }
 
 /** DEV-219: 접두 유무와 무관하게 토큰을 완전히 풀어 kind/ref 를 함께 반환. */
-export function resolveCrossLinkToken(token: string): { kind: Kind | null; id: string; ref: IndexedRef | null } {
+export function resolveCrossLinkToken(token: string): {
+	kind: Kind | null;
+	id: string;
+	ref: IndexedRef | null;
+} {
 	const { kind, id } = parseCrossLinkToken(token);
 	if (kind) {
 		return { kind, id, ref: get(questIndexNs).get(nsKey(kind, id)) ?? null };

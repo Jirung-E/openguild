@@ -14,10 +14,8 @@ use openguild_core::models::{
     UpdateCampaignRequest, UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::{campaigns as camp_ops, meta as meta_ops, quests as ops};
-use openguild_core::services::{
-    campaigns as camp_svc, meta as meta_svc, quests as read,
-};
-use openguild_core::{drift, reindex, snapshot, Store};
+use openguild_core::services::{campaigns as camp_svc, meta as meta_svc, quests as read};
+use openguild_core::{Store, drift, reindex, snapshot};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -37,7 +35,10 @@ pub const EDIT_CONFLICT_TAG: &str = "EDIT_CONFLICT::";
 fn edit_err(e: openguild_core::AppError) -> String {
     match e {
         openguild_core::AppError::EditConflict(c) => {
-            format!("{EDIT_CONFLICT_TAG}{}", serde_json::to_string(&*c).unwrap_or_default())
+            format!(
+                "{EDIT_CONFLICT_TAG}{}",
+                serde_json::to_string(&*c).unwrap_or_default()
+            )
         }
         other => other.to_string(),
     }
@@ -160,7 +161,11 @@ pub async fn plugin_allow_all(store: State<'_, Store>) -> Result<(), String> {
     }
     let root = store.paths.guild_root.clone();
     let loaded = openguild_core::plugins::load_all(&root);
-    let all: Vec<_> = loaded.active.iter().chain(loaded.needs_consent.iter()).collect();
+    let all: Vec<_> = loaded
+        .active
+        .iter()
+        .chain(loaded.needs_consent.iter())
+        .collect();
     openguild_core::plugins::consent::grant_all(&root, &all).map_err(err)?;
     reinstall_plugins(&store);
     Ok(())
@@ -219,12 +224,15 @@ pub async fn plugin_sources(store: State<'_, Store>) -> Result<Vec<SourceStatus>
 
 /// 폴더 하나를 더한다 — 플러그인이 하나면 바로 이 길드에서 쓰고, 여럿이면 소스로만 등록한다.
 #[tauri::command]
-pub async fn plugin_add_folder(store: State<'_, Store>, path: String) -> Result<AddOutcome, String> {
+pub async fn plugin_add_folder(
+    store: State<'_, Store>,
+    path: String,
+) -> Result<AddOutcome, String> {
     if no_guild_open(&store) {
         return Err(NO_GUILD_ERR.into());
     }
-    let out = sources::add_folder(&store.paths.guild_root, std::path::Path::new(&path))
-        .map_err(err)?;
+    let out =
+        sources::add_folder(&store.paths.guild_root, std::path::Path::new(&path)).map_err(err)?;
     reinstall_plugins(&store);
     Ok(out)
 }
@@ -291,12 +299,16 @@ fn reinstall_plugins(store: &Store) {
 
 #[tauri::command]
 pub async fn list_quest_types(store: State<'_, Store>) -> Result<Vec<QuestType>, String> {
-    meta_svc::list_quest_types(&store.index_pool).await.map_err(err)
+    meta_svc::list_quest_types(&store.index_pool)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
 pub async fn list_quest_statuses(store: State<'_, Store>) -> Result<Vec<QuestStatus>, String> {
-    meta_svc::list_quest_statuses(&store.index_pool).await.map_err(err)
+    meta_svc::list_quest_statuses(&store.index_pool)
+        .await
+        .map_err(err)
 }
 
 // ─────────────────────── quests (read) ───────────────────────
@@ -308,7 +320,9 @@ pub async fn list_quests(
 ) -> Result<Vec<QuestRow>, String> {
     let q = query.unwrap_or_default();
     // REQ-010: 첨부 이름 검색 지원 — ops 래퍼가 사이드카 사전 스캔을 한다.
-    openguild_core::ops::quests::list_quests(&store, &q).await.map_err(err)
+    openguild_core::ops::quests::list_quests(&store, &q)
+        .await
+        .map_err(err)
 }
 
 /// REQ-040: 쿼리 결과에 칠할 말 — 서버의 `GET /api/query/highlights` 와 같다.
@@ -368,11 +382,8 @@ pub async fn list_deleted_quests(store: State<'_, Store>) -> Result<Vec<QuestRow
 #[tauri::command]
 pub async fn get_quest(store: State<'_, Store>, id: i64) -> Result<QuestDetail, String> {
     let mut detail = read::get(&store.index_pool, id).await.map_err(err)?;
-    detail.tags = openguild_core::ops::quests::list_quest_tags(
-        &store,
-        &detail.quest.quest_id,
-    )
-    .map_err(err)?;
+    detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &detail.quest.quest_id)
+        .map_err(err)?;
     // DEV-156: 첨부 목록(sidecar)은 Store 가 필요 — 여기서 채운다.
     detail.attachments =
         openguild_core::ops::attachments::list_quest_attachments(&store, &detail.quest.quest_id);
@@ -389,7 +400,9 @@ pub async fn get_quest_by_slug(
     // 채 외부 편집한 경우에도 상세 화면은 최신. 실패는 무시 (stale 표시가
     // 에러보다 낫다).
     let _ = openguild_core::incremental::refresh_quest_if_stale(&store, &slug).await;
-    let mut detail = read::get_by_slug(&store.index_pool, &slug).await.map_err(err)?;
+    let mut detail = read::get_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
     detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &slug).map_err(err)?;
     // DEV-156: 첨부 목록(sidecar) 채우기.
     detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
@@ -484,9 +497,7 @@ pub async fn list_quest_candidates(
 }
 
 #[tauri::command]
-pub async fn list_quest_positions(
-    store: State<'_, Store>,
-) -> Result<Vec<QuestPosition>, String> {
+pub async fn list_quest_positions(store: State<'_, Store>) -> Result<Vec<QuestPosition>, String> {
     read::list_positions(&store.index_pool).await.map_err(err)
 }
 
@@ -494,7 +505,9 @@ pub async fn list_quest_positions(
 pub async fn list_quest_dependencies(
     store: State<'_, Store>,
 ) -> Result<Vec<QuestDependency>, String> {
-    read::list_dependencies(&store.index_pool).await.map_err(err)
+    read::list_dependencies(&store.index_pool)
+        .await
+        .map_err(err)
 }
 
 /// DEV-013: quest 의 변경 이력.
@@ -618,10 +631,7 @@ pub async fn delete_quest(
 }
 
 #[tauri::command]
-pub async fn restore_quest(
-    store: State<'_, Store>,
-    id: i64,
-) -> Result<QuestRow, String> {
+pub async fn restore_quest(store: State<'_, Store>, id: i64) -> Result<QuestRow, String> {
     ops::restore_quest(&store, id).await.map_err(err)
 }
 
@@ -640,7 +650,9 @@ pub async fn remove_prerequisite(
     id: i64,
     prereq_id: i64,
 ) -> Result<(), String> {
-    ops::remove_prerequisite(&store, id, prereq_id).await.map_err(err)
+    ops::remove_prerequisite(&store, id, prereq_id)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -688,7 +700,8 @@ pub async fn admin_list_snapshots(
 /// 만든 문장(오류 · 플러그인 문제)은 계속 한국어였다. Rust 는 이 파일을 매번 읽으므로 바로 먹는다.
 #[tauri::command]
 pub fn set_locale(locale: String) -> Result<(), String> {
-    let l = openguild_core::locale::Locale::parse(&locale).ok_or_else(|| format!("unknown locale: {locale}"))?;
+    let l = openguild_core::locale::Locale::parse(&locale)
+        .ok_or_else(|| format!("unknown locale: {locale}"))?;
     if openguild_core::locale::load_saved().ok() == Some(l) {
         return Ok(());
     }
@@ -754,16 +767,16 @@ pub async fn admin_restore(
             .cloned()
             .ok_or_else(|| "사용 가능한 snapshot 이 없습니다".to_string())?
     };
-    snapshot::restore_snapshot(&store, &target).await.map_err(err)?;
+    snapshot::restore_snapshot(&store, &target)
+        .await
+        .map_err(err)?;
     Ok(RestoreResult {
         restored_to: target.timestamp,
     })
 }
 
 #[tauri::command]
-pub async fn admin_check_drift(
-    store: State<'_, Store>,
-) -> Result<drift::DriftReport, String> {
+pub async fn admin_check_drift(store: State<'_, Store>) -> Result<drift::DriftReport, String> {
     drift::detect_drift(&store).await.map_err(err)
 }
 
@@ -816,7 +829,9 @@ pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, Str
 pub async fn admin_vacuum(
     store: State<'_, Store>,
 ) -> Result<openguild_core::maintenance::VacuumReport, String> {
-    openguild_core::maintenance::vacuum(&store).await.map_err(err)
+    openguild_core::maintenance::vacuum(&store)
+        .await
+        .map_err(err)
 }
 
 /// DEV-162: journal.db(AOF) 최근 op. admin 페이지 '최근 작업' 뷰.
@@ -849,9 +864,7 @@ pub struct QuestStatusWithCount {
 }
 
 #[tauri::command]
-pub async fn admin_list_types(
-    store: State<'_, Store>,
-) -> Result<Vec<QuestTypeWithCount>, String> {
+pub async fn admin_list_types(store: State<'_, Store>) -> Result<Vec<QuestTypeWithCount>, String> {
     let rows = meta_svc::list_quest_types(&store.index_pool)
         .await
         .map_err(err)?;
@@ -931,10 +944,7 @@ pub async fn admin_update_type(
 }
 
 #[tauri::command]
-pub async fn admin_delete_type(
-    store: State<'_, Store>,
-    prefix: String,
-) -> Result<(), String> {
+pub async fn admin_delete_type(store: State<'_, Store>, prefix: String) -> Result<(), String> {
     meta_ops::delete_type(&store, prefix).await.map_err(err)
 }
 
@@ -1002,19 +1012,14 @@ pub async fn admin_update_status(
 }
 
 #[tauri::command]
-pub async fn admin_delete_status(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<(), String> {
+pub async fn admin_delete_status(store: State<'_, Store>, slug: String) -> Result<(), String> {
     meta_ops::delete_status(&store, slug).await.map_err(err)
 }
 
 // ─────────────────────── tag defs (DEV-068) ───────────────────────
 
 #[tauri::command]
-pub async fn admin_list_tag_defs(
-    store: State<'_, Store>,
-) -> Result<Vec<QuestTagDef>, String> {
+pub async fn admin_list_tag_defs(store: State<'_, Store>) -> Result<Vec<QuestTagDef>, String> {
     meta_svc::list_quest_tag_defs(&store.index_pool)
         .await
         .map_err(err)
@@ -1040,10 +1045,7 @@ pub async fn admin_upsert_tag_def(
 }
 
 #[tauri::command]
-pub async fn admin_delete_tag_def(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<(), String> {
+pub async fn admin_delete_tag_def(store: State<'_, Store>, slug: String) -> Result<(), String> {
     meta_ops::delete_tag_def(&store, slug).await.map_err(err)
 }
 
@@ -1151,10 +1153,10 @@ pub fn inspect_guild_path(path: String) -> GuildPathInspect {
         };
     }
     // `.guild` 파일이면 parent 를 길드 root 로.
-    let resolved = if p.is_file()
-        && p.extension().and_then(|e| e.to_str()) == Some("guild")
-    {
-        p.parent().map(|x| x.to_path_buf()).unwrap_or_else(|| p.to_path_buf())
+    let resolved = if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("guild") {
+        p.parent()
+            .map(|x| x.to_path_buf())
+            .unwrap_or_else(|| p.to_path_buf())
     } else {
         p.to_path_buf()
     };
@@ -1174,10 +1176,7 @@ pub fn inspect_guild_path(path: String) -> GuildPathInspect {
 pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> LaunchInfoDto {
     LaunchInfoDto {
         mode: state.mode,
-        uninit_path: state
-            .uninit_path
-            .as_ref()
-            .map(|p| p.display().to_string()),
+        uninit_path: state.uninit_path.as_ref().map(|p| p.display().to_string()),
     }
 }
 
@@ -1227,10 +1226,7 @@ pub fn guild_path_for_frontend(root: &std::path::Path) -> String {
 /// ("openguild-welcome-placeholder")이 그대로 노출됐다 — 백엔드에서 강제:
 /// guild 모드가 아니면 빈 문자열(Nav 는 빈 이름이면 배지 숨김).
 #[tauri::command]
-pub fn current_guild_name(
-    store: State<'_, Store>,
-    launch: State<'_, crate::LaunchInfo>,
-) -> String {
+pub fn current_guild_name(store: State<'_, Store>, launch: State<'_, crate::LaunchInfo>) -> String {
     if launch.mode != "guild" {
         return String::new();
     }
@@ -1249,7 +1245,9 @@ pub fn load_custom_themes() -> Result<Option<String>, String> {
     if !path.is_file() {
         return Ok(None);
     }
-    std::fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+    std::fs::read_to_string(&path)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1324,8 +1322,7 @@ pub fn init_and_open_guild(
     }
 
     // 1. .guild 디렉토리 시드. seed_guild_dir 는 idempotent 이라 안전.
-    openguild_core::repo::seed_guild_dir(p)
-        .map_err(|e| format!("seed_guild_dir 실패: {e:#}"))?;
+    openguild_core::repo::seed_guild_dir(p).map_err(|e| format!("seed_guild_dir 실패: {e:#}"))?;
 
     // 2. <name>.guild 마커 파일 생성 (없으면). 이름은 인자 또는 디렉토리명.
     let guild_name = name
@@ -1348,8 +1345,7 @@ pub fn init_and_open_guild(
     }
 
     // 3. Store 열고 swap.
-    let store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
-        .map_err(open_err)?;
+    let store = tauri::async_runtime::block_on(openguild_core::Store::open(p)).map_err(open_err)?;
     // BUG-049/DEV-121 fix: 초기화/연 길드도 시동 sync (open_guild_in_current_window 와 동일).
     if let Err(e) =
         tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&store))
@@ -1372,7 +1368,10 @@ pub fn init_and_open_guild(
     // (open_guild_in_current_window 와 동일 이유 — 배너/첨부 asset:// 차단 방지).
     // BUG-223: guild_root 가 아니라 guild_root/.guild 를 허용해야 함(숨김
     // 디렉터리는 와일드카드 매칭에서 제외되므로 리터럴로 넣어야 함).
-    if let Err(e) = app.asset_protocol_scope().allow_directory(p.join(".guild"), true) {
+    if let Err(e) = app
+        .asset_protocol_scope()
+        .allow_directory(p.join(".guild"), true)
+    {
         eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
     }
     app.unmanage::<crate::LaunchInfo>();
@@ -1443,8 +1442,8 @@ pub fn open_guild_in_current_window(
     }
 
     // 1. 새 Store 미리 열기 (실패 시 swap 안 함).
-    let new_store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
-        .map_err(open_err)?;
+    let new_store =
+        tauri::async_runtime::block_on(openguild_core::Store::open(p)).map_err(open_err)?;
 
     // BUG-049/DEV-121 fix: Welcome 에서 연 길드도 시동 sync 적용. 기존엔
     // sync_on_open 이 앱 부팅 시 '초기 길드' 에만 돌아, Welcome → 길드 열기
@@ -1480,7 +1479,10 @@ pub fn open_guild_in_current_window(
     // 배너/첨부의 asset:// URL 이 차단됐다 (이미지 안 뜸). swap 마다 재적용.
     // BUG-223: guild_root 가 아니라 guild_root/.guild 를 허용해야 함(숨김
     // 디렉터리는 와일드카드 매칭에서 제외되므로 리터럴로 넣어야 함).
-    if let Err(e) = app.asset_protocol_scope().allow_directory(p.join(".guild"), true) {
+    if let Err(e) = app
+        .asset_protocol_scope()
+        .allow_directory(p.join(".guild"), true)
+    {
         eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
     }
 
@@ -1507,7 +1509,9 @@ pub async fn list_campaigns(
         && s != "active"
         && s != "done"
     {
-        return Err(format!("invalid status '{s}' (expected 'active' or 'done')"));
+        return Err(format!(
+            "invalid status '{s}' (expected 'active' or 'done')"
+        ));
     }
     camp_svc::list_matching(&store.index_pool, status.as_deref(), q.as_deref())
         .await
@@ -1523,10 +1527,7 @@ pub async fn create_campaign(
 }
 
 #[tauri::command]
-pub async fn get_campaign(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<CampaignDetail, String> {
+pub async fn get_campaign(store: State<'_, Store>, slug: String) -> Result<CampaignDetail, String> {
     // DEV-178: quest 와 대칭 — 상세 진입 시 캠페인 본문 파일만 lazy mtime 체크해
     // GUI 를 켜둔 채 외부 편집한 경우에도 최신. 실패는 무시 (stale > 에러).
     let _ = openguild_core::incremental::refresh_campaign_if_stale(&store, &slug).await;
@@ -1551,10 +1552,7 @@ pub async fn update_campaign(
 }
 
 #[tauri::command]
-pub async fn delete_campaign(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<(), String> {
+pub async fn delete_campaign(store: State<'_, Store>, slug: String) -> Result<(), String> {
     let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
         .await
         .map_err(err)?;
@@ -1706,10 +1704,7 @@ pub fn get_rules(store: State<'_, Store>) -> Result<RulesResponse, String> {
 }
 
 #[tauri::command]
-pub async fn set_rules(
-    store: State<'_, Store>,
-    content: String,
-) -> Result<RulesResponse, String> {
+pub async fn set_rules(store: State<'_, Store>, content: String) -> Result<RulesResponse, String> {
     openguild_core::ops::rules::set_rules(&store, content.clone())
         .await
         .map_err(err)?;
@@ -1785,7 +1780,10 @@ pub async fn set_rule(
     base_content: Option<String>,
 ) -> Result<RuleResponse, String> {
     // DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 충돌.
-    let base = openguild_core::ops::EditBase { text: base_content, version: None };
+    let base = openguild_core::ops::EditBase {
+        text: base_content,
+        version: None,
+    };
     openguild_core::ops::rules::set_rule_with(&store, &slug, content.clone(), base)
         .await
         .map_err(edit_err)?;
@@ -1795,7 +1793,10 @@ pub async fn set_rule(
         slug,
         content: Some(content),
         tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
-        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        created_at: entry
+            .as_ref()
+            .map(|e| e.created_at.clone())
+            .unwrap_or_default(),
         updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     })
 }
@@ -1815,7 +1816,10 @@ pub async fn create_rule(
         slug,
         content: Some(c),
         tags: vec![],
-        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        created_at: entry
+            .as_ref()
+            .map(|e| e.created_at.clone())
+            .unwrap_or_default(),
         updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     })
 }
@@ -2015,7 +2019,10 @@ pub async fn update_book(
         title.as_deref(),
         body.as_deref(),
         path.as_deref(),
-        openguild_core::ops::EditBase { text: base_body, version: None },
+        openguild_core::ops::EditBase {
+            text: base_body,
+            version: None,
+        },
     )
     .await
     .map_err(edit_err)?;
@@ -2180,7 +2187,10 @@ pub fn worklog_notes(
     let notes = openguild_core::ops::worklog::list_notes(&store, &from, &to).map_err(err)?;
     Ok(notes
         .into_iter()
-        .map(|(date, content)| WorklogNoteResponse { date, content: Some(content) })
+        .map(|(date, content)| WorklogNoteResponse {
+            date,
+            content: Some(content),
+        })
         .collect())
 }
 
@@ -2224,10 +2234,7 @@ pub async fn remove_highlight(
 
 // 메모는 단일 텍스트 그대로 (DEV-012).
 #[tauri::command]
-pub fn get_memo(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<ContentResponse, String> {
+pub fn get_memo(store: State<'_, Store>, slug: String) -> Result<ContentResponse, String> {
     let content = openguild_core::ops::comments::get_memo(&store, &slug).map_err(err)?;
     Ok(ContentResponse { content })
 }
@@ -2300,11 +2307,7 @@ pub async fn update_comment(
 }
 
 #[tauri::command]
-pub async fn delete_comment(
-    store: State<'_, Store>,
-    slug: String,
-    id: u64,
-) -> Result<(), String> {
+pub async fn delete_comment(store: State<'_, Store>, slug: String, id: u64) -> Result<(), String> {
     openguild_core::ops::comments::delete_comment_entry(&store, &slug, id)
         .await
         .map_err(err)
@@ -2442,12 +2445,8 @@ pub async fn toggle_campaign_comment_pinned(
 }
 
 #[tauri::command]
-pub fn get_campaign_memo(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<ContentResponse, String> {
-    let content =
-        openguild_core::ops::campaign_comments::get_memo(&store, &slug).map_err(err)?;
+pub fn get_campaign_memo(store: State<'_, Store>, slug: String) -> Result<ContentResponse, String> {
+    let content = openguild_core::ops::campaign_comments::get_memo(&store, &slug).map_err(err)?;
     Ok(ContentResponse { content })
 }
 
@@ -2573,14 +2572,20 @@ pub struct AttachmentProgress {
 /// 복사 루프가 4MiB 청크마다 이 값을 보고 중단한다. 취소된 항목은 core 가
 /// 조각 파일을 지우고 `AppError::Cancelled` 를 돌려준다.
 static UPLOAD_CANCELS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    std::sync::Mutex<
+        std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    >,
 > = std::sync::LazyLock::new(Default::default);
 
 /// DEV-323: 업로드 취소 요청. 아직 시작 안 했거나 이미 끝난 id 는 조용히 무시된다
 /// (사용자가 끝나는 순간에 눌러도 에러가 뜨지 않게).
 #[tauri::command]
 pub fn cancel_attachment_upload(upload_id: String) {
-    if let Some(flag) = UPLOAD_CANCELS.lock().ok().and_then(|m| m.get(&upload_id).cloned()) {
+    if let Some(flag) = UPLOAD_CANCELS
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&upload_id).cloned())
+    {
         flag.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -2844,7 +2849,8 @@ pub async fn library_copy_to_clipboard(
     // BUG-314: 고른 것이 여럿이면 하나씩 같은 임시 폴더에 펼친 뒤, 그 폴더의 맨 윗것들을
     // 통째로 올린다. 클립보드에 여럿 올리는 길은 아래 `copy_files_to_clipboard` 에 이미 있다.
     if let Some(keys) = picks.as_ref().filter(|k| !k.is_empty()) {
-        std::fs::create_dir_all(&stage).map_err(|e| format!("임시 폴더를 만들지 못했습니다: {e}"))?;
+        std::fs::create_dir_all(&stage)
+            .map_err(|e| format!("임시 폴더를 만들지 못했습니다: {e}"))?;
         let mut n = 0usize;
         for key in keys {
             let pick = match key.strip_prefix("folder:") {
@@ -2969,7 +2975,12 @@ fn copy_files_to_clipboard(paths: &[std::path::PathBuf]) -> Result<(), String> {
             ("wl-copy", vec!["--type", "x-special/gnome-copied-files"]),
             (
                 "xclip",
-                vec!["-selection", "clipboard", "-t", "x-special/gnome-copied-files"],
+                vec![
+                    "-selection",
+                    "clipboard",
+                    "-t",
+                    "x-special/gnome-copied-files",
+                ],
             ),
         ] {
             if pipe_tool(cmd, &args, &body).is_ok() {
@@ -3019,7 +3030,11 @@ fn pipe_tool(cmd: &str, args: &[&str], body: &str) -> Result<(), String> {
         .write_all(body.as_bytes())
         .map_err(|e| format!("{cmd}: {e}"))?;
     let st = child.wait().map_err(|e| format!("{cmd}: {e}"))?;
-    if st.success() { Ok(()) } else { Err(format!("{cmd} 실패")) }
+    if st.success() {
+        Ok(())
+    } else {
+        Err(format!("{cmd} 실패"))
+    }
 }
 
 /// REQ-028: 맥에서 클립보드에 **파일로** 올라가는가 — Finder 가 붙여넣을 수 있는 모양인가.
@@ -3057,7 +3072,12 @@ mod clipboard_tests {
         use std::os::unix::fs::MetadataExt;
         let ino = |p: &std::path::Path| std::fs::metadata(p).map(|m| (m.dev(), m.ino())).unwrap();
         for (g, want) in got.iter().zip(&picks) {
-            assert_eq!(ino(std::path::Path::new(g)), ino(want), "{g} 는 {} 가 아니다", want.display());
+            assert_eq!(
+                ino(std::path::Path::new(g)),
+                ino(want),
+                "{g} 는 {} 가 아니다",
+                want.display()
+            );
         }
         let _ = std::fs::remove_dir_all(&d);
     }

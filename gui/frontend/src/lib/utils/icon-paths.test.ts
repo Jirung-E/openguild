@@ -104,9 +104,7 @@ describe('makeQuestNodeSvgUrl — 기한 아이콘 (DEV-302)', () => {
 		expect(own).toContain(ICON_SHAPES.clock);
 		expect(own).not.toContain(ICON_SHAPES.campaign);
 
-		const fromCampaign = svgOf(
-			makeQuestNodeSvgUrl(quest({ earliest_campaign_due: '2026-08-01' }))
-		);
+		const fromCampaign = svgOf(makeQuestNodeSvgUrl(quest({ earliest_campaign_due: '2026-08-01' })));
 		expect(fromCampaign).toContain(ICON_SHAPES.campaign);
 		expect(fromCampaign).not.toContain(ICON_SHAPES.clock);
 	});

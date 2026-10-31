@@ -85,7 +85,11 @@ impl GuildInfo {
         match self.fresh().statuses.get(slug) {
             Some(s) => {
                 let picked = if en { &s.en } else { &s.ko };
-                if picked.is_empty() { slug.to_string() } else { picked.clone() }
+                if picked.is_empty() {
+                    slug.to_string()
+                } else {
+                    picked.clone()
+                }
             }
             None => slug.to_string(),
         }
@@ -247,7 +251,10 @@ pub fn plain_text(md: &str) -> String {
         }
         let mut s = t.trim_start();
         // 제목·인용·목록 기호.
-        s = s.trim_start_matches('#').trim_start_matches('>').trim_start();
+        s = s
+            .trim_start_matches('#')
+            .trim_start_matches('>')
+            .trim_start();
         if let Some(rest) = s.strip_prefix("- ").or_else(|| s.strip_prefix("* ")) {
             s = rest;
         }
@@ -326,7 +333,10 @@ mod tests {
         assert_eq!(info.status_name("in_progress", Some("ko")), "진행 중");
         assert_eq!(info.status_name("in_progress", Some("en")), "In Progress");
         assert_eq!(info.type_name("DEV"), "일반 개발 작업");
-        assert_eq!(info.guild_name(), dir.file_name().unwrap().to_str().unwrap());
+        assert_eq!(
+            info.guild_name(),
+            dir.file_name().unwrap().to_str().unwrap()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -389,7 +399,8 @@ mod tests {
 
     #[test]
     fn plain_text_drops_markup() {
-        let md = "# 제목\n\n- [링크](http://x) 와 `코드` 그리고 **굵게**\n\n```\nfn x() {}\n```\n끝";
+        let md =
+            "# 제목\n\n- [링크](http://x) 와 `코드` 그리고 **굵게**\n\n```\nfn x() {}\n```\n끝";
         assert_eq!(plain_text(md), "제목\n링크 와 코드 그리고 굵게\n끝");
     }
 }

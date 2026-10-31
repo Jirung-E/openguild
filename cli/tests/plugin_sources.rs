@@ -166,7 +166,10 @@ fn a_plugin_from_a_source_runs_in_place_and_leaves_cleanly() {
     lab.ok(&["plugin", "remove", "hello-log"]);
     let after = lab.json(&["plugin", "list"]);
     assert!(names(&after, "active").is_empty());
-    assert!(lab.source().join("hello-folder/plugin.toml").is_file(), "원본을 지웠다");
+    assert!(
+        lab.source().join("hello-folder/plugin.toml").is_file(),
+        "원본을 지웠다"
+    );
 }
 
 #[test]
@@ -184,11 +187,7 @@ fn removing_one_single_folder_source_keeps_the_other() {
     let lab = Lab::new("two");
     let other = lab.base.join("other");
     std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(
-        other.join("plugin.toml"),
-        mini("other-log"),
-    )
-    .unwrap();
+    std::fs::write(other.join("plugin.toml"), mini("other-log")).unwrap();
     let one = lab.source().join("hello-folder").display().to_string();
     lab.ok(&["plugin", "add", &one]);
     lab.ok(&["plugin", "add", &other.display().to_string()]);
@@ -197,7 +196,10 @@ fn removing_one_single_folder_source_keeps_the_other() {
     assert_eq!(both, vec!["hello-log", "other-log"]);
 
     lab.ok(&["plugin", "remove", "hello-log"]);
-    assert_eq!(names(&lab.json(&["plugin", "list"]), "needs_consent"), vec!["other-log"]);
+    assert_eq!(
+        names(&lab.json(&["plugin", "list"]), "needs_consent"),
+        vec!["other-log"]
+    );
 }
 
 #[test]
@@ -212,11 +214,16 @@ fn a_vanished_source_is_reported_not_dropped() {
     let list = lab.json(&["plugin", "list"]);
     let errors = list["errors"].as_array().unwrap();
     assert!(
-        errors.iter().any(|e| e["error"].as_str().unwrap().contains("mine")),
+        errors
+            .iter()
+            .any(|e| e["error"].as_str().unwrap().contains("mine")),
         "사라진 소스가 조용히 빠졌다: {errors:?}"
     );
     std::fs::rename(&moved, lab.source()).unwrap();
-    assert_eq!(names(&lab.json(&["plugin", "list"]), "needs_consent"), vec!["hello-log"]);
+    assert_eq!(
+        names(&lab.json(&["plugin", "list"]), "needs_consent"),
+        vec!["hello-log"]
+    );
 }
 
 #[test]
@@ -224,13 +231,21 @@ fn a_name_that_exists_in_the_guild_is_refused_from_a_source() {
     let lab = Lab::new("clash");
     let dir = lab.guild().join(".guild/plugins/hello-log");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::copy(lab.source().join("hello-folder/plugin.toml"), dir.join("plugin.toml")).unwrap();
+    std::fs::copy(
+        lab.source().join("hello-folder/plugin.toml"),
+        dir.join("plugin.toml"),
+    )
+    .unwrap();
     let src = lab.source().display().to_string();
     lab.ok(&["plugin", "source", "add", &src]);
     lab.ok(&["plugin", "add", "hello-log@mine"]);
 
     let list = lab.json(&["plugin", "list"]);
-    assert_eq!(names(&list, "needs_consent"), vec!["hello-log"], "둘 다 실렸다");
+    assert_eq!(
+        names(&list, "needs_consent"),
+        vec!["hello-log"],
+        "둘 다 실렸다"
+    );
     assert!(
         list["errors"]
             .as_array()
@@ -247,11 +262,7 @@ fn a_folder_with_several_plugins_is_only_registered() {
     let lab = Lab::new("many");
     let two = lab.source().join("second");
     std::fs::create_dir_all(&two).unwrap();
-    std::fs::write(
-        two.join("plugin.toml"),
-        mini("second-log"),
-    )
-    .unwrap();
+    std::fs::write(two.join("plugin.toml"), mini("second-log")).unwrap();
     let src = lab.source().display().to_string();
     let out = lab.json(&["plugin", "add", &src]);
     assert_eq!(out["plugins"], serde_json::json!(2), "{out}");

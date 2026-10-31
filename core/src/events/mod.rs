@@ -180,16 +180,24 @@ impl Event {
             "tag" => ("tag", "tag", "slug"),
             // 노트와 백업은 본문이 곧 대상이라 싸개가 없다.
             "worklog" => {
-                return self.data.get("date").and_then(|d| d.as_str()).map(|d| Subject {
-                    kind: "worklog",
-                    id: d.to_string(),
-                });
+                return self
+                    .data
+                    .get("date")
+                    .and_then(|d| d.as_str())
+                    .map(|d| Subject {
+                        kind: "worklog",
+                        id: d.to_string(),
+                    });
             }
             "backup" => {
-                return self.data.get("timestamp").and_then(|d| d.as_str()).map(|d| Subject {
-                    kind: "backup",
-                    id: d.to_string(),
-                });
+                return self
+                    .data
+                    .get("timestamp")
+                    .and_then(|d| d.as_str())
+                    .map(|d| Subject {
+                        kind: "backup",
+                        id: d.to_string(),
+                    });
             }
             _ => return None,
         };

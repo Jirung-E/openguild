@@ -47,7 +47,10 @@ pub struct Recorder {
 
 impl Recorder {
     pub(super) fn take(&self) -> Vec<Value> {
-        self.seen.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+        self.seen
+            .lock()
+            .map(|mut v| std::mem::take(&mut *v))
+            .unwrap_or_default()
     }
 
     fn push(&self, v: Value) {
@@ -224,14 +227,24 @@ pub fn fire_with(
     };
     let Some(event_name) = known.iter().find(|n| **n == bare) else {
         return Err(crate::tf!(
-            "`{name}` 은 {} 단계의 이벤트가 아닙니다 — `openguild plugin events` 로 확인하세요", "`{name}` is not a {} event — check with `openguild plugin events`",
-            if phase == Phase::Pre { crate::tf!("바뀌기 전", "before-change") } else { crate::tf!("바뀐 뒤", "after-change") }
+            "`{name}` 은 {} 단계의 이벤트가 아닙니다 — `openguild plugin events` 로 확인하세요",
+            "`{name}` is not a {} event — check with `openguild plugin events`",
+            if phase == Phase::Pre {
+                crate::tf!("바뀌기 전", "before-change")
+            } else {
+                crate::tf!("바뀐 뒤", "after-change")
+            }
         ));
     };
     let data = match payload {
         Value::Object(m) => m,
         Value::Null => serde_json::Map::new(),
-        other => return Err(crate::tf!("이벤트 값은 표여야 합니다 (받은 것: {other})", "the event value must be a table (got: {other})")),
+        other => {
+            return Err(crate::tf!(
+                "이벤트 값은 표여야 합니다 (받은 것: {other})",
+                "the event value must be a table (got: {other})"
+            ));
+        }
     };
     let given: BTreeMap<String, Value> = match with {
         Value::Object(m) => m.into_iter().collect(),
@@ -251,7 +264,10 @@ pub fn fire_with(
 
     let recorder = Recorder::default();
     let log = Mutex::new(Vec::new());
-    let mut probe = Probe { given: Some(&given), ..Default::default() };
+    let mut probe = Probe {
+        given: Some(&given),
+        ..Default::default()
+    };
     let mut answer = crate::events::PreOutcome::default();
     let mut cfg: BTreeMap<String, Value> = super::values::resolve(&p.guild_root, &p.def)
         .into_iter()
@@ -552,11 +568,21 @@ fn test_two_late() {
     fn a_pre_line_reports_what_it_blocked() {
         let g = guild("block", &[(MANIFEST, DEF), ("main.rhai", SCRIPT)]);
         let p = loaded(&g);
-        let r = fire(&p, "pre:quest.deleted", json!({ "quest": { "id": "DEV-9" } }), Value::Null)
-            .unwrap();
+        let r = fire(
+            &p,
+            "pre:quest.deleted",
+            json!({ "quest": { "id": "DEV-9" } }),
+            Value::Null,
+        )
+        .unwrap();
         assert_eq!(r["blocked"], "지우지 마세요");
-        let ok = fire(&p, "pre:quest.deleted", json!({ "quest": { "id": "DEV-1" } }), Value::Null)
-            .unwrap();
+        let ok = fire(
+            &p,
+            "pre:quest.deleted",
+            json!({ "quest": { "id": "DEV-1" } }),
+            Value::Null,
+        )
+        .unwrap();
         assert_eq!(ok["blocked"], Value::Null);
         let _ = std::fs::remove_dir_all(&g);
     }
@@ -590,7 +616,11 @@ fn test_fails() {
 "#;
         let g = guild(
             "run",
-            &[(MANIFEST, DEF), ("main.rhai", SCRIPT), ("main.test.rhai", test_src)],
+            &[
+                (MANIFEST, DEF),
+                ("main.rhai", SCRIPT),
+                ("main.test.rhai", test_src),
+            ],
         );
         let p = loaded(&g);
         let out = run_tests(&p).unwrap();
@@ -639,7 +669,11 @@ fn test_b_sees_the_default() {
 "#;
         let g = guild(
             "leak",
-            &[(MANIFEST, def), ("main.rhai", script), ("main.test.rhai", tests)],
+            &[
+                (MANIFEST, def),
+                ("main.rhai", script),
+                ("main.test.rhai", tests),
+            ],
         );
         let p = loaded(&g);
         let out = run_tests(&p).unwrap();

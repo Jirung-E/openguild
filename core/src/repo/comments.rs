@@ -12,8 +12,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::fs::write_atomic;
 use super::GuildPaths;
+use super::fs::write_atomic;
 
 /// DEV-094: 한 댓글 entry. 작성 시각 / 작성자 / 본문.
 ///
@@ -69,10 +69,8 @@ fn entry_marker_re() -> &'static regex::Regex {
     use std::sync::OnceLock;
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        regex::Regex::new(
-            r#"(?m)^<!--\s*og-comment\s+(?P<attrs>[^>]*?)\s*-->\s*$"#,
-        )
-        .expect("og-comment marker regex")
+        regex::Regex::new(r#"(?m)^<!--\s*og-comment\s+(?P<attrs>[^>]*?)\s*-->\s*$"#)
+            .expect("og-comment marker regex")
     })
 }
 
@@ -125,7 +123,10 @@ fn escape_body(body: &str) -> String {
 /// [`escape_body`] 의 역. 마커가 될 수 있는 줄에서만 `\` 를 하나 뗀다 —
 /// 본문에 원래 있던 `\` 를 함부로 건드리면 안 된다.
 fn unescape_body(body: &str) -> String {
-    if !body.lines().any(|l| l.starts_with('\\') && looks_like_marker(l)) {
+    if !body
+        .lines()
+        .any(|l| l.starts_with('\\') && looks_like_marker(l))
+    {
         return body.to_string();
     }
     body.lines()
@@ -234,13 +235,16 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
         let body = unescape_body(text[*hdr_end..body_end].trim());
 
         // id 가 없거나 파싱 실패면 skip (corrupted entry).
-        let Some(id_str) = extract_attr(attrs, "id") else { continue };
-        let Ok(id) = id_str.parse::<u64>() else { continue };
+        let Some(id_str) = extract_attr(attrs, "id") else {
+            continue;
+        };
+        let Ok(id) = id_str.parse::<u64>() else {
+            continue;
+        };
         let ts = extract_attr(attrs, "ts").unwrap_or_default();
         let author = extract_attr(attrs, "author").unwrap_or_default();
         // 답글이면 `reply_to="N"`. 없거나 파싱 실패면 None.
-        let parent_id = extract_attr(attrs, "reply_to")
-            .and_then(|s| s.parse::<u64>().ok());
+        let parent_id = extract_attr(attrs, "reply_to").and_then(|s| s.parse::<u64>().ok());
         // DEV-108: `reactions="👍,✅"` — 콤마 구분, 빈 항목 제거.
         let reactions = extract_attr(attrs, "reactions")
             .map(|s| {
@@ -296,7 +300,11 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
             format!(" reactions=\"{}\"", sanitize_attr(&e.reactions.join(",")))
         };
         // DEV-142: discussion / resolved — true 일 때만 출력 (구 파일 byte 호환).
-        let discussion_attr = if e.discussion { " discussion=\"true\"" } else { "" };
+        let discussion_attr = if e.discussion {
+            " discussion=\"true\""
+        } else {
+            ""
+        };
         let resolved_attr = if e.resolved { " resolved=\"true\"" } else { "" };
         // DEV-234: pinned — 마찬가지로 true 일 때만 출력.
         let pinned_attr = if e.pinned { " pinned=\"true\"" } else { "" };
@@ -331,11 +339,7 @@ pub fn read_entries(paths: &GuildPaths, slug: &str) -> Result<Vec<CommentEntry>>
 }
 
 /// entry 목록을 파일에 쓰기 (atomic). 빈 vec 이면 빈 파일로 (또는 삭제 — 일단 빈 파일).
-pub fn write_entries(
-    paths: &GuildPaths,
-    slug: &str,
-    entries: &[CommentEntry],
-) -> Result<()> {
+pub fn write_entries(paths: &GuildPaths, slug: &str, entries: &[CommentEntry]) -> Result<()> {
     let text = serialize_entries(entries);
     write_numbered(&paths.comments_path(slug), &text)
 }
@@ -386,7 +390,10 @@ pub fn read_comments(paths: &GuildPaths, slug: &str) -> Result<Option<String>> {
     let s = std::fs::read_to_string(&p)
         .with_context(|| format!("failed to read comments: {}", p.display()))?;
     // DEV-433: 번호 줄은 파일의 것이다 — 통째로 읽고 쓰는 쪽에는 안 보인다(쓸 때 다시 붙는다).
-    Ok(Some(super::version::strip(&s, super::version::Place::CommentsHeader)))
+    Ok(Some(super::version::strip(
+        &s,
+        super::version::Place::CommentsHeader,
+    )))
 }
 
 /// 공개 댓글 파일 쓰기 (atomic).
@@ -419,7 +426,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("og-comments-{label}-{ns}-{}", crate::test_seq()));
+        let root =
+            std::env::temp_dir().join(format!("og-comments-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(root.join(".guild/quests")).unwrap();
         (root.clone(), GuildPaths::new(root))
     }
@@ -493,7 +501,7 @@ mod tests {
                 discussion: false,
                 resolved: false,
                 pinned: false,
-            edited_at: None,
+                edited_at: None,
             },
             CommentEntry {
                 id: 2,
@@ -505,7 +513,7 @@ mod tests {
                 discussion: false,
                 resolved: false,
                 pinned: false,
-            edited_at: None,
+                edited_at: None,
             },
             // 답글: id=3 이 id=1 에 대한 reply.
             CommentEntry {
@@ -518,7 +526,7 @@ mod tests {
                 discussion: false,
                 resolved: false,
                 pinned: false,
-            edited_at: None,
+                edited_at: None,
             },
         ];
         let s = serialize_entries(&entries);
@@ -541,7 +549,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
-        edited_at: None,
+            edited_at: None,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("reactions=\"👍,✅\""));
@@ -558,7 +566,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
-        edited_at: None,
+            edited_at: None,
         }];
         assert!(!serialize_entries(&none).contains("reactions"));
     }
@@ -576,7 +584,7 @@ mod tests {
             discussion: true,
             resolved: true,
             pinned: false,
-        edited_at: None,
+            edited_at: None,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("discussion=\"true\""));
@@ -594,7 +602,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
-        edited_at: None,
+            edited_at: None,
         }];
         let ps = serialize_entries(&plain);
         assert!(!ps.contains("discussion"));
@@ -614,7 +622,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: true,
-        edited_at: None,
+            edited_at: None,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("pinned=\"true\""));
@@ -630,7 +638,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
-        edited_at: None,
+            edited_at: None,
         }];
         assert!(!serialize_entries(&plain).contains("pinned"));
     }
@@ -654,7 +662,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
-        edited_at: None,
+            edited_at: None,
         }];
         let s = serialize_entries(&entries);
         // " → ' 로 치환되어 attribute 안전.
@@ -682,8 +690,14 @@ mod tests {
         let (root, p) = fresh_paths("indep");
         write_comments(&p, "BUG-007", "public").unwrap();
         write_memo(&p, "BUG-007", "private").unwrap();
-        assert_eq!(read_comments(&p, "BUG-007").unwrap().as_deref(), Some("public"));
-        assert_eq!(read_memo(&p, "BUG-007").unwrap().as_deref(), Some("private"));
+        assert_eq!(
+            read_comments(&p, "BUG-007").unwrap().as_deref(),
+            Some("public")
+        );
+        assert_eq!(
+            read_memo(&p, "BUG-007").unwrap().as_deref(),
+            Some("private")
+        );
         // 두 파일이 서로 다른 경로.
         assert_ne!(p.comments_path("BUG-007"), p.memo_path("BUG-007"));
         let _ = std::fs::remove_dir_all(&root);
@@ -747,11 +761,7 @@ mod tests {
     /// 것도 그대로 돌아와야 한다 — 안 그러면 저장할 때마다 `\` 가 하나씩 는다.
     #[test]
     fn an_escaped_marker_in_the_body_also_round_trips() {
-        let body = [
-            "설명:",
-            r#"\<!-- og-comment id="1" ts="x" author="y" -->"#,
-        ]
-        .join("\n");
+        let body = ["설명:", r#"\<!-- og-comment id="1" ts="x" author="y" -->"#].join("\n");
         let round = parse_entries(&serialize_entries(&one(&body)));
         assert_eq!(round.len(), 1);
         assert_eq!(round[0].body, body);
@@ -775,12 +785,15 @@ mod tests {
             // 사이드카는 사람이 읽고 git diff 에 뜨는 파일이라, 안 건드려도 될
             // 줄에 백슬래시를 흘리면 안 된다.
             let stored = text.lines().nth(1).unwrap_or_default();
-            assert_eq!(stored, body.lines().next().unwrap(), "파일에 군더더기가 남았다: {body}");
+            assert_eq!(
+                stored,
+                body.lines().next().unwrap(),
+                "파일에 군더더기가 남았다: {body}"
+            );
 
             let round = parse_entries(&text);
             assert_eq!(round.len(), 1, "{body}");
             assert_eq!(round[0].body, body, "{body}");
         }
     }
-
 }

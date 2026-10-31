@@ -42,7 +42,10 @@ pub fn consent_lines(p: &Plugin, scope: Scope) -> Vec<String> {
         out.push(format!("  {}. {}", i + 1, handler_line(h)));
     }
     if v.handlers.is_empty() {
-        out.push(crate::tf!("  (줄이 없습니다 — 아무것도 안 합니다)", "  (no lines — it does nothing)"));
+        out.push(crate::tf!(
+            "  (줄이 없습니다 — 아무것도 안 합니다)",
+            "  (no lines — it does nothing)"
+        ));
     }
 
     // DEV-406: 길드에 시키는 일은 `[actions]` 에 안 보인다 — 권한으로만 드러난다.
@@ -71,7 +74,11 @@ pub fn consent_lines(p: &Plugin, scope: Scope) -> Vec<String> {
     }
 
     if !v.scripts.is_empty() {
-        out.push(crate::tf!("스크립트: {}", "scripts: {}", v.scripts.join(", ")));
+        out.push(crate::tf!(
+            "스크립트: {}",
+            "scripts: {}",
+            v.scripts.join(", ")
+        ));
     }
     // DEV-408: 폴더 밖 파일도 불러올 수 있다. **바뀌어도 다시 안 묻는다** 는 것이 여기서 유일하게
     // 알려지는 사실이라, 빼면 안 된다.
@@ -89,11 +96,7 @@ pub fn consent_lines(p: &Plugin, scope: Scope) -> Vec<String> {
     }
     if !v.inputs.is_empty() {
         let keys: Vec<&str> = v.inputs.iter().map(|i| i.key.as_str()).collect();
-        out.push(crate::tf!(
-            "설정값: {}",
-            "settings: {}",
-            keys.join(", ")
-        ));
+        out.push(crate::tf!("설정값: {}", "settings: {}", keys.join(", ")));
     }
     out.push(crate::tf!("폴더: {}", "folder: {}", v.dir));
     out
@@ -101,7 +104,11 @@ pub fn consent_lines(p: &Plugin, scope: Scope) -> Vec<String> {
 
 /// 줄 목록만 — 적재 목록(`plugin list`)이 이름 아래에 적는다.
 pub fn handler_lines(p: &Plugin, scope: Scope) -> Vec<String> {
-    view::view(p, false, scope).handlers.iter().map(handler_line).collect()
+    view::view(p, false, scope)
+        .handlers
+        .iter()
+        .map(handler_line)
+        .collect()
 }
 
 /// 줄 하나 — "언제 → 무엇" 에 조건·읽는 데이터·기다림을 뒤에 붙인다.
@@ -172,7 +179,10 @@ fn handler_line(h: &view::HandlerView) -> String {
     }
     // `pre` 줄은 언제나 기다린다 — 그래야 막거나 값을 바꿀 수 있다.
     if h.wait || h.stage == "pre" {
-        line.push_str(&crate::tf!(" · 끝날 때까지 기다림", " · waits for it to finish"));
+        line.push_str(&crate::tf!(
+            " · 끝날 때까지 기다림",
+            " · waits for it to finish"
+        ));
     }
     if h.stage == "pre" {
         line.push_str(&crate::tf!(
@@ -217,10 +227,17 @@ pub fn list_row(p: &Plugin, scope: Scope) -> ListRow {
 /// "어디로 나가나" 이지 인자 전체가 아니다. 전체는 `allow` 미리보기와 `--json` 에 있다.
 fn short_target(kind: &str, target: &str) -> String {
     let short = if kind == "post" {
-        let after = target.split_once("://").map(|(_, rest)| rest).unwrap_or(target);
+        let after = target
+            .split_once("://")
+            .map(|(_, rest)| rest)
+            .unwrap_or(target);
         after.split('/').next().unwrap_or(after).to_string()
     } else {
-        target.split_whitespace().next().unwrap_or(target).to_string()
+        target
+            .split_whitespace()
+            .next()
+            .unwrap_or(target)
+            .to_string()
     };
     format!("{kind} {short}")
 }
@@ -233,8 +250,11 @@ fn marks_of(v: &view::PluginView) -> Vec<String> {
     for perm in &v.permissions {
         marks.push(permission_name(perm));
     }
-    let dests: Vec<String> =
-        v.actions.iter().map(|a| short_target(&a.kind, &a.target)).collect();
+    let dests: Vec<String> = v
+        .actions
+        .iter()
+        .map(|a| short_target(&a.kind, &a.target))
+        .collect();
     if !dests.is_empty() {
         marks.push(dests.join(", "));
     }
@@ -332,9 +352,15 @@ action = "out"
         let g = guild("perm", FULL, Some("fn on_done(e, subject) { }"));
         let l = load_all(&g);
         let text = consent_lines(&l.needs_consent[0], Scope::Cli).join("\n");
-        assert!(text.contains("알림 띄우기") && text.contains("백업 만들기"), "{text}");
+        assert!(
+            text.contains("알림 띄우기") && text.contains("백업 만들기"),
+            "{text}"
+        );
         assert!(text.contains("https://example.test/hook"), "{text}");
-        assert!(text.contains("MY_TOKEN") && text.contains("MY_CHAT"), "{text}");
+        assert!(
+            text.contains("MY_TOKEN") && text.contains("MY_CHAT"),
+            "{text}"
+        );
         assert!(!text.contains("비밀"), "환경변수 값이 새어 나왔다:\n{text}");
         unsafe { std::env::remove_var("MY_TOKEN") };
         let _ = std::fs::remove_dir_all(&g);
@@ -368,7 +394,11 @@ action = "out"
             assert!(line.contains("127.0.0.1"), "{line}");
             assert!(!line.contains("밖으로 안 나감"), "{line}");
         }
-        assert!(consent_lines(p, Scope::Cli).join("\n").contains("내보내는 곳"));
+        assert!(
+            consent_lines(p, Scope::Cli)
+                .join("\n")
+                .contains("내보내는 곳")
+        );
         let _ = std::fs::remove_dir_all(&g);
     }
 
@@ -404,7 +434,11 @@ action = "sh"
         let v = view::view(&l.needs_consent[0], false, Scope::Cli);
         assert!(v.env.contains(&"BOT_KEY".to_string()), "{:?}", v.env);
         assert!(v.env.contains(&"RUN_ARG".to_string()), "{:?}", v.env);
-        assert!(!v.env.iter().any(|e| e.starts_with("OPENGUILD_")), "{:?}", v.env);
+        assert!(
+            !v.env.iter().any(|e| e.starts_with("OPENGUILD_")),
+            "{:?}",
+            v.env
+        );
         let _ = std::fs::remove_dir_all(&g);
     }
 
@@ -453,11 +487,22 @@ action = "out"
         assert!(cred.value.is_none() && cred.has_value);
         let chat = input("MY_CHAT");
         assert!(!chat.secret);
-        assert!(chat.value.is_none(), "환경변수 값이 화면으로 나갔다: {:?}", chat.value);
+        assert!(
+            chat.value.is_none(),
+            "환경변수 값이 화면으로 나갔다: {:?}",
+            chat.value
+        );
         assert!(chat.has_value && chat.source == "env");
-        assert_eq!(input("LOUD").value, Some(serde_json::json!(true)), "고르는 칸은 그대로 보낸다");
+        assert_eq!(
+            input("LOUD").value,
+            Some(serde_json::json!(true)),
+            "고르는 칸은 그대로 보낸다"
+        );
         let json = serde_json::to_string(&v).unwrap();
-        assert!(!json.contains("CREDSECRET42") && !json.contains("CHATSECRET"), "{json}");
+        assert!(
+            !json.contains("CREDSECRET42") && !json.contains("CHATSECRET"),
+            "{json}"
+        );
         unsafe {
             std::env::remove_var("OPENGUILD_HOME");
             std::env::remove_var("MY_CRED");

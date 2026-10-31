@@ -66,7 +66,9 @@ for (const file of walk(SRC)) {
 if (hits.length) {
 	console.error(`\n✗ 정의가 없는 class ${hits.length}건 — 스타일이 안 먹습니다.`);
 	console.error('  그 파일의 <style> 이나 lib/styles/global.css 에 규칙을 추가하세요.');
-	console.error('  부모가 :global() 로 칠하는 등 정당한 예외면 스크립트의 ALLOW 에 이유와 함께 등록하세요.\n');
+	console.error(
+		'  부모가 :global() 로 칠하는 등 정당한 예외면 스크립트의 ALLOW 에 이유와 함께 등록하세요.\n'
+	);
 	for (const h of hits) console.error(`  ${h}`);
 	process.exit(1);
 }

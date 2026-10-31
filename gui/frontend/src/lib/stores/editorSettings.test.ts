@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { nextTabStopSpaces, DEFAULT_EDITOR_SETTINGS, editorSettings, setAutoFormat } from './editorSettings';
+import {
+	nextTabStopSpaces,
+	DEFAULT_EDITOR_SETTINGS,
+	editorSettings,
+	setAutoFormat
+} from './editorSettings';
 import { get } from 'svelte/store';
 
 describe('DEV-130 nextTabStopSpaces (VSCode 식 탭 정지점)', () => {

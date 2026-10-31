@@ -781,9 +781,9 @@
 			return;
 		}
 		if (mod || e.altKey) return;
-		const dir = ({ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const)[
-			e.key as 'ArrowLeft'
-		];
+		const dir = (
+			{ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' } as const
+		)[e.key as 'ArrowLeft'];
 		if (dir) {
 			e.preventDefault();
 			picked = msel.arrow(picked, pickOrder, gridCols(), dir, e.shiftKey);
@@ -1252,7 +1252,11 @@
 		<div class="explorer-toolbar">
 			<h1 class="page-title">{t('library.title', $locale)}</h1>
 			<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양). -->
-			<div class="view-toggle seg xs" role="radiogroup" aria-label={t('library.viewModeAria', $locale)}>
+			<div
+				class="view-toggle seg xs"
+				role="radiogroup"
+				aria-label={t('library.viewModeAria', $locale)}
+			>
 				<button
 					role="radio"
 					aria-checked={isMode('tree')}
@@ -1268,7 +1272,9 @@
 					title={t('library.iconView', $locale)}><Icon name="grid" size="1em" /></button
 				>
 			</div>
-			<button class="btn btn-sm" onclick={openCreateFolder}>{t('library.newFolder', $locale)}</button>
+			<button class="btn btn-sm" onclick={openCreateFolder}
+				>{t('library.newFolder', $locale)}</button
+			>
 			<button class="btn btn-sm" onclick={openCreate}>{t('library.newDoc', $locale)}</button>
 		</div>
 		<div class="search-row">
@@ -1411,7 +1417,7 @@
 		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. DEV-429: 트리 보기도 같은 것을 쓴다. -->
 		{@render pickedTools()}
 
-{#if creatingFolder}
+		{#if creatingFolder}
 			<div class="modal-inline">
 				<input
 					class="input"
@@ -1425,9 +1431,7 @@
 					<button class="btn btn-primary" onclick={submitCreateFolder}
 						>{t('library.create', $locale)}</button
 					>
-					<button class="btn" onclick={cancelCreateFolder}
-						>{t('library.cancel', $locale)}</button
-					>
+					<button class="btn" onclick={cancelCreateFolder}>{t('library.cancel', $locale)}</button>
 				</div>
 			</div>
 		{/if}
@@ -1442,7 +1446,9 @@
 				/>
 				{#if createError}<p class="err">{createError}</p>{/if}
 				<div class="actions">
-					<button class="btn btn-primary" onclick={submitCreate}>{t('library.create', $locale)}</button>
+					<button class="btn btn-primary" onclick={submitCreate}
+						>{t('library.create', $locale)}</button
+					>
 					<button class="btn" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
 				</div>
 			</div>
@@ -1523,30 +1529,30 @@
 					<!-- DEV-397 후속(admin): 아이콘 뷰에는 이름 바꾸기가 아예 없었다 — 트리에만
 					     있었다. 타일 안에 버튼을 넣을 수는 없으므로(버튼 안의 버튼) 감싸고 얹는다. -->
 					<span class="tile-wrap">
-					<button
-						class="tile"
-						class:drag-over={dragOverFolder === f.path}
-						class:picked={picked.ids.has(`folder:${f.path}`)}
-						data-key={`folder:${f.path}`}
-						draggable="true"
-						ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${f.path}`)}
-						onclick={(e) => tileClick(e, `folder:${f.path}`)}
-						ondblclick={() => tileOpen(`folder:${f.path}`)}
-						ondragover={(e) => {
-							e.preventDefault();
-							dragOverFolder = f.path;
-						}}
-						ondragleave={() => (dragOverFolder = null)}
-						ondrop={(e) => onTileDrop(e, f.path)}
-					>
-						<!-- BUG-153: 문서 타일은 아이콘 위에 BOOK 번호(.tile-sub)가 있어서, 폴더에
+						<button
+							class="tile"
+							class:drag-over={dragOverFolder === f.path}
+							class:picked={picked.ids.has(`folder:${f.path}`)}
+							data-key={`folder:${f.path}`}
+							draggable="true"
+							ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${f.path}`)}
+							onclick={(e) => tileClick(e, `folder:${f.path}`)}
+							ondblclick={() => tileOpen(`folder:${f.path}`)}
+							ondragover={(e) => {
+								e.preventDefault();
+								dragOverFolder = f.path;
+							}}
+							ondragleave={() => (dragOverFolder = null)}
+							ondrop={(e) => onTileDrop(e, f.path)}
+						>
+							<!-- BUG-153: 문서 타일은 아이콘 위에 BOOK 번호(.tile-sub)가 있어서, 폴더에
 						     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
 						     자리표시자로 높이를 맞춘다. -->
-						<span class="tile-sub" aria-hidden="true"></span>
-						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
-						<span class="tile-icon" aria-hidden="true">📁</span>
-						<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
-					</button>
+							<span class="tile-sub" aria-hidden="true"></span>
+							<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+							<span class="tile-icon" aria-hidden="true">📁</span>
+							<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
+						</button>
 						<button
 							class="tile-act"
 							title={t('library.folderRenameSubmit', $locale)}
@@ -1612,7 +1618,11 @@
 							{t('library.title', $locale)}
 						</h2>
 						<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양). -->
-						<div class="view-toggle seg xs" role="radiogroup" aria-label={t('library.viewModeAria', $locale)}>
+						<div
+							class="view-toggle seg xs"
+							role="radiogroup"
+							aria-label={t('library.viewModeAria', $locale)}
+						>
 							<button
 								role="radio"
 								aria-checked={isMode('tree')}
@@ -1809,9 +1819,7 @@
 								<button class="btn btn-primary" onclick={submitCreate}
 									>{t('library.create', $locale)}</button
 								>
-								<button class="btn" onclick={cancelCreate}
-									>{t('library.cancel', $locale)}</button
-								>
+								<button class="btn" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -1860,12 +1868,8 @@
 										? t('library.editDoc', $locale)
 										: t('library.writeDoc', $locale)}
 								</button>
-								<button class="btn" onclick={openRetitle}
-									>{t('library.retitle', $locale)}</button
-								>
-								<button class="btn" onclick={openMove}
-									>{t('library.moveFolder', $locale)}</button
-								>
+								<button class="btn" onclick={openRetitle}>{t('library.retitle', $locale)}</button>
+								<button class="btn" onclick={openMove}>{t('library.moveFolder', $locale)}</button>
 								<!-- REQ-028: 파일 시스템으로. 복사는 데스크톱에서만(이 기계에 파일을 쓴다), 내보내기는 어디서나(DEV-441). -->
 								{#if isTauri}
 									<button class="btn" onclick={copyOut} disabled={takeOutBusy}
@@ -1926,9 +1930,7 @@
 								<button class="btn btn-primary" onclick={submitRetitle}
 									>{t('library.change', $locale)}</button
 								>
-								<button class="btn" onclick={cancelRetitle}
-									>{t('library.cancel', $locale)}</button
-								>
+								<button class="btn" onclick={cancelRetitle}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -1943,10 +1945,10 @@
 							</select>
 							{#if moveError}<p class="err">{moveError}</p>{/if}
 							<div class="actions">
-								<button class="btn btn-primary" onclick={submitMove}>{t('library.move', $locale)}</button>
-								<button class="btn" onclick={cancelMove}
-									>{t('library.cancel', $locale)}</button
+								<button class="btn btn-primary" onclick={submitMove}
+									>{t('library.move', $locale)}</button
 								>
+								<button class="btn" onclick={cancelMove}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -2067,64 +2069,63 @@
 	}}
 />
 
-
 <!-- DEV-419/429: 고른 것을 다루는 줄 — 아이콘 보기와 트리 보기가 같이 쓴다. -->
 {#snippet pickedTools()}
 	<!-- 무엇을 몇 개 골랐는지 먼저 말하고, 할 수 있는 일을 그 옆에 둔다. -->
-		{#if movingPicked}
-			<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
-			<div class="modal-inline">
-				<select class="input" bind:value={movePickedPath}>
-					<option value="">{t('library.topLevel', $locale)}</option>
-					{#each flattenFolderPaths(tree) as p (p)}
-						<option value={p}>{p}</option>
-					{/each}
-				</select>
-				<div class="actions">
-					<button
-						class="btn btn-primary"
-						onclick={async () => {
-							movingPicked = false;
-							await movePickedTo(movePickedPath);
-						}}>{t('library.move', $locale)}</button
-					>
-					<button class="btn" onclick={() => (movingPicked = false)}
-						>{t('library.cancel', $locale)}</button
-					>
-				</div>
-			</div>
-		{/if}
-		{#if picked.ids.size > 0}
-			<div class="picked-bar">
-				<span class="picked-count">
-					{t('library.pickedCount', $locale).replace('{n}', String(picked.ids.size))}
-				</span>
-				{#if pickedOne}
-					<!-- BUG-313: 하나만 골랐을 때 — 폴더면 폴더 이름, 문서면 제목. -->
-					<button class="btn" onclick={renamePicked}
-						>{t('library.folderRenameSubmit', $locale)}</button
-					>
-				{/if}
-				<button class="btn" onclick={() => (movingPicked = true)}
-					>{t('library.moveFolder', $locale)}</button
+	{#if movingPicked}
+		<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
+		<div class="modal-inline">
+			<select class="input" bind:value={movePickedPath}>
+				<option value="">{t('library.topLevel', $locale)}</option>
+				{#each flattenFolderPaths(tree) as p (p)}
+					<option value={p}>{p}</option>
+				{/each}
+			</select>
+			<div class="actions">
+				<button
+					class="btn btn-primary"
+					onclick={async () => {
+						movingPicked = false;
+						await movePickedTo(movePickedPath);
+					}}>{t('library.move', $locale)}</button
 				>
-				<button class="btn btn-danger" onclick={() => (confirmDeletePicked = true)}
-					>{t('library.delete', $locale)}</button
-				>
-				<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
-				{#if isTauri}
-					<button class="btn" onclick={copyOut} disabled={takeOutBusy}
-						>{t('library.copyOut', $locale)}</button
-					>
-				{/if}
-				<button class="btn" onclick={exportOut} disabled={takeOutBusy}
-					>{t('library.exportOut', $locale)}</button
-				>
-				<button class="btn" onclick={() => (picked = msel.clear())}
-					>{t('library.pickedClear', $locale)}</button
+				<button class="btn" onclick={() => (movingPicked = false)}
+					>{t('library.cancel', $locale)}</button
 				>
 			</div>
-		{/if}
+		</div>
+	{/if}
+	{#if picked.ids.size > 0}
+		<div class="picked-bar">
+			<span class="picked-count">
+				{t('library.pickedCount', $locale).replace('{n}', String(picked.ids.size))}
+			</span>
+			{#if pickedOne}
+				<!-- BUG-313: 하나만 골랐을 때 — 폴더면 폴더 이름, 문서면 제목. -->
+				<button class="btn" onclick={renamePicked}
+					>{t('library.folderRenameSubmit', $locale)}</button
+				>
+			{/if}
+			<button class="btn" onclick={() => (movingPicked = true)}
+				>{t('library.moveFolder', $locale)}</button
+			>
+			<button class="btn btn-danger" onclick={() => (confirmDeletePicked = true)}
+				>{t('library.delete', $locale)}</button
+			>
+			<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
+			{#if isTauri}
+				<button class="btn" onclick={copyOut} disabled={takeOutBusy}
+					>{t('library.copyOut', $locale)}</button
+				>
+			{/if}
+			<button class="btn" onclick={exportOut} disabled={takeOutBusy}
+				>{t('library.exportOut', $locale)}</button
+			>
+			<button class="btn" onclick={() => (picked = msel.clear())}
+				>{t('library.pickedClear', $locale)}</button
+			>
+		</div>
+	{/if}
 {/snippet}
 
 <style>
@@ -2350,7 +2351,11 @@
 	/* BUG-127: 상위 폴더 버튼/경로 조각도 드롭 대상. */
 	.btn-up.drag-over,
 	.crumb.drag-over {
-		background: color-mix(in srgb, var(--accent) 16%, transparent); /* token-ok: 끌어다 놓기 강조 — 버튼 모양이 아니라 상태 표시 */
+		background: color-mix(
+			in srgb,
+			var(--accent) 16%,
+			transparent
+		); /* token-ok: 끌어다 놓기 강조 — 버튼 모양이 아니라 상태 표시 */
 		border-radius: var(--r-sm);
 		outline: 1px dashed var(--accent);
 	}

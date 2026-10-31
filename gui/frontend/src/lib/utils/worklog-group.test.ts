@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { ActivityRow } from '$lib/api/worklog';
-import {
-	activityHref,
-	groupByDay,
-	groupByDoc,
-	groupTimeLabel,
-	firstLine
-} from './worklog-group';
+import { activityHref, groupByDay, groupByDoc, groupTimeLabel, firstLine } from './worklog-group';
 
-function row(ts: string, slug: string, kind = 'status', extra: Partial<ActivityRow> = {}): ActivityRow {
+function row(
+	ts: string,
+	slug: string,
+	kind = 'status',
+	extra: Partial<ActivityRow> = {}
+): ActivityRow {
 	return { ts, kind, slug, summary: `${kind} on ${slug}`, ...extra } as ActivityRow;
 }
 
@@ -84,15 +83,26 @@ describe('groupByDoc — REQ-006 compact 묶음', () => {
 
 describe('groupTimeLabel', () => {
 	function group(from: string, to: string, n = 2): Parameters<typeof groupTimeLabel>[0] {
-		return { slug: 'A', href: '', rows: new Array(n).fill(row(from, 'A')), kinds: [], fromTs: from, toTs: to };
+		return {
+			slug: 'A',
+			href: '',
+			rows: new Array(n).fill(row(from, 'A')),
+			kinds: [],
+			fromTs: from,
+			toTs: to
+		};
 	}
 
 	it('단일 시각은 그대로', () => {
-		expect(groupTimeLabel(group('2026-08-23T01:22:00+09:00', '2026-08-23T01:22:00+09:00', 1))).toBe('01:22');
+		expect(groupTimeLabel(group('2026-08-23T01:22:00+09:00', '2026-08-23T01:22:00+09:00', 1))).toBe(
+			'01:22'
+		);
 	});
 
 	it('다른 시각이면 범위로', () => {
-		expect(groupTimeLabel(group('2026-08-23T01:22:00+09:00', '2026-08-23T01:26:00+09:00'))).toBe('01:22–01:26');
+		expect(groupTimeLabel(group('2026-08-23T01:22:00+09:00', '2026-08-23T01:26:00+09:00'))).toBe(
+			'01:22–01:26'
+		);
 	});
 
 	/**
@@ -101,7 +111,9 @@ describe('groupTimeLabel', () => {
 	 * 표기가 같으므로 범위로 쓰지 않는다.
 	 */
 	it('건수가 여럿이어도 분이 같으면 범위로 쓰지 않는다', () => {
-		expect(groupTimeLabel(group('2026-08-23T00:01:05+09:00', '2026-08-23T00:01:47+09:00', 3))).toBe('00:01');
+		expect(groupTimeLabel(group('2026-08-23T00:01:05+09:00', '2026-08-23T00:01:47+09:00', 3))).toBe(
+			'00:01'
+		);
 	});
 });
 
@@ -117,7 +129,9 @@ describe('activityHref', () => {
 	});
 
 	it('댓글 활동은 그 댓글까지 딥링크 (DEV-296)', () => {
-		expect(activityHref(row('t', 'DEV-001', 'comment', { ref_id: 12 }))).toBe('/quests/DEV-001?comment=12');
+		expect(activityHref(row('t', 'DEV-001', 'comment', { ref_id: 12 }))).toBe(
+			'/quests/DEV-001?comment=12'
+		);
 	});
 
 	it('slug 를 URL 인코딩한다', () => {

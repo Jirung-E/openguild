@@ -370,8 +370,10 @@
 			<aside class="sidebar">
 				<div class="sidebar-head">
 					<h2>{t('rules.listHeading', $locale)}</h2>
-					<button class="btn btn-sm btn-new" onclick={openCreate} title={t('rules.newRule', $locale)}
-						>{t('rules.newBtn', $locale)}</button
+					<button
+						class="btn btn-sm btn-new"
+						onclick={openCreate}
+						title={t('rules.newRule', $locale)}>{t('rules.newBtn', $locale)}</button
 					>
 				</div>
 				{#if allTagOptions.length > 0}
@@ -446,10 +448,10 @@
 						/>
 						{#if createError}<p class="err">{createError}</p>{/if}
 						<div class="actions">
-							<button class="btn btn-primary" onclick={submitCreate}>{t('rules.create', $locale)}</button>
-							<button class="btn" onclick={cancelCreate}
-								>{t('common.cancel', $locale)}</button
+							<button class="btn btn-primary" onclick={submitCreate}
+								>{t('rules.create', $locale)}</button
 							>
+							<button class="btn" onclick={cancelCreate}>{t('common.cancel', $locale)}</button>
 						</div>
 					</div>
 				{/if}
@@ -526,9 +528,7 @@
 								<button class="btn btn-primary" onclick={submitRename}
 									>{t('common.change', $locale)}</button
 								>
-								<button class="btn" onclick={cancelRename}
-									>{t('common.cancel', $locale)}</button
-								>
+								<button class="btn" onclick={cancelRename}>{t('common.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}

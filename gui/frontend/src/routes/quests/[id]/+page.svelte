@@ -972,7 +972,11 @@
 			     wrapper 로 명확한 간격 부여. -->
 			<div class="description-block">
 				{#if detail.description}
-					<MarkdownView source={detail.description} hlTarget={`quest:${detail.quest_id}`} hlPart="body" />
+					<MarkdownView
+						source={detail.description}
+						hlTarget={`quest:${detail.quest_id}`}
+						hlPart="body"
+					/>
 				{:else}
 					<p class="no-desc">
 						{t('qd.noDescription', $locale)}
@@ -1305,7 +1309,8 @@
 			{/if}
 			{#if tagInputOpen && !editMode}
 				<form class="tag-add-form" onsubmit={addTagFromInput}>
-					<input class="input"
+					<input
+						class="input"
 						type="text"
 						bind:value={newTagText}
 						placeholder={t('quest.tags.placeholder', $locale)}
@@ -1352,7 +1357,13 @@
 			if (e.target === e.currentTarget) closeCombo();
 		}}
 	>
-		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: closeCombo }}>
+		<div
+			class="modal-box modal-sm modal-combo"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: closeCombo }}
+		>
 			<div class="modal-head">
 				<h3>
 					{#if comboMode === 'parent'}{t(
@@ -1393,7 +1404,13 @@
 			if (e.target === e.currentTarget) closeCampaignCombo();
 		}}
 	>
-		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: closeCampaignCombo }}>
+		<div
+			class="modal-box modal-sm modal-combo"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: closeCampaignCombo }}
+		>
 			<div class="modal-head">
 				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
 				<button class="x" onclick={closeCampaignCombo}><Icon name="close" size="1em" /></button>
@@ -1432,8 +1449,17 @@
 			if (e.target === e.currentTarget && !changingType) confirmTypeChange = null;
 		}}
 	>
-		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1"
-			use:modalFocus={{ onEscape: () => { if (!changingType) confirmTypeChange = null; } }}>
+		<div
+			class="modal-box modal-sm"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{
+				onEscape: () => {
+					if (!changingType) confirmTypeChange = null;
+				}
+			}}
+		>
 			<div class="modal-head">
 				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
 				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
@@ -1492,8 +1518,17 @@
 			if (e.target === e.currentTarget && !deleting) deleteModal = false;
 		}}
 	>
-		<div class="modal-box modal-sm" role="dialog" aria-modal="true" tabindex="-1"
-			use:modalFocus={{ onEscape: () => { if (!deleting) deleteModal = false; } }}>
+		<div
+			class="modal-box modal-sm"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{
+				onEscape: () => {
+					if (!deleting) deleteModal = false;
+				}
+			}}
+		>
 			<div class="modal-head">
 				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
 				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}

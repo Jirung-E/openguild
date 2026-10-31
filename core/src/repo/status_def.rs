@@ -144,9 +144,6 @@ mod tests {
     #[test]
     fn filename_format() {
         assert_eq!(StatusFile::filename(1, "open"), "1-open.toml");
-        assert_eq!(
-            StatusFile::filename(2, "in_progress"),
-            "2-in_progress.toml"
-        );
+        assert_eq!(StatusFile::filename(2, "in_progress"), "2-in_progress.toml");
     }
 }

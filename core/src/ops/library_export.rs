@@ -165,7 +165,13 @@ fn clean(s: &str) -> String {
     let bad = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
     let out: String = s
         .chars()
-        .map(|c| if bad.contains(&c) || (c as u32) < 0x20 { '_' } else { c })
+        .map(|c| {
+            if bad.contains(&c) || (c as u32) < 0x20 {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     // 끝의 공백·점은 Windows 가 싫어한다.
     out.trim().trim_end_matches('.').to_string()
@@ -216,7 +222,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-export-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-export-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -316,9 +323,14 @@ mod tests {
         let inside = dir.join(".guild/attachments");
         std::fs::create_dir_all(&inside).unwrap();
         std::fs::write(inside.join("spec.md"), "스펙").unwrap();
-        super::super::attachments::add_book_attachment(&store, &id, "attachments/spec.md", "스펙.md")
-            .await
-            .unwrap();
+        super::super::attachments::add_book_attachment(
+            &store,
+            &id,
+            "attachments/spec.md",
+            "스펙.md",
+        )
+        .await
+        .unwrap();
 
         let dest = dir.join("out");
         std::fs::create_dir_all(&dest).unwrap();

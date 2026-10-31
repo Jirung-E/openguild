@@ -224,7 +224,12 @@
 				{:else if $updateState.status === 'uptodate'}
 					<p class="t-title ok">{t('update.uptodate', $locale)}</p>
 				{:else if $updateState.status === 'available'}
-					<p class="t-title">{t('update.availablePre', $locale)}<strong>{$updateState.version}</strong>{t('update.availablePost', $locale)}</p>
+					<p class="t-title">
+						{t('update.availablePre', $locale)}<strong>{$updateState.version}</strong>{t(
+							'update.availablePost',
+							$locale
+						)}
+					</p>
 					{#if $updateState.notes}
 						<details>
 							<summary>{t('update.releaseNotes', $locale)}</summary>
@@ -239,7 +244,8 @@
 					</button>
 				{:else if $updateState.status === 'downloading'}
 					<p class="t-title">
-						{t('update.downloading', $locale)} {$updateState.pct !== null ? `${$updateState.pct}%` : ''}
+						{t('update.downloading', $locale)}
+						{$updateState.pct !== null ? `${$updateState.pct}%` : ''}
 					</p>
 				{:else if $updateState.status === 'ready'}
 					<p class="t-title ok">{t('update.ready', $locale)}</p>

@@ -50,17 +50,41 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("attachments", "save_attachment", NewFile),
     ("attachments", "new_attachment_dest", NewFile),
     ("attachments", "save_attachment_from_file", NewFile),
-    ("attachments", "save_attachment_from_file_with_progress", NewFile),
-    ("attachments", "save_attachment_from_file_cancellable", NewFile),
+    (
+        "attachments",
+        "save_attachment_from_file_with_progress",
+        NewFile,
+    ),
+    (
+        "attachments",
+        "save_attachment_from_file_cancellable",
+        NewFile,
+    ),
     ("attachments", "list_quest_attachments", Read),
     ("attachments", "list_campaign_attachments", Read),
     ("attachments", "list_book_attachments", Read),
     ("attachments", "add_quest_attachment", Via("add_attachment")),
-    ("attachments", "add_campaign_attachment", Via("add_attachment")),
+    (
+        "attachments",
+        "add_campaign_attachment",
+        Via("add_attachment"),
+    ),
     ("attachments", "add_book_attachment", Via("add_attachment")),
-    ("attachments", "remove_quest_attachment", Via("remove_attachment")),
-    ("attachments", "remove_campaign_attachment", Via("remove_attachment")),
-    ("attachments", "remove_book_attachment", Via("remove_attachment")),
+    (
+        "attachments",
+        "remove_quest_attachment",
+        Via("remove_attachment"),
+    ),
+    (
+        "attachments",
+        "remove_campaign_attachment",
+        Via("remove_attachment"),
+    ),
+    (
+        "attachments",
+        "remove_book_attachment",
+        Via("remove_attachment"),
+    ),
     ("backlinks", "list_backlinks", Read),
     ("backlinks", "refresh_for", Helper),
     ("campaign_comments", "list_entries", Read),
@@ -181,7 +205,10 @@ const DOCS: [&str; 2] = ["store.lock_docs(", "lock_resolved("];
 
 /// 잠금을 잡는 첫 자리 — 없으면 `None`.
 fn lock_at(body: &str) -> Option<usize> {
-    std::iter::once(GUILD).chain(DOCS).filter_map(|p| body.find(p)).min()
+    std::iter::once(GUILD)
+        .chain(DOCS)
+        .filter_map(|p| body.find(p))
+        .min()
 }
 
 fn takes_lock(body: &str) -> bool {
@@ -300,7 +327,10 @@ fn every_ops_function_is_classified() {
         missing.is_empty(),
         "잠금 분류가 없는 ops 공개 함수 — lock_coverage.rs 의 TABLE 에 적을 것: {missing:#?}"
     );
-    assert!(stale.is_empty(), "TABLE 에 있는데 공개 함수가 아니다: {stale:#?}");
+    assert!(
+        stale.is_empty(),
+        "TABLE 에 있는데 공개 함수가 아니다: {stale:#?}"
+    );
 }
 
 /// DEV-407: 잠금 전에 허용되는 것 — 플러그인에게 묻는 호출과 그 물음이 필요한지 확인하는 줄.
@@ -357,8 +387,12 @@ fn guards_match_the_classification() {
                 let guild = body.contains(GUILD);
                 let docs = DOCS.iter().any(|p| body.contains(p));
                 match kind {
-                    Guild if docs || !guild => wrong.push(format!("{module}::{name}: 길드 독점이라 적었는데 문서를 잠근다")),
-                    Docs if guild || !docs => wrong.push(format!("{module}::{name}: 문서 잠금이라 적었는데 길드를 잠근다")),
+                    Guild if docs || !guild => wrong.push(format!(
+                        "{module}::{name}: 길드 독점이라 적었는데 문서를 잠근다"
+                    )),
+                    Docs if guild || !docs => wrong.push(format!(
+                        "{module}::{name}: 문서 잠금이라 적었는데 길드를 잠근다"
+                    )),
                     _ => {}
                 }
                 // 검증용 읽기까지 잠금 안에 있어야 남이 막 바꾼 상태를 보고 판단한다.
@@ -414,7 +448,10 @@ fn locked_entry_points_do_not_nest() {
             }
         }
     }
-    assert!(nested.is_empty(), "잠금을 쥔 채 잠그는 진입점을 부른다: {nested:#?}");
+    assert!(
+        nested.is_empty(),
+        "잠금을 쥔 채 잠그는 진입점을 부른다: {nested:#?}"
+    );
 }
 
 #[test]
@@ -425,11 +462,16 @@ fn nobody_takes_the_bare_in_process_lock() {
         .filter(|(_, src)| {
             let code = src.find("#[cfg(test)]").map_or(*src, |i| &src[..i]);
             // DEV-431: 프로세스 안 잠금은 `store.locks` 다 — 파일 잠금 없이 그것만 잡으면 안 된다.
-            code.contains("store.locks") || code.contains(".locks.guild") || code.contains("write_lock.lock")
+            code.contains("store.locks")
+                || code.contains(".locks.guild")
+                || code.contains("write_lock.lock")
         })
         .map(|(m, _)| *m)
         .collect();
-    assert!(offenders.is_empty(), "store.locks 를 직접 잡는다 — lock_guild / lock_docs 를 쓸 것: {offenders:?}");
+    assert!(
+        offenders.is_empty(),
+        "store.locks 를 직접 잡는다 — lock_guild / lock_docs 를 쓸 것: {offenders:?}"
+    );
 }
 
 #[test]

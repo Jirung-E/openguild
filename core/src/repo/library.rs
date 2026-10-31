@@ -11,11 +11,11 @@
 //! - **soft delete**: frontmatter `deleted = true` (quests 와 동일).
 //! - git **tracked** — 팀 공유 지식.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
-use super::fs::write_atomic;
 use super::GuildPaths;
+use super::fs::write_atomic;
 
 /// 도서관 문서 ID prefix. 고정 — quest_types 와 별개 네임스페이스.
 pub const BOOK_PREFIX: &str = "BOOK";
@@ -84,7 +84,9 @@ pub fn normalize_folder_path(raw: &str) -> Result<String> {
             return Err(anyhow!("허용되지 않는 경로 세그먼트: {seg:?}"));
         }
         if seg.contains('\\') {
-            return Err(anyhow!("경로 세그먼트에 역슬래시를 쓸 수 없습니다: {seg:?}"));
+            return Err(anyhow!(
+                "경로 세그먼트에 역슬래시를 쓸 수 없습니다: {seg:?}"
+            ));
         }
         segs.push(seg.to_string());
     }
@@ -131,17 +133,23 @@ pub fn read_folders(paths: &GuildPaths) -> Result<FoldersFile> {
     if !p.exists() {
         return Ok(FoldersFile::default());
     }
-    let s = std::fs::read_to_string(&p)
-        .with_context(|| format!("failed to read: {}", p.display()))?;
+    let s =
+        std::fs::read_to_string(&p).with_context(|| format!("failed to read: {}", p.display()))?;
     toml::from_str(&s).context("failed to parse library folders TOML")
 }
 
 pub fn write_folders(paths: &GuildPaths, f: &FoldersFile) -> Result<()> {
     std::fs::create_dir_all(paths.library_dir()).with_context(|| {
-        format!("failed to create library dir: {}", paths.library_dir().display())
+        format!(
+            "failed to create library dir: {}",
+            paths.library_dir().display()
+        )
     })?;
     let body = toml::to_string_pretty(f).context("failed to serialize library folders")?;
-    write_atomic(paths.library_folders_path(), &format!("{FOLDERS_HEADER}\n{body}"))
+    write_atomic(
+        paths.library_folders_path(),
+        &format!("{FOLDERS_HEADER}\n{body}"),
+    )
 }
 
 impl BookFile {
@@ -181,7 +189,12 @@ impl BookFile {
 
     pub fn write<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
         // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
-        super::version::write(path.as_ref(), &self.serialize()?, super::version::Place::Frontmatter).map(|_| ())
+        super::version::write(
+            path.as_ref(),
+            &self.serialize()?,
+            super::version::Place::Frontmatter,
+        )
+        .map(|_| ())
     }
 
     /// frontmatter 의 number (book_id 에서 파싱).
@@ -231,17 +244,23 @@ pub fn read_counter(paths: &GuildPaths) -> Result<LibraryCounter> {
     if !p.exists() {
         return Ok(LibraryCounter::default());
     }
-    let s = std::fs::read_to_string(&p)
-        .with_context(|| format!("failed to read: {}", p.display()))?;
+    let s =
+        std::fs::read_to_string(&p).with_context(|| format!("failed to read: {}", p.display()))?;
     toml::from_str(&s).context("failed to parse library counter TOML")
 }
 
 pub fn write_counter(paths: &GuildPaths, c: &LibraryCounter) -> Result<()> {
     std::fs::create_dir_all(paths.library_dir()).with_context(|| {
-        format!("failed to create library dir: {}", paths.library_dir().display())
+        format!(
+            "failed to create library dir: {}",
+            paths.library_dir().display()
+        )
     })?;
     let body = toml::to_string_pretty(c).context("failed to serialize library counter")?;
-    write_atomic(paths.library_counter_path(), &format!("{COUNTER_HEADER}\n{body}"))
+    write_atomic(
+        paths.library_counter_path(),
+        &format!("{COUNTER_HEADER}\n{body}"),
+    )
 }
 
 /// 다음 번호 할당 — counter 와 실존 파일 max 중 큰 쪽 기준(+1)으로 단조 증가
@@ -318,8 +337,14 @@ mod tests {
         assert_eq!(normalize_folder_path("").unwrap(), "");
         assert_eq!(normalize_folder_path("  ").unwrap(), "");
         assert_eq!(normalize_folder_path("아키텍처").unwrap(), "아키텍처");
-        assert_eq!(normalize_folder_path("아키텍처/서브").unwrap(), "아키텍처/서브");
-        assert_eq!(normalize_folder_path(" 아키텍처 / 서브 ").unwrap(), "아키텍처/서브");
+        assert_eq!(
+            normalize_folder_path("아키텍처/서브").unwrap(),
+            "아키텍처/서브"
+        );
+        assert_eq!(
+            normalize_folder_path(" 아키텍처 / 서브 ").unwrap(),
+            "아키텍처/서브"
+        );
         assert!(normalize_folder_path("아키텍처//서브").is_err());
         assert!(normalize_folder_path("..").is_err());
         assert!(normalize_folder_path("아키텍처/..").is_err());
@@ -332,7 +357,10 @@ mod tests {
         assert!(path_is_self_or_descendant("아키텍처/서브", "아키텍처"));
         assert!(path_is_self_or_descendant("아키텍처", "아키텍처"));
         assert!(!path_is_self_or_descendant("운영", "아키텍처"));
-        assert!(!path_is_self_or_descendant("아키텍처2", "아키텍처"), "prefix 우연 일치 방지");
+        assert!(
+            !path_is_self_or_descendant("아키텍처2", "아키텍처"),
+            "prefix 우연 일치 방지"
+        );
     }
 
     #[test]

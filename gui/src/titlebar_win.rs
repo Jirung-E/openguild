@@ -24,7 +24,7 @@ use std::sync::OnceLock;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, SetWindowLongPtrW, GWLP_WNDPROC, HTMAXBUTTON, WM_NCHITTEST,
+    CallWindowProcW, GWLP_WNDPROC, HTMAXBUTTON, SetWindowLongPtrW, WM_NCHITTEST,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -76,7 +76,11 @@ pub fn set_maximize_hit_rect(hwnd_isize: isize, x: i32, y: i32, w: i32, h: i32) 
     // 이전 프로시저 포인터를 저장해두고 우리가 처리하지 않는 메시지는 그
     // 프로시저로 그대로 위임한다.
     let original_ptr = unsafe {
-        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, wnd_proc_trampoline as *const () as isize)
+        SetWindowLongPtrW(
+            hwnd,
+            GWLP_WNDPROC,
+            wnd_proc_trampoline as *const () as isize,
+        )
     };
     if original_ptr == 0 {
         return; // 실패 — 서브클래싱 없이 그냥 포기(호버 개선만 못 받음).
@@ -110,8 +114,7 @@ unsafe extern "system" fn wnd_proc_trampoline(
             let y = ((lparam >> 16) & 0xFFFF) as u16 as i16 as i32;
             let mut pt = POINT { x, y };
             // SAFETY: hwnd 는 살아있는 창(이 메시지를 받고 있으므로).
-            if unsafe { ScreenToClient(hwnd, &mut pt) } != 0
-                && state.max_rect.contains(pt.x, pt.y)
+            if unsafe { ScreenToClient(hwnd, &mut pt) } != 0 && state.max_rect.contains(pt.x, pt.y)
             {
                 return HTMAXBUTTON as LRESULT;
             }
@@ -129,9 +132,7 @@ unsafe extern "system" fn wnd_proc_trampoline(
         // 등록 안 된(레이스) 창 — DefWindowProc 대신 원본 프로시저를 못 찾은
         // 경우이므로 표준 기본 처리로 넘긴다.
         None => unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::DefWindowProcW(
-                hwnd, msg, wparam, lparam,
-            )
+            windows_sys::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam)
         },
     }
 }

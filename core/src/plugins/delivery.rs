@@ -74,7 +74,11 @@ impl Tail {
 
     /// 마지막 몇 줄 — 빈 줄은 빼고, 앞뒤 공백은 다듬는다.
     fn lines(&self) -> Vec<String> {
-        let bytes: Vec<u8> = self.buf.lock().map(|b| b.iter().copied().collect()).unwrap_or_default();
+        let bytes: Vec<u8> = self
+            .buf
+            .lock()
+            .map(|b| b.iter().copied().collect())
+            .unwrap_or_default();
         let text = String::from_utf8_lossy(&bytes);
         let all: Vec<String> = text
             .lines()
@@ -124,7 +128,10 @@ impl Output {
             return String::new();
         }
         let body: String = lines.iter().map(|l| format!("\n  {l}")).collect();
-        crate::tf!(" — 마지막 출력({label}):{body}", " — last output ({label}):{body}")
+        crate::tf!(
+            " — 마지막 출력({label}):{body}",
+            " — last output ({label}):{body}"
+        )
     }
 }
 
@@ -168,15 +175,7 @@ impl Delivery for Outbound {
             Action::Run { .. } => {
                 // BUG-294: 이 OS 에 적힌 명령이 있으면 그것.
                 let (command, args) = action.run_command().expect("run 동작이다");
-                run(
-                    plugin,
-                    command,
-                    args,
-                    action.timeout(),
-                    body,
-                    values,
-                    &next,
-                )
+                run(plugin, command, args, action.timeout(), body, values, &next)
             }
         }
     }
@@ -207,8 +206,8 @@ impl Outbound {
         let url = crate::plugins::expand_env_with(url, values).map_err(|e| e.to_string())?;
         let mut req = self.client().post(&url).timeout(timeout);
         for (k, v) in headers {
-            let v =
-                crate::plugins::expand_env_with(v, values).map_err(|e| crate::tf!("헤더 {k}: {e}", "header {k}: {e}"))?;
+            let v = crate::plugins::expand_env_with(v, values)
+                .map_err(|e| crate::tf!("헤더 {k}: {e}", "header {k}: {e}"))?;
             req = req.header(k, v);
         }
         // DEV-401: 받는 쪽이 openguild 서버(또는 그 API 를 부르는 중계)면 이 요청이 일으킨 변경이
@@ -255,7 +254,10 @@ impl Outbound {
         };
         let res = req.json(body.as_ref()).send().map_err(|e| {
             // 받는 쪽이 죽어 있어도 길드는 멀쩡해야 한다 — 여기서 끝난다.
-            crate::tf!("{url} 로 보내지 못했습니다: {e}", "could not send to {url}: {e}")
+            crate::tf!(
+                "{url} 로 보내지 못했습니다: {e}",
+                "could not send to {url}: {e}"
+            )
         })?;
         let status = res.status();
         if status.is_success() {
@@ -265,7 +267,10 @@ impl Outbound {
         // DEV-381: `String::truncate` 는 200바이트째가 문자 경계가 아니면
         // 패닉한다. 한글 오류 페이지에서 실제로 걸린다 — 글자 단위로 자른다.
         let detail: String = res.text().unwrap_or_default().chars().take(200).collect();
-        Err(crate::tf!("{url} 이 {status} 로 답했습니다: {detail}", "{url} answered {status}: {detail}"))
+        Err(crate::tf!(
+            "{url} 이 {status} 로 답했습니다: {detail}",
+            "{url} answered {status}: {detail}"
+        ))
     }
 }
 
@@ -404,9 +409,12 @@ fn run(
     // 수단이 필요하다. 자식 환경에 넣는 것만으로는 **여기서** 푸는 `${...}` 를
     // 못 채우므로 확장 표에도 같이 심는다. 데이터 폴더는 작업 디렉터리가 아니어도
     // 미리 만든다 — 훅이 `$OPENGUILD_PLUGIN_DATA_DIR` 에 바로 쓸 수 있어야 한다.
-    let data_path = plugin
-        .data_dir()
-        .map_err(|e| crate::tf!("{command}: 데이터 폴더를 준비하지 못했습니다: {e}", "{command}: could not prepare the data folder: {e}"))?;
+    let data_path = plugin.data_dir().map_err(|e| {
+        crate::tf!(
+            "{command}: 데이터 폴더를 준비하지 못했습니다: {e}",
+            "{command}: could not prepare the data folder: {e}"
+        )
+    })?;
     // REQ-021: 사용자가 넣은 값이 먼저, 그 위에 코어가 주는 경로 둘.
     // 경로를 나중에 넣는 이유는 설정값이 그 이름을 덮어쓰지 못하게 하려는
     // 것이다 — `OPENGUILD_PLUGIN_DIR` 를 정의가 갈아끼울 수 있으면 안 된다.
@@ -481,7 +489,12 @@ fn run(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| crate::tf!("{command} 를 띄우지 못했습니다: {e}", "could not start {command}: {e}"))?;
+        .map_err(|e| {
+            crate::tf!(
+                "{command} 를 띄우지 못했습니다: {e}",
+                "could not start {command}: {e}"
+            )
+        })?;
 
     // BUG-336: 출력을 지금부터 읽는다 — 안 읽으면 출력이 많은 훅은 통로가 가득 차 멈춘다.
     let output = Output::capture(&mut child);
@@ -497,7 +510,10 @@ fn run(
         }
         let _ = child.kill();
         let _ = child.wait();
-        return Err(crate::tf!("{command}: 멈춰 띄운 자식을 깨우지 못했습니다", "{command}: could not resume the suspended child"));
+        return Err(crate::tf!(
+            "{command}: 멈춰 띄운 자식을 깨우지 못했습니다",
+            "{command}: could not resume the suspended child"
+        ));
     }
 
     // DEV-381: **stdin 쓰기를 시한 밖에 두면 안 된다.** 자식이 stdin 을 안 읽고
@@ -520,7 +536,10 @@ fn run(
             // 스레드를 못 띄우면 자식은 EOF 를 영영 못 본다 — 여기서 끝낸다.
             let _ = child.kill();
             let _ = child.wait();
-            return Err(crate::tf!("{command}: stdin 전달 스레드를 못 띄웠습니다", "{command}: could not start the stdin thread"));
+            return Err(crate::tf!(
+                "{command}: stdin 전달 스레드를 못 띄웠습니다",
+                "{command}: could not start the stdin thread"
+            ));
         }
     }
 
@@ -528,9 +547,20 @@ fn run(
     loop {
         match child.try_wait() {
             Ok(Some(st)) if st.success() => return Ok(()),
-            Ok(Some(st)) => return Err(crate::tf!("{command} 가 {st} 로 끝났습니다{}", "{command} ended with {st}{}", output.suffix())),
+            Ok(Some(st)) => {
+                return Err(crate::tf!(
+                    "{command} 가 {st} 로 끝났습니다{}",
+                    "{command} ended with {st}{}",
+                    output.suffix()
+                ));
+            }
             Ok(None) => {}
-            Err(e) => return Err(crate::tf!("{command} 상태를 못 읽었습니다: {e}", "could not read the state of {command}: {e}")),
+            Err(e) => {
+                return Err(crate::tf!(
+                    "{command} 상태를 못 읽었습니다: {e}",
+                    "could not read the state of {command}: {e}"
+                ));
+            }
         }
         if Instant::now() >= deadline {
             // 죽이고 **반드시 거둔다** — wait 를 안 하면 좀비가 남는다.
@@ -804,7 +834,11 @@ mod tests {
         // DEV-401: 받는 쪽이 openguild 서버라면 이 헤더로 "누가 일으켰나" 를 안다.
         let chain = got[0]
             .lines()
-            .find_map(|l| l.to_lowercase().starts_with("x-openguild-plugin-chain:").then(|| l[25..].trim().to_string()))
+            .find_map(|l| {
+                l.to_lowercase()
+                    .starts_with("x-openguild-plugin-chain:")
+                    .then(|| l[25..].trim().to_string())
+            })
             .expect("체인 헤더가 없다");
         assert_eq!(
             crate::events::origin::Origin::parse(&chain).chain(),
@@ -1051,7 +1085,10 @@ mod tests {
             lab.guild.canonicalize().unwrap(),
             "훅이 길드 루트에서 돌지 않았다"
         );
-        assert!(!lab.data().starts_with(&lab.guild), "데이터 폴더가 길드 안이다 — 훅의 기록이 git 에 섞인다");
+        assert!(
+            !lab.data().starts_with(&lab.guild),
+            "데이터 폴더가 길드 안이다 — 훅의 기록이 git 에 섞인다"
+        );
         // 출력을 데이터 폴더에 썼으니 길드 루트에는 아무것도 안 남았다.
         assert!(!lab.guild.join("cwd.txt").exists());
     }
@@ -1082,7 +1119,10 @@ mod tests {
         Outbound::new()
             .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
-        assert!(lab.cwd().join("os.json").is_file(), "이 OS 의 명령이 안 돌았다");
+        assert!(
+            lab.cwd().join("os.json").is_file(),
+            "이 OS 의 명령이 안 돌았다"
+        );
     }
 
     /// DEV-401: 훅 자식은 "받은 목록 + 자기 이름" 을 환경변수로 받는다 — 그 자식이 부른
@@ -1096,18 +1136,30 @@ mod tests {
         let lab = RunLab::new("run-chain");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
-            args: vec!["-c".into(), "printf '%s' \"$OPENGUILD_PLUGIN_CHAIN\" > chain.txt".into()],
+            args: vec![
+                "-c".into(),
+                "printf '%s' \"$OPENGUILD_PLUGIN_CHAIN\" > chain.txt".into(),
+            ],
             timeout_ms: Some(5_000),
             os: Default::default(),
         });
         let mut e = event();
         e.origin = crate::events::origin::Origin::from_chain(["먼저"]);
         let mut values = BTreeMap::new();
-        values.insert(crate::events::origin::ENV.to_string(), "[\"위조\"]".to_string());
-        Outbound::new().deliver_first(&p, &e, &body(), &values).unwrap();
+        values.insert(
+            crate::events::origin::ENV.to_string(),
+            "[\"위조\"]".to_string(),
+        );
+        Outbound::new()
+            .deliver_first(&p, &e, &body(), &values)
+            .unwrap();
         let got = std::fs::read_to_string(lab.cwd().join("chain.txt")).unwrap();
         let chain = crate::events::origin::Origin::parse(&got);
-        assert_eq!(chain.chain(), ["먼저".to_string(), p.def.name.clone()], "{got}");
+        assert_eq!(
+            chain.chain(),
+            ["먼저".to_string(), p.def.name.clone()],
+            "{got}"
+        );
     }
 
     /// BUG-336: **실패하면 훅이 한 말이 보인다** — stderr 를 먼저, 끝부분만.
@@ -1130,7 +1182,10 @@ mod tests {
         let e = Outbound::new()
             .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
-        assert!(e.contains("로그인이 필요합니다"), "진짜 이유가 안 보인다: {e}");
+        assert!(
+            e.contains("로그인이 필요합니다"),
+            "진짜 이유가 안 보인다: {e}"
+        );
         assert!(e.contains("stderr"), "{e}");
         assert!(!e.contains("줄0"), "앞부분까지 통째로 붙였다: {e}");
         assert!(!e.contains("표준출력"), "stderr 가 있으면 그것만: {e}");
@@ -1152,7 +1207,10 @@ mod tests {
         let e = Outbound::new()
             .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
-        assert!(e.contains("no .guild file at here") && e.contains("stdout"), "{e}");
+        assert!(
+            e.contains("no .guild file at here") && e.contains("stdout"),
+            "{e}"
+        );
     }
 
     /// BUG-336: 출력을 받아 두면서도 **많이 찍는 훅이 멈추지 않는다**(통로가 가득 차면 자식이 쓰다 멈춘다) — 성공은
@@ -1165,7 +1223,10 @@ mod tests {
         let lab = RunLab::new("chatty");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
-            args: vec!["-c".into(), "i=0; while [ $i -lt 20000 ]; do echo 한 줄 $i; i=$((i+1)); done".into()],
+            args: vec![
+                "-c".into(),
+                "i=0; while [ $i -lt 20000 ]; do echo 한 줄 $i; i=$((i+1)); done".into(),
+            ],
             timeout_ms: Some(20_000),
             os: Default::default(),
         });
@@ -1292,7 +1353,8 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver_first(&p,
+            .deliver_first(
+                &p,
                 &event(),
                 &serde_json::json!({ "text": "왔다" }),
                 &Default::default(),
@@ -1326,7 +1388,8 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver_first(&p,
+            .deliver_first(
+                &p,
                 &event(),
                 &serde_json::json!({ "text": "경로는 ${HOME} 입니다" }),
                 &Default::default(),
@@ -1375,7 +1438,10 @@ mod tests {
         let lab = RunLab::new("runvalues-override");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
-            args: vec!["-c".into(), "printf '%s' \"$OPENGUILD_PLUGIN_DIR\" > got.txt".into()],
+            args: vec![
+                "-c".into(),
+                "printf '%s' \"$OPENGUILD_PLUGIN_DIR\" > got.txt".into(),
+            ],
             timeout_ms: Some(5_000),
             os: Default::default(),
         });

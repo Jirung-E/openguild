@@ -178,9 +178,21 @@ describe('filterQuests search', () => {
 	/** DEV-447: 쿼리 판정은 검색칸과 **따로** 거는 조건 — 넓힌 검색과 달리 검색어 매칭을 건너뛰지 않는다. */
 	it('쿼리 id 는 검색어와 함께 건다', () => {
 		const queryMatchIds = new Set([1, 2, 3]);
-		expect(filterQuests(quests, new Set(), new Set(), '', false, new Set(), { queryMatchIds }).map((x) => x.id)).toEqual([1, 2, 3]);
-		expect(filterQuests(quests, new Set(), new Set(), 'Tauri', false, new Set(), { queryMatchIds }).map((x) => x.id)).toEqual([1, 2]);
-		expect(filterQuests(quests, new Set(), new Set(), 'Tauri', false, new Set(), { queryMatchIds: new Set([4]) })).toEqual([]);
+		expect(
+			filterQuests(quests, new Set(), new Set(), '', false, new Set(), { queryMatchIds }).map(
+				(x) => x.id
+			)
+		).toEqual([1, 2, 3]);
+		expect(
+			filterQuests(quests, new Set(), new Set(), 'Tauri', false, new Set(), { queryMatchIds }).map(
+				(x) => x.id
+			)
+		).toEqual([1, 2]);
+		expect(
+			filterQuests(quests, new Set(), new Set(), 'Tauri', false, new Set(), {
+				queryMatchIds: new Set([4])
+			})
+		).toEqual([]);
 	});
 
 	it('title 매치', () => {

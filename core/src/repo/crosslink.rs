@@ -78,9 +78,15 @@ pub fn extract(body: &str) -> Vec<CrossLink> {
                 if id.is_empty() {
                     return None;
                 }
-                return Some(CrossLink { kind: Some(kind), id: id.to_string() });
+                return Some(CrossLink {
+                    kind: Some(kind),
+                    id: id.to_string(),
+                });
             }
-            Some(CrossLink { kind: None, id: raw.to_string() })
+            Some(CrossLink {
+                kind: None,
+                id: raw.to_string(),
+            })
         })
         .collect()
 }
@@ -141,7 +147,12 @@ mod tests {
 
     #[test]
     fn case_insensitive_prefix() {
-        assert_eq!(ids("[[Quest:DEV-1]] [[LIB:BOOK-2]]"),
-            vec![(Some(DocKind::Quest), "DEV-1".into()), (Some(DocKind::Book), "BOOK-2".into())]);
+        assert_eq!(
+            ids("[[Quest:DEV-1]] [[LIB:BOOK-2]]"),
+            vec![
+                (Some(DocKind::Quest), "DEV-1".into()),
+                (Some(DocKind::Book), "BOOK-2".into())
+            ]
+        );
     }
 }

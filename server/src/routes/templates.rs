@@ -1,18 +1,16 @@
 //! Quest 템플릿 HTTP 어댑터 — CLI local/remote 파리티.
 
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
-use openguild_core::repo::TemplateFile;
 use openguild_core::Store;
+use openguild_core::repo::TemplateFile;
 
-pub async fn list_templates(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<TemplateFile>>> {
+pub async fn list_templates(State(store): State<Store>) -> AppResult<Json<Vec<TemplateFile>>> {
     Ok(Json(openguild_core::repo::list_templates(&store.paths)?))
 }
 
@@ -24,10 +22,7 @@ pub async fn get_template(
         .map_err(|error| openguild_core::AppError::BadRequest(error.to_string()))?;
     let path = store.paths.template_path(name);
     if !path.exists() {
-        return Err(openguild_core::AppError::NotFound(format!(
-            "template '{name}' 없음"
-        ))
-        .into());
+        return Err(openguild_core::AppError::NotFound(format!("template '{name}' 없음")).into());
     }
     Ok(Json(TemplateFile::read(path)?))
 }

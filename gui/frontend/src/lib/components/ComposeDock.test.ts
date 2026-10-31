@@ -234,12 +234,7 @@ describe('DEV-416 붙었을 때의 모양', () => {
 			(b) => b.getAttribute('aria-label') ?? ''
 		);
 		// 좁게가 기본이므로 셋째 버튼은 '넓게 보기' 다.
-		expect(labels).toEqual([
-			'보내기',
-			'현재 위치로',
-			'넓게 보기',
-			'원래 자리로 (글은 남습니다)'
-		]);
+		expect(labels).toEqual(['보내기', '현재 위치로', '넓게 보기', '원래 자리로 (글은 남습니다)']);
 	});
 
 	// 닫기와 다르다 — 글은 팝업에 둔 채 **보는 자리**만 옮긴다.
@@ -262,9 +257,7 @@ describe('DEV-416 붙었을 때의 모양', () => {
 		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
 		notify!(0);
 		await tick();
-		expect(
-			document.documentElement.style.getPropertyValue('--compose-dock-h')
-		).not.toBe('');
+		expect(document.documentElement.style.getPropertyValue('--compose-dock-h')).not.toBe('');
 		(getByLabelText(/원래 자리로/) as HTMLButtonElement).click();
 		await settled();
 		expect(document.documentElement.style.getPropertyValue('--compose-dock-h')).toBe('');

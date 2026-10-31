@@ -15,9 +15,9 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 
-use crate::counter::{check_counters, CheckReport};
-use crate::repo::{fs as repo_fs, TypeFile};
 use crate::Store;
+use crate::counter::{CheckReport, check_counters};
+use crate::repo::{TypeFile, fs as repo_fs};
 
 /// SQL 단독 drift 보고.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -49,14 +49,10 @@ impl CombinedReport {
 ///    SQL drift 로 보고. `auto_fix=true` 시 file 값을 truth 로 SQL 갱신.
 ///
 /// 두 단계 모두 dry-run (auto_fix=false) 시 보고만.
-pub async fn check_and_fix_counters(
-    store: &Store,
-    auto_fix: bool,
-) -> Result<CombinedReport> {
+pub async fn check_and_fix_counters(store: &Store, auto_fix: bool) -> Result<CombinedReport> {
     let _g = store.lock_guild().await?;
     // ── 1. file drift (기존 동작) ──
-    let file_report = check_counters(&store.paths, auto_fix)
-        .context("counter file 검사 실패")?;
+    let file_report = check_counters(&store.paths, auto_fix).context("counter file 검사 실패")?;
     let mut combined = CombinedReport {
         file_report,
         ..Default::default()
@@ -110,7 +106,9 @@ pub async fn check_and_fix_counters(
         };
         tracing::warn!(
             "SQL counter drift: type {} file={}, sql={}",
-            issue.prefix, file_n, sql_n
+            issue.prefix,
+            file_n,
+            sql_n
         );
         if auto_fix {
             sync_sql_counter(store, &tf.prefix, file_n).await?;
@@ -123,12 +121,11 @@ pub async fn check_and_fix_counters(
 
 /// `quest_counters.last_number` 를 prefix 의 type id 로 UPDATE.
 async fn sync_sql_counter(store: &Store, prefix: &str, value: i64) -> Result<()> {
-    let type_id: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = ?")
-            .bind(prefix)
-            .fetch_optional(&store.index_pool)
-            .await
-            .with_context(|| format!("quest_types prefix={prefix} 조회 실패"))?;
+    let type_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = ?")
+        .bind(prefix)
+        .fetch_optional(&store.index_pool)
+        .await
+        .with_context(|| format!("quest_types prefix={prefix} 조회 실패"))?;
     let Some(type_id) = type_id else {
         tracing::warn!("SQL 동기화: type {prefix} 가 index.db 에 없음 — skip");
         return Ok(());
@@ -153,7 +150,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-ops-counter-{label}-{ns}-{}", crate::test_seq()));
+        let p =
+            std::env::temp_dir().join(format!("og-ops-counter-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&p).unwrap();
         p
     }

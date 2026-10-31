@@ -109,7 +109,13 @@
 				<button class="btn" data-autofocus={danger ? '' : undefined} onclick={close}>
 					{displayCancel}
 				</button>
-				<button class="btn" class:btn-primary={!danger} class:btn-danger={danger} data-autofocus={danger ? undefined : ''} onclick={confirm}>
+				<button
+					class="btn"
+					class:btn-primary={!danger}
+					class:btn-danger={danger}
+					data-autofocus={danger ? undefined : ''}
+					onclick={confirm}
+				>
 					{displayConfirm}
 				</button>
 			</div>

@@ -277,7 +277,10 @@
 			<DateField bind:value={commentedBefore} /></label
 		>
 		{#if advancedActive}
-			<button class="xfilter-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}
+			<button
+				class="xfilter-clear"
+				onclick={clearAdvanced}
+				title={t('filter.clearAdvanced', $locale)}
 				><Icon name="close" size="1em" /> {t('filter.clearBtn', $locale)}</button
 			>
 		{/if}

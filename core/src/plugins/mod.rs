@@ -365,7 +365,11 @@ impl Handler {
 
     /// 시간이 넘거나 던졌을 때 막는가.
     pub fn blocks_on(&self, timed_out: bool) -> bool {
-        let p = if timed_out { self.on_timeout } else { self.on_error };
+        let p = if timed_out {
+            self.on_timeout
+        } else {
+            self.on_error
+        };
         p == Some(Policy::Block)
     }
 
@@ -379,7 +383,11 @@ impl Handler {
 
     /// 이 줄이 볼 패턴들(단계와 함께).
     pub fn patterns(&self) -> &[String] {
-        if self.pre.is_empty() { &self.post } else { &self.pre }
+        if self.pre.is_empty() {
+            &self.post
+        } else {
+            &self.pre
+        }
     }
 
     /// 이 줄이 그 이벤트에 걸리나.
@@ -444,7 +452,11 @@ impl PluginDef {
         let mut out = Vec::new();
         for h in &self.handlers {
             for p in h.patterns() {
-                let s = if h.pre.is_empty() { p.clone() } else { format!("pre:{p}") };
+                let s = if h.pre.is_empty() {
+                    p.clone()
+                } else {
+                    format!("pre:{p}")
+                };
                 if !out.contains(&s) {
                     out.push(s);
                 }
@@ -819,7 +831,8 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
     // DEV-399: 훑을 폴더 **한 목록** — 길드 폴더가 언제나 첫 항목이고, 그 뒤에 이 길드에서
     // 쓰기로 한 소스 플러그인들이 온다. 갈래를 둘로 나누지 않는 이유: 정의를 git 으로 나누는
     // 것이 이 설계의 축이라, 길드 폴더는 **등록 없이** 늘 읽혀야 한다.
-    let mut dirs: Vec<(Option<String>, PathBuf)> = match std::fs::read_dir(plugins_dir(guild_root)) {
+    let mut dirs: Vec<(Option<String>, PathBuf)> = match std::fs::read_dir(plugins_dir(guild_root))
+    {
         Ok(entries) => {
             let mut v: Vec<PathBuf> = entries
                 .flatten()
@@ -1005,7 +1018,8 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
         let path = dir.join(rel);
         let src = std::fs::read_to_string(&path).map_err(|e| {
             AppError::BadRequest(crate::tf!(
-                "{}: 스크립트 {} 를 읽지 못했습니다: {e}", "{}: could not read script {}: {e}",
+                "{}: 스크립트 {} 를 읽지 못했습니다: {e}",
+                "{}: could not read script {}: {e}",
                 def.name,
                 path.display()
             ))
@@ -1015,7 +1029,8 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
         if looks_like_known_key(&src) {
             return Err(AppError::BadRequest(crate::tf!(
                 "{}: 스크립트 {rel} 에 비밀값으로 보이는 리터럴이 있습니다. \
-                 `.guild/plugins/` 는 git 에 커밋됩니다 — 값은 환경변수로 넘기세요.", "{}: script {rel} has a literal that looks like a secret. `.guild/plugins/` is committed to git — pass the value as an environment variable.",
+                 `.guild/plugins/` 는 git 에 커밋됩니다 — 값은 환경변수로 넘기세요.",
+                "{}: script {rel} has a literal that looks like a secret. `.guild/plugins/` is committed to git — pass the value as an environment variable.",
                 def.name
             )));
         }
@@ -1023,9 +1038,8 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
     }
     // DEV-408: 불러오는 파일을 코어가 읽는다 — 폴더 밖도 된다. 경로는 **글자 그대로** 적어야
     // 한다(변수면 적재 때 무엇을 읽을지 알 수 없고, 허용 화면에도 못 보여 준다).
-    let imports = collect_imports(dir, &sources).map_err(|e| {
-        AppError::BadRequest(format!("{}: {e}", def.name))
-    })?;
+    let imports = collect_imports(dir, &sources)
+        .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
     let compiled = script::Script::compile_with_imports(&sources, &imports)
         .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
     // 줄이 부르는 함수가 정말 있나 — 없으면 적재 때 막는다(조용히 안 불리는 것보다 낫다).
@@ -1039,7 +1053,8 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
                     .collect();
                 return Err(AppError::BadRequest(crate::tf!(
                     "{}: {} 가 부르는 함수 `{f}` 가 스크립트에 없습니다 — `fn {f}({})` 처럼 인자 {arity}개를 \
-                     받는 함수여야 합니다", "{}: {} calls function `{f}`, which is not in the scripts — it must be a function taking {arity} arguments, like `fn {f}({})`",
+                     받는 함수여야 합니다",
+                    "{}: {} calls function `{f}`, which is not in the scripts — it must be a function taking {arity} arguments, like `fn {f}({})`",
                     def.name,
                     h.label(i),
                     params.join(", ")
@@ -1065,14 +1080,20 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
 
 /// DEV-408: 스크립트가 불러오는 파일 목록 — 적힌 경로 그대로와 그 원문. 불러온 파일이 또
 /// 불러오는 것까지 따라간다(깊이 상한 8, 같은 파일은 한 번).
-pub fn collect_imports(dir: &Path, sources: &[(String, String)]) -> Result<Vec<(String, String)>, String> {
+pub fn collect_imports(
+    dir: &Path,
+    sources: &[(String, String)],
+) -> Result<Vec<(String, String)>, String> {
     let mut out: Vec<(String, String)> = Vec::new();
     let mut queue: Vec<(String, String)> = sources.to_vec();
     let mut depth = 0;
     while !queue.is_empty() {
         depth += 1;
         if depth > 8 {
-            return Err(crate::tf!("불러오는 스크립트가 너무 깊습니다(8단계까지)", "imported scripts are nested too deep (up to 8 levels)"));
+            return Err(crate::tf!(
+                "불러오는 스크립트가 너무 깊습니다(8단계까지)",
+                "imported scripts are nested too deep (up to 8 levels)"
+            ));
         }
         let mut next = Vec::new();
         for (from, src) in &queue {
@@ -1081,12 +1102,18 @@ pub fn collect_imports(dir: &Path, sources: &[(String, String)]) -> Result<Vec<(
                     continue;
                 }
                 let full = resolve_import(dir, &path)?;
-                let text = std::fs::read_to_string(&full)
-                    .map_err(|e| crate::tf!("불러올 스크립트를 읽지 못했습니다 {}: {e}", "could not read imported script {}: {e}", full.display()))?;
+                let text = std::fs::read_to_string(&full).map_err(|e| {
+                    crate::tf!(
+                        "불러올 스크립트를 읽지 못했습니다 {}: {e}",
+                        "could not read imported script {}: {e}",
+                        full.display()
+                    )
+                })?;
                 // 비밀값은 여기도 막는다 — 불러온 파일도 결국 도는 코드다.
                 if looks_like_known_key(&text) {
                     return Err(crate::tf!(
-                        "불러온 스크립트 {path} 에 비밀값으로 보이는 리터럴이 있습니다", "imported script {path} has a literal that looks like a secret"
+                        "불러온 스크립트 {path} 에 비밀값으로 보이는 리터럴이 있습니다",
+                        "imported script {path} has a literal that looks like a secret"
                     ));
                 }
                 out.push((path.clone(), text.clone()));
@@ -1120,7 +1147,8 @@ fn import_paths(src: &str, from: &str) -> Result<Vec<String>, String> {
             _ => {
                 let shown: String = after.chars().take(40).collect();
                 return Err(crate::tf!(
-                    "{from}: `import` 의 경로는 글자 그대로 적어야 합니다 (받은 것: {shown})", "{from}: the `import` path must be written literally (got: {shown})"
+                    "{from}: `import` 의 경로는 글자 그대로 적어야 합니다 (받은 것: {shown})",
+                    "{from}: the `import` path must be written literally (got: {shown})"
                 ));
             }
         }
@@ -1138,30 +1166,50 @@ fn resolve_import(dir: &Path, path: &str) -> Result<PathBuf, String> {
         dir.join(p)
     };
     if full.extension().and_then(|e| e.to_str()) != Some("rhai") {
-        return Err(crate::tf!("불러올 수 있는 것은 `.rhai` 파일뿐입니다: {path}", "only `.rhai` files can be imported: {path}"));
+        return Err(crate::tf!(
+            "불러올 수 있는 것은 `.rhai` 파일뿐입니다: {path}",
+            "only `.rhai` files can be imported: {path}"
+        ));
     }
     if !full.is_file() {
-        return Err(crate::tf!("불러올 스크립트가 없습니다: {}", "no such script to import: {}", full.display()));
+        return Err(crate::tf!(
+            "불러올 스크립트가 없습니다: {}",
+            "no such script to import: {}",
+            full.display()
+        ));
     }
     Ok(full)
 }
 
 /// 파일 하나를 읽고 **검증까지** 한다. 검증에 걸리면 적재하지 않는다.
 pub fn read_def(manifest: &Path) -> AppResult<PluginDef> {
-    let raw = std::fs::read_to_string(manifest)
-        .map_err(|e| AppError::BadRequest(crate::tf!("{MANIFEST} 읽기 실패: {e}", "could not read {MANIFEST}: {e}")))?;
+    let raw = std::fs::read_to_string(manifest).map_err(|e| {
+        AppError::BadRequest(crate::tf!(
+            "{MANIFEST} 읽기 실패: {e}",
+            "could not read {MANIFEST}: {e}"
+        ))
+    })?;
     parse_def(&raw)
 }
 
 /// 정의를 파일과 같은 TOML 로 — 허용 전에 "무엇에 동의하는지" 보여 줄 때.
 pub fn def_to_toml(def: &PluginDef) -> String {
-    toml::to_string_pretty(def).unwrap_or_else(|e| crate::tf!("# TOML 로 옮기지 못했습니다: {e}", "# could not convert to TOML: {e}"))
+    toml::to_string_pretty(def).unwrap_or_else(|e| {
+        crate::tf!(
+            "# TOML 로 옮기지 못했습니다: {e}",
+            "# could not convert to TOML: {e}"
+        )
+    })
 }
 
 /// 정의 원문을 읽고 검증한다.
 pub fn parse_def(raw: &str) -> AppResult<PluginDef> {
-    let mut def: PluginDef = toml::from_str(raw)
-        .map_err(|e| AppError::BadRequest(crate::tf!("{MANIFEST} 형식 오류: {e}", "{MANIFEST} format error: {e}")))?;
+    let mut def: PluginDef = toml::from_str(raw).map_err(|e| {
+        AppError::BadRequest(crate::tf!(
+            "{MANIFEST} 형식 오류: {e}",
+            "{MANIFEST} format error: {e}"
+        ))
+    })?;
     normalize(&mut def);
     // DEV-415: 묶음의 조건 · 데이터를 줄마다 합친다 — 그 뒤의 검증은 합친 줄을 본다.
     groups::expand(&mut def)?;
@@ -1194,15 +1242,17 @@ fn normalize(def: &mut PluginDef) {
 /// 이력에 남는다.
 pub fn validate(def: &PluginDef) -> AppResult<()> {
     if def.name.trim().is_empty() {
-        return Err(AppError::BadRequest(
-            crate::tf!("plugin.toml: name 이 비어 있습니다", "plugin.toml: name is empty"),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "plugin.toml: name 이 비어 있습니다",
+            "plugin.toml: name is empty"
+        )));
     }
     // BUG-279: `name` 은 동의 파일의 키이자 데이터 폴더 이름이다. 경로 조각이
     // 될 수 없는 값을 적재 때 막는다 — 정의는 git 으로 남의 기계에 간다.
     if def.name.contains(['/', '\\']) || def.name.trim_matches('.').is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
-            "plugin.toml: `name` 에 경로 구분자나 점만 쓸 수 없습니다 (받은 값: {})", "plugin.toml: `name` cannot contain path separators or be only dots (got: {})",
+            "plugin.toml: `name` 에 경로 구분자나 점만 쓸 수 없습니다 (받은 값: {})",
+            "plugin.toml: `name` cannot contain path separators or be only dots (got: {})",
             def.name
         )));
     }
@@ -1214,7 +1264,8 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
             return Err(AppError::BadRequest(crate::tf!(
                 "{}: `description` 이 너무 깁니다 ({n}자, 최대 {MAX_DESCRIPTION_CHARS}자) — \
                  관리 → 플러그인 의 한 줄 설명 자리입니다. 긴 설명은 플러그인 폴더의 \
-                 README 에 두세요.", "{}: `description` is too long ({n} chars, max {MAX_DESCRIPTION_CHARS}) — it is the one-line summary in Admin → Plugins. Put longer text in the plugin folder's README.",
+                 README 에 두세요.",
+                "{}: `description` is too long ({n} chars, max {MAX_DESCRIPTION_CHARS}) — it is the one-line summary in Admin → Plugins. Put longer text in the plugin folder's README.",
                 def.name
             )));
         }
@@ -1222,7 +1273,8 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     if def.scope.is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
             "{}: `scope` 가 비어 있습니다 — cli / gui / server 중 어디서 돌릴지 \
-             명시해야 합니다(기본값을 두지 않는 이유는 놀라지 않기 위해서입니다)", "{}: `scope` is empty — say where it runs: cli / gui / server (there is no default, so nothing runs by surprise)",
+             명시해야 합니다(기본값을 두지 않는 이유는 놀라지 않기 위해서입니다)",
+            "{}: `scope` is empty — say where it runs: cli / gui / server (there is no default, so nothing runs by surprise)",
             def.name
         )));
     }
@@ -1244,7 +1296,8 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     for rel in &def.scripts {
         if !is_inside_rel(rel) {
             return Err(AppError::BadRequest(crate::tf!(
-                "{}: `scripts` 는 플러그인 폴더 안의 상대 경로여야 합니다 (받은 값: {rel})", "{}: `scripts` must be relative paths inside the plugin folder (got: {rel})",
+                "{}: `scripts` 는 플러그인 폴더 안의 상대 경로여야 합니다 (받은 값: {rel})",
+                "{}: `scripts` must be relative paths inside the plugin folder (got: {rel})",
                 def.name
             )));
         }
@@ -1274,7 +1327,10 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
     use crate::events::names as ev;
     let bad = |m: String| Err(AppError::BadRequest(format!("{}: {m}", def.name)));
     if def.handlers.is_empty() {
-        return bad(crate::tf!("`[[handlers]]` 가 없습니다 — 언제 무엇을 할지 한 줄 이상 적으세요", "no `[[handlers]]` — add at least one line saying when to do what"));
+        return bad(crate::tf!(
+            "`[[handlers]]` 가 없습니다 — 언제 무엇을 할지 한 줄 이상 적으세요",
+            "no `[[handlers]]` — add at least one line saying when to do what"
+        ));
     }
     for name in def.actions.keys() {
         if name.is_empty()
@@ -1283,7 +1339,8 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
             return bad(crate::tf!(
-                "`actions` 의 이름은 영숫자·`_`·`-` 만 됩니다 (받은 값: {name})", "`actions` names may only use letters, digits, `_` and `-` (got: {name})"
+                "`actions` 의 이름은 영숫자·`_`·`-` 만 됩니다 (받은 값: {name})",
+                "`actions` names may only use letters, digits, `_` and `-` (got: {name})"
             ));
         }
     }
@@ -1291,7 +1348,8 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
     for p in &def.permissions {
         if !PERMISSIONS.contains(&p.as_str()) {
             return bad(crate::tf!(
-                "`permissions` 의 `{p}` 는 없는 권한입니다. 쓸 수 있는 것: {}", "`permissions` has `{p}`, which is not a permission. Available: {}",
+                "`permissions` 의 `{p}` 는 없는 권한입니다. 쓸 수 있는 것: {}",
+                "`permissions` has `{p}`, which is not a permission. Available: {}",
                 PERMISSIONS.join(", ")
             ));
         }
@@ -1301,10 +1359,17 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
         let who = h.label(i);
         if let Some(id) = &h.id {
             if id.trim().is_empty() {
-                return bad(crate::tf!("{}번째 줄의 `id` 가 비어 있습니다", "line {} has an empty `id`", i + 1));
+                return bad(crate::tf!(
+                    "{}번째 줄의 `id` 가 비어 있습니다",
+                    "line {} has an empty `id`",
+                    i + 1
+                ));
             }
             if !ids.insert(id.clone()) {
-                return bad(crate::tf!("줄 이름 `{id}` 가 겹칩니다", "line name `{id}` is duplicated"));
+                return bad(crate::tf!(
+                    "줄 이름 `{id}` 가 겹칩니다",
+                    "line name `{id}` is duplicated"
+                ));
             }
         }
         let phase = h.phase();
@@ -1330,7 +1395,8 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
             }
             (false, false) => {
                 return bad(crate::tf!(
-                    "{who}: `pre` 와 `post` 를 한 줄에 같이 쓸 수 없습니다 — 줄을 나누세요", "{who}: `pre` and `post` cannot be on the same line — split it"
+                    "{who}: `pre` 와 `post` 를 한 줄에 같이 쓸 수 없습니다 — 줄을 나누세요",
+                    "{who}: `pre` and `post` cannot be on the same line — split it"
                 ));
             }
             _ => {}
@@ -1338,28 +1404,35 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
         match (&h.call, &h.action) {
             (None, None) => {
                 return bad(crate::tf!(
-                    "{who}: 무엇을 할지가 없습니다 — `call`(스크립트 함수) 이나 `action` 을 적으세요", "{who}: nothing to do — set `call` (a script function) or `action`"
+                    "{who}: 무엇을 할지가 없습니다 — `call`(스크립트 함수) 이나 `action` 을 적으세요",
+                    "{who}: nothing to do — set `call` (a script function) or `action`"
                 ));
             }
             (Some(_), Some(_)) => {
                 return bad(crate::tf!(
-                    "{who}: `call` 과 `action` 을 한 줄에 같이 쓸 수 없습니다 — 줄을 나누세요", "{who}: `call` and `action` cannot be on the same line — split it"
+                    "{who}: `call` 과 `action` 을 한 줄에 같이 쓸 수 없습니다 — 줄을 나누세요",
+                    "{who}: `call` and `action` cannot be on the same line — split it"
                 ));
             }
             (Some(f), None) => {
                 if f.trim().is_empty() {
-                    return bad(crate::tf!("{who}: `call` 이 비어 있습니다", "{who}: `call` is empty"));
+                    return bad(crate::tf!(
+                        "{who}: `call` 이 비어 있습니다",
+                        "{who}: `call` is empty"
+                    ));
                 }
                 if def.scripts.is_empty() {
                     return bad(crate::tf!(
-                        "{who}: 함수 `{f}` 를 부르는데 `scripts` 가 없습니다", "{who}: calls function `{f}` but there are no `scripts`"
+                        "{who}: 함수 `{f}` 를 부르는데 `scripts` 가 없습니다",
+                        "{who}: calls function `{f}` but there are no `scripts`"
                     ));
                 }
             }
             (None, Some(ActionRef::Named(n))) => {
                 if !def.actions.contains_key(n) {
                     return bad(crate::tf!(
-                        "{who}: `[actions]` 에 `{n}` 이 없습니다", "{who}: `[actions]` has no `{n}`"
+                        "{who}: `[actions]` 에 `{n}` 이 없습니다",
+                        "{who}: `[actions]` has no `{n}`"
                     ));
                 }
             }
@@ -1387,13 +1460,15 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
         // DEV-407: 기다리기와 막기 정책은 단계가 정한다.
         if h.wait && phase == Phase::Pre {
             return bad(crate::tf!(
-                "{who}: `pre` 줄은 원래 기다립니다 — `wait` 는 `post` 줄에 씁니다", "{who}: `pre` lines always wait — `wait` is for `post` lines"
+                "{who}: `pre` 줄은 원래 기다립니다 — `wait` 는 `post` 줄에 씁니다",
+                "{who}: `pre` lines always wait — `wait` is for `post` lines"
             ));
         }
         for (what, p) in [("on_timeout", h.on_timeout), ("on_error", h.on_error)] {
             if p == Some(Policy::Block) && phase != Phase::Pre {
                 return bad(crate::tf!(
-                    "{who}: `{what} = \"block\"` 은 `pre` 줄에서만 됩니다 — 바뀐 뒤에는 막을 것이 없습니다", "{who}: `{what} = \"block\"` only works on `pre` lines — after the change there is nothing to block"
+                    "{who}: `{what} = \"block\"` 은 `pre` 줄에서만 됩니다 — 바뀐 뒤에는 막을 것이 없습니다",
+                    "{who}: `{what} = \"block\"` only works on `pre` lines — after the change there is nothing to block"
                 ));
             }
         }
@@ -1405,16 +1480,21 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
             let mut seen = std::collections::HashSet::new();
             for w in &h.with {
                 if !seen.insert(w) {
-                    return bad(crate::tf!("{who}: `with` 에 `{w}` 가 두 번 있습니다", "{who}: `{w}` appears twice in `with`"));
+                    return bad(crate::tf!(
+                        "{who}: `with` 에 `{w}` 가 두 번 있습니다",
+                        "{who}: `{w}` appears twice in `with`"
+                    ));
                 }
                 if !can.contains(&w.as_str()) {
                     return bad(if can.is_empty() {
                         crate::tf!(
-                            "{who}: `with` 의 `{w}` — 이 줄의 이벤트에는 받을 수 있는 연결 데이터가 없습니다", "{who}: `with` has `{w}` — this line's events have no linked data to receive"
+                            "{who}: `with` 의 `{w}` — 이 줄의 이벤트에는 받을 수 있는 연결 데이터가 없습니다",
+                            "{who}: `with` has `{w}` — this line's events have no linked data to receive"
                         )
                     } else {
                         crate::tf!(
-                            "{who}: `with` 의 `{w}` 는 이 줄의 이벤트에서 받을 수 없습니다. 받을 수 있는 것: {}", "{who}: `with` has `{w}`, which this line's events cannot receive. Available: {}",
+                            "{who}: `with` 의 `{w}` 는 이 줄의 이벤트에서 받을 수 없습니다. 받을 수 있는 것: {}",
+                            "{who}: `with` has `{w}`, which this line's events cannot receive. Available: {}",
                             can.join(", ")
                         )
                     });
@@ -1436,12 +1516,14 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 if phase == Phase::Pre && ev::ALL.iter().any(|n| ev::matches(pat, n, Phase::Post)) {
                     // DEV-381: 이름은 맞는데 그 이벤트가 바뀌기 전 단계를 안 내는 경우.
                     return bad(crate::tf!(
-                        "{who}: `{pat}` 은 바뀌기 전(pre) 단계를 내지 않습니다. 지금 pre 가 있는 것: {}", "{who}: `{pat}` has no before-change (pre) stage. Events with pre: {}",
+                        "{who}: `{pat}` 은 바뀌기 전(pre) 단계를 내지 않습니다. 지금 pre 가 있는 것: {}",
+                        "{who}: `{pat}` has no before-change (pre) stage. Events with pre: {}",
                         ev::PRE_CAPABLE.join(", ")
                     ));
                 }
                 return bad(crate::tf!(
-                    "{who}: `{pat}` 는 어떤 이벤트와도 맞지 않습니다 — `openguild plugin events` 로 이름을 확인하세요", "{who}: `{pat}` matches no event — check the names with `openguild plugin events`"
+                    "{who}: `{pat}` 는 어떤 이벤트와도 맞지 않습니다 — `openguild plugin events` 로 이름을 확인하세요",
+                    "{who}: `{pat}` matches no event — check the names with `openguild plugin events`"
                 ));
             }
         }
@@ -1465,7 +1547,8 @@ pub const MAX_INPUT_OPTIONS: usize = 64;
 fn validate_inputs(def: &PluginDef) -> AppResult<()> {
     if def.inputs.len() > MAX_INPUTS {
         return Err(AppError::BadRequest(crate::tf!(
-            "{}: `inputs` 가 너무 많습니다 ({}개, 최대 {MAX_INPUTS}개)", "{}: too many `inputs` ({}, max {MAX_INPUTS})",
+            "{}: `inputs` 가 너무 많습니다 ({}개, 최대 {MAX_INPUTS}개)",
+            "{}: too many `inputs` ({}, max {MAX_INPUTS})",
             def.name,
             def.inputs.len()
         )));
@@ -1474,7 +1557,8 @@ fn validate_inputs(def: &PluginDef) -> AppResult<()> {
     for i in &def.inputs {
         if i.key.trim().is_empty() {
             return Err(AppError::BadRequest(crate::tf!(
-                "{}: `inputs` 의 `key` 가 비어 있습니다", "{}: an `inputs` `key` is empty",
+                "{}: `inputs` 의 `key` 가 비어 있습니다",
+                "{}: an `inputs` `key` is empty",
                 def.name
             )));
         }
@@ -1486,23 +1570,29 @@ fn validate_inputs(def: &PluginDef) -> AppResult<()> {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
             return Err(AppError::BadRequest(crate::tf!(
-                "{}: `inputs` 의 `key` 는 영숫자·`_`·`-` 만 됩니다 (받은 값: {})", "{}: `inputs` `key` may only use letters, digits, `_` and `-` (got: {})",
-                def.name, i.key
+                "{}: `inputs` 의 `key` 는 영숫자·`_`·`-` 만 됩니다 (받은 값: {})",
+                "{}: `inputs` `key` may only use letters, digits, `_` and `-` (got: {})",
+                def.name,
+                i.key
             )));
         }
         if !seen.insert(&i.key) {
             return Err(AppError::BadRequest(crate::tf!(
                 "{}: `inputs` 의 `key` 가 겹칩니다: {} — 화면도 저장소도 이 \
-                 이름으로 구분합니다", "{}: `inputs` `key` is duplicated: {} — screens and storage tell values apart by this name",
-                def.name, i.key
+                 이름으로 구분합니다",
+                "{}: `inputs` `key` is duplicated: {} — screens and storage tell values apart by this name",
+                def.name,
+                i.key
             )));
         }
         if let Some(h) = &i.help
             && h.chars().count() > MAX_DESCRIPTION_CHARS
         {
             return Err(AppError::BadRequest(crate::tf!(
-                "{}: `{}` 의 `help` 가 너무 깁니다 (최대 {MAX_DESCRIPTION_CHARS}자)", "{}: `help` of `{}` is too long (max {MAX_DESCRIPTION_CHARS} chars)",
-                def.name, i.key
+                "{}: `{}` 의 `help` 가 너무 깁니다 (최대 {MAX_DESCRIPTION_CHARS}자)",
+                "{}: `help` of `{}` is too long (max {MAX_DESCRIPTION_CHARS} chars)",
+                def.name,
+                i.key
             )));
         }
         match i.input_type {
@@ -1510,14 +1600,18 @@ fn validate_inputs(def: &PluginDef) -> AppResult<()> {
                 if i.options.is_empty() {
                     return Err(AppError::BadRequest(crate::tf!(
                         "{}: `{}` 은 select 인데 `options` 가 비어 있습니다 — \
-                         고를 것이 없는 선택상자가 됩니다", "{}: `{}` is a select but `options` is empty — it would be a dropdown with nothing to pick",
-                        def.name, i.key
+                         고를 것이 없는 선택상자가 됩니다",
+                        "{}: `{}` is a select but `options` is empty — it would be a dropdown with nothing to pick",
+                        def.name,
+                        i.key
                     )));
                 }
                 if i.options.len() > MAX_INPUT_OPTIONS {
                     return Err(AppError::BadRequest(crate::tf!(
-                        "{}: `{}` 의 `options` 가 너무 많습니다 (최대 {MAX_INPUT_OPTIONS}개)", "{}: `{}` has too many `options` (max {MAX_INPUT_OPTIONS})",
-                        def.name, i.key
+                        "{}: `{}` 의 `options` 가 너무 많습니다 (최대 {MAX_INPUT_OPTIONS}개)",
+                        "{}: `{}` has too many `options` (max {MAX_INPUT_OPTIONS})",
+                        def.name,
+                        i.key
                     )));
                 }
                 // 기본값이 목록에 없으면 화면이 아무것도 안 고른 채로 뜬다.
@@ -1525,28 +1619,36 @@ fn validate_inputs(def: &PluginDef) -> AppResult<()> {
                     && !i.options.iter().any(|o| o.value == d)
                 {
                     return Err(AppError::BadRequest(crate::tf!(
-                        "{}: `{}` 의 `default`({d})가 `options` 에 없습니다", "{}: `default` ({d}) of `{}` is not in `options`",
-                        def.name, i.key
+                        "{}: `{}` 의 `default`({d})가 `options` 에 없습니다",
+                        "{}: `default` ({d}) of `{}` is not in `options`",
+                        def.name,
+                        i.key
                     )));
                 }
             }
             // select 가 아닌데 선택지를 적었으면 type 을 빠뜨린 것이다.
             _ if !i.options.is_empty() => {
                 return Err(AppError::BadRequest(crate::tf!(
-                    "{}: `{}` 에 `options` 가 있는데 type 이 select 가 아닙니다", "{}: `{}` has `options` but its type is not select",
-                    def.name, i.key
+                    "{}: `{}` 에 `options` 가 있는데 type 이 select 가 아닙니다",
+                    "{}: `{}` has `options` but its type is not select",
+                    def.name,
+                    i.key
                 )));
             }
             InputType::Checkbox if matches!(&i.default, Some(v) if !v.is_boolean()) => {
                 return Err(AppError::BadRequest(crate::tf!(
-                    "{}: `{}` 은 checkbox 인데 `default` 가 true/false 가 아닙니다", "{}: `{}` is a checkbox but `default` is not true/false",
-                    def.name, i.key
+                    "{}: `{}` 은 checkbox 인데 `default` 가 true/false 가 아닙니다",
+                    "{}: `{}` is a checkbox but `default` is not true/false",
+                    def.name,
+                    i.key
                 )));
             }
             InputType::Number if matches!(&i.default, Some(v) if !v.is_number()) => {
                 return Err(AppError::BadRequest(crate::tf!(
-                    "{}: `{}` 은 number 인데 `default` 가 숫자가 아닙니다", "{}: `{}` is a number but `default` is not a number",
-                    def.name, i.key
+                    "{}: `{}` 은 number 인데 `default` 가 숫자가 아닙니다",
+                    "{}: `{}` is a number but `default` is not a number",
+                    def.name,
+                    i.key
                 )));
             }
             _ => {}
@@ -1569,7 +1671,8 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
         AppError::BadRequest(crate::tf!(
             "{}: {what} 에 비밀값으로 보이는 리터럴이 있습니다. \
              `.guild/plugins/` 는 git 에 커밋되므로 키를 그대로 적으면 이력에 남습니다 — \
-             `${{ENV_VAR}}` 형태의 환경변수 참조를 쓰세요.", "{}: {what} has a literal that looks like a secret. `.guild/plugins/` is committed to git, so a key written here stays in history — use an environment variable reference like `${{ENV_VAR}}`.",
+             `${{ENV_VAR}}` 형태의 환경변수 참조를 쓰세요.",
+            "{}: {what} has a literal that looks like a secret. `.guild/plugins/` is committed to git, so a key written here stays in history — use an environment variable reference like `${{ENV_VAR}}`.",
             def.name
         ))
     };
@@ -1578,7 +1681,11 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
         match action {
             Action::Post { url, headers, .. } => {
                 strings.push((format!("{at}.url"), url));
-                strings.extend(headers.iter().map(|(k, val)| (format!("{at}.headers.{k}"), val)));
+                strings.extend(
+                    headers
+                        .iter()
+                        .map(|(k, val)| (format!("{at}.headers.{k}"), val)),
+                );
             }
             Action::Run {
                 command, args, os, ..
@@ -1611,7 +1718,11 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
         // 이름 붙인 동작의 이름(`at`)은 사용자가 짓는 말이라 비밀 판정에서 뺀다 — `token-sync`
         // 라는 동작의 url 이 "비밀" 로 몰리면 안 된다. 칸 이름(마지막 조각)만 본다.
         let leaf = field.rsplit('.').next().unwrap_or(field);
-        let key = if field.contains(".headers.") { leaf } else { "" };
+        let key = if field.contains(".headers.") {
+            leaf
+        } else {
+            ""
+        };
         if field_name_means_secret(key) && !is_env_ref(value) {
             return Err(reject(field));
         }
@@ -1767,7 +1878,10 @@ pub fn expand_env_with(value: &str, extra: &BTreeMap<String, String>) -> AppResu
             let got = match extra.get(&name) {
                 Some(v) => v.clone(),
                 None => std::env::var(&name).map_err(|_| {
-                    AppError::BadRequest(crate::tf!("환경변수 {name} 가 설정되지 않았습니다", "environment variable {name} is not set"))
+                    AppError::BadRequest(crate::tf!(
+                        "환경변수 {name} 가 설정되지 않았습니다",
+                        "environment variable {name} is not set"
+                    ))
                 })?,
             };
             out.push_str(&got);

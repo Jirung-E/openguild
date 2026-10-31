@@ -78,7 +78,8 @@ describe('boardEdgePath — 가까운 노드 (BUG-242)', () => {
 });
 
 describe('groupRects (DEV-437)', () => {
-	const W = 100, H = 40;
+	const W = 100,
+		H = 40;
 	const g = (ids: number[]) => {
 		const s = new Set(ids);
 		return ids.map((i) => [i, s] as const);

@@ -142,45 +142,46 @@
 	</div>
 
 	{#if !collapsed}
-	{#if loading}
-		<p class="qh-state">{t('history.loading', $locale)}</p>
-	{:else if error}
-		<p class="qh-state error">{error}</p>
-	{:else if entries.length === 0}
-		<p class="qh-state">{t('history.empty', $locale)}</p>
-	{:else}
-		<ul class="qh-list" data-testid="quest-history-list">
-			{#each entries as e (e.id)}
-				<li class="qh-item" data-testid="qh-item">
-					<time class="qh-ts" datetime={e.ts} title={formatTs(e.ts)}>
-						{formatRelative(e.ts, undefined, $locale)}
-					</time>
-					{#if opLabel(e.op)}
-						<span class="qh-op">{opLabel(e.op)}</span>
-					{:else}
-						<!-- grid 컬럼 자리 유지 (op 라벨 없을 때 빈 placeholder) -->
-						<span class="qh-op-empty" aria-hidden="true"></span>
-					{/if}
-					{#if e.op === 'change_status'}
-						<span class="qh-change">
-							<span class="qh-status" style:--c={statusColor(e.old_value)}>
-								{statusLabel(e.old_value)}
+		{#if loading}
+			<p class="qh-state">{t('history.loading', $locale)}</p>
+		{:else if error}
+			<p class="qh-state error">{error}</p>
+		{:else if entries.length === 0}
+			<p class="qh-state">{t('history.empty', $locale)}</p>
+		{:else}
+			<ul class="qh-list" data-testid="quest-history-list">
+				{#each entries as e (e.id)}
+					<li class="qh-item" data-testid="qh-item">
+						<time class="qh-ts" datetime={e.ts} title={formatTs(e.ts)}>
+							{formatRelative(e.ts, undefined, $locale)}
+						</time>
+						{#if opLabel(e.op)}
+							<span class="qh-op">{opLabel(e.op)}</span>
+						{:else}
+							<!-- grid 컬럼 자리 유지 (op 라벨 없을 때 빈 placeholder) -->
+							<span class="qh-op-empty" aria-hidden="true"></span>
+						{/if}
+						{#if e.op === 'change_status'}
+							<span class="qh-change">
+								<span class="qh-status" style:--c={statusColor(e.old_value)}>
+									{statusLabel(e.old_value)}
+								</span>
+								<span class="qh-arrow"><Icon name="arrow-right" size="1em" /></span>
+								<span class="qh-status" style:--c={statusColor(e.new_value)}>
+									{statusLabel(e.new_value)}
+								</span>
 							</span>
-							<span class="qh-arrow"><Icon name="arrow-right" size="1em" /></span>
-							<span class="qh-status" style:--c={statusColor(e.new_value)}>
-								{statusLabel(e.new_value)}
+						{:else}
+							<span class="qh-change">
+								{e.old_value ?? '∅'}
+								<span class="qh-arrow"><Icon name="arrow-right" size="1em" /></span>
+								{e.new_value ?? '∅'}
 							</span>
-						</span>
-					{:else}
-						<span class="qh-change">
-							{e.old_value ?? '∅'} <span class="qh-arrow"><Icon name="arrow-right" size="1em" /></span>
-							{e.new_value ?? '∅'}
-						</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-	{/if}
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	{/if}
 </section>
 

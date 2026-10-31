@@ -203,7 +203,10 @@
 			await load();
 			showToast(t('tags.deleted', $locale), 'success');
 		} catch (e) {
-			showToast(`${t('tags.deleteFailed', $locale)}: ${e instanceof Error ? e.message : e}`, 'error');
+			showToast(
+				`${t('tags.deleteFailed', $locale)}: ${e instanceof Error ? e.message : e}`,
+				'error'
+			);
 		} finally {
 			busy = false;
 		}
@@ -239,7 +242,9 @@
 			maxlength="200"
 			disabled={busy}
 		/>
-		<button class="btn btn-primary" onclick={save} disabled={busy}>{t('common.save', $locale)}</button>
+		<button class="btn btn-primary" onclick={save} disabled={busy}
+			>{t('common.save', $locale)}</button
+		>
 		<button class="btn" onclick={() => (editing = null)} disabled={busy}
 			>{t('common.cancel', $locale)}</button
 		>
@@ -273,10 +278,16 @@
 			{#each shown as r (r.tag)}
 				<li class="tag-item">
 					<div class="tag-row">
-						<button class="tag-head" onclick={() => toggle(r.tag)} aria-expanded={expanded === r.tag}>
+						<button
+							class="tag-head"
+							onclick={() => toggle(r.tag)}
+							aria-expanded={expanded === r.tag}
+						>
 							<!-- 펼침 표시는 **맨 앞**에. 끝에 두면 오른쪽 버튼 수(0·1·2개)에 따라 줄마다
 							     자리가 달라져 목록이 들쭉날쭉해진다(브라우저로 확인한 결함). -->
-							<span class="chev" class:open={expanded === r.tag}><Icon name="chevron-right" size="0.9em" /></span>
+							<span class="chev" class:open={expanded === r.tag}
+								><Icon name="chevron-right" size="0.9em" /></span
+							>
 							<span
 								class="chip"
 								style={r.color ? `--chip:${r.color}` : ''}

@@ -610,10 +610,7 @@
 							});
 						}}
 					>
-						<button
-							class="row-main"
-							onclick={() => openPreview(it)}
-						>
+						<button class="row-main" onclick={() => openPreview(it)}>
 							<!-- DEV-362: 종류 칩 + slug 칩을 한 묶음으로. 접힘=가로, 펼침=세로.
 
 							     slug 칩은 **짧은 식별자**(DEV-362 / C-006 / BOOK-001)를 담기
@@ -764,7 +761,7 @@
 	@media (max-width: 640px) {
 		.palette {
 			width: calc(100vw - 16px);
-	}
+		}
 	}
 	.input-wrap {
 		display: flex;

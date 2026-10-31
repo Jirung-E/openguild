@@ -4,9 +4,9 @@
 //! 실제 `openguild` 바이너리를 여러 개 띄운다. 고치기 전에는 12개 중 1~4개만 남으면서
 //! 12개 전부 종료 코드 0 이었다.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::io::Write;
 
 const N: usize = 12;
 

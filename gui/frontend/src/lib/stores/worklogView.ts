@@ -85,7 +85,10 @@ export function saveExpandedDocs(next: Set<string>): void {
 	try {
 		// Set 은 삽입 순서를 지키므로, 뒤에서 자르면 최근 것이 남는다.
 		const arr = [...next];
-		s.setItem(EXPANDED_KEY, JSON.stringify(arr.length > EXPANDED_MAX ? arr.slice(-EXPANDED_MAX) : arr));
+		s.setItem(
+			EXPANDED_KEY,
+			JSON.stringify(arr.length > EXPANDED_MAX ? arr.slice(-EXPANDED_MAX) : arr)
+		);
 	} catch {
 		/* quota / disabled — 무시. */
 	}

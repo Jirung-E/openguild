@@ -177,9 +177,7 @@ pub struct SeedReport {
 
 impl SeedReport {
     pub fn is_empty(&self) -> bool {
-        !self.gitignore_created
-            && self.types_created.is_empty()
-            && self.statuses_created.is_empty()
+        !self.gitignore_created && self.types_created.is_empty() && self.statuses_created.is_empty()
     }
 }
 
@@ -215,7 +213,15 @@ mod tests {
         let slugs: Vec<_> = statuses.iter().map(|(s, _)| *s).collect();
         assert_eq!(
             slugs,
-            vec!["open", "in_progress", "testing", "done", "returned", "cancelled", "on_hold"]
+            vec![
+                "open",
+                "in_progress",
+                "testing",
+                "done",
+                "returned",
+                "cancelled",
+                "on_hold"
+            ]
         );
         // sort_order 가 1..=7
         for (i, (_, st)) in statuses.iter().enumerate() {

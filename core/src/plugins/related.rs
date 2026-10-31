@@ -26,7 +26,10 @@ use std::path::Path;
 
 /// 대상 종류 → 받을 수 있는 것. 넷 모두 `subject`(대상 자체의 최신 모양)를 받는다.
 pub const RELATIONS: &[(&str, &[&str])] = &[
-    ("quest", &["subject", "parent", "children", "prereqs", "campaigns"]),
+    (
+        "quest",
+        &["subject", "parent", "children", "prereqs", "campaigns"],
+    ),
     ("campaign", &["subject", "quests"]),
     ("book", &["subject"]),
     ("rule", &["subject"]),
@@ -188,7 +191,10 @@ fn quest_files(paths: &GuildPaths) -> Vec<crate::repo::quest::QuestFrontmatter> 
         .collect()
 }
 
-fn read_campaign(paths: &GuildPaths, id: &str) -> Option<crate::repo::campaign::CampaignFrontmatter> {
+fn read_campaign(
+    paths: &GuildPaths,
+    id: &str,
+) -> Option<crate::repo::campaign::CampaignFrontmatter> {
     crate::repo::campaign::CampaignFile::read(paths.campaign_path(id))
         .ok()
         .map(|c| c.frontmatter)

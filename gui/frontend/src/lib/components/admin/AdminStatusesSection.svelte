@@ -229,7 +229,8 @@
 									/>
 								</td>
 								<td>
-									<input class="input"
+									<input
+										class="input"
 										type="text"
 										bind:value={editNameEn}
 										maxlength="32"
@@ -240,7 +241,13 @@
 								</td>
 								{#if $locale === 'ko'}
 									<td>
-										<input class="input" type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
+										<input
+											class="input"
+											type="text"
+											bind:value={editNameKo}
+											maxlength="32"
+											disabled={busy}
+										/>
 									</td>
 								{/if}
 								<td><input type="color" bind:value={editColor} disabled={busy} /></td>
@@ -307,12 +314,23 @@
 
 {#if creating}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => { if (!busy) creating = false; } }}>
+		<div
+			class="modal-box modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{
+				onEscape: () => {
+					if (!busy) creating = false;
+				}
+			}}
+		>
 			<h3 class="modal-title">{t('adminStatuses.newStatusTitle', $locale)}</h3>
 			<div class="form">
 				<label>
 					<span>name_en</span>
-					<input class="input"
+					<input
+						class="input"
 						type="text"
 						bind:value={newNameEn}
 						placeholder={t('adminStatuses.nameEnPlaceholder', $locale)}
@@ -326,7 +344,8 @@
 				{#if $locale === 'ko'}
 					<label>
 						<span>name_ko</span>
-						<input class="input"
+						<input
+							class="input"
 							type="text"
 							bind:value={newNameKo}
 							placeholder={t('adminStatuses.nameKoPlaceholder', $locale)}
@@ -356,7 +375,17 @@
 
 {#if confirmDelete}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => { if (!busy) confirmDelete = null; } }}>
+		<div
+			class="modal-box modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{
+				onEscape: () => {
+					if (!busy) confirmDelete = null;
+				}
+			}}
+		>
 			<h3 class="modal-title">{t('adminStatuses.deleteStatusTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>){t(

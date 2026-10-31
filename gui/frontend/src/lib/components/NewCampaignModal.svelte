@@ -92,7 +92,8 @@
 			<label>
 				<span class="lab">{t('ncm.title', $locale)}</span>
 				<!-- svelte-ignore a11y_autofocus -->
-				<input class="input"
+				<input
+					class="input"
 					type="text"
 					bind:value={title}
 					placeholder={t('ncm.titlePlaceholder', $locale)}
@@ -115,7 +116,8 @@
 
 			<label>
 				<span class="lab">{t('ncm.body', $locale)}</span>
-				<textarea class="input"
+				<textarea
+					class="input"
 					use:tabInsert
 					bind:this={bodyInput}
 					bind:value={description}

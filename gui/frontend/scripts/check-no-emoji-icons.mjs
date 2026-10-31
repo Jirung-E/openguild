@@ -160,9 +160,7 @@ function scanGlyphs(rel, text, origLines) {
 			[...line].find((ch) => GLYPH_ICONS.has(ch) && !PROSE_ARROWS.has(ch)) ??
 			[...(plain[i] ?? '')].find((ch) => PROSE_ARROWS.has(ch));
 		if (hit) {
-			glyphViolations.push(
-				`${rel}:${i + 1}  '${hit}'  ${line.trim().slice(0, 80)}`
-			);
+			glyphViolations.push(`${rel}:${i + 1}  '${hit}'  ${line.trim().slice(0, 80)}`);
 		}
 	});
 }
@@ -184,7 +182,9 @@ function scanLocale() {
 			const prefix = GLYPH_ICONS.has(head) && /^.\s/u.test(v);
 			const suffix = GLYPH_ICONS.has(tail) && /\s.$/u.test(v);
 			if (prefix || suffix) {
-				glyphViolations.push(`${rel}:${i + 1}  '${prefix ? head : tail}'  ${line.trim().slice(0, 80)}`);
+				glyphViolations.push(
+					`${rel}:${i + 1}  '${prefix ? head : tail}'  ${line.trim().slice(0, 80)}`
+				);
 				return;
 			}
 		}
@@ -195,9 +195,13 @@ walk(SRC);
 scanLocale();
 
 if (glyphViolations.length > 0) {
-	console.error('글자 아이콘이 마크업에 있습니다 — <Icon name="…" size="1em" /> 로(도형은 utils/icon-paths.ts):\n');
+	console.error(
+		'글자 아이콘이 마크업에 있습니다 — <Icon name="…" size="1em" /> 로(도형은 utils/icon-paths.ts):\n'
+	);
 	for (const v of glyphViolations) console.error('  ' + v);
-	console.error('\n아이콘이 아니라 글자라면(곱셈 기호 · 안내 글) 그 줄이나 윗줄에 glyph-ok 주석과 이유를 다세요.');
+	console.error(
+		'\n아이콘이 아니라 글자라면(곱셈 기호 · 안내 글) 그 줄이나 윗줄에 glyph-ok 주석과 이유를 다세요.'
+	);
 	process.exit(1);
 }
 

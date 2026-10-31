@@ -4,17 +4,17 @@
 //! DEV-193 교훈: GUI 가 쓰는 모든 invoke 에 대응 HTTP 필수.
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::Deserialize;
 
 use crate::error::AppResult;
+use openguild_core::Store;
 use openguild_core::models::QuestAttachment;
 use openguild_core::ops::library as ops;
 use openguild_core::ops::library::{LibraryDocRow, LibraryFolderRow};
-use openguild_core::Store;
 
 /// 응답에 book_id("BOOK-NNN")를 함께 실어 클라이언트가 번호 포맷을 몰라도 됨.
 /// DEV-237: 첨부 목록도 함께 — quest/campaign 과 동일하게 단건 조회(get_book)
@@ -140,7 +140,10 @@ pub async fn update_book(
         body.title.as_deref(),
         body.body.as_deref(),
         body.path.as_deref(),
-        openguild_core::ops::EditBase { text: body.base_body.clone(), version: body.base_version },
+        openguild_core::ops::EditBase {
+            text: body.base_body.clone(),
+            version: body.base_version,
+        },
     )
     .await?;
     // BUG-124(admin 보고): 이전엔 list_books 처럼 attachments 를 빈 배열로
@@ -287,7 +290,9 @@ pub async fn export_zip(
         SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&stage).map_err(|e| {
-        openguild_core::error::AppError::Internal(anyhow::anyhow!("임시 폴더를 만들지 못했습니다: {e}"))
+        openguild_core::error::AppError::Internal(anyhow::anyhow!(
+            "임시 폴더를 만들지 못했습니다: {e}"
+        ))
     })?;
     let mut count = 0usize;
     for pick in &picks {
@@ -301,11 +306,13 @@ pub async fn export_zip(
     }
     if count == 0 {
         let _ = std::fs::remove_dir_all(&stage);
-        return Err(openguild_core::error::AppError::NotFound(openguild_core::tf!(
-            "내보낼 문서가 없습니다",
-            "no documents to export"
-        ))
-        .into());
+        return Err(
+            openguild_core::error::AppError::NotFound(openguild_core::tf!(
+                "내보낼 문서가 없습니다",
+                "no documents to export"
+            ))
+            .into(),
+        );
     }
 
     let mut entries = Vec::new();

@@ -9,9 +9,9 @@
 
 use serde_json::json;
 
-use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{names as ev, payload};
+use crate::lock::DocKey;
 use crate::models::{
     CampaignChecklistItem, CampaignDetail, CampaignRow, CreateCampaignRequest,
     UpdateCampaignRequest,
@@ -30,14 +30,12 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
     // service 의 list_linked_quests 는 alive only — total = linked_quests.len().
     let quest_total = linked_quests.len() as i64;
     // counts_as_done = 1 인 status_id 들 fetch.
-    let done_slugs: Vec<String> = sqlx::query_scalar(
-        "SELECT slug FROM quest_statuses WHERE counts_as_done = 1",
-    )
-    .fetch_all(&store.index_pool)
-    .await
-    .map_err(|e| AppError::Internal(anyhow::anyhow!("done slug fetch: {e}")))?;
-    let done_set: std::collections::HashSet<&str> =
-        done_slugs.iter().map(|s| s.as_str()).collect();
+    let done_slugs: Vec<String> =
+        sqlx::query_scalar("SELECT slug FROM quest_statuses WHERE counts_as_done = 1")
+            .fetch_all(&store.index_pool)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("done slug fetch: {e}")))?;
+    let done_set: std::collections::HashSet<&str> = done_slugs.iter().map(|s| s.as_str()).collect();
     let quest_done = linked_quests
         .iter()
         .filter(|q| done_set.contains(q.status_slug.as_str()))
@@ -65,7 +63,9 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
 // ─────────────────────── 생성 / 수정 / 삭제 ───────────────────────
 
 pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppResult<CampaignRow> {
-    let _g = store.lock_docs(&[DocKey::new("counter", "campaign")]).await?;
+    let _g = store
+        .lock_docs(&[DocKey::new("counter", "campaign")])
+        .await?;
     let _ = journal::append(
         &store.journal_pool,
         "create_campaign",
@@ -125,7 +125,12 @@ pub async fn update_campaign(
     write_campaign_file(store, &camp, description_explicit).await?;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
     // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영 안 되면 없는 기능과 같다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, &camp.campaign_slug).await;
+    let _ = crate::ops::backlinks::refresh_for(
+        store,
+        crate::repo::crosslink::DocKind::Campaign,
+        &camp.campaign_slug,
+    )
+    .await;
 
     if let (Some(old), Some(new)) = (old_status, new_status)
         && old != new
@@ -444,9 +449,7 @@ pub async fn add_checklist_line(
         .into_iter()
         .last()
         .ok_or_else(|| {
-            AppError::Internal(anyhow::anyhow!(
-                "no checklist after add (sync failed?)"
-            ))
+            AppError::Internal(anyhow::anyhow!("no checklist after add (sync failed?)"))
         })?;
     record_history(
         store,
@@ -549,7 +552,9 @@ pub async fn remove_checklist_by_index(
 ) -> AppResult<()> {
     let _g = super::lock_resolved(store, || campaign_key(store, campaign_id)).await?;
     if one_based_idx == 0 {
-        return Err(AppError::BadRequest("checklist index is 1-based, got 0".into()));
+        return Err(AppError::BadRequest(
+            "checklist index is 1-based, got 0".into(),
+        ));
     }
     let _ = journal::append(
         &store.journal_pool,
@@ -563,7 +568,10 @@ pub async fn remove_checklist_by_index(
     let camp = sql::fetch_by_id(&store.index_pool, campaign_id).await?;
     let path = store.paths.campaign_path(&camp.campaign_slug);
     if !path.exists() {
-        return Err(AppError::NotFound(format!("file not found: {}", path.display())));
+        return Err(AppError::NotFound(format!(
+            "file not found: {}",
+            path.display()
+        )));
     }
     let mut cf = CampaignFile::read(&path).map_err(AppError::Internal)?;
     // DEV-388: 지워진 줄은 **지우기 전 본문에만** 있다. DEV-463: 이력에도 남기므로 늘 훑는다.
@@ -690,7 +698,11 @@ fn append_checklist_to_body(body: &str, text: &str) -> String {
 }
 
 /// 1-based 인덱스의 task list 줄을 찾아 `- [x]` / `- [ ]` 로 set.
-fn set_checklist_checked_in_body(body: &str, one_based_idx: usize, checked: bool) -> AppResult<String> {
+fn set_checklist_checked_in_body(
+    body: &str,
+    one_based_idx: usize,
+    checked: bool,
+) -> AppResult<String> {
     let mut found = 0usize;
     let mut out = String::with_capacity(body.len());
     let mut done = false;
@@ -916,10 +928,11 @@ pub(crate) async fn campaign_keys_of_quest(store: &Store, quest_id: i64) -> AppR
 
 /// DEV-432: 캠페인 행 id → 문서 열쇠. 없으면 빈 목록 — 변경이 잠근 뒤 "없음" 으로 끝난다.
 async fn campaign_key(store: &Store, id: i64) -> AppResult<Vec<DocKey>> {
-    let slug: Option<String> = sqlx::query_scalar("SELECT campaign_slug FROM campaigns WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&store.index_pool)
-        .await?;
+    let slug: Option<String> =
+        sqlx::query_scalar("SELECT campaign_slug FROM campaigns WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&store.index_pool)
+            .await?;
     Ok(slug.map(|s| DocKey::campaign(&s)).into_iter().collect())
 }
 
@@ -972,7 +985,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-banner-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-banner-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -1037,7 +1051,13 @@ mod tests {
         let e = set_banner_image(&store, "C-001", &txt).await.unwrap_err();
         assert!(matches!(e, AppError::BadRequest(_)), "got {e:?}");
         // 거부됐으면 파일도 안 생겨야 한다.
-        assert!(!store.paths.dot_guild().join("assets/C-001-banner.txt").exists());
+        assert!(
+            !store
+                .paths
+                .dot_guild()
+                .join("assets/C-001-banner.txt")
+                .exists()
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1118,9 +1138,18 @@ mod tests {
             v.sort();
             v
         };
-        assert_eq!(sorted(slugs(None, "end:overdue").await), vec![late.campaign_slug.clone()]);
-        assert_eq!(sorted(slugs(None, "status:done").await), vec![done.campaign_slug.clone()]);
-        assert_eq!(sorted(slugs(None, "start:none").await), vec!["C-001".to_string()]);
+        assert_eq!(
+            sorted(slugs(None, "end:overdue").await),
+            vec![late.campaign_slug.clone()]
+        );
+        assert_eq!(
+            sorted(slugs(None, "status:done").await),
+            vec![done.campaign_slug.clone()]
+        );
+        assert_eq!(
+            sorted(slugs(None, "start:none").await),
+            vec!["C-001".to_string()]
+        );
         assert_eq!(
             sorted(slugs(None, "start:>=2026-01-01").await),
             vec![next.campaign_slug.clone()]
@@ -1133,8 +1162,14 @@ mod tests {
             sorted(slugs(None, "출시 -status:done").await),
             vec![late.campaign_slug.clone(), next.campaign_slug.clone()]
         );
-        assert_eq!(sorted(slugs(Some("done"), "출시").await), vec![done.campaign_slug.clone()]);
-        assert_eq!(sorted(slugs(None, "c-001").await), vec!["C-001".to_string()]);
+        assert_eq!(
+            sorted(slugs(Some("done"), "출시").await),
+            vec![done.campaign_slug.clone()]
+        );
+        assert_eq!(
+            sorted(slugs(None, "c-001").await),
+            vec!["C-001".to_string()]
+        );
         // 없는 키 · 틀린 값은 오류 — 조용히 "없음" 으로 보이지 않게.
         for bad in ["urgency:2", "status:open", "end:soon", "quest:abc"] {
             let e = crate::services::campaigns::list_matching(&store.index_pool, None, Some(bad))

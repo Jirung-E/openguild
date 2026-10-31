@@ -59,7 +59,12 @@ describe('BUG-278 보드 자동 배치', () => {
 	});
 
 	it('3열로 채우고 넘치면 다음 줄로 간다', () => {
-		const got = autoPlace([1, 2, 3, 4].map((i) => q(i)), NONE, LANES, M);
+		const got = autoPlace(
+			[1, 2, 3, 4].map((i) => q(i)),
+			NONE,
+			LANES,
+			M
+		);
 		expect([1, 2, 3].map((i) => got.get(i)!.x)).toEqual([100, 400, 700]);
 		expect([1, 2, 3].every((i) => got.get(i)!.y === 50)).toBe(true);
 		expect(got.get(4)).toEqual({ x: 100, y: 160 });
@@ -231,18 +236,19 @@ describe('DEV-420 화살표는 아래로', () => {
 	});
 
 	it('보드에 없는 퀘스트를 가리키는 관계는 무시한다', () => {
-		const out = autoPlace([q(1)], new Map(), lanes, M, [
-			{ quest_id: 1, prerequisite_id: 999 }
-		]);
+		const out = autoPlace([q(1)], new Map(), lanes, M, [{ quest_id: 1, prerequisite_id: 999 }]);
 		expect(out.get(1)!.y).toBe(0);
 	});
 
 	it('깊이는 가장 깊은 선행을 따른다', () => {
-		const d = depthOf([q(1), q(2), q(3)], [
-			{ quest_id: 3, prerequisite_id: 1 },
-			{ quest_id: 2, prerequisite_id: 1 },
-			{ quest_id: 3, prerequisite_id: 2 }
-		]);
+		const d = depthOf(
+			[q(1), q(2), q(3)],
+			[
+				{ quest_id: 3, prerequisite_id: 1 },
+				{ quest_id: 2, prerequisite_id: 1 },
+				{ quest_id: 3, prerequisite_id: 2 }
+			]
+		);
 		expect(d.get(1)).toBe(0);
 		expect(d.get(2)).toBe(1);
 		expect(d.get(3)).toBe(2);
@@ -383,7 +389,8 @@ describe('rankOf 를 통한 화살표 방향 (DEV-421)', () => {
 		];
 		const s = clusterSlots(members, edges, new Map([[10, 0]]), 3, slug, geom);
 		const before = (a: number, b: number) => {
-			const p = s.get(a)!, q = s.get(b)!;
+			const p = s.get(a)!,
+				q = s.get(b)!;
 			return q.row > p.row || (q.row === p.row && q.col > p.col);
 		};
 		expect(before(3, 2)).toBe(true);
@@ -520,7 +527,15 @@ describe('줄 단위 배치 — 레인을 건너간 자식은 부모 줄 옆에 
 			[10, 0],
 			[20, 1]
 		]);
-		const s = clusterSlots(members, [{ quest_id: 2, prerequisite_id: 1 }], lanes, 3, slug, geom, true);
+		const s = clusterSlots(
+			members,
+			[{ quest_id: 2, prerequisite_id: 1 }],
+			lanes,
+			3,
+			slug,
+			geom,
+			true
+		);
 		expect(s.get(2)!.row).toBe(s.get(1)!.row + 1);
 	});
 });

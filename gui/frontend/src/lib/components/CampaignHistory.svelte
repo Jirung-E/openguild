@@ -102,46 +102,47 @@
 	</div>
 
 	{#if !collapsed}
-	{#if loading}
-		<p class="ch-state">{t('history.loading', $locale)}</p>
-	{:else if error}
-		<p class="ch-state error">{error}</p>
-	{:else if entries.length === 0}
-		<p class="ch-state">{t('history.empty', $locale)}</p>
-	{:else}
-		<ul class="ch-list" data-testid="campaign-history-list">
-			{#each entries as e (e.id)}
-				<li class="ch-item" data-testid="ch-item">
-					<time class="ch-ts" datetime={e.ts} title={formatTs(e.ts)}>
-						{formatRelative(e.ts, undefined, $locale)}
-					</time>
-					{#if opLabel(e.op)}
-						<span class="ch-op">{opLabel(e.op)}</span>
-					{:else}
-						<span class="ch-op-empty" aria-hidden="true"></span>
-					{/if}
-					{#if e.op === 'change_status'}
-						<span class="ch-change">
-							<span class="ch-status" style:--c={statusColor(e.old_value)}>
-								{statusLabel(e.old_value)}
+		{#if loading}
+			<p class="ch-state">{t('history.loading', $locale)}</p>
+		{:else if error}
+			<p class="ch-state error">{error}</p>
+		{:else if entries.length === 0}
+			<p class="ch-state">{t('history.empty', $locale)}</p>
+		{:else}
+			<ul class="ch-list" data-testid="campaign-history-list">
+				{#each entries as e (e.id)}
+					<li class="ch-item" data-testid="ch-item">
+						<time class="ch-ts" datetime={e.ts} title={formatTs(e.ts)}>
+							{formatRelative(e.ts, undefined, $locale)}
+						</time>
+						{#if opLabel(e.op)}
+							<span class="ch-op">{opLabel(e.op)}</span>
+						{:else}
+							<span class="ch-op-empty" aria-hidden="true"></span>
+						{/if}
+						{#if e.op === 'change_status'}
+							<span class="ch-change">
+								<span class="ch-status" style:--c={statusColor(e.old_value)}>
+									{statusLabel(e.old_value)}
+								</span>
+								<span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
+								<span class="ch-status" style:--c={statusColor(e.new_value)}>
+									{statusLabel(e.new_value)}
+								</span>
 							</span>
-							<span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
-							<span class="ch-status" style:--c={statusColor(e.new_value)}>
-								{statusLabel(e.new_value)}
+						{:else if SINGLE[e.op]}
+							<span class="ch-change">{e.new_value ?? e.old_value ?? ''}</span>
+						{:else}
+							<span class="ch-change">
+								{e.old_value ?? '∅'}
+								<span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
+								{e.new_value ?? '∅'}
 							</span>
-						</span>
-					{:else if SINGLE[e.op]}
-						<span class="ch-change">{e.new_value ?? e.old_value ?? ''}</span>
-					{:else}
-						<span class="ch-change">
-							{e.old_value ?? '∅'} <span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
-							{e.new_value ?? '∅'}
-						</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-	{/if}
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	{/if}
 </section>
 

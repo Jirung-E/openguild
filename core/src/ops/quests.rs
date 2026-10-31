@@ -5,6 +5,7 @@
 
 use crate::error::AppResult;
 use crate::events::{Phase, names as ev, payload};
+use crate::lock::DocKey;
 use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
     CreateQuestRequest, QuestRow, UpdateQuestRequest,
@@ -12,7 +13,6 @@ use crate::models::{
 use crate::repo::{QuestFile, QuestFrontmatter, QuestRef, QuestRelations, auto};
 use crate::services::quests as sql;
 use crate::snapshot;
-use crate::lock::DocKey;
 use crate::store::{Store, journal};
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -96,7 +96,10 @@ fn move_sidecars(store: &Store, old_slug: &str, new_slug: &str) -> AppResult<()>
     for (from, to) in [
         (p.comments_path(old_slug), p.comments_path(new_slug)),
         (p.memo_path(old_slug), p.memo_path(new_slug)),
-        (p.quest_attachments_meta_path(old_slug), p.quest_attachments_meta_path(new_slug)),
+        (
+            p.quest_attachments_meta_path(old_slug),
+            p.quest_attachments_meta_path(new_slug),
+        ),
     ] {
         if !from.exists() {
             continue;
@@ -110,7 +113,11 @@ fn move_sidecars(store: &Store, old_slug: &str, new_slug: &str) -> AppResult<()>
             continue;
         }
         std::fs::rename(&from, &to).map_err(|e| {
-            crate::error::AppError::Internal(anyhow::anyhow!("{} → {} 옮기기 실패: {e}", from.display(), to.display()))
+            crate::error::AppError::Internal(anyhow::anyhow!(
+                "{} → {} 옮기기 실패: {e}",
+                from.display(),
+                to.display()
+            ))
         })?;
     }
     Ok(())
@@ -152,7 +159,10 @@ async fn create_keys(store: &Store, type_id: i64, parent: Option<i64>) -> AppRes
         .bind(type_id)
         .fetch_optional(&store.index_pool)
         .await?;
-    let mut out: Vec<DocKey> = prefix.map(|p| DocKey::new("counter", p)).into_iter().collect();
+    let mut out: Vec<DocKey> = prefix
+        .map(|p| DocKey::new("counter", p))
+        .into_iter()
+        .collect();
     out.extend(quest_keys(store, parent.as_slice()).await?);
     Ok(out)
 }
@@ -177,15 +187,18 @@ async fn neighbour_ids(store: &Store, id: i64) -> AppResult<Vec<i64>> {
 
 /// DEV-432: 지우기 — 지울 것 전부, 그 부모 · 이웃, 떨어져 나갈 자식.
 async fn delete_keys(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<Vec<DocKey>> {
-    let mut ids: Vec<i64> = std::iter::once(id).chain(cascade_ids.iter().copied()).collect();
+    let mut ids: Vec<i64> = std::iter::once(id)
+        .chain(cascade_ids.iter().copied())
+        .collect();
     for d in std::iter::once(id).chain(cascade_ids.iter().copied()) {
         ids.extend(neighbour_ids(store, d).await?);
     }
-    let children: Vec<i64> =
-        sqlx::query_scalar("SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL")
-            .bind(id)
-            .fetch_all(&store.index_pool)
-            .await?;
+    let children: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .fetch_all(&store.index_pool)
+    .await?;
     ids.extend(children);
     let mut keys = quest_keys(store, &ids).await?;
     keys.push(tree_key());
@@ -213,7 +226,10 @@ async fn parent_keys(store: &Store, id: i64, new_parent: Option<i64>) -> AppResu
 
 /// DEV-435: 본문 파일의 번호(DEV-433) — 상세를 돌려줄 때 채운다. 편집하는 쪽이 들고 있다가 `base_version` 으로 보낸다.
 pub fn file_version(store: &Store, slug: &str) -> u64 {
-    crate::repo::version::read(&store.paths.quest_path(slug), crate::repo::version::Place::Frontmatter)
+    crate::repo::version::read(
+        &store.paths.quest_path(slug),
+        crate::repo::version::Place::Frontmatter,
+    )
 }
 
 /// DEV-435: 퀘스트 저장을 지금 상태와 맞춘다 — 이름이 바뀌었거나 지워졌으면 거부, 번호가 다르면 거부, 본문은
@@ -250,7 +266,10 @@ async fn guard_quest_edit(store: &Store, id: i64, body: &mut UpdateQuestRequest)
         if deleted_at.is_some() {
             return refuse(
                 "deleted",
-                crate::tf!("{exp} 은 편집하는 사이 삭제되었습니다", "{exp} was deleted while you were editing"),
+                crate::tf!(
+                    "{exp} 은 편집하는 사이 삭제되었습니다",
+                    "{exp} was deleted while you were editing"
+                ),
                 None,
             );
         }
@@ -266,12 +285,27 @@ async fn guard_quest_edit(store: &Store, id: i64, body: &mut UpdateQuestRequest)
         }
     }
     let path = store.paths.quest_path(&slug);
-    let current = || QuestFile::read(&path).map(|q| q.description).unwrap_or_default();
-    super::check_base_version(&path, crate::repo::version::Place::Frontmatter, base_version, current, &slug)?;
+    let current = || {
+        QuestFile::read(&path)
+            .map(|q| q.description)
+            .unwrap_or_default()
+    };
+    super::check_base_version(
+        &path,
+        crate::repo::version::Place::Frontmatter,
+        base_version,
+        current,
+        &slug,
+    )?;
     if base.is_some()
         && let Some(mine) = body.description.take()
     {
-        body.description = Some(super::resolve_edit(&current(), base.as_deref(), mine, &slug)?);
+        body.description = Some(super::resolve_edit(
+            &current(),
+            base.as_deref(),
+            mine,
+            &slug,
+        )?);
     }
     Ok(())
 }
@@ -431,7 +465,11 @@ pub async fn list_quests(
 }
 
 /// Quest 의 title / description / urgency 수정.
-pub async fn update_quest(store: &Store, id: i64, mut body: UpdateQuestRequest) -> AppResult<QuestRow> {
+pub async fn update_quest(
+    store: &Store,
+    id: i64,
+    mut body: UpdateQuestRequest,
+) -> AppResult<QuestRow> {
     let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
     // DEV-435: 잠금 안에서 — 그사이 남이 고친 본문 · 바뀐 이름과 맞춘다. journal 에는 맞춘 결과만 남는다.
     guard_quest_edit(store, id, &mut body).await?;
@@ -450,7 +488,12 @@ pub async fn update_quest(store: &Store, id: i64, mut body: UpdateQuestRequest) 
     write_quest_file(store, &quest, description_explicit).await?;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
     // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영 안 되면 없는 기능과 같다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, &quest.quest_id).await;
+    let _ = crate::ops::backlinks::refresh_for(
+        store,
+        crate::repo::crosslink::DocKind::Quest,
+        &quest.quest_id,
+    )
+    .await;
     store.emit_post(
         ev::QUEST_UPDATED,
         || json!({ "quest": payload::quest(&quest) }),
@@ -601,8 +644,7 @@ async fn set_quest_tags_locked(store: &Store, id: i64, tags: Vec<String>) -> App
 /// projection이라 순서 컬럼이 없으므로 전용 태그 조회에는 파일 진리원을 쓴다.
 pub fn list_quest_tags(store: &Store, slug: &str) -> AppResult<Vec<String>> {
     let path = store.paths.quest_path(slug);
-    let quest = crate::repo::QuestFile::read(&path)
-        .map_err(crate::error::AppError::Internal)?;
+    let quest = crate::repo::QuestFile::read(&path).map_err(crate::error::AppError::Internal)?;
     Ok(quest.frontmatter.tags)
 }
 
@@ -808,10 +850,8 @@ pub async fn change_quest_type(
     // 안 옮기면 다음 reindex 가 옛 slug 로 찾다가 못 찾아 이 퀘스트의 위치를 버린다.
     // 실패해도 타입 변경 자체는 이미 끝났다 — 위치를 잃는 것은 UI 상태 손실이지
     // 데이터 손상이 아니므로, 여기서 전체를 실패시키지 않는다.
-    let _ = crate::repo::positions::rename_keys(
-        &store.paths,
-        &[(old_slug.clone(), new_slug.clone())],
-    );
+    let _ =
+        crate::repo::positions::rename_keys(&store.paths, &[(old_slug.clone(), new_slug.clone())]);
     // DEV-443: 형광펜도 slug 로 키를 잡는다 — 같은 이유로 옮긴다.
     let _ = crate::repo::highlights::rename_targets(
         &store.paths,
@@ -872,8 +912,9 @@ pub async fn change_quest_type(
     // DEV-433: 새 이름으로 **옮긴 뒤** 쓴다 — 같은 문서라 번호가 이어지고, 쓰기가 옛 파일의 태그를 읽어
     // 보존한다(새 경로에 새로 쓰면 둘 다 잃었다).
     if old_path != new_path && old_path.exists() && !new_path.exists() {
-        std::fs::rename(&old_path, &new_path)
-            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("퀘스트 파일 이름 바꾸기 실패: {e}")))?;
+        std::fs::rename(&old_path, &new_path).map_err(|e| {
+            crate::error::AppError::Internal(anyhow::anyhow!("퀘스트 파일 이름 바꾸기 실패: {e}"))
+        })?;
     }
     write_quest_file(store, &quest, true).await?; // new_path (description 이미 sync 됨)
     if old_path != new_path {
@@ -1213,7 +1254,10 @@ pub async fn add_prerequisite(
 }
 
 pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppResult<()> {
-    let _g = super::lock_resolved(store, || async move { quest_keys(store, &[id, prereq_id]).await }).await?;
+    let _g = super::lock_resolved(store, || async move {
+        quest_keys(store, &[id, prereq_id]).await
+    })
+    .await?;
     let _ = journal::append(
         &store.journal_pool,
         "remove_prerequisite",
@@ -1535,16 +1579,27 @@ mod tests {
             remove: remove.iter().map(|s| s.to_string()).collect(),
         };
 
-        set_quest_tags(&store, q.id, vec!["a".into(), "old".into()]).await.unwrap();
+        set_quest_tags(&store, q.id, vec!["a".into(), "old".into()])
+            .await
+            .unwrap();
         // 화면은 ["a", "old"] 를 들고 있다. 그 사이 에이전트가 "b" 를 붙인다.
-        edit_quest_tags(&store, q.id, edit(&["b"], &[])).await.unwrap();
+        edit_quest_tags(&store, q.id, edit(&["b"], &[]))
+            .await
+            .unwrap();
         // 화면이 "c" 를 붙이고 "old" 를 뗀다 — 들고 있던 목록으로 덮으면 "b" 가 사라진다.
-        let after = edit_quest_tags(&store, q.id, edit(&["c"], &["old"])).await.unwrap();
+        let after = edit_quest_tags(&store, q.id, edit(&["c"], &["old"]))
+            .await
+            .unwrap();
 
         assert_eq!(after.tags, vec!["a", "b", "c"]);
-        assert_eq!(list_quest_tags(&store, &q.quest_id).unwrap(), vec!["a", "b", "c"]);
+        assert_eq!(
+            list_quest_tags(&store, &q.quest_id).unwrap(),
+            vec!["a", "b", "c"]
+        );
 
-        let err = edit_quest_tags(&store, 9999, edit(&["x"], &[])).await.unwrap_err();
+        let err = edit_quest_tags(&store, 9999, edit(&["x"], &[]))
+            .await
+            .unwrap_err();
         assert!(matches!(err, crate::error::AppError::NotFound(_)), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2215,8 +2270,7 @@ mod tests {
         assert!(!parent_content.contains("DEV-002"), "옛 slug 사라져야");
 
         // prereq 파일의 successor 목록도 새 slug 로 갱신.
-        let prereq_content =
-            std::fs::read_to_string(dir.join(".guild/quests/DEV-003.md")).unwrap();
+        let prereq_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-003.md")).unwrap();
         assert!(prereq_content.contains("## Successors\n- [BUG-001](BUG-001.md)"));
         assert!(!prereq_content.contains("DEV-002"), "옛 slug 사라져야");
 
@@ -2478,18 +2532,33 @@ mod tests {
         )
         .await
         .unwrap();
-        set_quest_tags(&store, q.id, vec!["keep".into()]).await.unwrap();
+        set_quest_tags(&store, q.id, vec!["keep".into()])
+            .await
+            .unwrap();
         let place = crate::repo::version::Place::Frontmatter;
         let before = crate::repo::version::read(&dir.join(".guild/quests/DEV-001.md"), place);
         assert!(before >= 2, "만들기 + 태그 = 두 번은 고쳤다: {before}");
 
-        let moved = change_quest_type(&store, q.id, ChangeTypeRequest { new_type_prefix: "BUG".into() })
-            .await
-            .unwrap();
+        let moved = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(moved.quest_id, "BUG-001");
         let after = crate::repo::version::read(&dir.join(".guild/quests/BUG-001.md"), place);
-        assert!(after > before, "이름이 바뀌며 번호가 처음부터 다시 셌다: {before} → {after}");
-        assert_eq!(list_quest_tags(&store, "BUG-001").unwrap(), vec!["keep"], "태그가 사라졌다");
+        assert!(
+            after > before,
+            "이름이 바뀌며 번호가 처음부터 다시 셌다: {before} → {after}"
+        );
+        assert_eq!(
+            list_quest_tags(&store, "BUG-001").unwrap(),
+            vec!["keep"],
+            "태그가 사라졌다"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2511,34 +2580,71 @@ mod tests {
         )
         .await
         .unwrap();
-        crate::ops::comments::add_comment_entry(&store, "DEV-001", "a".into(), "남을 댓글".into(), None, false)
+        crate::ops::comments::add_comment_entry(
+            &store,
+            "DEV-001",
+            "a".into(),
+            "남을 댓글".into(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::set_memo(&store, "DEV-001", "남을 메모".into())
             .await
             .unwrap();
-        crate::ops::comments::set_memo(&store, "DEV-001", "남을 메모".into()).await.unwrap();
         crate::ops::attachments::add_quest_attachment(&store, "DEV-001", "attachments/x.txt", "x")
             .await
             .unwrap();
 
-        change_quest_type(&store, q.id, ChangeTypeRequest { new_type_prefix: "BUG".into() })
-            .await
-            .unwrap();
+        change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
+        )
+        .await
+        .unwrap();
 
         let comments = crate::ops::comments::list_comment_entries(&store, "BUG-001").unwrap();
         assert_eq!(comments.len(), 1, "댓글이 새 이름을 따라오지 않았다");
         assert_eq!(
-            crate::ops::comments::get_memo(&store, "BUG-001").unwrap().as_deref(),
+            crate::ops::comments::get_memo(&store, "BUG-001")
+                .unwrap()
+                .as_deref(),
             Some("남을 메모")
         );
-        assert_eq!(crate::ops::attachments::list_quest_attachments(&store, "BUG-001").len(), 1);
-        for left in ["DEV-001.comments.md", "DEV-001.memo.md", "DEV-001.attachments.json"] {
-            assert!(!dir.join(".guild/quests").join(left).exists(), "{left} 이 옛 이름에 남았다");
+        assert_eq!(
+            crate::ops::attachments::list_quest_attachments(&store, "BUG-001").len(),
+            1
+        );
+        for left in [
+            "DEV-001.comments.md",
+            "DEV-001.memo.md",
+            "DEV-001.attachments.json",
+        ] {
+            assert!(
+                !dir.join(".guild/quests").join(left).exists(),
+                "{left} 이 옛 이름에 남았다"
+            );
         }
         // 다음 댓글은 번호가 이어진다.
-        crate::ops::comments::add_comment_entry(&store, "BUG-001", "a".into(), "둘째".into(), None, false)
-            .await
-            .unwrap();
+        crate::ops::comments::add_comment_entry(
+            &store,
+            "BUG-001",
+            "a".into(),
+            "둘째".into(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
         let place = crate::repo::version::Place::CommentsHeader;
-        assert_eq!(crate::repo::version::read(&store.paths.comments_path("BUG-001"), place), 2);
+        assert_eq!(
+            crate::repo::version::read(&store.paths.comments_path("BUG-001"), place),
+            2
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2578,13 +2684,26 @@ mod tests {
         let store = setup_store(&dir).await;
         let q = quest_with_body(&store, START).await;
         // A 가 먼저 첫 줄을 고쳐 저장한다.
-        update_quest(&store, q.id, edit(START, &START.replace("첫 줄", "첫 줄 (A)"))).await.unwrap();
+        update_quest(
+            &store,
+            q.id,
+            edit(START, &START.replace("첫 줄", "첫 줄 (A)")),
+        )
+        .await
+        .unwrap();
         // B 는 A 전의 본문으로 시작해 마지막 줄을 고친다.
-        let saved = update_quest(&store, q.id, edit(START, &START.replace("다섯째 줄", "다섯째 줄 (B)")))
-            .await
-            .unwrap();
+        let saved = update_quest(
+            &store,
+            q.id,
+            edit(START, &START.replace("다섯째 줄", "다섯째 줄 (B)")),
+        )
+        .await
+        .unwrap();
         let d = saved.description.unwrap();
-        assert!(d.contains("첫 줄 (A)") && d.contains("다섯째 줄 (B)"), "{d}");
+        assert!(
+            d.contains("첫 줄 (A)") && d.contains("다섯째 줄 (B)"),
+            "{d}"
+        );
         let on_disk = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(on_disk.contains("첫 줄 (A)") && on_disk.contains("다섯째 줄 (B)"));
         let _ = std::fs::remove_dir_all(&dir);
@@ -2596,11 +2715,23 @@ mod tests {
         let dir = fresh_tmp("merge-conflict");
         let store = setup_store(&dir).await;
         let q = quest_with_body(&store, START).await;
-        update_quest(&store, q.id, edit(START, &START.replace("셋째 줄", "셋째 줄 — A"))).await.unwrap();
-        let err = update_quest(&store, q.id, edit(START, &START.replace("셋째 줄", "셋째 줄 — B")))
-            .await
-            .unwrap_err();
-        let crate::error::AppError::EditConflict(c) = err else { panic!("편집 충돌이어야 한다: {err}") };
+        update_quest(
+            &store,
+            q.id,
+            edit(START, &START.replace("셋째 줄", "셋째 줄 — A")),
+        )
+        .await
+        .unwrap();
+        let err = update_quest(
+            &store,
+            q.id,
+            edit(START, &START.replace("셋째 줄", "셋째 줄 — B")),
+        )
+        .await
+        .unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else {
+            panic!("편집 충돌이어야 한다: {err}")
+        };
         assert_eq!(c.reason, "text");
         assert!(c.current.as_deref().unwrap().contains("셋째 줄 — A"));
         assert!(c.segments.iter().any(|s| matches!(
@@ -2608,7 +2739,10 @@ mod tests {
             crate::merge::Segment::Conflict { current, mine, .. } if current.contains("— A") && mine.contains("— B")
         )));
         let on_disk = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
-        assert!(on_disk.contains("셋째 줄 — A") && !on_disk.contains("— B"), "먼저 쓴 글이 덮였다");
+        assert!(
+            on_disk.contains("셋째 줄 — A") && !on_disk.contains("— B"),
+            "먼저 쓴 글이 덮였다"
+        );
         assert!(!on_disk.contains("<<<<<<<"));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2619,17 +2753,34 @@ mod tests {
         let dir = fresh_tmp("merge-renamed");
         let store = setup_store(&dir).await;
         let q = quest_with_body(&store, START).await;
-        change_quest_type(&store, q.id, ChangeTypeRequest { new_type_prefix: "BUG".into() }).await.unwrap();
-        let err = update_quest(&store, q.id, edit(START, "내 글")).await.unwrap_err();
-        let crate::error::AppError::EditConflict(c) = err else { panic!("{err}") };
-        assert_eq!((c.reason, c.new_id.as_deref()), ("renamed", Some("BUG-001")));
+        change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let err = update_quest(&store, q.id, edit(START, "내 글"))
+            .await
+            .unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else {
+            panic!("{err}")
+        };
+        assert_eq!(
+            (c.reason, c.new_id.as_deref()),
+            ("renamed", Some("BUG-001"))
+        );
 
         let q2 = quest_with_body(&store, START).await;
         delete_quest(&store, q2.id, &[]).await.unwrap();
         let mut e = edit(START, "내 글");
         e.expected_id = Some(q2.quest_id.clone());
         let err = update_quest(&store, q2.id, e).await.unwrap_err();
-        let crate::error::AppError::EditConflict(c) = err else { panic!("{err}") };
+        let crate::error::AppError::EditConflict(c) = err else {
+            panic!("{err}")
+        };
         assert_eq!(c.reason, "deleted");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2642,18 +2793,42 @@ mod tests {
         let q = quest_with_body(&store, START).await;
         let path = dir.join(".guild/quests/DEV-001.md");
         let seen = crate::repo::version::read(&path, crate::repo::version::Place::Frontmatter);
-        update_quest(&store, q.id, UpdateQuestRequest { title: Some("남이 고침".into()), ..Default::default() })
-            .await
-            .unwrap();
-        let stale = UpdateQuestRequest { description: Some("내 글".into()), base_version: Some(seen), ..Default::default() };
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: Some("남이 고침".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let stale = UpdateQuestRequest {
+            description: Some("내 글".into()),
+            base_version: Some(seen),
+            ..Default::default()
+        };
         let err = update_quest(&store, q.id, stale).await.unwrap_err();
-        let crate::error::AppError::EditConflict(c) = err else { panic!("{err}") };
+        let crate::error::AppError::EditConflict(c) = err else {
+            panic!("{err}")
+        };
         assert_eq!(c.reason, "stale");
         assert_eq!(c.current.as_deref(), Some(START));
 
         let now = crate::repo::version::read(&path, crate::repo::version::Place::Frontmatter);
-        let fresh = UpdateQuestRequest { description: Some("내 글".into()), base_version: Some(now), ..Default::default() };
-        assert_eq!(update_quest(&store, q.id, fresh).await.unwrap().description.as_deref(), Some("내 글"));
+        let fresh = UpdateQuestRequest {
+            description: Some("내 글".into()),
+            base_version: Some(now),
+            ..Default::default()
+        };
+        assert_eq!(
+            update_quest(&store, q.id, fresh)
+                .await
+                .unwrap()
+                .description
+                .as_deref(),
+            Some("내 글")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2663,10 +2838,26 @@ mod tests {
         let dir = fresh_tmp("merge-none");
         let store = setup_store(&dir).await;
         let q = quest_with_body(&store, START).await;
-        update_quest(&store, q.id, UpdateQuestRequest { description: Some("A".into()), ..Default::default() }).await.unwrap();
-        let saved = update_quest(&store, q.id, UpdateQuestRequest { description: Some("B".into()), ..Default::default() })
-            .await
-            .unwrap();
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                description: Some("A".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let saved = update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                description: Some("B".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(saved.description.as_deref(), Some("B"));
         let _ = std::fs::remove_dir_all(&dir);
     }

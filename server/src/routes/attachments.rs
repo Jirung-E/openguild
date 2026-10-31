@@ -6,17 +6,17 @@
 //! 유지해 frontend `transport.ts` 의 routeToInvoke 매핑이 1:1 로 대응된다.
 
 use axum::{
+    Json,
     body::Body,
     extract::{Path, Query, State},
-    Json,
 };
 use base64::Engine as _;
 use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
+use openguild_core::Store;
 use openguild_core::models::QuestAttachment;
 use openguild_core::ops::attachments as ops;
-use openguild_core::Store;
 
 /// BUG-168: 이 라우트가 허용하는 **원본 파일** 최대 크기.
 ///
@@ -96,7 +96,9 @@ pub async fn save_attachment_stream(
     drop(file);
     if written == 0 {
         let _ = tokio::fs::remove_file(&abs).await;
-        return Err(AppError::BadRequest(openguild_core::tf!("빈 첨부", "empty attachment")).into());
+        return Err(
+            AppError::BadRequest(openguild_core::tf!("빈 첨부", "empty attachment")).into(),
+        );
     }
     Ok(Json(rel))
 }
@@ -234,7 +236,7 @@ pub async fn remove_book_attachment(
 //   2. **무압축(store)** — 첨부는 이미 png/zip/mp4 같은 압축 포맷이 대부분이라
 //      재압축은 CPU 만 쓰고 크기는 거의 그대로다.
 
-use async_zip::{tokio::write::ZipFileWriter, Compression, ZipEntryBuilder};
+use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
 use axum::http::header;
 
 /// 한 문서의 첨부 전체를 zip 으로 스트리밍한다.
@@ -344,7 +346,10 @@ pub(crate) fn stream_zip(
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),
-            (header::CONTENT_DISPOSITION, content_disposition(&download_name)),
+            (
+                header::CONTENT_DISPOSITION,
+                content_disposition(&download_name),
+            ),
         ],
         body,
     )
@@ -358,10 +363,20 @@ pub(crate) fn stream_zip(
 pub(crate) fn safe_name_part(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').trim();
-    if trimmed.is_empty() { "guild".to_string() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        "guild".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// `Content-Disposition` 값. 한글 길드/문서 이름을 위해 **RFC 5987** 형식을 함께
@@ -370,7 +385,13 @@ pub(crate) fn safe_name_part(raw: &str) -> String {
 pub(crate) fn content_disposition(name: &str) -> String {
     let ascii: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '[' | ']') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '[' | ']') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let encoded: String = name
         .as_bytes()
@@ -390,7 +411,9 @@ pub(crate) fn content_disposition(name: &str) -> String {
 /// 첨부 묶음이 다운로드 폴더에 섞이면 `DEV-007-attachments.zip` 만으로는 어느
 /// 길드 것인지 알 수 없다.
 fn zip_download_name(store: &Store, doc_id: &str) -> String {
-    let guild = safe_name_part(&openguild_core::recents::guess_name(&store.paths.guild_root));
+    let guild = safe_name_part(&openguild_core::recents::guess_name(
+        &store.paths.guild_root,
+    ));
     let doc = safe_name_part(doc_id);
     format!("[{guild}]{doc}_attachments.zip")
 }

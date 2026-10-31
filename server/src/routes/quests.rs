@@ -4,12 +4,13 @@
 //! 이 파일은 입력 추출 + 출력 직렬화만 담당.
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 
 use crate::error::AppResult;
+use openguild_core::Store;
 use openguild_core::models::{
     AddPrerequisiteRequest, CandidatesQuery, ChangeParentRequest, ChangeStatusRequest,
     CreateQuestRequest, DeleteQuestQuery, ListQuery, QuestDependency, QuestDetail,
@@ -17,7 +18,6 @@ use openguild_core::models::{
 };
 use openguild_core::ops::quests as ops;
 use openguild_core::services::quests as read;
-use openguild_core::Store;
 
 /// DEV-358: 목록 응답에 ETag + 조건부 요청.
 ///
@@ -144,7 +144,9 @@ pub async fn set_due_dates(
     }
     let desired = parse_field(&body, "desired_due");
     let required = parse_field(&body, "required_due");
-    Ok(Json(ops::set_due_dates(&store, id, desired, required).await?))
+    Ok(Json(
+        ops::set_due_dates(&store, id, desired, required).await?,
+    ))
 }
 
 /// DEV-068: tag 전체 교체. body: `{ "tags": ["a", "b", ...] }`.
@@ -197,9 +199,7 @@ pub async fn delete_quest(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn list_deleted_quests(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<QuestRow>>> {
+pub async fn list_deleted_quests(State(store): State<Store>) -> AppResult<Json<Vec<QuestRow>>> {
     Ok(Json(read::list_deleted(&store.index_pool).await?))
 }
 
@@ -250,7 +250,9 @@ pub async fn list_candidates(
     Path(id): Path<i64>,
     Query(q): Query<CandidatesQuery>,
 ) -> AppResult<Json<Vec<QuestRow>>> {
-    Ok(Json(read::list_candidates(&store.index_pool, id, &q.relation).await?))
+    Ok(Json(
+        read::list_candidates(&store.index_pool, id, &q.relation).await?,
+    ))
 }
 
 pub async fn update_position(
@@ -260,7 +262,9 @@ pub async fn update_position(
 ) -> AppResult<Json<QuestPosition>> {
     // update_position 은 UI 상태 — 파일 IO 없음. SQL 만 직접.
     // BUG-286: 파일(positions.json)이 진리원 — ops 가 파일과 DB 를 함께 쓴다.
-    Ok(Json(openguild_core::ops::positions::update_position(&store, id, body).await?))
+    Ok(Json(
+        openguild_core::ops::positions::update_position(&store, id, body).await?,
+    ))
 }
 
 pub async fn get_quest_by_slug(
@@ -287,9 +291,7 @@ pub async fn update_positions(
     Ok(Json(serde_json::json!({ "written": written })))
 }
 
-pub async fn list_positions(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<QuestPosition>>> {
+pub async fn list_positions(State(store): State<Store>) -> AppResult<Json<Vec<QuestPosition>>> {
     Ok(Json(read::list_positions(&store.index_pool).await?))
 }
 

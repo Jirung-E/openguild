@@ -515,7 +515,9 @@
 					{t('nqm.noTypesMsg', $locale)}
 				</p>
 				<div class="form-actions">
-					<a class="btn btn-primary" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+					<a class="btn btn-primary" href="/admin" onclick={onclose}
+						>{t('nqm.goToAdmin', $locale)}</a
+					>
 					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
 				</div>
 			</div>

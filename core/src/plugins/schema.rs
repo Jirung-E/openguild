@@ -270,7 +270,9 @@ mod tests {
         assert!(ex.iter().any(|v| v == "quest.status_changed"));
         let pre = s["$defs"]["preEvent"]["examples"].as_array().unwrap();
         assert_eq!(pre.len(), crate::events::names::PRE_CAPABLE.len());
-        let perms = s["properties"]["permissions"]["items"]["enum"].as_array().unwrap();
+        let perms = s["properties"]["permissions"]["items"]["enum"]
+            .as_array()
+            .unwrap();
         assert_eq!(perms.len(), super::super::PERMISSIONS.len());
         let with = s["$defs"]["with"]["enum"].as_array().unwrap();
         assert!(with.iter().any(|v| v == "subject") && with.iter().any(|v| v == "prereqs"));
@@ -346,7 +348,9 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
         let s = plugin_schema();
         let known = |at: &Value| -> Vec<String> {
-            at.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default()
+            at.as_object()
+                .map(|o| o.keys().cloned().collect())
+                .unwrap_or_default()
         };
         let top = known(&s["properties"]);
         let line = known(&s["$defs"]["handler"]["properties"]);
@@ -359,11 +363,19 @@ mod tests {
             let raw = std::fs::read_to_string(&manifest).unwrap();
             let v: Value = toml::from_str(&raw).expect("예제 TOML");
             for k in v.as_object().unwrap().keys() {
-                assert!(top.contains(k), "{}: 스키마가 모르는 칸 `{k}`", manifest.display());
+                assert!(
+                    top.contains(k),
+                    "{}: 스키마가 모르는 칸 `{k}`",
+                    manifest.display()
+                );
             }
             for h in v["handlers"].as_array().unwrap_or(&Vec::new()) {
                 for k in h.as_object().unwrap().keys() {
-                    assert!(line.contains(k), "{}: 줄에 모르는 칸 `{k}`", manifest.display());
+                    assert!(
+                        line.contains(k),
+                        "{}: 줄에 모르는 칸 `{k}`",
+                        manifest.display()
+                    );
                 }
             }
             seen += 1;

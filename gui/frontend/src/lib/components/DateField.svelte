@@ -159,7 +159,18 @@
 		title={t('common.pickDate', $locale)}
 	>
 		<!-- BUG-254: 속성 px 는 배율을 안 따라간다 — CSS 로 덮는다(.df-ico). -->
-		<svg class="df-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<svg
+			class="df-ico"
+			width="14"
+			height="14"
+			viewBox="0 0 16 16"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="1.3"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
 			<rect x="2" y="3" width="12" height="11" rx="1.5" />
 			<path d="M2 6.5h12M5 2v2.5M11 2v2.5" />
 		</svg>
@@ -221,7 +232,9 @@
 				</div>
 			{/if}
 			<div class="df-foot">
-				<button type="button" class="df-today" onclick={pickToday}>{t('common.today', $locale)}</button>
+				<button type="button" class="df-today" onclick={pickToday}
+					>{t('common.today', $locale)}</button
+				>
 			</div>
 		</div>
 	{/if}

@@ -2,14 +2,17 @@
 //!
 //! **인증 없음** (현 MVP). 멀티유저 단계 진입 시 토큰 / role 가드 필요.
 
-use axum::{extract::{Path, Query, State}, Json};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::error::AppResult;
 use openguild_core::maintenance::{self, JournalTail, VacuumReport};
 use openguild_core::snapshot::{self, SnapshotInfo};
-use openguild_core::{drift, reindex, Store};
+use openguild_core::{Store, drift, reindex};
 
 #[derive(Debug, Deserialize)]
 pub struct RestoreRequest {
@@ -23,9 +26,7 @@ pub struct RestoreRequest {
 }
 
 /// `POST /api/admin/snapshot` — 즉시 snapshot.
-pub async fn create_snapshot(
-    State(store): State<Store>,
-) -> AppResult<Json<SnapshotInfo>> {
+pub async fn create_snapshot(State(store): State<Store>) -> AppResult<Json<SnapshotInfo>> {
     let info = snapshot::create_snapshot(&store)
         .await
         .map_err(openguild_core::AppError::Internal)?;
@@ -33,11 +34,9 @@ pub async fn create_snapshot(
 }
 
 /// `GET /api/admin/snapshots` — 목록.
-pub async fn list_snapshots(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<SnapshotInfo>>> {
-    let list = snapshot::list_snapshots(&store.paths)
-        .map_err(openguild_core::AppError::Internal)?;
+pub async fn list_snapshots(State(store): State<Store>) -> AppResult<Json<Vec<SnapshotInfo>>> {
+    let list =
+        snapshot::list_snapshots(&store.paths).map_err(openguild_core::AppError::Internal)?;
     Ok(Json(list))
 }
 
@@ -46,8 +45,7 @@ pub async fn delete_snapshot(
     State(store): State<Store>,
     Path(ts): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
-    snapshot::delete_snapshot(&store.paths, &ts)
-        .map_err(openguild_core::AppError::Internal)?;
+    snapshot::delete_snapshot(&store.paths, &ts).map_err(openguild_core::AppError::Internal)?;
     Ok(Json(json!({ "ok": true, "deleted": ts })))
 }
 
@@ -58,8 +56,8 @@ pub async fn restore(
 ) -> AppResult<Json<serde_json::Value>> {
     // DEV-022: 시점 복원 (journal replay) — 최신 snapshot 기준.
     if let Some(ts) = body.at {
-        let snapshots = snapshot::list_snapshots(&store.paths)
-            .map_err(openguild_core::AppError::Internal)?;
+        let snapshots =
+            snapshot::list_snapshots(&store.paths).map_err(openguild_core::AppError::Internal)?;
         let latest = snapshots.last().cloned().ok_or_else(|| {
             openguild_core::AppError::NotFound("사용 가능한 snapshot 이 없습니다".into())
         })?;
@@ -71,8 +69,8 @@ pub async fn restore(
             "pre_backup": report.pre_backup,
         })));
     }
-    let snapshots = snapshot::list_snapshots(&store.paths)
-        .map_err(openguild_core::AppError::Internal)?;
+    let snapshots =
+        snapshot::list_snapshots(&store.paths).map_err(openguild_core::AppError::Internal)?;
     let target = if let Some(ts) = body.to {
         snapshots
             .iter()
@@ -80,12 +78,9 @@ pub async fn restore(
             .cloned()
             .ok_or_else(|| openguild_core::AppError::NotFound(format!("snapshot {ts} 없음")))?
     } else {
-        snapshots
-            .last()
-            .cloned()
-            .ok_or_else(|| {
-                openguild_core::AppError::NotFound("사용 가능한 snapshot 이 없습니다".into())
-            })?
+        snapshots.last().cloned().ok_or_else(|| {
+            openguild_core::AppError::NotFound("사용 가능한 snapshot 이 없습니다".into())
+        })?
     };
     snapshot::restore_snapshot(&store, &target)
         .await
@@ -101,9 +96,7 @@ pub async fn orphan_sidecars(State(store): State<Store>) -> Json<Vec<String>> {
 }
 
 /// `GET /api/admin/drift` — drift 검사.
-pub async fn check_drift(
-    State(store): State<Store>,
-) -> AppResult<Json<drift::DriftReport>> {
+pub async fn check_drift(State(store): State<Store>) -> AppResult<Json<drift::DriftReport>> {
     let report = drift::detect_drift(&store)
         .await
         .map_err(openguild_core::AppError::Internal)?;
@@ -111,9 +104,7 @@ pub async fn check_drift(
 }
 
 /// `POST /api/admin/reindex` — 파일 → index.db 재구축.
-pub async fn run_reindex(
-    State(store): State<Store>,
-) -> AppResult<Json<serde_json::Value>> {
+pub async fn run_reindex(State(store): State<Store>) -> AppResult<Json<serde_json::Value>> {
     let report = reindex::reindex(&store).await?;
     Ok(Json(json!({
         "types_loaded": report.types_loaded,
@@ -272,7 +263,10 @@ pub fn parse_range(header: Option<&str>, size: u64) -> RangeSpec {
         },
         // `bytes=N-`
         (false, true) => match a.parse::<u64>() {
-            Ok(n) if n < size => RangeSpec::Part { start: n, end: size - 1 },
+            Ok(n) if n < size => RangeSpec::Part {
+                start: n,
+                end: size - 1,
+            },
             Ok(_) => RangeSpec::Unsatisfiable,
             Err(_) => RangeSpec::Whole,
         },
@@ -321,9 +315,15 @@ pub async fn get_guild_file(
 
     // 조건부 요청 — 같으면 본문 없이 304. 대용량 첨부에서 특히 크게 아낀다.
     if let Some(inm) = headers.get(axum::http::header::IF_NONE_MATCH)
-        && inm.to_str().map(|v| v.split(',').any(|t| t.trim() == etag)).unwrap_or(false)
+        && inm
+            .to_str()
+            .map(|v| v.split(',').any(|t| t.trim() == etag))
+            .unwrap_or(false)
     {
-        return Ok((axum::http::StatusCode::NOT_MODIFIED, [(axum::http::header::ETAG, etag)])
+        return Ok((
+            axum::http::StatusCode::NOT_MODIFIED,
+            [(axum::http::header::ETAG, etag)],
+        )
             .into_response());
     }
 
@@ -339,10 +339,17 @@ pub async fn get_guild_file(
         .map_err(|_| openguild_core::error::AppError::NotFound(format!("파일 없음: {rel}")))?;
     let size = meta.len();
     let range = parse_range(
-        headers.get(axum::http::header::RANGE).and_then(|v| v.to_str().ok()),
+        headers
+            .get(axum::http::header::RANGE)
+            .and_then(|v| v.to_str().ok()),
         size,
     );
-    let mime = match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+    let mime = match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -391,7 +398,9 @@ pub async fn get_guild_file(
             use tokio::io::AsyncSeekExt;
             file.seek(std::io::SeekFrom::Start(start))
                 .await
-                .map_err(|e| openguild_core::error::AppError::Internal(anyhow::anyhow!("seek: {e}")))?;
+                .map_err(|e| {
+                    openguild_core::error::AppError::Internal(anyhow::anyhow!("seek: {e}"))
+                })?;
             let len = end - start + 1;
             let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(
                 tokio::io::AsyncReadExt::take(file, len),
@@ -447,39 +456,69 @@ mod tests {
 
     #[test]
     fn range_start_end() {
-        assert_eq!(parse_range(Some("bytes=0-9"), 100), RangeSpec::Part { start: 0, end: 9 });
-        assert_eq!(parse_range(Some("bytes=10-19"), 100), RangeSpec::Part { start: 10, end: 19 });
+        assert_eq!(
+            parse_range(Some("bytes=0-9"), 100),
+            RangeSpec::Part { start: 0, end: 9 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=10-19"), 100),
+            RangeSpec::Part { start: 10, end: 19 }
+        );
         // 끝이 파일을 넘으면 잘라준다(스펙 허용) — 416 이 아니다.
-        assert_eq!(parse_range(Some("bytes=90-999"), 100), RangeSpec::Part { start: 90, end: 99 });
+        assert_eq!(
+            parse_range(Some("bytes=90-999"), 100),
+            RangeSpec::Part { start: 90, end: 99 }
+        );
     }
 
     #[test]
     fn range_open_ended() {
-        assert_eq!(parse_range(Some("bytes=50-"), 100), RangeSpec::Part { start: 50, end: 99 });
+        assert_eq!(
+            parse_range(Some("bytes=50-"), 100),
+            RangeSpec::Part { start: 50, end: 99 }
+        );
     }
 
     /// `bytes=-N` 은 시작이 아니라 **마지막 N 바이트**다 — 헷갈리기 쉬운 형식.
     #[test]
     fn range_suffix_means_last_n_bytes() {
-        assert_eq!(parse_range(Some("bytes=-10"), 100), RangeSpec::Part { start: 90, end: 99 });
+        assert_eq!(
+            parse_range(Some("bytes=-10"), 100),
+            RangeSpec::Part { start: 90, end: 99 }
+        );
         // N 이 파일보다 크면 전체(0 부터).
-        assert_eq!(parse_range(Some("bytes=-500"), 100), RangeSpec::Part { start: 0, end: 99 });
+        assert_eq!(
+            parse_range(Some("bytes=-500"), 100),
+            RangeSpec::Part { start: 0, end: 99 }
+        );
         assert_eq!(parse_range(Some("bytes=-0"), 100), RangeSpec::Unsatisfiable);
     }
 
     #[test]
     fn range_out_of_bounds_is_unsatisfiable() {
-        assert_eq!(parse_range(Some("bytes=100-"), 100), RangeSpec::Unsatisfiable);
-        assert_eq!(parse_range(Some("bytes=200-300"), 100), RangeSpec::Unsatisfiable);
+        assert_eq!(
+            parse_range(Some("bytes=100-"), 100),
+            RangeSpec::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range(Some("bytes=200-300"), 100),
+            RangeSpec::Unsatisfiable
+        );
         // 시작 > 끝.
-        assert_eq!(parse_range(Some("bytes=50-10"), 100), RangeSpec::Unsatisfiable);
+        assert_eq!(
+            parse_range(Some("bytes=50-10"), 100),
+            RangeSpec::Unsatisfiable
+        );
         // 빈 파일엔 어떤 범위도 성립하지 않는다.
         assert_eq!(parse_range(Some("bytes=0-0"), 0), RangeSpec::Unsatisfiable);
     }
 
     #[test]
     fn range_whitespace_tolerated() {
-        assert_eq!(parse_range(Some(" bytes=0-9 "), 100), RangeSpec::Part { start: 0, end: 9 });
+        assert_eq!(
+            parse_range(Some(" bytes=0-9 "), 100),
+            RangeSpec::Part { start: 0, end: 9 }
+        );
     }
 
     /// 기본값은 예전과 같아야 한다(회귀).

@@ -70,32 +70,32 @@
 	</div>
 
 	{#if !collapsed}
-	{#if loading}
-		<p class="ch-state">{t('history.loading', $locale)}</p>
-	{:else if error}
-		<p class="ch-state error">{error}</p>
-	{:else if entries.length === 0}
-		<p class="ch-state">{t('history.empty', $locale)}</p>
-	{:else}
-		<ul class="ch-list" data-testid="sidecar-history-list">
-			{#each entries as e, i (i)}
-				<li class="ch-item" data-testid="ch-item">
-					<time class="ch-ts" datetime={e.ts} title={formatTs(e.ts)}>
-						{formatRelative(e.ts, undefined, $locale)}
-					</time>
-					<span class="ch-op">{e.op}</span>
-					{#if e.old != null || e.new != null}
-						<span class="ch-change">
-							{e.old ?? '∅'} <span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
-							{e.new ?? '∅'}
-						</span>
-					{:else}
-						<span class="ch-op-empty" aria-hidden="true"></span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-	{/if}
+		{#if loading}
+			<p class="ch-state">{t('history.loading', $locale)}</p>
+		{:else if error}
+			<p class="ch-state error">{error}</p>
+		{:else if entries.length === 0}
+			<p class="ch-state">{t('history.empty', $locale)}</p>
+		{:else}
+			<ul class="ch-list" data-testid="sidecar-history-list">
+				{#each entries as e, i (i)}
+					<li class="ch-item" data-testid="ch-item">
+						<time class="ch-ts" datetime={e.ts} title={formatTs(e.ts)}>
+							{formatRelative(e.ts, undefined, $locale)}
+						</time>
+						<span class="ch-op">{e.op}</span>
+						{#if e.old != null || e.new != null}
+							<span class="ch-change">
+								{e.old ?? '∅'} <span class="ch-arrow"><Icon name="arrow-right" size="1em" /></span>
+								{e.new ?? '∅'}
+							</span>
+						{:else}
+							<span class="ch-op-empty" aria-hidden="true"></span>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	{/if}
 </section>
 

@@ -4,16 +4,16 @@
 //! compat 으로 유지.
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
+use openguild_core::Store;
 use openguild_core::ops::rules as ops;
 use openguild_core::repo::rules::RuleEntry;
-use openguild_core::Store;
 
 // ─── multi-file ───
 
@@ -105,7 +105,10 @@ pub async fn set_rule(
         &store,
         &slug,
         body.content.clone(),
-        openguild_core::ops::EditBase { text: body.base_content.clone(), version: body.base_version },
+        openguild_core::ops::EditBase {
+            text: body.base_content.clone(),
+            version: body.base_version,
+        },
     )
     .await?;
     // BUG-134 패턴: 본문 저장은 tags 를 안 건드리지만(보존), 응답엔 실제
@@ -115,7 +118,10 @@ pub async fn set_rule(
         slug,
         content: Some(body.content),
         tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
-        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        created_at: entry
+            .as_ref()
+            .map(|e| e.created_at.clone())
+            .unwrap_or_default(),
         updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     }))
 }
@@ -132,7 +138,10 @@ pub async fn create_rule(
             slug: body.slug,
             content: Some(body.content),
             tags: vec![],
-            created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+            created_at: entry
+                .as_ref()
+                .map(|e| e.created_at.clone())
+                .unwrap_or_default(),
             updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
         }),
     ))

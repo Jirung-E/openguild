@@ -659,7 +659,9 @@
 				{t('campaign.checklist', $locale)} ({detail.checklists.filter((c) => c.checked)
 					.length}/{detail.checklists.length})
 				{#if detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}
-					<span class="done-mark"><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span>
+					<span class="done-mark"
+						><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span
+					>
 				{/if}
 			</h2>
 			{#if detail.checklists.length === 0}
@@ -686,7 +688,8 @@
 				</ul>
 			{/if}
 			<div class="add-row">
-				<input class="input"
+				<input
+					class="input"
 					type="text"
 					bind:value={newChecklistText}
 					placeholder={t('campaign.newChecklistItem', $locale)}
@@ -710,7 +713,9 @@
 					({detail.linked_quests.length})
 				{/if}
 				{#if (detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}
-					<span class="done-mark"><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span>
+					<span class="done-mark"
+						><Icon name="check" size="1em" /> {t('common.doneMark', $locale)}</span
+					>
 				{/if}
 			</h2>
 			{#if (detail.quest_total ?? 0) > 0}
@@ -867,7 +872,13 @@
 			if (e.target === e.currentTarget) comboOpen = false;
 		}}
 	>
-		<div class="modal-box modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => (comboOpen = false) }}>
+		<div
+			class="modal-box modal-sm modal-combo"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: () => (comboOpen = false) }}
+		>
 			<div class="modal-head">
 				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
 				<button class="x" onclick={() => (comboOpen = false)}

@@ -1,23 +1,21 @@
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
+use openguild_core::Store;
 use openguild_core::models::{QuestStatus, QuestTagDef, QuestType};
 use openguild_core::ops::meta as meta_ops;
 use openguild_core::plugins::view::PluginStatus;
 use openguild_core::services::meta as svc;
-use openguild_core::Store;
 
 pub async fn list_quest_types(State(store): State<Store>) -> AppResult<Json<Vec<QuestType>>> {
     Ok(Json(svc::list_quest_types(&store.index_pool).await?))
 }
 
-pub async fn list_quest_statuses(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<QuestStatus>>> {
+pub async fn list_quest_statuses(State(store): State<Store>) -> AppResult<Json<Vec<QuestStatus>>> {
     Ok(Json(svc::list_quest_statuses(&store.index_pool).await?))
 }
 
@@ -69,8 +67,8 @@ pub async fn reload_plugins(
     State(store): State<Store>,
     request: axum::extract::Request,
 ) -> axum::response::Response {
-    use axum::response::IntoResponse;
     use axum::RequestPartsExt;
+    use axum::response::IntoResponse;
     let (mut parts, _) = request.into_parts();
     let same_machine = parts
         .extract::<axum::extract::ConnectInfo<super::PeerAddrs>>()
@@ -112,9 +110,7 @@ pub async fn reload_plugins(
 }
 
 /// DEV-068: tag def 목록.
-pub async fn list_tag_defs(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<QuestTagDef>>> {
+pub async fn list_tag_defs(State(store): State<Store>) -> AppResult<Json<Vec<QuestTagDef>>> {
     Ok(Json(svc::list_quest_tag_defs(&store.index_pool).await?))
 }
 
@@ -145,9 +141,7 @@ pub async fn delete_tag_def(
 }
 
 /// BUG-231: quest/library frontmatter 캐시에 실제로 사용 중인 태그 distinct 목록.
-pub async fn list_tags_in_use(
-    State(store): State<Store>,
-) -> AppResult<Json<Vec<String>>> {
+pub async fn list_tags_in_use(State(store): State<Store>) -> AppResult<Json<Vec<String>>> {
     Ok(Json(
         openguild_core::services::meta::list_tags_in_use(&store.index_pool).await?,
     ))
@@ -222,8 +216,14 @@ pub async fn admin_update_type(
     Json(body): Json<UpdateTypeBody>,
 ) -> AppResult<Json<QuestType>> {
     Ok(Json(
-        meta_ops::update_type(&store, prefix, body.new_prefix, body.color, body.description)
-            .await?,
+        meta_ops::update_type(
+            &store,
+            prefix,
+            body.new_prefix,
+            body.color,
+            body.description,
+        )
+        .await?,
     ))
 }
 
@@ -261,8 +261,14 @@ pub async fn admin_create_status(
     Json(body): Json<CreateStatusBody>,
 ) -> AppResult<Json<QuestStatus>> {
     Ok(Json(
-        meta_ops::create_status(&store, body.name_en, body.name_ko, body.color, body.sort_order)
-            .await?,
+        meta_ops::create_status(
+            &store,
+            body.name_en,
+            body.name_ko,
+            body.color,
+            body.sort_order,
+        )
+        .await?,
     ))
 }
 
@@ -340,7 +346,8 @@ pub async fn list_backlinks(
         ))
         .into());
     }
-    let rows = openguild_core::ops::backlinks::list_backlinks(&store.index_pool, &kind, &id).await?;
+    let rows =
+        openguild_core::ops::backlinks::list_backlinks(&store.index_pool, &kind, &id).await?;
     Ok(Json(rows))
 }
 

@@ -273,8 +273,7 @@
 		window.addEventListener('resize', onResize);
 		// 글을 치면 입력칸이 자란다 — DOM 이 안 바뀌므로 위 관찰기로는 못 본다. 표식이
 		// 실제 크기를 따라가게 슬롯 크기를 지켜본다.
-		const ro =
-			typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
 		ro?.observe(slot);
 		return () => {
 			io.disconnect();

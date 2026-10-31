@@ -61,8 +61,12 @@ pub fn record(paths: &GuildPaths, slug: &str, op: &str, old: Option<String>, new
 /// 이벤트 1건 append (파일 없으면 생성; 디렉토리도 최초 1회 생성).
 pub fn append(paths: &GuildPaths, slug: &str, entry: &HistoryEntry) -> Result<()> {
     let path = history_path(paths, slug);
-    std::fs::create_dir_all(paths.history_dir())
-        .with_context(|| format!("history 디렉토리 생성 실패: {}", paths.history_dir().display()))?;
+    std::fs::create_dir_all(paths.history_dir()).with_context(|| {
+        format!(
+            "history 디렉토리 생성 실패: {}",
+            paths.history_dir().display()
+        )
+    })?;
     let line = serde_json::to_string(entry).context("history entry 직렬화")?;
     let mut f = std::fs::OpenOptions::new()
         .create(true)

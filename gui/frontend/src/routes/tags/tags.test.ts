@@ -44,9 +44,7 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		listTagDefs.mockReset();
 		upsertTagDef.mockReset();
 		deleteTagDef.mockReset();
-		listTagDefs.mockResolvedValue([
-			{ slug: 'frontend', color: '#ff0000', description: '화면 쪽' }
-		]);
+		listTagDefs.mockResolvedValue([{ slug: 'frontend', color: '#ff0000', description: '화면 쪽' }]);
 		upsertTagDef.mockResolvedValue({});
 	});
 
@@ -76,7 +74,9 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		const btn = rowOf('한글태그').querySelector('.row-actions button') as HTMLButtonElement;
 		expect(btn).not.toBeNull();
 		await fireEvent.click(btn);
-		await fireEvent.click(rowOf('한글태그').querySelector('.editor .btn.btn-primary') as HTMLButtonElement);
+		await fireEvent.click(
+			rowOf('한글태그').querySelector('.editor .btn.btn-primary') as HTMLButtonElement
+		);
 		expect(upsertTagDef).toHaveBeenCalledWith(expect.objectContaining({ slug: '한글태그' }));
 	});
 
@@ -90,7 +90,9 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		await fireEvent.click(screen.getByText('+ 새 태그'));
 		const slug = document.querySelector('.tag-item.new .slug') as HTMLInputElement;
 		await fireEvent.input(slug, { target: { value: 'needs-review' } });
-		await fireEvent.click(document.querySelector('.tag-item.new .btn.btn-primary') as HTMLButtonElement);
+		await fireEvent.click(
+			document.querySelector('.tag-item.new .btn.btn-primary') as HTMLButtonElement
+		);
 		expect(upsertTagDef).toHaveBeenCalledWith(expect.objectContaining({ slug: 'needs-review' }));
 	});
 });

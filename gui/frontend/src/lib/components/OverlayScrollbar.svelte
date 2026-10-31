@@ -78,9 +78,7 @@
 			// 앞선 in-flow sticky 헤더들의 높이 합. getBoundingClientRect+scrollY
 			// 로 offsetParent 와 무관하게 구한다.
 			const mainEl = document.querySelector('main');
-			topInset = mainEl
-				? Math.max(0, mainEl.getBoundingClientRect().top + window.scrollY)
-				: 0;
+			topInset = mainEl ? Math.max(0, mainEl.getBoundingClientRect().top + window.scrollY) : 0;
 		}
 	}
 

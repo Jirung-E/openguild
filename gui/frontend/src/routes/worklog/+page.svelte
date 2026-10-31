@@ -15,11 +15,7 @@
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { saveShortcut } from '$lib/utils/save-shortcut';
-	import {
-		worklogApi,
-		type WorklogReport,
-		type WorklogNote
-	} from '$lib/api/worklog';
+	import { worklogApi, type WorklogReport, type WorklogNote } from '$lib/api/worklog';
 	// REQ-006: compact 묶음 로직은 단위 테스트를 붙이려고 utils 로 분리했다.
 	import {
 		activityHref,
@@ -405,8 +401,11 @@
 			<!-- DEV-457: 다른 고르기와 같은 .seg(설정의 켜기/끄기 모양). -->
 			<div class="seg sm" role="radiogroup" aria-label={t('worklogPage.unitAria', $locale)}>
 				{#each UNITS as u (u)}
-					<button role="radio" aria-checked={unit === u} class:on={unit === u} onclick={() => setUnit(u)}
-						>{unitLabel(u)}</button
+					<button
+						role="radio"
+						aria-checked={unit === u}
+						class:on={unit === u}
+						onclick={() => setUnit(u)}>{unitLabel(u)}</button
 					>
 				{/each}
 			</div>

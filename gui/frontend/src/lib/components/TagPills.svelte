@@ -95,7 +95,8 @@
 	{/if}
 	{#if tagInputOpen && editable}
 		<form class="tag-add-form" onsubmit={addTagFromInput}>
-			<input class="input"
+			<input
+				class="input"
 				type="text"
 				bind:value={newTagText}
 				placeholder={t('tagPills.newPlaceholder', $locale)}

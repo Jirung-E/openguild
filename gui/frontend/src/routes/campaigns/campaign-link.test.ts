@@ -35,7 +35,8 @@ vi.mock('$lib/components/NewQuestModal.svelte', async () => {
 vi.mock('$app/stores', () => ({
 	page: {
 		subscribe: (f: (v: unknown) => void) => (
-			f({ url: new URL('http://x/campaigns/C-001'), params: { slug: 'C-001' } }), () => {}
+			f({ url: new URL('http://x/campaigns/C-001'), params: { slug: 'C-001' } }),
+			() => {}
 		)
 	}
 }));

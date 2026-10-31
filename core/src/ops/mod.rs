@@ -101,8 +101,8 @@ pub(crate) fn resolve_edit(
     }
     match crate::merge::merge3(b, c, m) {
         crate::merge::Merge::Clean(merged) => Ok(merged),
-        crate::merge::Merge::Conflict(segments) => {
-            Err(crate::error::AppError::EditConflict(Box::new(crate::error::EditConflict {
+        crate::merge::Merge::Conflict(segments) => Err(crate::error::AppError::EditConflict(
+            Box::new(crate::error::EditConflict {
                 reason: "text",
                 message: crate::tf!(
                     "편집하는 사이 다른 곳에서 {what} 의 같은 줄을 고쳤습니다 — 어느 쪽을 남길지 골라 주세요",
@@ -111,8 +111,8 @@ pub(crate) fn resolve_edit(
                 current: Some(current.to_string()),
                 segments,
                 new_id: None,
-            })))
-        }
+            }),
+        )),
     }
 }
 
@@ -130,16 +130,18 @@ pub(crate) fn check_base_version(
     if now == base {
         return Ok(());
     }
-    Err(crate::error::AppError::EditConflict(Box::new(crate::error::EditConflict {
-        reason: "stale",
-        message: crate::tf!(
-            "{what} 이 편집을 시작한 뒤 바뀌었습니다(번호 {base} → {now}) — 다시 읽고 고쳐 주세요",
-            "{what} changed after you started editing (version {base} → {now}) — read it again and reapply"
-        ),
-        current: Some(current()),
-        segments: Vec::new(),
-        new_id: None,
-    })))
+    Err(crate::error::AppError::EditConflict(Box::new(
+        crate::error::EditConflict {
+            reason: "stale",
+            message: crate::tf!(
+                "{what} 이 편집을 시작한 뒤 바뀌었습니다(번호 {base} → {now}) — 다시 읽고 고쳐 주세요",
+                "{what} changed after you started editing (version {base} → {now}) — read it again and reapply"
+            ),
+            current: Some(current()),
+            segments: Vec::new(),
+            new_id: None,
+        },
+    )))
 }
 
 /// 잠근 뒤 목록이 바뀌어 다시 잡는 횟수 — 넘으면 길드 독점.
@@ -169,7 +171,10 @@ impl TagEdit {
                 .collect()
         };
         let remove = clean(&self.remove);
-        let mut out: Vec<String> = current.into_iter().filter(|t| !remove.contains(t)).collect();
+        let mut out: Vec<String> = current
+            .into_iter()
+            .filter(|t| !remove.contains(t))
+            .collect();
         for t in clean(&self.add) {
             if !out.contains(&t) {
                 out.push(t);
@@ -184,9 +189,8 @@ pub use meta::{
     upsert_tag_def,
 };
 pub use quests::{
-    add_prerequisite, change_parent, change_quest_type, change_status, create_quest,
-    delete_quest, remove_prerequisite, restore_quest, set_due_dates, set_quest_tags,
-    update_quest,
+    add_prerequisite, change_parent, change_quest_type, change_status, create_quest, delete_quest,
+    remove_prerequisite, restore_quest, set_due_dates, set_quest_tags, update_quest,
 };
 
 #[cfg(test)]
@@ -199,13 +203,19 @@ mod tag_edit_tests {
 
     #[test]
     fn keeps_order_and_appends_new() {
-        let e = TagEdit { add: v(&["c", "a", " d "]), remove: v(&["b"]) };
+        let e = TagEdit {
+            add: v(&["c", "a", " d "]),
+            remove: v(&["b"]),
+        };
         assert_eq!(e.apply(v(&["a", "b", "x"])), v(&["a", "x", "c", "d"]));
     }
 
     #[test]
     fn add_wins_when_both_sides_name_a_tag() {
-        let e = TagEdit { add: v(&["a"]), remove: v(&["a"]) };
+        let e = TagEdit {
+            add: v(&["a"]),
+            remove: v(&["a"]),
+        };
         assert_eq!(e.apply(v(&["a"])), v(&["a"]));
     }
 
@@ -228,7 +238,8 @@ mod doc_lock_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-doclock-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-doclock-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -264,10 +275,16 @@ mod doc_lock_tests {
         let b = quest(&store, "B").await;
 
         // 누가 A 를 고치는 중이다.
-        let held = store.lock_docs(&[DocKey::quest(&a.quest_id)]).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(5), comment(&store, &b.quest_id, "B 에 댓글"))
+        let held = store
+            .lock_docs(&[DocKey::quest(&a.quest_id)])
             .await
-            .expect("다른 퀘스트를 고치는 동안 B 댓글이 기다렸다");
+            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            comment(&store, &b.quest_id, "B 에 댓글"),
+        )
+        .await
+        .expect("다른 퀘스트를 고치는 동안 B 댓글이 기다렸다");
         drop(held);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -278,13 +295,19 @@ mod doc_lock_tests {
         let (dir, store) = guild("same-quest").await;
         let a = quest(&store, "A").await;
 
-        let held = store.lock_docs(&[DocKey::quest(&a.quest_id)]).await.unwrap();
+        let held = store
+            .lock_docs(&[DocKey::quest(&a.quest_id)])
+            .await
+            .unwrap();
         let (s1, s2) = (store.clone(), store.clone());
         let (k1, k2) = (a.quest_id.clone(), a.quest_id.clone());
         let one = tokio::spawn(async move { comment(&s1, &k1, "하나").await });
         let two = tokio::spawn(async move { comment(&s2, &k2, "둘").await });
         tokio::time::sleep(Duration::from_millis(300)).await;
-        assert!(!one.is_finished() && !two.is_finished(), "같은 퀘스트를 고치는 동안 댓글이 끼어들었다");
+        assert!(
+            !one.is_finished() && !two.is_finished(),
+            "같은 퀘스트를 고치는 동안 댓글이 끼어들었다"
+        );
         drop(held);
         one.await.unwrap();
         two.await.unwrap();
@@ -312,7 +335,11 @@ mod doc_lock_tests {
         .await
         .unwrap();
         assert_eq!(g.mode(), GuildMode::Shared);
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 4, "다시 잡지 않았다");
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            4,
+            "다시 잡지 않았다"
+        );
         drop(g);
 
         let n = std::sync::atomic::AtomicUsize::new(0);
@@ -322,7 +349,11 @@ mod doc_lock_tests {
         })
         .await
         .unwrap();
-        assert_eq!(g.mode(), GuildMode::Exclusive, "계속 바뀌는데 길드 독점으로 가지 않았다");
+        assert_eq!(
+            g.mode(),
+            GuildMode::Exclusive,
+            "계속 바뀌는데 길드 독점으로 가지 않았다"
+        );
         drop(g);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -334,19 +365,39 @@ mod doc_lock_tests {
         let p1 = quest(&store, "옛 부모").await;
         let p2 = quest(&store, "새 부모").await;
         let c = quest(&store, "자식").await;
-        super::change_parent(&store, c.id, crate::models::ChangeParentRequest { parent_quest_id: Some(p1.id) })
-            .await
-            .unwrap();
+        super::change_parent(
+            &store,
+            c.id,
+            crate::models::ChangeParentRequest {
+                parent_quest_id: Some(p1.id),
+            },
+        )
+        .await
+        .unwrap();
 
         for held_key in [&p1.quest_id, &p2.quest_id] {
             let held = store.lock_docs(&[DocKey::quest(held_key)]).await.unwrap();
             let s = store.clone();
-            let target = if held_key == &p1.quest_id { p2.id } else { p1.id };
+            let target = if held_key == &p1.quest_id {
+                p2.id
+            } else {
+                p1.id
+            };
             let h = tokio::spawn(async move {
-                super::change_parent(&s, c.id, crate::models::ChangeParentRequest { parent_quest_id: Some(target) }).await
+                super::change_parent(
+                    &s,
+                    c.id,
+                    crate::models::ChangeParentRequest {
+                        parent_quest_id: Some(target),
+                    },
+                )
+                .await
             });
             tokio::time::sleep(Duration::from_millis(300)).await;
-            assert!(!h.is_finished(), "{held_key} 을 쥔 동안 부모 바꾸기가 끝났다");
+            assert!(
+                !h.is_finished(),
+                "{held_key} 을 쥔 동안 부모 바꾸기가 끝났다"
+            );
             drop(held);
             h.await.unwrap().unwrap();
         }
@@ -364,8 +415,12 @@ mod edit_merge_tests {
     const START: &str = "하나\n둘\n셋\n넷\n다섯";
 
     async fn guild(label: &str) -> (std::path::PathBuf, Store) {
-        let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-editmerge-{label}-{ns}-{}", crate::test_seq()));
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("og-editmerge-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -373,7 +428,10 @@ mod edit_merge_tests {
     }
 
     fn base() -> EditBase {
-        EditBase { text: Some(START.into()), version: None }
+        EditBase {
+            text: Some(START.into()),
+            version: None,
+        }
     }
 
     fn is_text_conflict(r: Result<impl std::fmt::Debug, AppError>) -> bool {
@@ -385,26 +443,62 @@ mod edit_merge_tests {
         let (dir, store) = guild("all").await;
 
         // 도서관
-        let b = super::library::create_book(&store, "책", START, "").await.unwrap();
+        let b = super::library::create_book(&store, "책", START, "")
+            .await
+            .unwrap();
         let id = format!("BOOK-{:03}", b.number);
-        super::library::update_book_with(&store, &id, None, Some(&START.replace("하나", "하나 A")), None, base())
-            .await
-            .unwrap();
-        let row = super::library::update_book_with(&store, &id, None, Some(&START.replace("다섯", "다섯 B")), None, base())
-            .await
-            .unwrap();
-        assert!(row.body.contains("하나 A") && row.body.contains("다섯 B"), "{}", row.body);
+        super::library::update_book_with(
+            &store,
+            &id,
+            None,
+            Some(&START.replace("하나", "하나 A")),
+            None,
+            base(),
+        )
+        .await
+        .unwrap();
+        let row = super::library::update_book_with(
+            &store,
+            &id,
+            None,
+            Some(&START.replace("다섯", "다섯 B")),
+            None,
+            base(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            row.body.contains("하나 A") && row.body.contains("다섯 B"),
+            "{}",
+            row.body
+        );
         assert!(is_text_conflict(
-            super::library::update_book_with(&store, &id, None, Some(&START.replace("하나", "하나 C")), None, base()).await
+            super::library::update_book_with(
+                &store,
+                &id,
+                None,
+                Some(&START.replace("하나", "하나 C")),
+                None,
+                base()
+            )
+            .await
         ));
 
         // 규칙
-        super::rules::create_rule(&store, "r", START.into()).await.unwrap();
-        super::rules::set_rule_with(&store, "r", START.replace("둘", "둘 A"), base()).await.unwrap();
-        super::rules::set_rule_with(&store, "r", START.replace("넷", "넷 B"), base()).await.unwrap();
+        super::rules::create_rule(&store, "r", START.into())
+            .await
+            .unwrap();
+        super::rules::set_rule_with(&store, "r", START.replace("둘", "둘 A"), base())
+            .await
+            .unwrap();
+        super::rules::set_rule_with(&store, "r", START.replace("넷", "넷 B"), base())
+            .await
+            .unwrap();
         let rule = super::rules::get_rule(&store, "r").unwrap().unwrap();
         assert!(rule.contains("둘 A") && rule.contains("넷 B"), "{rule}");
-        assert!(is_text_conflict(super::rules::set_rule_with(&store, "r", START.replace("둘", "둘 C"), base()).await));
+        assert!(is_text_conflict(
+            super::rules::set_rule_with(&store, "r", START.replace("둘", "둘 C"), base()).await
+        ));
 
         // 퀘스트 댓글
         let q = super::create_quest(
@@ -420,13 +514,32 @@ mod edit_merge_tests {
         )
         .await
         .unwrap();
-        let c = super::comments::add_comment_entry(&store, &q.quest_id, "a".into(), START.into(), None, false)
-            .await
-            .unwrap();
-        let edit = |text: String| super::comments::update_comment_entry_with(&store, &q.quest_id, c.id, text, Some(START.into()));
+        let c = super::comments::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "a".into(),
+            START.into(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+        let edit = |text: String| {
+            super::comments::update_comment_entry_with(
+                &store,
+                &q.quest_id,
+                c.id,
+                text,
+                Some(START.into()),
+            )
+        };
         edit(START.replace("셋", "셋 A")).await.unwrap();
         let merged = edit(START.replace("하나", "하나 B")).await.unwrap();
-        assert!(merged.body.contains("셋 A") && merged.body.contains("하나 B"), "{}", merged.body);
+        assert!(
+            merged.body.contains("셋 A") && merged.body.contains("하나 B"),
+            "{}",
+            merged.body
+        );
         assert!(is_text_conflict(edit(START.replace("셋", "셋 C")).await));
 
         let _ = std::fs::remove_dir_all(&dir);

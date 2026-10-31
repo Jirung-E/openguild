@@ -42,12 +42,7 @@
 	import { navOverflowItems } from '$lib/stores/navOverflow';
 	// DEV-456: 상단바에 놓지 않은 페이지가 이 메뉴에 온다(사용자 설정).
 	import { navPages } from '$lib/stores/navPages';
-	import {
-		NAV_PAGE_LABEL_KEY,
-		menuPages,
-		navPageHref,
-		type NavPageId
-	} from '$lib/utils/nav-pages';
+	import { NAV_PAGE_LABEL_KEY, menuPages, navPageHref, type NavPageId } from '$lib/utils/nav-pages';
 	// DEV-276: 최근 본 문서 목록 — 검색 pill 옆 시계 버튼.
 	// BUG-159: 제목은 cross-link 인덱스에서 조회(저장값 아님) — 목록을 열 때
 	// 인덱스가 아직 없으면 조용히 적재(이미 있으면 memo 라 비용 0).
@@ -302,7 +297,8 @@
 				title={t('titlebar.welcome', $locale)}
 				aria-label={t('titlebar.welcome', $locale)}
 			>
-				<svg class="tb-ico"
+				<svg
+					class="tb-ico"
 					width="15"
 					height="15"
 					viewBox="0 0 16 16"
@@ -323,7 +319,8 @@
 			title={t('titlebar.back', $locale)}
 			aria-label={t('titlebar.back', $locale)}
 		>
-			<svg class="tb-ico"
+			<svg
+				class="tb-ico"
 				width="15"
 				height="15"
 				viewBox="0 0 16 16"
@@ -343,7 +340,8 @@
 			title={t('titlebar.forward', $locale)}
 			aria-label={t('titlebar.forward', $locale)}
 		>
-			<svg class="tb-ico"
+			<svg
+				class="tb-ico"
 				width="15"
 				height="15"
 				viewBox="0 0 16 16"
@@ -367,7 +365,8 @@
 					aria-label={t('titlebar.menu', $locale)}
 					aria-expanded={menuOpen}
 				>
-					<svg class="tb-ico"
+					<svg
+						class="tb-ico"
 						width="15"
 						height="15"
 						viewBox="0 0 16 16"
@@ -419,7 +418,8 @@
 					title={t('titlebar.newQuest', $locale)}
 					aria-label={t('titlebar.newQuest', $locale)}
 				>
-					<svg class="tb-ico"
+					<svg
+						class="tb-ico"
 						width="15"
 						height="15"
 						viewBox="0 0 16 16"
@@ -443,7 +443,8 @@
 				<span class="tb-search-name">{guildName}</span>
 				{#if isRemote}
 					<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
-						<svg class="tb-ico-sm"
+						<svg
+							class="tb-ico-sm"
 							width="13"
 							height="13"
 							viewBox="0 0 16 16"
@@ -475,7 +476,8 @@
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 					>
-						<svg class="tb-ico"
+						<svg
+							class="tb-ico"
 							width="15"
 							height="15"
 							viewBox="0 0 16 16"
@@ -527,7 +529,9 @@
 			<circle cx="8" cy="8" r="5.5" />
 			<path d="M8 4.8V8l2.2 1.6" />
 		{:else if id === 'tags'}
-			<path d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z" />
+			<path
+				d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z"
+			/>
 			<circle cx="5.4" cy="5.4" r=".9" />
 		{:else if id === 'quests'}
 			<path d="M2.5 4.2 3.7 5.4 5.8 3.2M7.8 4.4h5.7M2.5 10.2l1.2 1.2 2.1-2.2M7.8 10.4h5.7" />
@@ -564,7 +568,8 @@
 				aria-label={pinned ? t('titlebar.unpin', $locale) : t('titlebar.pin', $locale)}
 				aria-pressed={pinned}
 			>
-				<svg class="tb-ico-xs"
+				<svg
+					class="tb-ico-xs"
 					width="11"
 					height="11"
 					viewBox="0 0 16 16"

@@ -88,8 +88,6 @@ describe('worklogView — 펼친 그룹', () => {
 
 describe('worklogDocKey', () => {
 	it('날짜가 다르면 같은 문서라도 다른 키다', () => {
-		expect(worklogDocKey('2026-08-30', 'DEV-001')).not.toBe(
-			worklogDocKey('2026-08-29', 'DEV-001')
-		);
+		expect(worklogDocKey('2026-08-30', 'DEV-001')).not.toBe(worklogDocKey('2026-08-29', 'DEV-001'));
 	});
 });

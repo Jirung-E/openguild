@@ -163,12 +163,7 @@ pub fn add_entry(
 
 /// entry 의 body 만 교체. ts / author 보존. `edited_at` 은 현재 시각으로 갱신
 /// (DEV-182 — 편집됨 표시용). 미존재 시 `NotFound`.
-pub fn update_entry(
-    store: &Store,
-    slug: &str,
-    id: u64,
-    body: String,
-) -> AppResult<CommentEntry> {
+pub fn update_entry(store: &Store, slug: &str, id: u64, body: String) -> AppResult<CommentEntry> {
     let body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));
@@ -211,7 +206,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-svc-comments-{label}-{ns}-{}", crate::test_seq()));
+        let dir = std::env::temp_dir().join(format!(
+            "og-svc-comments-{label}-{ns}-{}",
+            crate::test_seq()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -222,7 +220,15 @@ mod tests {
     #[tokio::test]
     async fn add_then_list_returns_entries() {
         let (dir, store) = fresh("add-list").await;
-        let a = add_entry(&store, "DEV-001", "alice".into(), "first".into(), None, false).unwrap();
+        let a = add_entry(
+            &store,
+            "DEV-001",
+            "alice".into(),
+            "first".into(),
+            None,
+            false,
+        )
+        .unwrap();
         let b = add_entry(&store, "DEV-001", "".into(), "second".into(), None, false).unwrap();
         assert_eq!(a.id, 1);
         assert_eq!(b.id, 2);
@@ -237,9 +243,16 @@ mod tests {
     #[tokio::test]
     async fn update_replaces_body_preserves_ts_author() {
         let (dir, store) = fresh("update").await;
-        let a = add_entry(&store, "DEV-001", "alice".into(), "first".into(), None, false).unwrap();
-        let updated =
-            update_entry(&store, "DEV-001", a.id, "edited".into()).unwrap();
+        let a = add_entry(
+            &store,
+            "DEV-001",
+            "alice".into(),
+            "first".into(),
+            None,
+            false,
+        )
+        .unwrap();
+        let updated = update_entry(&store, "DEV-001", a.id, "edited".into()).unwrap();
         assert_eq!(updated.body, "edited");
         assert_eq!(updated.author, "alice");
         assert_eq!(updated.ts, a.ts);

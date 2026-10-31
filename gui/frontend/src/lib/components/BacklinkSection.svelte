@@ -75,9 +75,7 @@
 				class="section-toggle"
 				onclick={toggleCollapsed}
 				aria-expanded={!collapsed}
-				title={collapsed
-					? t('backlinks.expand', $locale)
-					: t('backlinks.collapse', $locale)}
+				title={collapsed ? t('backlinks.expand', $locale) : t('backlinks.collapse', $locale)}
 			>
 				<span class="toggle-icon" class:collapsed><Icon name="caret-down" size="1em" /></span>
 				<h2 class="bl-title">{t('backlinks.title', $locale)}</h2>
@@ -85,27 +83,27 @@
 			<span class="bl-count">{entries.length}</span>
 		</div>
 		{#if !collapsed}
-		<ul class="bl-list">
-			{#each entries as e (e.kind + ':' + e.id)}
-				<li class="bl-item {e.kind}">
-					<!-- DEV-417(admin): 같은 '목록' 이니 검색 팔레트와 같은 선택지를 준다 —
+			<ul class="bl-list">
+				{#each entries as e (e.kind + ':' + e.id)}
+					<li class="bl-item {e.kind}">
+						<!-- DEV-417(admin): 같은 '목록' 이니 검색 팔레트와 같은 선택지를 준다 —
 					     미리보기 · 새 창 · 이동. 버튼 아닌 자리를 누르면 예전처럼 이동. -->
-					<DocLink
-						kind={e.kind}
-						id={e.id}
-						title={e.title ?? ''}
-						slug={e.id}
-						href={refHref(e.id, e.kind, e.id)}
-					>
-						<span class="bl-kind {e.kind}">{KIND_LABEL[e.kind]}</span>
-						<span class="bl-id">{e.id}</span>
-						{#if e.title && e.title !== e.id}
-							<span class="bl-t">{e.title}</span>
-						{/if}
-					</DocLink>
-				</li>
-			{/each}
-		</ul>
+						<DocLink
+							kind={e.kind}
+							id={e.id}
+							title={e.title ?? ''}
+							slug={e.id}
+							href={refHref(e.id, e.kind, e.id)}
+						>
+							<span class="bl-kind {e.kind}">{KIND_LABEL[e.kind]}</span>
+							<span class="bl-id">{e.id}</span>
+							{#if e.title && e.title !== e.id}
+								<span class="bl-t">{e.title}</span>
+							{/if}
+						</DocLink>
+					</li>
+				{/each}
+			</ul>
 		{/if}
 	</section>
 {/if}

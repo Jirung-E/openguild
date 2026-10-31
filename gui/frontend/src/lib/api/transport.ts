@@ -458,7 +458,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	{
 		const m = pathOnly.match(/^\/api\/backlinks\/([^/]+)\/(.+)$/);
 		if (method === 'GET' && m) {
-			return { cmd: 'list_backlinks', args: { kind: decodeURIComponent(m[1]), id: decodeURIComponent(m[2]) } };
+			return {
+				cmd: 'list_backlinks',
+				args: { kind: decodeURIComponent(m[1]), id: decodeURIComponent(m[2]) }
+			};
 		}
 	}
 	if (method === 'GET' && pathOnly === '/api/quest-types') {
@@ -981,10 +984,7 @@ export class TauriTransport implements Transport {
 		}
 		try {
 			// invoke 가 unit (`()`) 반환 시 null. T 로 그대로 캐스팅.
-			const result = await withInvokeTimeout(
-				invoke<T>(mapped.cmd, mapped.args),
-				mapped.cmd
-			);
+			const result = await withInvokeTimeout(invoke<T>(mapped.cmd, mapped.args), mapped.cmd);
 			return result as T;
 		} catch (e) {
 			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
@@ -997,7 +997,13 @@ export class TauriTransport implements Transport {
 }
 
 /** 테스트용 export — routeToInvoke 매핑이 server route 와 일치하는지 검증. */
-export const __test_only = { routeToInvoke, LIST_QUERY_BOOLS, INVOKE_TIMEOUT_MS, INVOKE_NO_TIMEOUT, withInvokeTimeout };
+export const __test_only = {
+	routeToInvoke,
+	LIST_QUERY_BOOLS,
+	INVOKE_TIMEOUT_MS,
+	INVOKE_NO_TIMEOUT,
+	withInvokeTimeout
+};
 
 // ─────────────────────── default ───────────────────────
 

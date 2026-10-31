@@ -11,15 +11,15 @@ pub mod templates;
 pub mod worklog;
 
 use axum::{
+    Router,
     extract::DefaultBodyLimit,
     routing::{any, delete, get, patch, post, put},
-    Router,
-};
-use tower_http::compression::{
-    predicate::{DefaultPredicate, NotForContentType, Predicate},
-    CompressionLayer,
 };
 use openguild_core::Store;
+use tower_http::compression::{
+    CompressionLayer,
+    predicate::{DefaultPredicate, NotForContentType, Predicate},
+};
 
 /// DEV-394: 요청이 **서버와 같은 기계에서** 왔는지 판단할 두 주소.
 ///
@@ -40,7 +40,8 @@ impl PeerAddrs {
     }
 }
 
-impl axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, tokio::net::TcpListener>>
+impl
+    axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, tokio::net::TcpListener>>
     for PeerAddrs
 {
     fn connect_info(stream: axum::serve::IncomingStream<'_, tokio::net::TcpListener>) -> Self {
@@ -77,7 +78,9 @@ pub fn compression_predicate() -> impl Predicate {
 }
 
 /// BUG-271: 없는 `/api/*` — 404 와 무엇이 없는지.
-async fn api_not_found(uri: axum::http::Uri) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+async fn api_not_found(
+    uri: axum::http::Uri,
+) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
     (
         axum::http::StatusCode::NOT_FOUND,
         axum::Json(serde_json::json!({
@@ -149,7 +152,10 @@ pub fn create_router(store: Store) -> Router {
                 .delete(rules::delete_rule),
         )
         // DEV-243: 규칙 태그 전체 교체.
-        .route("/api/rules/{slug}/tags", put(rules::set_tags).post(rules::edit_tags))
+        .route(
+            "/api/rules/{slug}/tags",
+            put(rules::set_tags).post(rules::edit_tags),
+        )
         // DEV-290: 규칙 변경 이력.
         .route("/api/rules/{slug}/history", get(rules::list_history))
         // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
@@ -169,7 +175,10 @@ pub fn create_router(store: Store) -> Router {
                 .delete(library::delete_book),
         )
         // DEV-243: 도서관 문서 태그 전체 교체.
-        .route("/api/library/{book_id}/tags", patch(library::set_tags).post(library::edit_tags))
+        .route(
+            "/api/library/{book_id}/tags",
+            patch(library::set_tags).post(library::edit_tags),
+        )
         // DEV-290: 도서관 문서 변경 이력.
         .route("/api/library/{book_id}/history", get(library::list_history))
         // DEV-441: 도서관 내보내기 — 폴더 구조 그대로 zip. `{book_id}` 와 겹치지 않게 `.zip` 으로 끝난다.
@@ -276,8 +285,9 @@ pub fn create_router(store: Store) -> Router {
         )
         .route(
             "/api/attachments",
-            post(attachments::save_attachment)
-                .layer(DefaultBodyLimit::max(attachments::MAX_ATTACHMENT_BODY_BYTES)),
+            post(attachments::save_attachment).layer(DefaultBodyLimit::max(
+                attachments::MAX_ATTACHMENT_BODY_BYTES,
+            )),
         )
         .route(
             "/api/quests/by/{slug}/attachments",
@@ -310,7 +320,10 @@ pub fn create_router(store: Store) -> Router {
             get(attachments::book_attachments_zip),
         )
         // quests
-        .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
+        .route(
+            "/api/quests",
+            get(quests::list_quests).post(quests::create_quest),
+        )
         .route(
             "/api/quests/{id}",
             get(quests::get_quest)
@@ -324,10 +337,16 @@ pub fn create_router(store: Store) -> Router {
         // DEV-076: 희망 / 필수 기한 설정 / 해제.
         .route("/api/quests/{id}/due", patch(quests::set_due_dates))
         // DEV-068: 태그 전체 교체. body: { "tags": [...] }
-        .route("/api/quests/{id}/tags", patch(quests::set_tags).post(quests::edit_tags))
+        .route(
+            "/api/quests/{id}/tags",
+            patch(quests::set_tags).post(quests::edit_tags),
+        )
         .route("/api/quests/{id}/restore", patch(quests::restore_quest))
         .route("/api/quests/{id}/candidates", get(quests::list_candidates))
-        .route("/api/quests/{id}/prerequisites", post(quests::add_prerequisite))
+        .route(
+            "/api/quests/{id}/prerequisites",
+            post(quests::add_prerequisite),
+        )
         .route(
             "/api/quests/{id}/prerequisites/{prereq_id}",
             delete(quests::remove_prerequisite),
@@ -344,7 +363,10 @@ pub fn create_router(store: Store) -> Router {
         )
         .route("/api/quest-dependencies", get(quests::list_dependencies))
         // DEV-443: 개인 형광펜 — 대상은 `?target=quest:DEV-001` 처럼.
-        .route("/api/highlights", get(highlights::list).post(highlights::add))
+        .route(
+            "/api/highlights",
+            get(highlights::list).post(highlights::add),
+        )
         .route("/api/highlights/{id}", delete(highlights::remove))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))
         // campaigns (DEV-011)
@@ -354,8 +376,14 @@ pub fn create_router(store: Store) -> Router {
         )
         // 목록 화면용 — 전체(진행도 포함). `/active` 보다 먼저 둘 필요는 없지만
         // 같은 접두를 쓰므로 함께 모아 둔다.
-        .route("/api/campaigns/summaries", get(campaigns::list_all_summaries))
-        .route("/api/campaigns/summaries/active", get(campaigns::list_active_summaries))
+        .route(
+            "/api/campaigns/summaries",
+            get(campaigns::list_all_summaries),
+        )
+        .route(
+            "/api/campaigns/summaries/active",
+            get(campaigns::list_active_summaries),
+        )
         .route(
             "/api/campaigns/summaries/upcoming",
             get(campaigns::list_upcoming_summaries),
@@ -367,13 +395,19 @@ pub fn create_router(store: Store) -> Router {
                 .delete(campaigns::delete_campaign),
         )
         // DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
-        .route("/api/campaigns/{slug}/history", get(campaigns::list_history))
+        .route(
+            "/api/campaigns/{slug}/history",
+            get(campaigns::list_history),
+        )
         .route("/api/campaigns/{slug}/quests", post(campaigns::link_quest))
         .route(
             "/api/campaigns/{slug}/quests/{quest_slug}",
             delete(campaigns::unlink_quest),
         )
-        .route("/api/campaigns/{slug}/checklist", post(campaigns::add_checklist))
+        .route(
+            "/api/campaigns/{slug}/checklist",
+            post(campaigns::add_checklist),
+        )
         .route(
             "/api/campaigns/{slug}/checklist/{index}",
             patch(campaigns::set_checklist).delete(campaigns::remove_checklist),

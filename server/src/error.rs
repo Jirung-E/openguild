@@ -2,9 +2,9 @@
 //! orphan rule 우회를 위한 newtype.
 
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 
@@ -27,7 +27,11 @@ impl IntoResponse for HttpError {
             // DEV-435: 편집 충돌 — 409 와 함께 무엇이 부딪혔는지(지금 본문 · 충돌 구간 · 새 번호)를 싣는다.
             // 받는 쪽이 그걸로 고르거나 다시 시작한다.
             AppError::EditConflict(c) => {
-                return (StatusCode::CONFLICT, Json(json!({ "error": c.message, "conflict": c }))).into_response();
+                return (
+                    StatusCode::CONFLICT,
+                    Json(json!({ "error": c.message, "conflict": c })),
+                )
+                    .into_response();
             }
             // DEV-465: 플러그인이 대신 처리했다 — 만든 것은 없지만 실패가 아니다. 받는 쪽은 `instead` 를 보고
             // 안내로 보인다(본문이 만든 것의 모양이 아니므로 그대로 읽으면 안 된다).
@@ -148,11 +152,15 @@ mod tests {
     /// 패닉 페이로드가 `&str` 일 때(가장 흔함 — `panic!("...")`).
     #[tokio::test]
     async fn panic_str_maps_to_500_and_hides_detail() {
-        let payload: Box<dyn std::any::Any + Send> = Box::new("byte index 2360 is not a char boundary");
+        let payload: Box<dyn std::any::Any + Send> =
+            Box::new("byte index 2360 is not a char boundary");
         let (status, body) = body_text(panic_to_500(payload)).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         // 이 서버는 인증이 없다 — 패닉 메시지(내부 경로·변수)를 실으면 안 된다.
-        assert!(!body.contains("char boundary"), "패닉 내용이 응답에 샜다: {body}");
+        assert!(
+            !body.contains("char boundary"),
+            "패닉 내용이 응답에 샜다: {body}"
+        );
         assert!(body.contains("internal server error"));
         // 형식은 AppError::Internal 과 동일해야 한다 — 프런트가 error 필드를 읽는다.
         assert!(body.starts_with("{") && body.contains("\"error\""));
@@ -174,5 +182,4 @@ mod tests {
         let (status, _) = body_text(panic_to_500(payload)).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     }
-
 }

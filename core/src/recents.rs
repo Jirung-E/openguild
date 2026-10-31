@@ -95,8 +95,7 @@ pub fn write(recents: &[Recent]) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
     let json = serde_json::to_string_pretty(recents).context("serialize recents")?;
     std::fs::write(&tmp, json).with_context(|| format!("write tmp: {}", tmp.display()))?;
-    std::fs::rename(&tmp, &path)
-        .with_context(|| format!("rename to {}", path.display()))?;
+    std::fs::rename(&tmp, &path).with_context(|| format!("rename to {}", path.display()))?;
     Ok(())
 }
 
@@ -113,7 +112,14 @@ pub fn add<P: AsRef<Path>>(guild_path: P) -> Result<()> {
     let now = now_iso();
     let mut list = list().unwrap_or_default();
     list.retain(|r| r.path != abs);
-    list.insert(0, Recent { path: abs, name, last_opened: now });
+    list.insert(
+        0,
+        Recent {
+            path: abs,
+            name,
+            last_opened: now,
+        },
+    );
     list.truncate(MAX_RECENTS);
     write(&list)?;
     Ok(())
@@ -251,7 +257,8 @@ pub(crate) mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-recents-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-recents-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         // 각 test 가 자기 dir 사용 (unique ns prefix). 단 env::set_var 는
         // process-global 이라 with_env 의 static Mutex 가 직렬화 — BUG-048.
@@ -367,8 +374,11 @@ pub(crate) mod tests {
         with_env(&dir, || {
             let guild = std::env::temp_dir().join("og-recents-named");
             std::fs::create_dir_all(&guild).unwrap();
-            std::fs::write(guild.join("my-project.guild"), "name = \"x\"\nversion = \"1.0\"\n")
-                .unwrap();
+            std::fs::write(
+                guild.join("my-project.guild"),
+                "name = \"x\"\nversion = \"1.0\"\n",
+            )
+            .unwrap();
             add(&guild).unwrap();
             let v = list().unwrap();
             assert_eq!(v[0].name, "my-project");

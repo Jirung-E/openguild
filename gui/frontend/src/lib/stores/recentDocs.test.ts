@@ -90,7 +90,10 @@ describe('recentDocs store', () => {
 		const m = await loadFresh();
 		const empty = new Map();
 		expect(
-			m.recentDocTitle({ href: '/x', kind: 'quest', label: 'DEV-9', title: '옛 제목', ts: 0 }, empty)
+			m.recentDocTitle(
+				{ href: '/x', kind: 'quest', label: 'DEV-9', title: '옛 제목', ts: 0 },
+				empty
+			)
 		).toBe('옛 제목');
 		expect(m.recentDocTitle({ href: '/x', kind: 'quest', label: 'DEV-9', ts: 0 }, empty)).toBe('');
 	});
@@ -98,10 +101,16 @@ describe('recentDocs store', () => {
 	it('recentDocTitle — 규칙 slug 는 대소문자 무시 조회', async () => {
 		const m = await loadFresh();
 		const ns = new Map([
-			['rule:릴리즈-절차', { title: '릴리즈 패키지 절차', kind: 'rule' as const, slug: '릴리즈-절차' }]
+			[
+				'rule:릴리즈-절차',
+				{ title: '릴리즈 패키지 절차', kind: 'rule' as const, slug: '릴리즈-절차' }
+			]
 		]);
 		expect(
-			m.recentDocTitle({ href: '/rules?slug=릴리즈-절차', kind: 'rule', label: '릴리즈-절차', ts: 0 }, ns)
+			m.recentDocTitle(
+				{ href: '/rules?slug=릴리즈-절차', kind: 'rule', label: '릴리즈-절차', ts: 0 },
+				ns
+			)
 		).toBe('릴리즈 패키지 절차');
 	});
 
@@ -135,7 +144,9 @@ describe('recentDocs store', () => {
 	it('sessionStorage 로 복원 — 손상된 값은 무시하고 빈 목록', async () => {
 		sessionStorage.setItem(
 			'openguild.recentDocs',
-			JSON.stringify([{ href: '/quests/DEV-009', kind: 'quest', label: 'DEV-009', title: 'x', ts: 1 }])
+			JSON.stringify([
+				{ href: '/quests/DEV-009', kind: 'quest', label: 'DEV-009', title: 'x', ts: 1 }
+			])
 		);
 		let m = await loadFresh();
 		expect(get(m.recentDocs)[0].label).toBe('DEV-009');

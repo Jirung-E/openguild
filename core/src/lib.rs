@@ -14,14 +14,12 @@ pub mod drift;
 pub mod error;
 pub mod events;
 pub mod file_mtime;
+pub mod guild_file;
 pub mod health;
 pub mod highlight_text;
 pub mod incremental;
-pub mod guild_file;
 pub mod locale;
 pub mod lock;
-#[cfg(test)]
-mod test_env;
 pub mod maintenance;
 pub mod merge;
 pub mod migrate;
@@ -36,6 +34,8 @@ pub mod repo;
 pub mod services;
 pub mod snapshot;
 pub mod store;
+#[cfg(test)]
+mod test_env;
 pub mod time;
 pub mod user_dirs;
 

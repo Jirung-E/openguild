@@ -82,9 +82,7 @@ export function sanitizeFontName(raw: string): string {
 	// 2) 감싼 따옴표는 이름의 일부가 아니다.
 	const unquoted = firstItem.replace(/["'`]/g, '');
 	// 3) 글꼴 이름에 쓰이는 문자까지만. 한글·CJK·가나도 이름이 될 수 있다.
-	const m = unquoted.match(
-		/^[\w \-.+\u3040-\u30FF\u3130-\u318F\u4E00-\u9FFF\uAC00-\uD7AF]*/
-	);
+	const m = unquoted.match(/^[\w \-.+\u3040-\u30FF\u3130-\u318F\u4E00-\u9FFF\uAC00-\uD7AF]*/);
 	return (m ? m[0] : '').replace(/\s+/g, ' ').trim().slice(0, 64);
 }
 

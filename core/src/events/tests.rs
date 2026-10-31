@@ -289,7 +289,10 @@ async fn a_rejected_mutation_emits_ok_false_with_the_reason() {
     assert_eq!(j["quest"]["id"], q.quest_id);
     assert_eq!(j["change"]["to"], "done");
     // DEV-404: 실패해도 무엇에 대한 일이었는지는 실린다.
-    assert_eq!(j["subject"], serde_json::json!({ "kind": "quest", "id": q.quest_id }));
+    assert_eq!(
+        j["subject"],
+        serde_json::json!({ "kind": "quest", "id": q.quest_id })
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1064,7 +1067,12 @@ async fn all_declared_events_fire_with_a_usable_payload() {
                 continue;
             }
             let sub = ev.subject().unwrap_or_else(|| {
-                panic!("'{}'({:?}) 에 대상이 없다: {}", ev.name, ev.phase, ev.to_json())
+                panic!(
+                    "'{}'({:?}) 에 대상이 없다: {}",
+                    ev.name,
+                    ev.phase,
+                    ev.to_json()
+                )
             });
             assert!(super::SUBJECT_KINDS.contains(&sub.kind), "{sub:?}");
             let j = ev.to_json();
@@ -1132,7 +1140,8 @@ fn shipped_scripts_survive_real_events(rec: &Recorder, guild: &std::path::Path) 
             continue;
         }
         let def = crate::plugins::read_def(&manifest).unwrap();
-        let (Some(script), _, _) = crate::plugins::compile_script(&entry.path(), &def).unwrap() else {
+        let (Some(script), _, _) = crate::plugins::compile_script(&entry.path(), &def).unwrap()
+        else {
             continue;
         };
 
@@ -1159,19 +1168,21 @@ fn shipped_scripts_survive_real_events(rec: &Recorder, guild: &std::path::Path) 
                         Some(sub) => crate::plugins::related::load(guild, &sub, w),
                     })
                     .collect();
-                let (_value, cmds) = script.call_handler_with(func, ev, &extra, &cfg).unwrap_or_else(|e| {
-                    panic!(
-                        "배포 예제 '{}' {} 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
+                let (_value, cmds) = script
+                    .call_handler_with(func, ev, &extra, &cfg)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "배포 예제 '{}' {} 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
                          페이로드: {}\n\
                          예제가 안 도는 건 없느니만 못하다 — 복사해 쓰는 사람은 \
                          자기 탓인 줄 안다.",
-                        def.name,
-                        h.label(i),
-                        ev.name,
-                        ev.phase,
-                        ev.to_json()
-                    )
-                });
+                            def.name,
+                            h.label(i),
+                            ev.name,
+                            ev.phase,
+                            ev.to_json()
+                        )
+                    });
                 // 적은 일이 정의의 동작과 맞는지 — 이름이 틀리면 실행 때 조용히 기록만 남는다.
                 for c in cmds {
                     let a = def.actions.get(&c.action).unwrap_or_else(|| {
@@ -1190,7 +1201,11 @@ fn shipped_scripts_survive_real_events(rec: &Recorder, guild: &std::path::Path) 
                             crate::plugins::Action::Run { .. }
                         )
                     );
-                    assert!(fits, "배포 예제 '{}' 가 `{}` 를 맞지 않는 명령으로 부른다", def.name, c.action);
+                    assert!(
+                        fits,
+                        "배포 예제 '{}' 가 `{}` 를 맞지 않는 명령으로 부른다",
+                        def.name, c.action
+                    );
                 }
             }
         }
@@ -1284,14 +1299,18 @@ async fn a_change_carries_who_caused_it() {
     use super::origin::{Origin, scope};
     let (dir, store, rec) = setup("origin").await;
 
-    crate::ops::quests::create_quest(&store, new_quest("사람이")).await.unwrap();
+    crate::ops::quests::create_quest(&store, new_quest("사람이"))
+        .await
+        .unwrap();
     let by_person = rec.find(super::names::QUEST_CREATED, Phase::Post).unwrap();
     assert!(by_person.origin.is_user());
     assert_eq!(by_person.to_json()["origin"]["by"], "user");
 
     rec.got.lock().unwrap().clear();
     scope(Origin::from_chain(["hook-a"]), async {
-        crate::ops::quests::create_quest(&store, new_quest("훅이")).await.unwrap();
+        crate::ops::quests::create_quest(&store, new_quest("훅이"))
+            .await
+            .unwrap();
     })
     .await;
     let by_hook = rec.find(super::names::QUEST_CREATED, Phase::Post).unwrap();
@@ -1324,14 +1343,26 @@ async fn post_events_carry_the_file_number_counted_separately() {
     crate::ops::update_quest(
         &store,
         q.id,
-        crate::models::UpdateQuestRequest { title: Some("번호 둘".into()), description: None, urgency: None, ..Default::default() },
+        crate::models::UpdateQuestRequest {
+            title: Some("번호 둘".into()),
+            description: None,
+            urgency: None,
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
     for body in ["하나", "둘"] {
-        crate::ops::comments::add_comment_entry(&store, &q.quest_id, "a".into(), body.into(), None, false)
-            .await
-            .unwrap();
+        crate::ops::comments::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "a".into(),
+            body.into(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
     }
     crate::ops::attachments::add_quest_attachment(&store, &q.quest_id, "attachments/x.txt", "x")
         .await
@@ -1339,7 +1370,10 @@ async fn post_events_carry_the_file_number_counted_separately() {
 
     let got = rec.got.lock().unwrap().clone();
     let post = |name: &str| -> Vec<Option<u64>> {
-        got.iter().filter(|e| e.name == name && e.phase == Phase::Post).map(|e| e.version).collect()
+        got.iter()
+            .filter(|e| e.name == name && e.phase == Phase::Post)
+            .map(|e| e.version)
+            .collect()
     };
     assert_eq!(post("quest.created"), vec![Some(1)]);
     assert_eq!(post("quest.updated"), vec![Some(2)]);
@@ -1347,15 +1381,23 @@ async fn post_events_carry_the_file_number_counted_separately() {
     assert_eq!(post("comment.added"), vec![Some(1), Some(2)]);
     assert_eq!(post("attachment.added"), vec![None]);
     assert!(
-        got.iter().filter(|e| e.phase == Phase::Pre).all(|e| e.version.is_none()),
+        got.iter()
+            .filter(|e| e.phase == Phase::Pre)
+            .all(|e| e.version.is_none()),
         "바뀌기 전 이벤트에 번호가 실렸다"
     );
     // 플러그인이 받는 모양에도 있다.
-    let created = got.iter().find(|e| e.name == "quest.created" && e.phase == Phase::Post).unwrap();
+    let created = got
+        .iter()
+        .find(|e| e.name == "quest.created" && e.phase == Phase::Post)
+        .unwrap();
     assert_eq!(created.to_json()["version"], serde_json::json!(1));
     // 댓글이 본문 파일 번호를 올리지 않았다.
     let place = crate::repo::version::Place::Frontmatter;
-    assert_eq!(crate::repo::version::read(&store.paths.quest_path(&q.quest_id), place), 2);
+    assert_eq!(
+        crate::repo::version::read(&store.paths.quest_path(&q.quest_id), place),
+        2
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

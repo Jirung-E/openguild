@@ -81,7 +81,13 @@ export type Arrow = 'left' | 'right' | 'up' | 'down';
  * - 끝에서 더 가려고 하면 그 자리에 머문다(위아래도 — 아래 줄이 모자라면 안 움직인다).
  * - `extend`(Shift) 면 기준점은 그대로 두고 범위를 늘리거나 줄인다 — Shift+누름과 같다.
  */
-export function arrow(state: Picked, order: string[], cols: number, dir: Arrow, extend = false): Picked {
+export function arrow(
+	state: Picked,
+	order: string[],
+	cols: number,
+	dir: Arrow,
+	extend = false
+): Picked {
 	if (order.length === 0) return state;
 	const from = state.lead ?? state.anchor;
 	const cur = from ? order.indexOf(from) : -1;
@@ -109,7 +115,9 @@ export interface Box {
 /** DEV-422: 끌어서 그린 사각형에 **조금이라도 걸친** 것들 — 순서는 `items` 순서 그대로. */
 export function hitsIn(items: readonly (Box & { id: string })[], box: Box): string[] {
 	return items
-		.filter((r) => r.left < box.right && r.right > box.left && r.top < box.bottom && r.bottom > box.top)
+		.filter(
+			(r) => r.left < box.right && r.right > box.left && r.top < box.bottom && r.bottom > box.top
+		)
 		.map((r) => r.id);
 }
 

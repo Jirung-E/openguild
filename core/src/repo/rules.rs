@@ -49,7 +49,9 @@ impl RuleFile {
     /// 실패로 보지 않고 그냥 body 취급(사용자가 우연히 `+++` 로 시작하는
     /// 본문을 쓴 legacy 케이스 보호).
     pub fn parse(text: &str) -> Self {
-        let after_open = text.strip_prefix("+++\n").or_else(|| text.strip_prefix("+++\r\n"));
+        let after_open = text
+            .strip_prefix("+++\n")
+            .or_else(|| text.strip_prefix("+++\r\n"));
         if let Some(after_open) = after_open {
             let mut pos = 0;
             while pos < after_open.len() {
@@ -207,7 +209,9 @@ fn parse_backfilled(
     let mut rf = RuleFile::parse(raw);
     if rf.frontmatter.created_at.is_none() || rf.frontmatter.updated_at.is_none() {
         let mtime = super::fs::mtime_iso8601(path).unwrap_or_else(crate::time::now_local_iso8601);
-        rf.frontmatter.created_at.get_or_insert_with(|| mtime.clone());
+        rf.frontmatter
+            .created_at
+            .get_or_insert_with(|| mtime.clone());
         rf.frontmatter.updated_at.get_or_insert(mtime);
         // REQ-003: self-heal 은 **읽기 경로**(list_rules / read_rule_entry)에서
         // 불린다. 예전엔 방금 넘겨받은 `raw` 스냅샷을 그대로 되썼는데, 그 사이
@@ -284,8 +288,8 @@ pub fn write_rule(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
 pub fn set_rule_tags(paths: &GuildPaths, slug: &str, tags: Vec<String>) -> Result<RuleEntry> {
     use std::collections::HashSet;
     validate_slug(slug)?;
-    let existing = read_rule_entry(paths, slug)?
-        .ok_or_else(|| anyhow::anyhow!("rule not found: {slug}"))?;
+    let existing =
+        read_rule_entry(paths, slug)?.ok_or_else(|| anyhow::anyhow!("rule not found: {slug}"))?;
 
     let mut seen: HashSet<String> = HashSet::new();
     let normalized: Vec<String> = tags
@@ -318,7 +322,12 @@ fn write_rule_file(paths: &GuildPaths, slug: &str, rf: &RuleFile) -> Result<()> 
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create rules dir: {}", dir.display()))?;
     // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
-    super::version::write(&paths.rule_path(slug), &rf.serialize(), super::version::Place::Frontmatter).map(|_| ())
+    super::version::write(
+        &paths.rule_path(slug),
+        &rf.serialize(),
+        super::version::Place::Frontmatter,
+    )
+    .map(|_| ())
 }
 
 /// 신규 규칙 — 같은 slug 가 이미 있으면 Err. (`write_rule` 은 멱등 덮어쓰기.)
@@ -338,8 +347,7 @@ pub fn delete_rule(paths: &GuildPaths, slug: &str) -> Result<()> {
     if !p.exists() {
         anyhow::bail!("rule not found: {slug}");
     }
-    std::fs::remove_file(&p)
-        .with_context(|| format!("failed to delete rule: {}", p.display()))
+    std::fs::remove_file(&p).with_context(|| format!("failed to delete rule: {}", p.display()))
 }
 
 /// 규칙 이름 변경. old 가 없거나 new 가 이미 있으면 Err. new slug 도 검증.
@@ -391,7 +399,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("og-rules-{label}-{ns}-{}", crate::test_seq()));
+        let root =
+            std::env::temp_dir().join(format!("og-rules-{label}-{ns}-{}", crate::test_seq()));
         let dot = root.join(".guild");
         std::fs::create_dir_all(&dot).unwrap();
         (root.clone(), GuildPaths::new(root))
@@ -445,7 +454,10 @@ mod tests {
         let (root, p) = fresh_paths("tags-none");
         create_rule(&p, "plain", "# 그냥 규칙").unwrap();
         let raw = std::fs::read_to_string(p.rule_path("plain")).unwrap();
-        assert!(raw.starts_with("+++\n"), "시각 기록으로 frontmatter 는 항상 생김");
+        assert!(
+            raw.starts_with("+++\n"),
+            "시각 기록으로 frontmatter 는 항상 생김"
+        );
         assert!(raw.contains("created_at"));
         let entry = read_rule_entry(&p, "plain").unwrap().unwrap();
         assert!(entry.tags.is_empty());
@@ -506,7 +518,10 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(1100));
         let entry = set_rule_tags(&p, "x", vec!["a".into()]).unwrap();
 
-        assert_eq!(entry.updated_at, before.updated_at, "태그 변경은 updated_at 무관");
+        assert_eq!(
+            entry.updated_at, before.updated_at,
+            "태그 변경은 updated_at 무관"
+        );
         assert_eq!(entry.created_at, before.created_at);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -554,7 +569,13 @@ mod tests {
         let entry = set_rule_tags(
             &p,
             "x",
-            vec![" git ".into(), "git".into(), "".into(), "  ".into(), "b".into()],
+            vec![
+                " git ".into(),
+                "git".into(),
+                "".into(),
+                "  ".into(),
+                "b".into(),
+            ],
         )
         .unwrap();
         assert_eq!(entry.tags, vec!["git", "b"]);
@@ -576,10 +597,7 @@ mod tests {
         write_rule(&p, "old-name", "body").unwrap();
         rename_rule(&p, "old-name", "new-name").unwrap();
         assert!(read_rule(&p, "old-name").unwrap().is_none());
-        assert_eq!(
-            read_rule(&p, "new-name").unwrap().as_deref(),
-            Some("body")
-        );
+        assert_eq!(read_rule(&p, "new-name").unwrap().as_deref(), Some("body"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

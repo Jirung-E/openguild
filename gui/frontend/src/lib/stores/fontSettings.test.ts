@@ -96,7 +96,9 @@ describe('setFont — 저장과 반영', () => {
 		setFont('code', 'D2Coding');
 		expect(document.documentElement.style.getPropertyValue('--font-sans')).toContain('Pretendard');
 		expect(document.documentElement.style.getPropertyValue('--font-mono')).toContain('D2Coding');
-		expect(document.documentElement.style.getPropertyValue('--font-sans')).not.toContain('D2Coding');
+		expect(document.documentElement.style.getPropertyValue('--font-sans')).not.toContain(
+			'D2Coding'
+		);
 	});
 
 	it('저장할 때도 다듬은 값이 들어간다 — 원본을 그대로 두면 다음 실행에서 다시 위험해진다', () => {

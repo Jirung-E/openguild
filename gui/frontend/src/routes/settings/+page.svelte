@@ -640,8 +640,7 @@
 								class="th-btn"
 								class:active={$hdrLimit === 'standard'}
 								onclick={() => setHdrLimit('standard')}
-								aria-pressed={$hdrLimit === 'standard'}
-								>{t('settings.hdrLimitOff', $locale)}</button
+								aria-pressed={$hdrLimit === 'standard'}>{t('settings.hdrLimitOff', $locale)}</button
 							>
 						</div>
 						<p class="scale-hint">
@@ -658,7 +657,9 @@
 							{@const on = $navPages.includes(id)}
 							{@const idx = $navPages.indexOf(id)}
 							<li class:off={!on}>
-								<label title={id === REQUIRED_NAV_PAGE ? t('settings.navPageRequired', $locale) : ''}>
+								<label
+									title={id === REQUIRED_NAV_PAGE ? t('settings.navPageRequired', $locale) : ''}
+								>
 									<input
 										type="checkbox"
 										checked={on}
@@ -902,7 +903,6 @@
 	oncancel={() => (confirmDeletePresetName = null)}
 />
 
-
 <style>
 	.settings {
 		display: flex;
@@ -1008,8 +1008,6 @@
 	.info-grid a {
 		color: var(--accent);
 	}
-
-
 
 	/* DEV-207: '정보' 탭의 원격 서버 주소 강조. */
 	.remote-active {

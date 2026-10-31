@@ -3760,7 +3760,9 @@
 			onmousedown={startCardDrag}
 		>
 			<div class="card-head">
-				<span class="drag-hint" title={t('board.dragToMove', $locale)}><Icon name="grip" size="1em" /></span>
+				<span class="drag-hint" title={t('board.dragToMove', $locale)}
+					><Icon name="grip" size="1em" /></span
+				>
 				<div class="card-badges">
 					<span class="pill sm" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
 					<span class="pill sm" style:--c={urgencyColor(expandedQuest.urgency)}
@@ -4197,11 +4199,7 @@
 				{t('board.laneTint', $locale)}
 			</label>
 			<label class="lane-tint-toggle" title={t('board.arrangeStrictDownHint', $locale)}>
-				<input
-					type="checkbox"
-					checked={arrangeStrictDown}
-					onchange={toggleArrangeStrictDown}
-				/>
+				<input type="checkbox" checked={arrangeStrictDown} onchange={toggleArrangeStrictDown} />
 				{t('board.arrangeStrictDown', $locale)}
 			</label>
 			<label class="lane-tint-toggle">

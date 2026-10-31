@@ -170,9 +170,7 @@ describe('AttachmentSection 업로드 진행 표시', () => {
 		getByText('+ 첨부').click();
 
 		// 끝난 항목엔 취소 버튼이 없어야 한다 — 진행/대기 2개만.
-		await waitFor(() =>
-			expect(container.querySelectorAll('.upq-cancel-one')).toHaveLength(2)
-		);
+		await waitFor(() => expect(container.querySelectorAll('.upq-cancel-one')).toHaveLength(2));
 		// 두 번째 버튼 = 대기 중 항목(id 2).
 		container.querySelectorAll<HTMLButtonElement>('.upq-cancel-one')[1].click();
 		expect(cancelOne).toHaveBeenCalledWith(2);
@@ -254,11 +252,11 @@ describe('AttachmentSection 미리보기와 다운로드', () => {
 	// attachment metadata가 있다. 다운로드할 때 저장 path의 확장자를 복구한다.
 	it('표시 이름에 확장자가 없으면 저장 path 확장자로 다운로드한다', async () => {
 		let downloadedAs = '';
-		const click = vi
-			.spyOn(HTMLAnchorElement.prototype, 'click')
-			.mockImplementation(function (this: HTMLAnchorElement) {
-				downloadedAs = this.download;
-			});
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+			this: HTMLAnchorElement
+		) {
+			downloadedAs = this.download;
+		});
 		const { container } = render(AttachmentSection, {
 			props: {
 				slug: 'BUG-233',
@@ -279,11 +277,11 @@ describe('AttachmentSection 미리보기와 다운로드', () => {
 
 	it('표시 이름에 이미 확장자가 있으면 이름을 바꾸지 않는다', async () => {
 		let downloadedAs = '';
-		const click = vi
-			.spyOn(HTMLAnchorElement.prototype, 'click')
-			.mockImplementation(function (this: HTMLAnchorElement) {
-				downloadedAs = this.download;
-			});
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+			this: HTMLAnchorElement
+		) {
+			downloadedAs = this.download;
+		});
 		const { container } = render(AttachmentSection, {
 			props: {
 				slug: 'BUG-233',

@@ -3,7 +3,14 @@
 
 import { describe, it, expect } from 'vitest';
 import type { IndexedRef } from '$lib/stores/questIndex';
-import { wikiRank, byRankThenId, RANK_ID_PREFIX, RANK_TITLE_PREFIX, RANK_ID_PART, RANK_TITLE_PART } from './wiki-rank';
+import {
+	wikiRank,
+	byRankThenId,
+	RANK_ID_PREFIX,
+	RANK_TITLE_PREFIX,
+	RANK_ID_PART,
+	RANK_TITLE_PART
+} from './wiki-rank';
 
 const quest = (title: string): IndexedRef => ({ kind: 'quest', title }) as IndexedRef;
 const book = (title: string, path?: string): IndexedRef =>

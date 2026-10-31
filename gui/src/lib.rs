@@ -15,8 +15,8 @@ mod titlebar_win;
 // 자체는 컴파일된다(스텁 반환).
 mod titlebar_linux;
 
-use openguild_core::recents::strip_verbatim_prefix;
 use openguild_core::Store;
+use openguild_core::recents::strip_verbatim_prefix;
 use std::path::{Path, PathBuf};
 
 /// CLI argv[1] 을 guild 디렉토리로 해석.
@@ -260,8 +260,8 @@ fn attach_parent_console() {
             CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
         };
         use windows_sys::Win32::System::Console::{
-            AttachConsole, GetStdHandle, SetStdHandle, ATTACH_PARENT_PROCESS,
-            STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
+            ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE,
+            STD_OUTPUT_HANDLE, SetStdHandle,
         };
 
         // stdout 이 이미 valid (redirect 등) 면 그대로 — 건드리면 그쪽으로 안 감.
@@ -294,7 +294,8 @@ fn attach_parent_console() {
     }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]/// BUG-236 후속: placeholder 가 남긴 흔적 정리 (recents 항목 + 마커 디렉터리).
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// BUG-236 후속: placeholder 가 남긴 흔적 정리 (recents 항목 + 마커 디렉터리).
 ///
 /// 실패해도 조용히 넘어간다 — 정리는 부가 작업이고, 이것 때문에 앱이 못 뜨면
 /// 훨씬 나쁘다.
@@ -415,7 +416,6 @@ fn placeholder_key(p: &std::path::Path) -> String {
     openguild_core::recents::normalize_abs(&joined)
 }
 
-
 /// DEV-368: 패닉을 **파일에도** 남긴다.
 ///
 /// Tauri 커맨드가 패닉하면 invoke 가 거부되지도 끝나지도 않는다 — 화면에는
@@ -440,9 +440,17 @@ fn install_panic_hook() {
             .unwrap_or_else(|| "(문자열이 아닌 패닉 페이로드)".into());
         if let Some(path) = panic_log_path() {
             let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+            {
                 use std::io::Write;
-                let _ = writeln!(f, "[{}] {loc} — {msg}", openguild_core::time::now_local_iso8601());
+                let _ = writeln!(
+                    f,
+                    "[{}] {loc} — {msg}",
+                    openguild_core::time::now_local_iso8601()
+                );
             }
         }
         default_hook(info);
@@ -531,16 +539,14 @@ pub fn run() {
         }
     }
 
-    let launch_mode = match resolve_launch_mode(
-        std::env::args_os(),
-        std::env::var("OPENGUILD_GUILD").ok(),
-    ) {
-        Ok(m) => m,
-        Err(msg) => {
-            eprintln!("[openguild-gui] error: {msg}");
-            std::process::exit(2);
-        }
-    };
+    let launch_mode =
+        match resolve_launch_mode(std::env::args_os(), std::env::var("OPENGUILD_GUILD").ok()) {
+            Ok(m) => m,
+            Err(msg) => {
+                eprintln!("[openguild-gui] error: {msg}");
+                std::process::exit(2);
+            }
+        };
 
     // BUG-041: Welcome / Uninit 모드는 진짜 길드 없이 시동 — 디스크에 placeholder
     // DB 를 만들면 그 DB 가 binary 의 schema 만큼 migrate 된 채 영구 남아, 이후
@@ -552,7 +558,10 @@ pub fn run() {
         LaunchMode::Welcome => ("welcome", None, None),
         LaunchMode::Uninit(p) => ("uninit", None, Some(p.clone())),
     };
-    let launch_info = LaunchInfo { mode: mode_label, uninit_path };
+    let launch_info = LaunchInfo {
+        mode: mode_label,
+        uninit_path,
+    };
     // DEV-444: 길드를 열 때만 — 시작 화면 · 초기화 확인에는 열 문서가 없다.
     let launch_doc = LaunchDoc(std::sync::Mutex::new(
         store_path
@@ -619,7 +628,10 @@ pub fn run() {
                 inc.updated, rep.quests_loaded, rep.dependencies_loaded, rep.campaigns_loaded
             ),
             Ok((inc, None)) if inc.updated > 0 => {
-                eprintln!("[openguild-gui] incremental sync: {} quests updated", inc.updated)
+                eprintln!(
+                    "[openguild-gui] incremental sync: {} quests updated",
+                    inc.updated
+                )
             }
             Ok(_) => {}
             Err(e) => eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}"),
@@ -645,7 +657,9 @@ pub fn run() {
         // marketplace add ~/.openguild/skill-marketplace` 로 등록 가능.
         match openguild_core::user_dirs::sync_bundled_skill_marketplace(&dir.join("skills")) {
             Ok(n) if n > 0 => {
-                eprintln!("[openguild-gui] bundled skills synced to ~/.openguild/skill-marketplace ({n} files)")
+                eprintln!(
+                    "[openguild-gui] bundled skills synced to ~/.openguild/skill-marketplace ({n} files)"
+                )
             }
             Ok(_) => {}
             Err(e) => eprintln!("[openguild-gui] warn: skills sync 실패 — {e:#}"),
@@ -975,7 +989,10 @@ mod tests {
             crate::file_url_to_path("file:///C:/Users/me/%EB%82%B4%20%EA%B8%B8%EB%93%9C.guild"),
             Some(std::path::PathBuf::from("C:/Users/me/내 길드.guild"))
         );
-        assert_eq!(crate::file_url_to_path("file:///a/b%20c.guild"), Some(std::path::PathBuf::from("/a/b c.guild")));
+        assert_eq!(
+            crate::file_url_to_path("file:///a/b%20c.guild"),
+            Some(std::path::PathBuf::from("/a/b c.guild"))
+        );
         assert_eq!(crate::file_url_to_path("file://C:\\x.guild"), None);
     }
 
@@ -985,7 +1002,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-opened-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let dir = std::env::temp_dir().join(format!("og-opened-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         let inner = dir.join("내 길드");
         std::fs::create_dir_all(&inner).unwrap();
         let marker = inner.join("내 길드.guild");
@@ -993,8 +1013,16 @@ mod tests {
 
         // BUG-349: 주소는 OS 에 맞는 모양으로 — 윈도우는 `file:///C:/…`(예전엔 `file://C:\…` 를 만들어 윈도우에서 깨졌다).
         let file_url = |p: &std::path::Path| {
-            let s = p.display().to_string().replace('\\', "/").replace(' ', "%20");
-            if s.starts_with('/') { format!("file://{s}") } else { format!("file:///{s}") }
+            let s = p
+                .display()
+                .to_string()
+                .replace('\\', "/")
+                .replace(' ', "%20");
+            if s.starts_with('/') {
+                format!("file://{s}")
+            } else {
+                format!("file:///{s}")
+            }
         };
         let url = file_url(&marker);
         // 파일을 가리키면 그 부모 폴더가 길드다 — argv 경로와 같은 답.
@@ -1010,8 +1038,14 @@ mod tests {
         assert_eq!(crate::opened_urls_to_guild(&[dir_url]), Some(inner));
 
         // 열 수 없는 것은 조용히 `None` — welcome 으로 두는 편이 낫다.
-        assert_eq!(crate::opened_urls_to_guild(&["file:///없는/경로.guild"]), None);
-        assert_eq!(crate::opened_urls_to_guild(&["https://example.test/x.guild"]), None);
+        assert_eq!(
+            crate::opened_urls_to_guild(&["file:///없는/경로.guild"]),
+            None
+        );
+        assert_eq!(
+            crate::opened_urls_to_guild(&["https://example.test/x.guild"]),
+            None
+        );
         assert_eq!(crate::opened_urls_to_guild::<&str>(&[]), None);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1082,9 +1116,7 @@ mod tests {
         assert!(is_welcome_placeholder(&ph), "placeholder 자신을 못 알아봄");
         // 심볼릭 링크 차이(/var ↔ /private/var)를 흡수하는지 — mac 에서 실제로
         // 두 표기가 다 나온다.
-        let alt = std::path::Path::new("/private").join(
-            ph.strip_prefix("/").unwrap_or(&ph),
-        );
+        let alt = std::path::Path::new("/private").join(ph.strip_prefix("/").unwrap_or(&ph));
         if alt.exists() || ph.starts_with("/var") {
             assert!(is_welcome_placeholder(&alt) || is_welcome_placeholder(&ph));
         }
@@ -1152,7 +1184,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-gui-{label}-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let p = std::env::temp_dir().join(format!("og-gui-{label}-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
@@ -1161,7 +1196,10 @@ mod tests {
     fn arg_to_guild_path_dir_passes_through() {
         let dir = fresh_tmp("dir");
         let got = arg_to_guild_path(&dir).unwrap();
-        assert_eq!(std::fs::canonicalize(got).unwrap(), std::fs::canonicalize(&dir).unwrap());
+        assert_eq!(
+            std::fs::canonicalize(got).unwrap(),
+            std::fs::canonicalize(&dir).unwrap()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1169,8 +1207,11 @@ mod tests {
     fn arg_to_guild_path_dot_guild_file_returns_parent() {
         let dir = fresh_tmp("file");
         let guild_file = dir.join("test.guild");
-        std::fs::write(&guild_file, "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\n")
-            .unwrap();
+        std::fs::write(
+            &guild_file,
+            "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\n",
+        )
+        .unwrap();
         let got = arg_to_guild_path(&guild_file).unwrap();
         assert_eq!(
             std::fs::canonicalize(got).unwrap(),
@@ -1258,10 +1299,12 @@ mod tests {
     fn resolve_argv_guild_file_wins() {
         let dir = fresh_tmp("argv-guild-file");
         let guild_file = dir.join("test.guild");
-        std::fs::write(&guild_file, "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\n")
-            .unwrap();
-        let argv: Vec<std::ffi::OsString> =
-            vec!["program".into(), guild_file.as_os_str().into()];
+        std::fs::write(
+            &guild_file,
+            "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\n",
+        )
+        .unwrap();
+        let argv: Vec<std::ffi::OsString> = vec!["program".into(), guild_file.as_os_str().into()];
         let got = resolve_launch_mode(argv, None).unwrap();
         match got {
             LaunchMode::Guild(p) => assert_eq!(
@@ -1316,8 +1359,7 @@ mod tests {
     #[test]
     fn resolve_argv_skips_dashdash_flags_then_welcome() {
         // 모든 argv 가 플래그면 빈 argv 와 동일 → Welcome.
-        let argv: Vec<std::ffi::OsString> =
-            vec!["program".into(), "--no-default-features".into()];
+        let argv: Vec<std::ffi::OsString> = vec!["program".into(), "--no-default-features".into()];
         let got = resolve_launch_mode(argv, None).unwrap();
         assert!(matches!(got, LaunchMode::Welcome));
     }
@@ -1373,11 +1415,18 @@ mod tests {
     fn every_command_the_frontend_invokes_is_registered() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let lib = std::fs::read_to_string(root.join("src/lib.rs")).unwrap();
-        let start = lib.find("generate_handler![").expect("generate_handler") + "generate_handler![".len();
+        let start =
+            lib.find("generate_handler![").expect("generate_handler") + "generate_handler![".len();
         let end = start + lib[start..].find(']').unwrap();
         let registered: std::collections::BTreeSet<String> = lib[start..end]
             .lines()
-            .map(|l| l.split("//").next().unwrap_or("").trim().trim_end_matches(','))
+            .map(|l| {
+                l.split("//")
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_end_matches(',')
+            })
             .filter_map(|l| l.strip_prefix("commands::").or(Some(l)))
             .filter(|l| !l.is_empty())
             .map(str::to_string)
@@ -1392,13 +1441,19 @@ mod tests {
                     let mut t = rest.trim_start();
                     if key != "cmd:" {
                         if let Some(after) = t.strip_prefix('<') {
-                            let Some(close) = after.find(">(") else { continue };
+                            let Some(close) = after.find(">(") else {
+                                continue;
+                            };
                             t = &after[close + 1..];
                         }
-                        let Some(after) = t.strip_prefix('(') else { continue };
+                        let Some(after) = t.strip_prefix('(') else {
+                            continue;
+                        };
                         t = after.trim_start();
                     }
-                    let Some(after) = t.strip_prefix(['\'', '`']) else { continue };
+                    let Some(after) = t.strip_prefix(['\'', '`']) else {
+                        continue;
+                    };
                     let name: String = after
                         .chars()
                         .take_while(|c| c.is_ascii_lowercase() || *c == '_')
@@ -1415,7 +1470,9 @@ mod tests {
                 let name = p.file_name().unwrap().to_string_lossy().to_string();
                 if p.is_dir() {
                     walk(&p, out);
-                } else if (name.ends_with(".ts") || name.ends_with(".svelte")) && !name.contains(".test.") {
+                } else if (name.ends_with(".ts") || name.ends_with(".svelte"))
+                    && !name.contains(".test.")
+                {
                     names_in(&std::fs::read_to_string(&p).unwrap(), out);
                 }
             }
@@ -1423,9 +1480,15 @@ mod tests {
         let mut used = std::collections::BTreeSet::new();
         walk(&root.join("frontend/src"), &mut used);
 
-        assert!(used.contains("plugin_add_folder"), "프런트 호출을 못 찾았다 — 검사가 헐거워졌다: {used:?}");
+        assert!(
+            used.contains("plugin_add_folder"),
+            "프런트 호출을 못 찾았다 — 검사가 헐거워졌다: {used:?}"
+        );
         let missing: Vec<_> = used.difference(&registered).collect();
-        assert!(missing.is_empty(), "프런트가 부르는데 등록 안 된 명령: {missing:?}");
+        assert!(
+            missing.is_empty(),
+            "프런트가 부르는데 등록 안 된 명령: {missing:?}"
+        );
     }
 
     // ───── DEV-379: 플러그인 배선 ─────

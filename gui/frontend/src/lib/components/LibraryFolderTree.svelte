@@ -87,7 +87,9 @@
 		disabled={!hasChildren}
 		onclick={() => onToggleCollapse(node.path)}
 		aria-expanded={!collapsed}
-		aria-label={collapsed ? t('library.folderExpand', $locale) : t('library.folderCollapse', $locale)}
+		aria-label={collapsed
+			? t('library.folderExpand', $locale)
+			: t('library.folderCollapse', $locale)}
 	>
 		<Icon name={collapsed ? 'caret-right' : 'caret-down'} size="1em" />
 	</button>

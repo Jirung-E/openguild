@@ -43,7 +43,11 @@ fn to_new_shape(mut v: serde_json::Value) -> serde_json::Value {
         .iter()
         .filter_map(|p| p.strip_prefix("pre:").map(str::to_string))
         .collect();
-    let post: Vec<String> = pats.iter().filter(|p| !p.starts_with("pre:")).cloned().collect();
+    let post: Vec<String> = pats
+        .iter()
+        .filter(|p| !p.starts_with("pre:"))
+        .cloned()
+        .collect();
     let mut what = serde_json::Map::new();
     match (script, action) {
         (Some(sc), a) => {
@@ -84,7 +88,10 @@ fn first_action(p: &Plugin) -> &Action {
 }
 
 fn def_action(d: &PluginDef) -> &Action {
-    let r = d.handlers[0].action.as_ref().expect("첫 줄이 동작 줄이 아니다");
+    let r = d.handlers[0]
+        .action
+        .as_ref()
+        .expect("첫 줄이 동작 줄이 아니다");
     d.action_of(r).unwrap()
 }
 
@@ -236,10 +243,14 @@ fn a_plugin_from_a_source_loads_next_to_the_guilds_own() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("src-guild");
     let outside = fresh_tmp("src-outside");
-    write_plugin(&g, "in-guild", json!({
-        "name": "in-guild", "on": ["quest.created"], "scope": ["cli"],
-        "action": { "post": { "url": "https://example.test/a" } }
-    }));
+    write_plugin(
+        &g,
+        "in-guild",
+        json!({
+            "name": "in-guild", "on": ["quest.created"], "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/a" } }
+        }),
+    );
     // 길드 밖 폴더 — `plugins_dir` 규칙과 같게 하위 폴더마다 plugin.toml.
     let ext = outside.join("mine");
     std::fs::create_dir_all(&ext).unwrap();
@@ -303,7 +314,9 @@ fn source_plugins_refuse_name_clashes_and_report_missing_paths() {
     let l = load_for(&g, Scope::Cli);
     assert_eq!(names(&l).len(), 1, "겹친 이름이 둘 다 실렸다");
     assert!(
-        l.errors.iter().any(|(_, e)| e.contains("겹칩니다") && e.contains("dup")),
+        l.errors
+            .iter()
+            .any(|(_, e)| e.contains("겹칩니다") && e.contains("dup")),
         "{:?}",
         l.errors
     );
@@ -378,7 +391,12 @@ fn adding_a_folder_uses_a_lone_plugin_and_lets_you_pick_from_many() {
     }
 
     let got = sources::add_folder(&g, &lone).unwrap();
-    let AddOutcome::Used { source: lone_src, name, folder } = got.clone() else {
+    let AddOutcome::Used {
+        source: lone_src,
+        name,
+        folder,
+    } = got.clone()
+    else {
         panic!("하나짜리가 바로 쓰이지 않았다: {got:?}");
     };
     assert_eq!((name.as_str(), folder.as_str()), ("echo", "."));
@@ -387,11 +405,19 @@ fn adding_a_folder_uses_a_lone_plugin_and_lets_you_pick_from_many() {
     assert_eq!(sources::add_folder(&g, &lone).unwrap(), got);
 
     let got = sources::add_folder(&g, &many).unwrap();
-    let AddOutcome::Registered { source: many_src, plugins } = got else {
+    let AddOutcome::Registered {
+        source: many_src,
+        plugins,
+    } = got
+    else {
         panic!("여럿인데 통째로 켰다: {got:?}");
     };
     assert_eq!(plugins, 2);
-    assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["echo"], "고르기 전에 붙었다");
+    assert_eq!(
+        names(&load_for(&g, Scope::Cli)),
+        vec!["echo"],
+        "고르기 전에 붙었다"
+    );
 
     let st = sources::status(&g);
     assert_eq!(st.len(), 2);
@@ -406,11 +432,17 @@ fn adding_a_folder_uses_a_lone_plugin_and_lets_you_pick_from_many() {
     // 짝으로 빼면 그것만 빠진다.
     sources::stop_using_entry(&g, &many_src, "b").unwrap();
     assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["echo"]);
-    assert!(sources::stop_using_entry(&g, &many_src, "b").is_err(), "없는 것을 뺐다고 했다");
+    assert!(
+        sources::stop_using_entry(&g, &many_src, "b").is_err(),
+        "없는 것을 뺐다고 했다"
+    );
 
     // 소스 폴더가 사라져도 목록에는 남고 이유가 붙는다.
     std::fs::remove_dir_all(&many).unwrap();
-    let gone = sources::status(&g).into_iter().find(|s| s.name == many_src).unwrap();
+    let gone = sources::status(&g)
+        .into_iter()
+        .find(|s| s.name == many_src)
+        .unwrap();
     assert!(gone.problem.is_some(), "사라진 소스가 조용하다");
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
@@ -764,23 +796,43 @@ fn an_unreadable_state_file_is_never_overwritten() {
     std::fs::write(&consent_path, bad).unwrap();
     let err = consent::enable_auto_allow(&g).unwrap_err().to_string();
     assert!(err.contains("동의가 전부 사라지므로"), "{err}");
-    assert_eq!(std::fs::read(&consent_path).unwrap(), bad, "읽지 못한 동의 파일을 덮어썼다");
+    assert_eq!(
+        std::fs::read(&consent_path).unwrap(),
+        bad,
+        "읽지 못한 동의 파일을 덮어썼다"
+    );
 
     let sources_path = super::sources::path().unwrap();
     std::fs::write(&sources_path, bad).unwrap();
     let other = fresh_tmp("unreadable-src");
     // 소스로 받으려면 안에 플러그인이 하나는 있어야 한다.
     std::fs::create_dir_all(other.join("p1")).unwrap();
-    std::fs::copy(plugins_dir(&g).join("ai-notify").join(MANIFEST), other.join("p1").join(MANIFEST)).unwrap();
-    let err = super::sources::add_source(&g, &other, Some("other")).unwrap_err().to_string();
+    std::fs::copy(
+        plugins_dir(&g).join("ai-notify").join(MANIFEST),
+        other.join("p1").join(MANIFEST),
+    )
+    .unwrap();
+    let err = super::sources::add_source(&g, &other, Some("other"))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("소스가 전부 사라지므로"), "{err}");
-    assert_eq!(std::fs::read(&sources_path).unwrap(), bad, "읽지 못한 소스 파일을 덮어썼다");
+    assert_eq!(
+        std::fs::read(&sources_path).unwrap(),
+        bad,
+        "읽지 못한 소스 파일을 덮어썼다"
+    );
 
     let values_path = super::values::path().unwrap();
     std::fs::write(&values_path, bad).unwrap();
-    let err = super::values::clear(&g, "ai-notify").unwrap_err().to_string();
+    let err = super::values::clear(&g, "ai-notify")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("값이 전부 사라지므로"), "{err}");
-    assert_eq!(std::fs::read(&values_path).unwrap(), bad, "읽지 못한 값 파일을 덮어썼다");
+    assert_eq!(
+        std::fs::read(&values_path).unwrap(),
+        bad,
+        "읽지 못한 값 파일을 덮어썼다"
+    );
 
     // 없는 파일은 처음 상태다 — 그대로 된다.
     std::fs::remove_file(&consent_path).unwrap();
@@ -825,7 +877,9 @@ fn shipped_powershell_scripts_are_ascii_or_have_a_bom() {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
     let mut seen = 0;
     for e in std::fs::read_dir(&src).unwrap().flatten() {
-        let Ok(rd) = std::fs::read_dir(e.path()) else { continue };
+        let Ok(rd) = std::fs::read_dir(e.path()) else {
+            continue;
+        };
         for f in rd.flatten() {
             let path = f.path();
             if path.extension().and_then(|x| x.to_str()) != Some("ps1") {
@@ -842,7 +896,10 @@ fn shipped_powershell_scripts_are_ascii_or_have_a_bom() {
             );
         }
     }
-    assert!(seen >= 3, "예제의 .ps1 을 못 찾았다({seen}) — 시험이 아무것도 안 본다");
+    assert!(
+        seen >= 3,
+        "예제의 .ps1 을 못 찾았다({seen}) — 시험이 아무것도 안 본다"
+    );
 }
 
 /// BUG-332 세 번째: 윈도우 11 에서 실제로 돌려 보니 `deliver.ps1` 의 명령 실행이 셋을 놓쳤다(2026-10-24).
@@ -861,8 +918,14 @@ fn deliver_ps1_runs_the_command_as_written_and_reports_a_missing_one() {
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(code.contains("-EncodedCommand $encoded"), "명령 글은 인코딩해서 넘긴다");
-    assert!(!code.contains("-Command $inner"), "-Command 로 넘기면 따옴표가 빠진다");
+    assert!(
+        code.contains("-EncodedCommand $encoded"),
+        "명령 글은 인코딩해서 넘긴다"
+    );
+    assert!(
+        !code.contains("-Command $inner"),
+        "-Command 로 넘기면 따옴표가 빠진다"
+    );
     assert!(
         code.contains("[System.Text.Encoding]::Unicode.GetBytes($inner)"),
         "-EncodedCommand 는 UTF-16LE base64 다"
@@ -875,8 +938,14 @@ fn deliver_ps1_runs_the_command_as_written_and_reports_a_missing_one() {
     ] {
         assert!(prelude.contains(want), "자식에서 UTF-8 을 정한다: {want}");
     }
-    assert!(code.contains("$ok = $?; $code = $LASTEXITCODE"), "명령 바로 다음 줄에서 둘 다 잡는다");
-    assert!(code.contains("elseif (-not $ok) { exit 1 }"), "종료 코드가 비었으면 $? 로 실패를 낸다");
+    assert!(
+        code.contains("$ok = $?; $code = $LASTEXITCODE"),
+        "명령 바로 다음 줄에서 둘 다 잡는다"
+    );
+    assert!(
+        code.contains("elseif (-not $ok) { exit 1 }"),
+        "종료 코드가 비었으면 $? 로 실패를 낸다"
+    );
 }
 
 /// **예제가 안 도는 건 없느니만 못하다.**
@@ -1033,7 +1102,11 @@ fn turning_auto_allow_off_keeps_what_runs_and_asks_about_changes() {
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
 
     consent::disable_auto_allow(&g).unwrap();
-    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1, "끄자마자 돌던 것이 멈췄다");
+    assert_eq!(
+        load_for(&g, Scope::Cli).active.len(),
+        1,
+        "끄자마자 돌던 것이 멈췄다"
+    );
 
     // 끈 뒤에 정의가 바뀌면 다시 묻는다.
     write_plugin(
@@ -1047,7 +1120,10 @@ fn turning_auto_allow_off_keeps_what_runs_and_asks_about_changes() {
         }),
     );
     let after = load_for(&g, Scope::Cli);
-    assert!(after.active.is_empty(), "자동 허용을 껐는데 바뀐 것이 그대로 돈다");
+    assert!(
+        after.active.is_empty(),
+        "자동 허용을 껐는데 바뀐 것이 그대로 돈다"
+    );
 
     // 다시 켜면 바뀐 것도 돈다.
     consent::enable_auto_allow(&g).unwrap();
@@ -1067,12 +1143,16 @@ fn revoke_wins_over_auto_allow_and_allow_undoes_it() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("deny");
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
-    write_plugin(&g, "other", json!({
-        "name": "other",
-        "on": ["quest.created"],
-        "scope": ["cli"],
-        "action": { "post": { "url": "https://example.test/other" } }
-    }));
+    write_plugin(
+        &g,
+        "other",
+        json!({
+            "name": "other",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/other" } }
+        }),
+    );
     consent::enable_auto_allow(&g).unwrap();
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 2);
 
@@ -1088,7 +1168,11 @@ fn revoke_wins_over_auto_allow_and_allow_undoes_it() {
     assert_eq!(names(&load_for(&g, Scope::Cli).active), vec!["other"]);
 
     consent::grant(&g, &load_for(&g, Scope::Cli).needs_consent[0]).unwrap();
-    assert_eq!(load_for(&g, Scope::Cli).active.len(), 2, "다시 허용했는데 안 돈다");
+    assert_eq!(
+        load_for(&g, Scope::Cli).active.len(),
+        2,
+        "다시 허용했는데 안 돈다"
+    );
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);
@@ -1104,34 +1188,60 @@ fn allow_all_and_revoke_all_are_bulk_edits_not_modes() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("bulk");
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
-    write_plugin(&g, "other", json!({
-        "name": "other",
-        "on": ["quest.created"],
-        "scope": ["cli"],
-        "action": { "post": { "url": "https://example.test/other" } }
-    }));
+    write_plugin(
+        &g,
+        "other",
+        json!({
+            "name": "other",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/other" } }
+        }),
+    );
 
     let l = load_for(&g, Scope::Cli);
     consent::grant_all(&g, &l.needs_consent.iter().collect::<Vec<_>>()).unwrap();
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 2);
 
     consent::revoke(&g, "other").unwrap();
-    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1, "전체 허용 뒤 개별 철회가 안 먹는다");
+    assert_eq!(
+        load_for(&g, Scope::Cli).active.len(),
+        1,
+        "전체 허용 뒤 개별 철회가 안 먹는다"
+    );
 
-    write_plugin(&g, "newcomer", json!({
-        "name": "newcomer",
-        "on": ["quest.created"],
-        "scope": ["cli"],
-        "action": { "post": { "url": "https://example.test/new" } }
-    }));
+    write_plugin(
+        &g,
+        "newcomer",
+        json!({
+            "name": "newcomer",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/new" } }
+        }),
+    );
     let l = load_for(&g, Scope::Cli);
-    assert!(l.needs_consent.iter().any(|p| p.def.name == "newcomer"), "전체 허용이 앞으로 올 것까지 허용했다");
+    assert!(
+        l.needs_consent.iter().any(|p| p.def.name == "newcomer"),
+        "전체 허용이 앞으로 올 것까지 허용했다"
+    );
 
     consent::revoke_all(&g, &["ai-notify", "other", "newcomer"]).unwrap();
     assert!(load_for(&g, Scope::Cli).active.is_empty());
     let l = load_for(&g, Scope::Cli);
-    consent::grant(&g, l.needs_consent.iter().find(|p| p.def.name == "other").unwrap()).unwrap();
-    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1, "전체 해제 뒤 개별 허용이 안 먹는다");
+    consent::grant(
+        &g,
+        l.needs_consent
+            .iter()
+            .find(|p| p.def.name == "other")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        load_for(&g, Scope::Cli).active.len(),
+        1,
+        "전체 해제 뒤 개별 허용이 안 먹는다"
+    );
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);
@@ -1747,9 +1857,7 @@ fn the_hook_is_told_where_its_code_lives() {
     .unwrap();
 
     assert_eq!(
-        std::fs::read_to_string(g.join("said.txt"))
-            .unwrap()
-            .trim(),
+        std::fs::read_to_string(g.join("said.txt")).unwrap().trim(),
         "안녕",
         "옆 파일을 못 불렀다 — OPENGUILD_PLUGIN_DIR 가 코드 폴더를 안 가리킨다"
     );
@@ -1855,13 +1963,22 @@ fn a_saved_value_reaches_the_script_as_a_variable() {
         name: "comment.added",
         ..probe_event()
     };
-    assert_eq!(sc.call_handler("h", &created, &cfg(&g, &p)).unwrap().len(), 1);
-    assert!(sc.call_handler("h", &commented, &cfg(&g, &p)).unwrap().is_empty());
+    assert_eq!(
+        sc.call_handler("h", &created, &cfg(&g, &p)).unwrap().len(),
+        1
+    );
+    assert!(
+        sc.call_handler("h", &commented, &cfg(&g, &p))
+            .unwrap()
+            .is_empty()
+    );
 
     // 사용자가 화면에서 댓글 알림을 켠다.
     crate::plugins::values::set(&g, "tg", "ON_COMMENT", Some(json!(true))).unwrap();
     assert_eq!(
-        sc.call_handler("h", &commented, &cfg(&g, &p)).unwrap().len(),
+        sc.call_handler("h", &commented, &cfg(&g, &p))
+            .unwrap()
+            .len(),
         1,
         "체크박스를 켰는데 스크립트가 못 봤다 — 세 조각 중 하나가 끊겼다"
     );
@@ -2255,7 +2372,10 @@ fn a_run_without_os_commands_serializes_as_before() {
         os: Default::default(),
     });
     let v = serde_json::to_value(def_action(&d)).unwrap();
-    assert_eq!(v, json!({ "run": { "command": "sh", "args": ["hook.sh"] } }));
+    assert_eq!(
+        v,
+        json!({ "run": { "command": "sh", "args": ["hook.sh"] } })
+    );
     // 있으면 그대로 왕복한다.
     let w = run_with_windows(&["-File", "x.ps1"]);
     let back: PluginDef = serde_json::from_value(serde_json::to_value(&w).unwrap()).unwrap();
@@ -2310,8 +2430,18 @@ fn a_source_recorded_with_a_verbatim_prefix_still_works() {
     .unwrap();
 
     let l = load_for(&g, Scope::Cli);
-    assert_eq!(names(&l), vec!["old-one"], "옛 기록의 소스가 안 실렸다: {:?}", l.errors);
-    assert!(!l.needs_consent[0].dir.to_string_lossy().starts_with(r"\\?\"));
+    assert_eq!(
+        names(&l),
+        vec!["old-one"],
+        "옛 기록의 소스가 안 실렸다: {:?}",
+        l.errors
+    );
+    assert!(
+        !l.needs_consent[0]
+            .dir
+            .to_string_lossy()
+            .starts_with(r"\\?\")
+    );
     // 같은 폴더를 다시 더하면 옛 소스를 알아본다.
     assert_eq!(sources::add_source(&g, &src, None).unwrap(), "old");
     // 다음 쓰기(이미 쓰는 것을 또 쓰기 — 멱등)에서 파일도 고쳐진다.
@@ -2368,11 +2498,19 @@ fn a_toml_definition_with_mixed_lines_reads_as_written() {
     assert_eq!(d.handlers[0].id.as_deref(), Some("바로"));
     assert!(matches!(d.handlers[0].action, Some(ActionRef::Named(ref n)) if n == "out"));
     assert_eq!(d.handlers[1].call.as_deref(), Some("on_comment"));
-    assert!(matches!(d.handlers[2].action, Some(ActionRef::Inline(Action::Run { .. }))));
+    assert!(matches!(
+        d.handlers[2].action,
+        Some(ActionRef::Inline(Action::Run { .. }))
+    ));
     assert_eq!(d.handlers[2].label(2), "3번째 줄");
     assert_eq!(
         d.subscriptions(),
-        vec!["quest.created", "comment.added", "quest.*", "pre:quest.deleted"]
+        vec![
+            "quest.created",
+            "comment.added",
+            "quest.*",
+            "pre:quest.deleted"
+        ]
     );
     use crate::events::Phase;
     assert!(d.handlers[1].wants("quest.status_changed", Phase::Post));
@@ -2386,13 +2524,31 @@ fn a_toml_definition_with_mixed_lines_reads_as_written() {
 fn each_line_needs_exactly_one_when_and_one_what() {
     let cases = [
         ("[[handlers]]\ncall = \"h\"", "언제"),
-        ("[[handlers]]\npost = [\"quest.created\"]\npre = [\"quest.deleted\"]\ncall = \"h\"", "같이"),
+        (
+            "[[handlers]]\npost = [\"quest.created\"]\npre = [\"quest.deleted\"]\ncall = \"h\"",
+            "같이",
+        ),
         ("[[handlers]]\npost = [\"quest.created\"]", "무엇"),
-        ("[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\naction = \"out\"", "같이"),
-        ("[[handlers]]\npost = [\"quest.created\"]\naction = \"nope\"", "nope"),
-        ("[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"\n[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"", "겹"),
-        ("[[handlers]]\npost = [\"quest.creted\"]\naction = \"out\"", "quest.creted"),
-        ("[[handlers]]\npre = [\"campaign.created\"]\naction = \"out\"", "pre"),
+        (
+            "[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\naction = \"out\"",
+            "같이",
+        ),
+        (
+            "[[handlers]]\npost = [\"quest.created\"]\naction = \"nope\"",
+            "nope",
+        ),
+        (
+            "[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"\n[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"",
+            "겹",
+        ),
+        (
+            "[[handlers]]\npost = [\"quest.creted\"]\naction = \"out\"",
+            "quest.creted",
+        ),
+        (
+            "[[handlers]]\npre = [\"campaign.created\"]\naction = \"out\"",
+            "pre",
+        ),
     ];
     for (lines, want) in cases {
         let e = parse(&format!("{BASE}\n{lines}\n")).unwrap_err();
@@ -2433,7 +2589,12 @@ fn a_missing_function_and_a_leftover_plugin_json_are_reported() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("t403");
     write_plugin(&g, "ai-notify", with_script(&["cli"], "t.rhai"));
-    write_script(&g, "ai-notify", "t.rhai", r#"fn other(e) { send("out", e) }"#);
+    write_script(
+        &g,
+        "ai-notify",
+        "t.rhai",
+        r#"fn other(e) { send("out", e) }"#,
+    );
     let old = plugins_dir(&g).join("legacy");
     std::fs::create_dir_all(&old).unwrap();
     std::fs::write(old.join(OLD_MANIFEST), "{}").unwrap();
@@ -2489,12 +2650,24 @@ fn with_line(post: &str, with: &str, call: &str) -> String {
 #[test]
 fn with_is_checked_against_what_the_events_can_give() {
     // 댓글은 퀘스트·캠페인에 달린다 — 둘의 것을 모두 받을 수 있다.
-    assert!(parse(&with_line("\"comment.added\"", "\"subject\", \"parent\", \"quests\"", "h")).is_ok());
+    assert!(
+        parse(&with_line(
+            "\"comment.added\"",
+            "\"subject\", \"parent\", \"quests\"",
+            "h"
+        ))
+        .is_ok()
+    );
     let e = parse(&with_line("\"campaign.created\"", "\"parent\"", "h")).unwrap_err();
     assert!(e.contains("parent") && e.contains("subject, quests"), "{e}");
     let e = parse(&with_line("\"backup.created\"", "\"subject\"", "h")).unwrap_err();
     assert!(e.contains("없습니다"), "{e}");
-    let e = parse(&with_line("\"quest.created\"", "\"subject\", \"subject\"", "h")).unwrap_err();
+    let e = parse(&with_line(
+        "\"quest.created\"",
+        "\"subject\", \"subject\"",
+        "h",
+    ))
+    .unwrap_err();
     assert!(e.contains("두 번"), "{e}");
     // 동작 줄도 받을 수 있다 — 조건(`when`)이 그 데이터를 본다(REQ-025).
     assert!(
@@ -2526,7 +2699,11 @@ fn a_handler_with_with_needs_matching_parameters() {
     std::fs::write(dir.join("main.rhai"), "fn on_comment(e) { }").unwrap();
     let l = load_all(&g);
     assert_eq!(l.errors.len(), 1, "{:?}", l.errors);
-    assert!(l.errors[0].1.contains("fn on_comment(e, subject, parent)"), "{:?}", l.errors);
+    assert!(
+        l.errors[0].1.contains("fn on_comment(e, subject, parent)"),
+        "{:?}",
+        l.errors
+    );
 
     std::fs::write(dir.join("main.rhai"), "fn on_comment(e, s, p) { }").unwrap();
     assert!(load_all(&g).errors.is_empty());
@@ -2551,17 +2728,27 @@ async fn related_data_is_read_from_the_guild_files() {
         urgency: Some(3),
         parent_quest_id: parent,
     };
-    let top = crate::ops::quests::create_quest(&store, mk("부모", None)).await.unwrap();
-    let kid = crate::ops::quests::create_quest(&store, mk("자식", Some(top.id))).await.unwrap();
-    let pre = crate::ops::quests::create_quest(&store, mk("선행", None)).await.unwrap();
+    let top = crate::ops::quests::create_quest(&store, mk("부모", None))
+        .await
+        .unwrap();
+    let kid = crate::ops::quests::create_quest(&store, mk("자식", Some(top.id)))
+        .await
+        .unwrap();
+    let pre = crate::ops::quests::create_quest(&store, mk("선행", None))
+        .await
+        .unwrap();
     crate::ops::quests::add_prerequisite(
         &store,
         kid.id,
-        crate::models::AddPrerequisiteRequest { prerequisite_id: pre.id },
+        crate::models::AddPrerequisiteRequest {
+            prerequisite_id: pre.id,
+        },
     )
     .await
     .unwrap();
-    crate::ops::quests::set_quest_tags(&store, kid.id, vec!["notify".into()]).await.unwrap();
+    crate::ops::quests::set_quest_tags(&store, kid.id, vec!["notify".into()])
+        .await
+        .unwrap();
     let camp = crate::ops::campaigns::create_campaign(
         &store,
         crate::models::CreateCampaignRequest {
@@ -2573,9 +2760,14 @@ async fn related_data_is_read_from_the_guild_files() {
     )
     .await
     .unwrap();
-    crate::ops::campaigns::link_quest_by_slug(&store, camp.id, &kid.quest_id).await.unwrap();
+    crate::ops::campaigns::link_quest_by_slug(&store, camp.id, &kid.quest_id)
+        .await
+        .unwrap();
 
-    let q = |id: &str| Subject { kind: "quest", id: id.into() };
+    let q = |id: &str| Subject {
+        kind: "quest",
+        id: id.into(),
+    };
     let load = |s: &Subject, w: &str| related::load(&g, s, w);
 
     let sub = load(&q(&kid.quest_id), "subject");
@@ -2586,9 +2778,15 @@ async fn related_data_is_read_from_the_guild_files() {
     assert!(load(&q(&top.quest_id), "parent").is_null());
     assert_eq!(load(&q(&top.quest_id), "children")[0]["id"], kid.quest_id);
     assert_eq!(load(&q(&kid.quest_id), "prereqs")[0]["id"], pre.quest_id);
-    assert_eq!(load(&q(&kid.quest_id), "campaigns")[0]["id"], camp.campaign_slug);
+    assert_eq!(
+        load(&q(&kid.quest_id), "campaigns")[0]["id"],
+        camp.campaign_slug
+    );
     assert_eq!(load(&q(&top.quest_id), "campaigns"), json!([]));
-    let c = Subject { kind: "campaign", id: camp.campaign_slug.clone() };
+    let c = Subject {
+        kind: "campaign",
+        id: camp.campaign_slug.clone(),
+    };
     assert_eq!(load(&c, "subject")["title"], "베타");
     assert_eq!(load(&c, "quests")[0]["id"], kid.quest_id);
     // 대상에 없는 것, 없는 대상.
@@ -2654,20 +2852,37 @@ async fn a_comment_handler_can_see_its_quests_tags() {
         urgency: Some(3),
         parent_quest_id: None,
     };
-    let loud = crate::ops::quests::create_quest(&store, mk("알림 받을 것")).await.unwrap();
-    let quiet = crate::ops::quests::create_quest(&store, mk("조용한 것")).await.unwrap();
-    crate::ops::quests::set_quest_tags(&store, loud.id, vec!["notify".into()]).await.unwrap();
+    let loud = crate::ops::quests::create_quest(&store, mk("알림 받을 것"))
+        .await
+        .unwrap();
+    let quiet = crate::ops::quests::create_quest(&store, mk("조용한 것"))
+        .await
+        .unwrap();
+    crate::ops::quests::set_quest_tags(&store, loud.id, vec!["notify".into()])
+        .await
+        .unwrap();
     for q in [&loud, &quiet] {
-        crate::ops::comments::add_comment_entry(&store, &q.quest_id, "kim".into(), "봐 주세요".into(), None, false)
-            .await
-            .unwrap();
+        crate::ops::comments::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "kim".into(),
+            "봐 주세요".into(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
     }
     assert!(store.drain_events(std::time::Duration::from_secs(5)));
     assert_eq!(
         sent.0.lock().unwrap().clone(),
         vec![json!({ "q": loud.quest_id, "body": "봐 주세요" })]
     );
-    assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+    assert!(
+        store.plugin_problems().is_empty(),
+        "{:?}",
+        store.plugin_problems()
+    );
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
@@ -2692,9 +2907,7 @@ fn when_matches_values_lists_and_membership() {
         "subject".to_string(),
         json!({ "tags": ["notify"], "status": "done" }),
     )]);
-    let cond = |toml_src: &str| -> super::when::When {
-        toml::from_str(toml_src).unwrap()
-    };
+    let cond = |toml_src: &str| -> super::when::When { toml::from_str(toml_src).unwrap() };
     let m = |src: &str| super::when::matches(&cond(src), &ev, &extra);
 
     assert!(m("ok = true"));
@@ -2702,7 +2915,10 @@ fn when_matches_values_lists_and_membership() {
     assert!(m("\"change.to\" = \"done\""));
     assert!(m("\"change.to\" = [\"done\", \"closed\"]"));
     assert!(!m("\"change.to\" = [\"open\", \"closed\"]"));
-    assert!(m("\"quest.tags\" = \"notify\""), "목록 필드는 포함이면 맞다");
+    assert!(
+        m("\"quest.tags\" = \"notify\""),
+        "목록 필드는 포함이면 맞다"
+    );
     assert!(m("\"quest.tags\" = [\"none\", \"api\"]"));
     assert!(!m("\"quest.tags\" = \"secret\""));
     assert!(m("\"quest.urgency\" = 2"));
@@ -2720,11 +2936,27 @@ fn when_matches_values_lists_and_membership() {
 /// 오타 난 경로와 이상한 값은 적재 때 걸린다 — 조용히 "안 맞음" 이 되면 왜 안 도는지 모른다.
 #[test]
 fn when_paths_and_values_are_checked_at_load() {
-    assert!(parse(&when_line("\"quest.status_changed\"", "\"change.to\" = \"done\"")).is_ok());
-    assert!(parse(&when_line("\"quest.created\"", "ok = true\n\"quest.tags\" = \"notify\"")).is_ok());
+    assert!(
+        parse(&when_line(
+            "\"quest.status_changed\"",
+            "\"change.to\" = \"done\""
+        ))
+        .is_ok()
+    );
+    assert!(
+        parse(&when_line(
+            "\"quest.created\"",
+            "ok = true\n\"quest.tags\" = \"notify\""
+        ))
+        .is_ok()
+    );
     let e = parse(&when_line("\"quest.created\"", "\"comment.body\" = \"x\"")).unwrap_err();
     assert!(e.contains("comment") && e.contains("quest"), "{e}");
-    let e = parse(&when_line("\"quest.created\"", "\"quset.tags\" = \"notify\"")).unwrap_err();
+    let e = parse(&when_line(
+        "\"quest.created\"",
+        "\"quset.tags\" = \"notify\"",
+    ))
+    .unwrap_err();
     assert!(e.contains("quset"), "{e}");
     let e = parse(&when_line("\"quest.created\"", "[when.nested]\nx = 1")).unwrap_err();
     assert!(e.contains("글자") || e.contains("nested"), "{e}");
@@ -2751,10 +2983,11 @@ async fn an_action_only_plugin_fires_only_when_the_condition_holds() {
             b: &serde_json::Value,
             _v: &std::collections::BTreeMap<String, String>,
         ) -> Result<(), String> {
-            self.0
-                .lock()
-                .unwrap()
-                .push(format!("{} {}", e.name, b["quest"]["id"].as_str().unwrap_or("?")));
+            self.0.lock().unwrap().push(format!(
+                "{} {}",
+                e.name,
+                b["quest"]["id"].as_str().unwrap_or("?")
+            ));
             Ok(())
         }
     }
@@ -2804,15 +3037,29 @@ scope = ["cli"]
         urgency: Some(3),
         parent_quest_id: None,
     };
-    let tagged = crate::ops::quests::create_quest(&store, mk("알림")).await.unwrap();
-    let plain = crate::ops::quests::create_quest(&store, mk("조용")).await.unwrap();
-    crate::ops::quests::set_quest_tags(&store, tagged.id, vec!["notify".into()]).await.unwrap();
-    let to = |s: &str| crate::models::ChangeStatusRequest { status_slug: s.into() };
+    let tagged = crate::ops::quests::create_quest(&store, mk("알림"))
+        .await
+        .unwrap();
+    let plain = crate::ops::quests::create_quest(&store, mk("조용"))
+        .await
+        .unwrap();
+    crate::ops::quests::set_quest_tags(&store, tagged.id, vec!["notify".into()])
+        .await
+        .unwrap();
+    let to = |s: &str| crate::models::ChangeStatusRequest {
+        status_slug: s.into(),
+    };
     // 태그 붙은 것: 진행 중(조건 밖) → 완료(조건 안).
-    crate::ops::quests::change_status(&store, tagged.id, to("in_progress")).await.unwrap();
-    crate::ops::quests::change_status(&store, tagged.id, to("done")).await.unwrap();
+    crate::ops::quests::change_status(&store, tagged.id, to("in_progress"))
+        .await
+        .unwrap();
+    crate::ops::quests::change_status(&store, tagged.id, to("done"))
+        .await
+        .unwrap();
     // 태그 없는 것은 완료해도 안 나간다.
-    crate::ops::quests::change_status(&store, plain.id, to("done")).await.unwrap();
+    crate::ops::quests::change_status(&store, plain.id, to("done"))
+        .await
+        .unwrap();
 
     assert!(store.drain_events(std::time::Duration::from_secs(5)));
     assert_eq!(
@@ -2898,9 +3145,15 @@ scope = ["cli"]
         urgency: Some(3),
         parent_quest_id: None,
     };
-    let tagged = crate::ops::quests::create_quest(&store, mk("알림 받을 것")).await.unwrap();
-    let plain = crate::ops::quests::create_quest(&store, mk("조용한 것")).await.unwrap();
-    crate::ops::quests::set_quest_tags(&store, tagged.id, vec!["notify".into()]).await.unwrap();
+    let tagged = crate::ops::quests::create_quest(&store, mk("알림 받을 것"))
+        .await
+        .unwrap();
+    let plain = crate::ops::quests::create_quest(&store, mk("조용한 것"))
+        .await
+        .unwrap();
+    crate::ops::quests::set_quest_tags(&store, tagged.id, vec!["notify".into()])
+        .await
+        .unwrap();
     let camp = crate::ops::campaigns::create_campaign(
         &store,
         crate::models::CreateCampaignRequest {
@@ -2913,33 +3166,60 @@ scope = ["cli"]
     .await
     .unwrap();
     for slug in [&tagged.quest_id, &plain.quest_id] {
-        crate::ops::comments::add_comment_entry(&store, slug, "a".into(), "댓글".into(), None, false)
-            .await
-            .unwrap();
-    }
-    crate::ops::campaign_comments::add_entry(&store, &camp.campaign_slug, "a".into(), "캠페인 댓글".into(), None)
+        crate::ops::comments::add_comment_entry(
+            &store,
+            slug,
+            "a".into(),
+            "댓글".into(),
+            None,
+            false,
+        )
         .await
         .unwrap();
+    }
+    crate::ops::campaign_comments::add_entry(
+        &store,
+        &camp.campaign_slug,
+        "a".into(),
+        "캠페인 댓글".into(),
+        None,
+    )
+    .await
+    .unwrap();
     assert!(store.drain_events(std::time::Duration::from_secs(5)));
 
     let got = sent.0.lock().unwrap().clone();
-    let to = |u: &str| got.iter().filter(|(url, _)| url.ends_with(u)).map(|(_, b)| b.clone()).collect::<Vec<_>>();
+    let to = |u: &str| {
+        got.iter()
+            .filter(|(url, _)| url.ends_with(u))
+            .map(|(_, b)| b.clone())
+            .collect::<Vec<_>>()
+    };
     // 거르기: notify 태그가 붙은 퀘스트의 댓글만.
     let t = to("/tagged");
     assert_eq!(t.len(), 1, "{got:?}");
     assert_eq!(t[0]["target"]["id"], tagged.quest_id.as_str());
     // 받는 쪽이 대상을 안다 — 제목 · 태그 · 상태.
     assert_eq!(t[0]["with"]["subject"]["title"], "알림 받을 것", "{}", t[0]);
-    assert_eq!(t[0]["with"]["subject"]["tags"], serde_json::json!(["notify"]));
+    assert_eq!(
+        t[0]["with"]["subject"]["tags"],
+        serde_json::json!(["notify"])
+    );
     assert_eq!(t[0]["with"]["subject"]["status"], "open");
     // 이벤트의 `subject`({kind, id})는 그대로다 — 이름이 부딪히지 않는다.
-    assert_eq!(t[0]["subject"], serde_json::json!({ "kind": "quest", "id": tagged.quest_id }));
+    assert_eq!(
+        t[0]["subject"],
+        serde_json::json!({ "kind": "quest", "id": tagged.quest_id })
+    );
     // `with` 를 안 적은 줄은 본문이 예전 그대로(세 댓글 모두, `with` 없음).
     let p = to("/plain");
     assert_eq!(p.len(), 3, "{got:?}");
     assert!(p.iter().all(|b| b.get("with").is_none()), "{p:?}");
     // 캠페인 댓글도 같은 모양의 대상 — 분기가 안 생긴다.
-    let c = p.iter().find(|b| b["target"]["kind"] == "campaign").unwrap();
+    let c = p
+        .iter()
+        .find(|b| b["target"]["kind"] == "campaign")
+        .unwrap();
     assert_eq!(c["target"]["id"], camp.campaign_slug.as_str());
 
     let _ = std::fs::remove_dir_all(&g);
@@ -3033,7 +3313,10 @@ permissions = ["notify"]
     );
     let problems = store.plugin_problems();
     assert_eq!(problems.len(), 1, "{problems:?}");
-    assert!(problems[0].contains("권한") && problems[0].contains("backup"), "{problems:?}");
+    assert!(
+        problems[0].contains("권한") && problems[0].contains("backup"),
+        "{problems:?}"
+    );
     assert!(
         std::fs::read_dir(g.join(".guild/backups/snapshots"))
             .map(|d| d.count())
@@ -3122,7 +3405,9 @@ permissions = ["backup", "notify"]
     crate::ops::quests::change_status(
         &store,
         q.id,
-        crate::models::ChangeStatusRequest { status_slug: "done".into() },
+        crate::models::ChangeStatusRequest {
+            status_slug: "done".into(),
+        },
     )
     .await
     .unwrap();
@@ -3133,8 +3418,16 @@ permissions = ["backup", "notify"]
         .unwrap_or(0);
     assert_eq!(snaps, 1, "백업이 안 만들어졌거나 여러 번 만들어졌다");
     // 자기가 만든 백업의 이벤트는 자기에게 안 온다 — 왔다면 알림이 남았을 것이다.
-    assert!(said.0.lock().unwrap().is_empty(), "{:?}", said.0.lock().unwrap());
-    assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+    assert!(
+        said.0.lock().unwrap().is_empty(),
+        "{:?}",
+        said.0.lock().unwrap()
+    );
+    assert!(
+        store.plugin_problems().is_empty(),
+        "{:?}",
+        store.plugin_problems()
+    );
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
@@ -3147,14 +3440,23 @@ fn unknown_permission_names_are_rejected() {
         "name = \"t\"\nscope = [\"cli\"]\npermissions = [\"notify\", \"delete_everything\"]\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.post]\nurl = \"https://x.test\"\n",
     )
     .unwrap_err();
-    assert!(e.contains("delete_everything") && e.contains("notify, backup"), "{e}");
+    assert!(
+        e.contains("delete_everything") && e.contains("notify, backup"),
+        "{e}"
+    );
 }
 
 // ── DEV-407: 바뀌기 전 단계 — 막기 · 값 바꾸기 · 기다리기 ──
 
 /// 시험용 길드 하나 + 플러그인 하나(정의와 스크립트를 그대로 적는다).
 async fn guild_with(label: &str, manifest: &str, script: &str) -> (PathBuf, PathBuf, crate::Store) {
-    guild_with_delivery(label, manifest, script, std::sync::Arc::new(runtime::DropDelivery)).await
+    guild_with_delivery(
+        label,
+        manifest,
+        script,
+        std::sync::Arc::new(runtime::DropDelivery),
+    )
+    .await
 }
 
 async fn guild_with_delivery(
@@ -3220,21 +3522,33 @@ scripts = ["main.rhai"]
     )
     .await;
 
-    let q = crate::ops::quests::create_quest(&store, quest_req("검토 필요")).await.unwrap();
-    let to_done = || crate::models::ChangeStatusRequest { status_slug: "done".into() };
+    let q = crate::ops::quests::create_quest(&store, quest_req("검토 필요"))
+        .await
+        .unwrap();
+    let to_done = || crate::models::ChangeStatusRequest {
+        status_slug: "done".into(),
+    };
     let err = crate::ops::quests::change_status(&store, q.id, to_done())
         .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("리뷰 태그가 필요합니다"), "{err}");
     // 정말로 안 바뀌었다.
-    let still = crate::services::quests::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+    let still = crate::services::quests::fetch_by_id(&store.index_pool, q.id)
+        .await
+        .unwrap();
     assert_eq!(still.status_slug, "open");
 
     // 조건을 채우면 통과한다.
-    crate::ops::quests::set_quest_tags(&store, q.id, vec!["reviewed".into()]).await.unwrap();
-    crate::ops::quests::change_status(&store, q.id, to_done()).await.unwrap();
-    let done = crate::services::quests::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+    crate::ops::quests::set_quest_tags(&store, q.id, vec!["reviewed".into()])
+        .await
+        .unwrap();
+    crate::ops::quests::change_status(&store, q.id, to_done())
+        .await
+        .unwrap();
+    let done = crate::services::quests::fetch_by_id(&store.index_pool, q.id)
+        .await
+        .unwrap();
     assert_eq!(done.status_slug, "done");
 
     let _ = std::fs::remove_dir_all(&g);
@@ -3268,11 +3582,15 @@ scripts = ["main.rhai"]
     )
     .await;
 
-    let plain = crate::ops::quests::create_quest(&store, quest_req("보통 일")).await.unwrap();
+    let plain = crate::ops::quests::create_quest(&store, quest_req("보통 일"))
+        .await
+        .unwrap();
     assert_eq!(plain.title, "보통 일", "안 바꿔야 하는 것을 바꿨다");
     assert_eq!(plain.urgency, 3);
 
-    let hot = crate::ops::quests::create_quest(&store, quest_req("긴급 점검")).await.unwrap();
+    let hot = crate::ops::quests::create_quest(&store, quest_req("긴급 점검"))
+        .await
+        .unwrap();
     assert_eq!(hot.title, "[긴급] 긴급 점검");
     assert_eq!(hot.urgency, 1);
     // 파일에도 그대로 들어갔다 — 캐시만 바뀐 것이 아니다.
@@ -3317,7 +3635,9 @@ permissions = ["notify"]
     .await;
 
     // `drain` 을 부르기 **전에** 이미 끝나 있어야 한다.
-    crate::ops::quests::create_quest(&store, quest_req("기다릴 것")).await.unwrap();
+    crate::ops::quests::create_quest(&store, quest_req("기다릴 것"))
+        .await
+        .unwrap();
     let problems = store.plugin_problems();
     assert!(problems.is_empty(), "{problems:?}");
     // 기다리는 줄이 이미 돌았으므로 남은 일이 없다 — 유예 0 으로도 끝난다.
@@ -3348,8 +3668,13 @@ scripts = ["main.rhai"]
         )
     };
     // 기본 — 던져도 만들어진다.
-    let (g1, h1, store1) = guild_with("gate-err", &manifest(""), r#"fn boom(e) { throw "터짐" }"#).await;
-    assert!(crate::ops::quests::create_quest(&store1, quest_req("그래도 생김")).await.is_ok());
+    let (g1, h1, store1) =
+        guild_with("gate-err", &manifest(""), r#"fn boom(e) { throw "터짐" }"#).await;
+    assert!(
+        crate::ops::quests::create_quest(&store1, quest_req("그래도 생김"))
+            .await
+            .is_ok()
+    );
     assert_eq!(store1.plugin_problems().len(), 1);
 
     // `on_error = "block"` — 막는다.
@@ -3402,7 +3727,11 @@ fn two_plugins_can_share_a_file_from_outside_their_folders() {
     let g = fresh_tmp("imp");
     let shared = plugins_dir(&g).join("_공통");
     std::fs::create_dir_all(&shared).unwrap();
-    std::fs::write(shared.join("fmt.rhai"), r#"fn head(q) { "[" + q.id + "] " + q.title }"#).unwrap();
+    std::fs::write(
+        shared.join("fmt.rhai"),
+        r#"fn head(q) { "[" + q.id + "] " + q.title }"#,
+    )
+    .unwrap();
 
     for name in ["one", "two"] {
         let dir = plugins_dir(&g).join(name);
@@ -3426,7 +3755,11 @@ fn two_plugins_can_share_a_file_from_outside_their_folders() {
     assert!(l.errors.is_empty(), "{:?}", l.errors);
     assert_eq!(l.active.len(), 2);
     for p in &l.active {
-        assert_eq!(p.imports, vec!["../_공통/fmt.rhai"], "불러오는 파일이 안 보인다");
+        assert_eq!(
+            p.imports,
+            vec!["../_공통/fmt.rhai"],
+            "불러오는 파일이 안 보인다"
+        );
         assert_eq!(
             view::view(p, true, Scope::Cli).imports,
             vec!["../_공통/fmt.rhai"]
@@ -3436,7 +3769,10 @@ fn two_plugins_can_share_a_file_from_outside_their_folders() {
     let sc = l.active[0].compiled.as_deref().unwrap();
     let mut data = serde_json::Map::new();
     data.insert("quest".into(), json!({ "id": "DEV-1", "title": "훅" }));
-    let ev = crate::events::Event { data, ..probe_event() };
+    let ev = crate::events::Event {
+        data,
+        ..probe_event()
+    };
     let got = sc.call_handler("h", &ev, &Default::default()).unwrap();
     assert_eq!(got[0].body, json!("[DEV-1] 훅"));
 
@@ -3461,7 +3797,10 @@ fn bad_imports_are_caught_at_load() {
     .unwrap();
     let cases = [
         (r#"import "없다.rhai" as x; fn h(e) { }"#, "없습니다"),
-        (r#"let p = "x.rhai"; import p as x; fn h(e) { }"#, "글자 그대로"),
+        (
+            r#"let p = "x.rhai"; import p as x; fn h(e) { }"#,
+            "글자 그대로",
+        ),
         (r#"import "../secrets.env" as x; fn h(e) { }"#, ".rhai"),
     ];
     for (src, want) in cases {
@@ -3471,8 +3810,16 @@ fn bad_imports_are_caught_at_load() {
         assert!(l.errors[0].1.contains(want), "{src} → {:?}", l.errors);
     }
     // 불러온 파일 안의 비밀값도 막는다.
-    std::fs::write(plugins_dir(&g).join("p/lib.rhai"), r#"fn k() { "xoxb-1234567890abcdef" }"#).unwrap();
-    std::fs::write(dir.join("main.rhai"), r#"import "lib.rhai" as l; fn h(e) { }"#).unwrap();
+    std::fs::write(
+        plugins_dir(&g).join("p/lib.rhai"),
+        r#"fn k() { "xoxb-1234567890abcdef" }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"import "lib.rhai" as l; fn h(e) { }"#,
+    )
+    .unwrap();
     let l = load_all(&g);
     assert!(l.errors[0].1.contains("비밀값"), "{:?}", l.errors);
 
@@ -3499,8 +3846,15 @@ fn changing_an_imported_file_outside_the_folder_does_not_ask_again() {
     .unwrap();
     // BUG-347: rhai 글자 안에서 `\` 는 이스케이프다 — 윈도우 경로(`C:\Users\…`)를 그대로 넣으면 `\U` 가
     // 깨진 이스케이프가 되어 컴파일이 안 된다. `/` 는 윈도우에서도 경로 구분자다.
-    let import = format!("import \"{}/fmt.rhai\" as fmt;", outside.display().to_string().replace('\\', "/"));
-    std::fs::write(dir.join("main.rhai"), format!("{import} fn h(e) {{ send(\"out\", fmt::head(e)) }}")).unwrap();
+    let import = format!(
+        "import \"{}/fmt.rhai\" as fmt;",
+        outside.display().to_string().replace('\\', "/")
+    );
+    std::fs::write(
+        dir.join("main.rhai"),
+        format!("{import} fn h(e) {{ send(\"out\", fmt::head(e)) }}"),
+    )
+    .unwrap();
 
     let l = load_all(&g);
     consent::grant(&g, &l.needs_consent[0]).unwrap();
@@ -3509,7 +3863,11 @@ fn changing_an_imported_file_outside_the_folder_does_not_ask_again() {
     // 폴더 **밖** 파일을 고친다 — 그대로 돈다.
     std::fs::write(outside.join("fmt.rhai"), r#"fn head(q) { "B" }"#).unwrap();
     let after = load_all(&g);
-    assert_eq!(after.active.len(), 1, "폴더 밖 파일이 바뀌었다고 동의가 풀렸다");
+    assert_eq!(
+        after.active.len(),
+        1,
+        "폴더 밖 파일이 바뀌었다고 동의가 풀렸다"
+    );
     // 바뀐 내용이 실제로 반영된다.
     let got = after.active[0]
         .compiled
@@ -3520,8 +3878,15 @@ fn changing_an_imported_file_outside_the_folder_does_not_ask_again() {
     assert_eq!(got[0].body, json!("B"));
 
     // 폴더 **안** 파일은 예전처럼 다시 묻는다.
-    std::fs::write(dir.join("main.rhai"), format!("{import} fn h(e) {{ send(\"out\", \"직접\") }}")).unwrap();
-    assert!(load_all(&g).active.is_empty(), "폴더 안이 바뀌었는데 안 물었다");
+    std::fs::write(
+        dir.join("main.rhai"),
+        format!("{import} fn h(e) {{ send(\"out\", \"직접\") }}"),
+    )
+    .unwrap();
+    assert!(
+        load_all(&g).active.is_empty(),
+        "폴더 안이 바뀌었는데 안 물었다"
+    );
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     for d in [&g, &outside, &home] {
@@ -3566,7 +3931,10 @@ fn a_loaded_plugin_sees_this_guilds_display_names() {
     let sc = l.active[0].compiled.as_deref().unwrap();
     let mut data = serde_json::Map::new();
     data.insert("quest".into(), json!({ "id": "DEV-1", "title": "훅" }));
-    let ev = crate::events::Event { data, ..probe_event() };
+    let ev = crate::events::Event {
+        data,
+        ..probe_event()
+    };
     let got = sc.call_handler("h", &ev, &Default::default()).unwrap();
     // 적재가 길드를 안 알려 주면 여기서 "done" 이 나온다.
     assert_eq!(got[0].body["s"], "완료");
@@ -3617,13 +3985,20 @@ impl runtime::Delivery for LockProbe {
         _v: &std::collections::BTreeMap<String, String>,
     ) -> Result<(), String> {
         let free = self.free();
-        self.seen.lock().unwrap().push((e.name.to_string(), free, b.clone()));
+        self.seen
+            .lock()
+            .unwrap()
+            .push((e.name.to_string(), free, b.clone()));
         Ok(())
     }
 }
 
 /// 이 길드를 들여다보는 전달을 꽂는다 — 길드 경로가 먼저 있어야 해서 `guild_with` 를 두 번에 나눈다.
-async fn guild_probed(label: &str, manifest: &str, script: &str) -> (PathBuf, PathBuf, crate::Store, std::sync::Arc<LockProbe>) {
+async fn guild_probed(
+    label: &str,
+    manifest: &str,
+    script: &str,
+) -> (PathBuf, PathBuf, crate::Store, std::sync::Arc<LockProbe>) {
     let (g, home, store) = guild_with(label, manifest, script).await;
     let probe = LockProbe::new(&g);
     {
@@ -3646,15 +4021,29 @@ async fn a_waiting_line_runs_after_the_guild_lock_is_released() {
     let manifest = format!(
         "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}\n[[handlers]]\n    post = [\"quest.created\"]\n    call = \"h\"\n    wait = true\n"
     );
-    let (g, home, store, probe) =
-        guild_probed("wait-unlocked", &manifest, r#"fn h(e) { send("out", e.quest.id) }"#).await;
+    let (g, home, store, probe) = guild_probed(
+        "wait-unlocked",
+        &manifest,
+        r#"fn h(e) { send("out", e.quest.id) }"#,
+    )
+    .await;
 
-    crate::ops::quests::create_quest(&store, quest_req("기다릴 것")).await.unwrap();
+    crate::ops::quests::create_quest(&store, quest_req("기다릴 것"))
+        .await
+        .unwrap();
     // 명령이 돌아왔을 때 이미 끝나 있다 — 기다리라고 적었으니까.
     let seen = probe.seen();
-    assert_eq!(seen.len(), 1, "기다리는 줄이 명령보다 늦게 돌았다: {seen:?}");
+    assert_eq!(
+        seen.len(),
+        1,
+        "기다리는 줄이 명령보다 늦게 돌았다: {seen:?}"
+    );
     assert!(seen[0].1, "기다리는 줄이 길드 잠금을 쥔 채 돌았다");
-    assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+    assert!(
+        store.plugin_problems().is_empty(),
+        "{:?}",
+        store.plugin_problems()
+    );
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
@@ -3673,14 +4062,23 @@ async fn a_delete_pre_is_asked_before_the_lock_and_can_still_block() {
     )
     .await;
 
-    let q = crate::ops::quests::create_quest(&store, quest_req("지킬 것")).await.unwrap();
-    let err = crate::ops::quests::delete_quest(&store, q.id, &[]).await.unwrap_err().to_string();
+    let q = crate::ops::quests::create_quest(&store, quest_req("지킬 것"))
+        .await
+        .unwrap();
+    let err = crate::ops::quests::delete_quest(&store, q.id, &[])
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("지키는 퀘스트입니다"), "{err}");
     let seen = probe.seen();
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert!(seen[0].1, "삭제 pre 가 길드 잠금을 쥔 채 물었다");
     // 정말 안 지워졌다.
-    assert!(crate::services::quests::fetch_by_id(&store.index_pool, q.id).await.is_ok());
+    assert!(
+        crate::services::quests::fetch_by_id(&store.index_pool, q.id)
+            .await
+            .is_ok()
+    );
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
@@ -3708,15 +4106,27 @@ async fn a_campaign_comment_can_be_blocked_like_a_quest_comment() {
     .await
     .unwrap();
     let slug = c.campaign_slug.clone();
-    let err = crate::ops::campaign_comments::add_entry(&store, &slug, "admin".into(), "금지 단어".into(), None)
-        .await
-        .unwrap_err()
-        .to_string();
+    let err = crate::ops::campaign_comments::add_entry(
+        &store,
+        &slug,
+        "admin".into(),
+        "금지 단어".into(),
+        None,
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(err.contains("금지어가 있습니다"), "{err}");
     // 막히지 않을 것은 그대로 달린다.
-    crate::ops::campaign_comments::add_entry(&store, &slug, "admin".into(), "괜찮은 글".into(), None)
-        .await
-        .unwrap();
+    crate::ops::campaign_comments::add_entry(
+        &store,
+        &slug,
+        "admin".into(),
+        "괜찮은 글".into(),
+        None,
+    )
+    .await
+    .unwrap();
     let all = crate::ops::campaign_comments::list_entries(&store, &slug).unwrap();
     assert_eq!(all.len(), 1, "{all:?}");
 
@@ -3790,7 +4200,10 @@ impl runtime::Delivery for HeldProbe {
             }
             return Ok(());
         }
-        self.seen.lock().unwrap().push((e.name.to_string(), b.clone()));
+        self.seen
+            .lock()
+            .unwrap()
+            .push((e.name.to_string(), b.clone()));
         Ok(())
     }
 }
@@ -3802,9 +4215,17 @@ async fn a_line_sees_the_subject_as_it_was_when_the_change_happened() {
     let manifest = format!(
         "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}[actions.hold.post]\n    url = \"https://example.test/hold\"\n\n[[handlers]]\n    post   = [\"quest.created\"]\n    action = \"hold\"\n\n[[handlers]]\n    post = [\"comment.added\"]\n    with = [\"subject\"]\n    call = \"h\"\n"
     );
-    let (g, home, store) = guild_with("with-snapshot", &manifest, r#"fn h(e, q) { send("out", q.title) }"#).await;
+    let (g, home, store) = guild_with(
+        "with-snapshot",
+        &manifest,
+        r#"fn h(e, q) { send("out", q.title) }"#,
+    )
+    .await;
     let (tx, rx) = std::sync::mpsc::channel();
-    let probe = std::sync::Arc::new(HeldProbe { hold: std::sync::Mutex::new(Some(rx)), seen: Default::default() });
+    let probe = std::sync::Arc::new(HeldProbe {
+        hold: std::sync::Mutex::new(Some(rx)),
+        seen: Default::default(),
+    });
     {
         let _guard = env_lock();
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
@@ -3813,16 +4234,30 @@ async fn a_line_sees_the_subject_as_it_was_when_the_change_happened() {
     }
 
     // 1) 만들기 — 이 일감이 전달 스레드를 붙잡는다.
-    let q = crate::ops::quests::create_quest(&store, quest_req("원래 제목")).await.unwrap();
-    // 2) 댓글 — 일감은 줄에 선다. 연결 데이터(제목)는 지금 읽혀야 한다.
-    crate::ops::comments::add_comment_entry(&store, &q.quest_id, "admin".into(), "질문".into(), None, false)
+    let q = crate::ops::quests::create_quest(&store, quest_req("원래 제목"))
         .await
         .unwrap();
+    // 2) 댓글 — 일감은 줄에 선다. 연결 데이터(제목)는 지금 읽혀야 한다.
+    crate::ops::comments::add_comment_entry(
+        &store,
+        &q.quest_id,
+        "admin".into(),
+        "질문".into(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
     // 3) 그사이 제목이 바뀐다.
     crate::ops::quests::update_quest(
         &store,
         q.id,
-        crate::models::UpdateQuestRequest { title: Some("바뀐 제목".into()), description: None, urgency: None, ..Default::default() },
+        crate::models::UpdateQuestRequest {
+            title: Some("바뀐 제목".into()),
+            description: None,
+            urgency: None,
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
@@ -3831,7 +4266,11 @@ async fn a_line_sees_the_subject_as_it_was_when_the_change_happened() {
     assert!(store.drain_events(std::time::Duration::from_secs(10)));
 
     let seen = probe.seen.lock().unwrap().clone();
-    let got: Vec<&serde_json::Value> = seen.iter().filter(|(n, _)| n == "comment.added").map(|(_, b)| b).collect();
+    let got: Vec<&serde_json::Value> = seen
+        .iter()
+        .filter(|(n, _)| n == "comment.added")
+        .map(|(_, b)| b)
+        .collect();
     assert_eq!(got, vec![&serde_json::json!("원래 제목")], "{seen:?}");
 
     let _ = std::fs::remove_dir_all(&g);
@@ -3845,17 +4284,25 @@ async fn another_change_finishing_does_not_run_my_waiting_lines() {
     let manifest = format!(
         "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}\n[[handlers]]\n    post = [\"quest.created\"]\n    call = \"h\"\n    wait = true\n"
     );
-    let (g, home, store, probe) =
-        guild_probed("wait-per-task", &manifest, r#"fn h(e) { send("out", e.quest.id) }"#).await;
+    let (g, home, store, probe) = guild_probed(
+        "wait-per-task",
+        &manifest,
+        r#"fn h(e) { send("out", e.quest.id) }"#,
+    )
+    .await;
 
     let (queued_tx, queued_rx) = tokio::sync::oneshot::channel();
     let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
     let mine = store.clone();
     let holder = tokio::spawn(async move {
-        let g = mine.lock_docs(&[crate::lock::DocKey::quest("DEV-001")]).await.unwrap();
-        mine.emit_post(crate::events::names::QUEST_CREATED, || {
-            serde_json::json!({ "quest": { "id": "DEV-001" } })
-        });
+        let g = mine
+            .lock_docs(&[crate::lock::DocKey::quest("DEV-001")])
+            .await
+            .unwrap();
+        mine.emit_post(
+            crate::events::names::QUEST_CREATED,
+            || serde_json::json!({ "quest": { "id": "DEV-001" } }),
+        );
         queued_tx.send(()).unwrap();
         release_rx.await.unwrap();
         drop(g);
@@ -3865,12 +4312,19 @@ async fn another_change_finishing_does_not_run_my_waiting_lines() {
     // 다른 문서를 고친 변경이 끝난다 — 내 줄을 건드리면 안 된다.
     let other = store.clone();
     tokio::spawn(async move {
-        let g = other.lock_docs(&[crate::lock::DocKey::quest("DEV-002")]).await.unwrap();
+        let g = other
+            .lock_docs(&[crate::lock::DocKey::quest("DEV-002")])
+            .await
+            .unwrap();
         drop(g);
     })
     .await
     .unwrap();
-    assert!(probe.seen().is_empty(), "남의 변경이 끝나며 내 줄을 돌렸다: {:?}", probe.seen());
+    assert!(
+        probe.seen().is_empty(),
+        "남의 변경이 끝나며 내 줄을 돌렸다: {:?}",
+        probe.seen()
+    );
 
     // 내가 풀면 돈다.
     release_tx.send(()).unwrap();

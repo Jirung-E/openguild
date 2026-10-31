@@ -1272,9 +1272,9 @@
 						class="ce-toggle"
 						class:active={editRich}
 						onclick={() => {
-						if (!editRich) editH = editBodyEl?.offsetHeight || editH;
-						editRich = !editRich;
-					}}
+							if (!editRich) editH = editBodyEl?.offsetHeight || editH;
+							editRich = !editRich;
+						}}
 						title={t('comment.toggleEditor', $locale)}
 						aria-pressed={editRich}>{MD_MARK}</button
 					>
@@ -1392,7 +1392,8 @@
 							class="reaction-add"
 							onclick={(ev) => toggleReactionPicker(ev, e.id)}
 							aria-expanded={pickerOpenFor === e.id}
-							title={t('comment.addReaction', $locale)}><Icon name="smile-plus" size="1.3em" /></button
+							title={t('comment.addReaction', $locale)}
+							><Icon name="smile-plus" size="1.3em" /></button
 						>
 						{#if pickerOpenFor === e.id && reactionPickerPos}
 							<div
@@ -1644,9 +1645,9 @@
 							class="ce-toggle"
 							class:active={newRich}
 							onclick={() => {
-						if (!newRich) newH = newBodyEl?.offsetHeight || newH;
-						newRich = !newRich;
-					}}
+								if (!newRich) newH = newBodyEl?.offsetHeight || newH;
+								newRich = !newRich;
+							}}
 							title={t('comment.toggleEditor', $locale)}
 							aria-pressed={newRich}>{MD_MARK}</button
 						>

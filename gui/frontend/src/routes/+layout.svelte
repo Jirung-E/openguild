@@ -186,7 +186,10 @@
 		// px 상수이던 시절엔 바 높이만 고정이라, 안쪽 요소를 rem 으로 바꾸면
 		// 배율 150% 에서 pill 이 바 밖으로 넘쳤다. 이 값을 쓰는 곳(Nav 의 top,
 		// QuestList / QuestBoard / SearchPalette 의 calc)은 전부 var() 라 함께 따라간다.
-		root.setProperty('--titlebar-h', showTitleBar ? (linuxTitlebar ? 'max(2.5rem, 30px)' : '2rem') : '0px');
+		root.setProperty(
+			'--titlebar-h',
+			showTitleBar ? (linuxTitlebar ? 'max(2.5rem, 30px)' : '2rem') : '0px'
+		);
 		// Nav 기본 높이 3.25rem(=52px @scale1). 리눅스에서만 8px 줄임.
 		root.setProperty('--nav-h', linuxTitlebar ? 'calc(3.25rem - 8px)' : '3.25rem');
 	});

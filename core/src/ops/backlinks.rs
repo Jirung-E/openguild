@@ -90,15 +90,19 @@ async fn existing_docs(store: &Store) -> AppResult<std::collections::HashSet<(Do
         set.insert((DocKind::Campaign, id.to_uppercase()));
     }
 
-    let b: Vec<(i64,)> =
-        sqlx::query_as("SELECT number FROM library_docs WHERE deleted_at IS NULL")
-            .fetch_all(&store.index_pool)
-            .await?;
+    let b: Vec<(i64,)> = sqlx::query_as("SELECT number FROM library_docs WHERE deleted_at IS NULL")
+        .fetch_all(&store.index_pool)
+        .await?;
     for (n,) in b {
-        set.insert((DocKind::Book, crate::repo::library::book_slug(n).to_uppercase()));
+        set.insert((
+            DocKind::Book,
+            crate::repo::library::book_slug(n).to_uppercase(),
+        ));
     }
 
-    for r in crate::repo::rules::list_rules(&store.paths).map_err(crate::error::AppError::Internal)? {
+    for r in
+        crate::repo::rules::list_rules(&store.paths).map_err(crate::error::AppError::Internal)?
+    {
         set.insert((DocKind::Rule, r.slug.to_uppercase()));
     }
     Ok(set)
@@ -168,8 +172,12 @@ pub async fn refresh_for(store: &Store, kind: DocKind, id: &str) -> AppResult<()
 
     // (2) 해석 후 교체. 이 문서가 src 인 행만 지우므로 남의 링크는 건드리지 않는다.
     let exist = existing_docs(store).await?;
-    const BARE_ORDER: [DocKind; 4] =
-        [DocKind::Quest, DocKind::Campaign, DocKind::Book, DocKind::Rule];
+    const BARE_ORDER: [DocKind; 4] = [
+        DocKind::Quest,
+        DocKind::Campaign,
+        DocKind::Book,
+        DocKind::Rule,
+    ];
 
     let mut tx = crate::db::begin_write(&store.index_pool).await?;
     sqlx::query("DELETE FROM doc_links WHERE src_kind = ? AND src_id = ?")
@@ -183,7 +191,10 @@ pub async fn refresh_for(store: &Store, kind: DocKind, id: &str) -> AppResult<()
             let key = link.id.to_uppercase();
             let dst = match link.kind {
                 Some(k) => exist.contains(&(k, key.clone())).then_some(k),
-                None => BARE_ORDER.iter().copied().find(|k| exist.contains(&(*k, key.clone()))),
+                None => BARE_ORDER
+                    .iter()
+                    .copied()
+                    .find(|k| exist.contains(&(*k, key.clone()))),
             };
             let Some(dst_kind) = dst else { continue };
             if dst_kind == kind && key == id.to_uppercase() {

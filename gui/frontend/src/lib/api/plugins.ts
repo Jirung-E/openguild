@@ -221,8 +221,7 @@ export const pluginApi = {
 	addFolder: (path: string) => manage<AddFolderOutcome>('plugin_add_folder', { path }),
 	use: (source: string, folder: string) => manage('plugin_use', { source, folder }),
 	/** 이 길드에서 안 쓴다 — 파일은 그대로. */
-	stopUsing: (source: string, folder: string) =>
-		manage('plugin_stop_using', { source, folder }),
+	stopUsing: (source: string, folder: string) => manage('plugin_stop_using', { source, folder }),
 	/** 소스 등록 해제 — 그 소스에서 쓰던 것은 모든 길드에서 빠진다. */
 	removeSource: (name: string) => manage('plugin_source_remove', { name }),
 	/**

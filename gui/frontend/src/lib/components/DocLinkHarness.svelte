@@ -3,12 +3,7 @@
 	import DocLink from './DocLink.svelte';
 	import type { Kind } from '$lib/stores/questIndex';
 
-	let {
-		kind,
-		id,
-		title,
-		href
-	}: { kind: Kind; id: string; title: string; href: string } = $props();
+	let { kind, id, title, href }: { kind: Kind; id: string; title: string; href: string } = $props();
 </script>
 
 <DocLink {kind} {id} {title} {href}>

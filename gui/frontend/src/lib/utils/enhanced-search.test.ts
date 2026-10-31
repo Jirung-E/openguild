@@ -91,7 +91,11 @@ describe('LatestQuery', () => {
 		});
 		const lq = new LatestQuery(fetcher, { debounceMs: 0 });
 		const errs: unknown[] = [];
-		lq.run('x', () => expect.unreachable('성공 콜백이 불렸다'), (e) => errs.push(e));
+		lq.run(
+			'x',
+			() => expect.unreachable('성공 콜백이 불렸다'),
+			(e) => errs.push(e)
+		);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(errs).toHaveLength(1);
 	});
@@ -103,9 +107,17 @@ describe('LatestQuery', () => {
 		);
 		const lq = new LatestQuery(fetcher, { debounceMs: 0 });
 		const errs: unknown[] = [];
-		lq.run('old', () => {}, (e) => errs.push(e));
+		lq.run(
+			'old',
+			() => {},
+			(e) => errs.push(e)
+		);
 		await vi.advanceTimersByTimeAsync(0);
-		lq.run('new', () => {}, (e) => errs.push(e));
+		lq.run(
+			'new',
+			() => {},
+			(e) => errs.push(e)
+		);
 		await vi.advanceTimersByTimeAsync(0);
 		fail(new Error('늦은 실패'));
 		await vi.advanceTimersByTimeAsync(0);

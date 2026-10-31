@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
 };
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -23,10 +23,7 @@ pub fn is_network_path(path: &std::path::Path) -> bool {
 /// open database file) — UNC 는 URL 로 표현할 수 없다.
 /// `SqliteConnectOptions::filename()` 은 경로를 파싱 없이 그대로 SQLite 에
 /// 전달하므로 UNC(`\\server\share\..`)도 정상 동작.
-pub async fn create_pool_from_path(
-    path: &std::path::Path,
-    read_only: bool,
-) -> Result<SqlitePool> {
+pub async fn create_pool_from_path(path: &std::path::Path, read_only: bool) -> Result<SqlitePool> {
     // REQ-040: 쿼리의 `/정규식/` 은 SQLite `REGEXP` 로 거른다 — 연결마다 Rust `regex` 로 등록된다.
     let mut options = SqliteConnectOptions::new()
         .filename(path)
@@ -56,7 +53,9 @@ pub async fn create_pool_from_path(
 /// 문서 잠금이면 다른 문서를 고치는 변경끼리 캐시 DB 에 동시에 쓴다. 보통 `BEGIN`(DEFERRED)은 읽기로
 /// 시작했다가 쓸 때 잠금을 올리는데, 그사이 남이 먼저 썼으면 SQLite 가 기다리지 않고 바로 "바쁨" 으로
 /// 실패시킨다(busy_timeout 이 안 통하는 경우). 처음부터 잡으면 앞 사람이 끝날 때까지 기다린다.
-pub async fn begin_write(pool: &sqlx::SqlitePool) -> sqlx::Result<sqlx::Transaction<'static, sqlx::Sqlite>> {
+pub async fn begin_write(
+    pool: &sqlx::SqlitePool,
+) -> sqlx::Result<sqlx::Transaction<'static, sqlx::Sqlite>> {
     pool.begin_with("BEGIN IMMEDIATE").await
 }
 
@@ -118,11 +117,19 @@ mod tests {
     fn is_network_path_detects_unc_only() {
         use std::path::Path;
         // UNC 원형 + verbatim.
-        assert!(is_network_path(Path::new(r"\\server\share\guild\.guild\index.db")));
-        assert!(is_network_path(Path::new(r"\\?\UNC\server\share\guild\.guild\index.db")));
+        assert!(is_network_path(Path::new(
+            r"\\server\share\guild\.guild\index.db"
+        )));
+        assert!(is_network_path(Path::new(
+            r"\\?\UNC\server\share\guild\.guild\index.db"
+        )));
         // 로컬 드라이브 (원형 + verbatim — verbatim 을 네트워크로 오판하면 안 됨).
-        assert!(!is_network_path(Path::new(r"C:\work\guild\.guild\index.db")));
-        assert!(!is_network_path(Path::new(r"\\?\C:\work\guild\.guild\index.db")));
+        assert!(!is_network_path(Path::new(
+            r"C:\work\guild\.guild\index.db"
+        )));
+        assert!(!is_network_path(Path::new(
+            r"\\?\C:\work\guild\.guild\index.db"
+        )));
     }
 
     /// BUG-041 regression: DB 에 binary 가 모르는 mig record 가 있어도
@@ -147,7 +154,10 @@ mod tests {
 
         // 두 번째 호출 — 이전 buggy 동작이면 panic.
         let ahead = run_migrations(&pool).await.unwrap();
-        assert!(ahead.contains(&9999), "ahead should include the unknown version: {ahead:?}");
+        assert!(
+            ahead.contains(&9999),
+            "ahead should include the unknown version: {ahead:?}"
+        );
     }
 
     /// 모든 mig 가 알려진 정상 DB → ahead 는 빈 vec.
@@ -164,36 +174,74 @@ mod tests {
     async fn overlapping_write_transactions_wait_instead_of_failing() {
         let dir = std::env::temp_dir().join(format!(
             "og-db-immediate-{}-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
             crate::test_seq()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let pool = create_pool_from_path(&dir.join("t.db"), false).await.unwrap();
-        sqlx::query("PRAGMA journal_mode = WAL").execute(&pool).await.unwrap();
-        sqlx::query("CREATE TABLE t (n INTEGER)").execute(&pool).await.unwrap();
+        let pool = create_pool_from_path(&dir.join("t.db"), false)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA journal_mode = WAL")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE t (n INTEGER)")
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // 보통 BEGIN: 둘 다 읽은 뒤 하나가 쓰고 끝내면, 다른 하나의 쓰기는 바로 실패한다.
         let mut a = pool.begin().await.unwrap();
         let mut b = pool.begin().await.unwrap();
-        let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&mut *a).await.unwrap();
-        let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&mut *b).await.unwrap();
-        sqlx::query("INSERT INTO t VALUES (1)").execute(&mut *a).await.unwrap();
+        let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t")
+            .fetch_one(&mut *a)
+            .await
+            .unwrap();
+        let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t")
+            .fetch_one(&mut *b)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO t VALUES (1)")
+            .execute(&mut *a)
+            .await
+            .unwrap();
         a.commit().await.unwrap();
-        assert!(sqlx::query("INSERT INTO t VALUES (2)").execute(&mut *b).await.is_err());
+        assert!(
+            sqlx::query("INSERT INTO t VALUES (2)")
+                .execute(&mut *b)
+                .await
+                .is_err()
+        );
         drop(b);
 
         // begin_write: 겹쳐도 차례로 둘 다 된다.
         let run = |pool: sqlx::SqlitePool, n: i64| async move {
             let mut tx = begin_write(&pool).await.unwrap();
-            let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&mut *tx).await.unwrap();
+            let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t")
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            sqlx::query("INSERT INTO t VALUES (?)").bind(n).execute(&mut *tx).await.unwrap();
+            sqlx::query("INSERT INTO t VALUES (?)")
+                .bind(n)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
             tx.commit().await.unwrap();
         };
-        let (x, y) = tokio::join!(tokio::spawn(run(pool.clone(), 10)), tokio::spawn(run(pool.clone(), 11)));
+        let (x, y) = tokio::join!(
+            tokio::spawn(run(pool.clone(), 10)),
+            tokio::spawn(run(pool.clone(), 11))
+        );
         x.unwrap();
         y.unwrap();
-        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&pool).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(n, 3);
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);

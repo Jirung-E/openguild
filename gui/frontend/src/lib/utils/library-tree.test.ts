@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildLibraryTree, flattenFolderPaths, searchBooks, searchLibrary, visibleTreeOrder } from './library-tree';
+import {
+	buildLibraryTree,
+	flattenFolderPaths,
+	searchBooks,
+	searchLibrary,
+	visibleTreeOrder
+} from './library-tree';
 import type { Book, LibraryFolder } from '$lib/api/library';
 
 function book(id: string, title: string, path: string, body = ''): Book {
@@ -55,11 +61,7 @@ describe('buildLibraryTree', () => {
 			book('BOOK-002', 'ㄴ문서', '')
 		];
 		const preserved = buildLibraryTree([], input, { preserveDocOrder: true });
-		expect(preserved.rootDocs.map((b) => b.book_id)).toEqual([
-			'BOOK-003',
-			'BOOK-001',
-			'BOOK-002'
-		]);
+		expect(preserved.rootDocs.map((b) => b.book_id)).toEqual(['BOOK-003', 'BOOK-001', 'BOOK-002']);
 		const sorted = buildLibraryTree([], input);
 		expect(sorted.rootDocs.map((b) => b.title)).toEqual(['ㄱ문서', 'ㄴ문서', 'ㄷ문서']);
 	});

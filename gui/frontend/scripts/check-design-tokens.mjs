@@ -39,7 +39,8 @@ const violations = [];
 /** 상단 바의 아이콘 버튼(⋯ · ⚙ · 다시 색인)은 창 크롬이라 `.btn` 이 아니다. */
 const BTN_ALLOW = new Set(['lib/components/Nav.svelte']);
 const BTN_SEL = /\.(btn(-[\w-]+)?|input|popup|modal-box)(?![\w-])/;
-const BTN_LOOK = /^(background(-color)?|border(-[a-z]+)*|color|padding(-[a-z]+)?|font-size|border-radius|box-shadow)$/;
+const BTN_LOOK =
+	/^(background(-color)?|border(-[a-z]+)*|color|padding(-[a-z]+)?|font-size|border-radius|box-shadow)$/;
 
 /** 주석을 지우되 `token-ok` 표시는 자리표시자로 남긴다. */
 function prepare(css) {
@@ -80,7 +81,9 @@ const RULES = [
 		prop: /^(transition|transition-duration|animation)$/,
 		bad: (v) =>
 			!/infinite/.test(v) &&
-			[...stripFns(v).matchAll(/(?<![\w.-])(\d*\.?\d+)s\b/g)].some((m) => Number(m[1]) <= 0.45 && Number(m[1]) > 0),
+			[...stripFns(v).matchAll(/(?<![\w.-])(\d*\.?\d+)s\b/g)].some(
+				(m) => Number(m[1]) <= 0.45 && Number(m[1]) > 0
+			),
 		hint: 'var(--dur-*)'
 	},
 	{
@@ -106,7 +109,9 @@ function scan(rel, css) {
 			for (const d of m[2].split(';')) {
 				const prop = d.split(':')[0].trim();
 				if (BTN_LOOK.test(prop)) {
-					violations.push(`${rel}  ${sel.replace(/\s+/g, ' ')} { ${prop} }  → 공통 부품의 모양은 global.css 에서`);
+					violations.push(
+						`${rel}  ${sel.replace(/\s+/g, ' ')} { ${prop} }  → 공통 부품의 모양은 global.css 에서`
+					);
 					break;
 				}
 			}
@@ -132,7 +137,8 @@ function walk(dir) {
 		const rel = relative(SRC, p).replace(/\\/g, '/');
 		if (p.endsWith('.css')) scan(rel, readFileSync(p, 'utf8'));
 		else if (p.endsWith('.svelte')) {
-			for (const m of readFileSync(p, 'utf8').matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) scan(rel, m[1]);
+			for (const m of readFileSync(p, 'utf8').matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g))
+				scan(rel, m[1]);
 		}
 	}
 }
@@ -140,7 +146,9 @@ function walk(dir) {
 walk(SRC);
 
 if (violations.length > 0) {
-	console.error(`✗ 디자인 토큰 대신 리터럴 ${violations.length}곳 — 토큰을 쓰거나, 토큰이 맞지 않는 자리면 줄에 /* token-ok: 이유 */:`);
+	console.error(
+		`✗ 디자인 토큰 대신 리터럴 ${violations.length}곳 — 토큰을 쓰거나, 토큰이 맞지 않는 자리면 줄에 /* token-ok: 이유 */:`
+	);
 	for (const v of violations) console.error('  ' + v);
 	process.exit(1);
 }

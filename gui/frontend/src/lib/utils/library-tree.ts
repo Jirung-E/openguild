@@ -106,11 +106,7 @@ export function flattenFolderPaths(tree: LibraryTree): string[] {
  * 첨부 이름은 목록 응답(`list()`)에 없어 클라이언트가 알 수 없으므로 서버가
  * 판정해 넘긴다. 본문/제목 매치와 **OR** 로 합친다.
  */
-export function searchBooks(
-	books: Book[],
-	query: string,
-	attachIds?: Set<string>
-): Book[] | null {
+export function searchBooks(books: Book[], query: string, attachIds?: Set<string>): Book[] | null {
 	const q = query.trim().toLowerCase();
 	if (!q) return null;
 	const titleHits: Book[] = [];

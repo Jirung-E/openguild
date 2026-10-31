@@ -3,8 +3,8 @@
 //! reindex 의 skip 판정(파싱 실패 / unknown status)과 같은 취지지만 DB 를
 //! 건드리지 않는 검사. GUI 시동 시 / admin 에서 사용자 알림, CLI 경고에 사용.
 
-use crate::repo::fs as repo_fs;
 use crate::repo::QuestFile;
+use crate::repo::fs as repo_fs;
 use crate::store::Store;
 
 /// (파일 경로, 사유). 정상 파일은 포함 안 됨.

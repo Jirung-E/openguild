@@ -22,9 +22,9 @@ use crate::store::Store;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DriftReport {
-    pub fresh_files: Vec<String>, // quest_id slug 들
+    pub fresh_files: Vec<String>,      // quest_id slug 들
     pub missing_in_index: Vec<String>, // 파일은 있는데 index 에 없음
-    pub stale_in_index: Vec<String>, // index 에 있는데 파일이 없음
+    pub stale_in_index: Vec<String>,   // index 에 있는데 파일이 없음
     /// DEV-102: sibling 파일 (`{slug}.comments.md` / `{slug}.memo.md`) 의 mtime
     /// 이 index.db 보다 새것 — 캐시 (`quest_comments` / `quest_memos`) 가 stale.
     /// 항목 형식: `{slug}.comments.md` / `{slug}.memo.md` 로 file_name 그대로.
@@ -167,7 +167,9 @@ pub async fn auto_resync(store: &Store) -> Result<Option<crate::reindex::Reindex
 }
 
 /// 잠금 없는 몸통 — **길드 독점을 쥔 쪽만** 부른다.
-pub(crate) async fn auto_resync_locked(store: &Store) -> Result<Option<crate::reindex::ReindexReport>> {
+pub(crate) async fn auto_resync_locked(
+    store: &Store,
+) -> Result<Option<crate::reindex::ReindexReport>> {
     let drift = detect_drift(store).await?;
     if drift.is_clean() {
         return Ok(None);
@@ -196,10 +198,14 @@ pub fn orphan_sidecars(paths: &crate::repo::GuildPaths) -> Vec<String> {
         (paths.campaigns_dir(), "campaigns"),
         (paths.library_dir(), "library"),
     ] {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in rd.filter_map(|e| e.ok()) {
             let name = e.file_name().to_string_lossy().to_string();
-            let Some(owner) = SUFFIXES.iter().find_map(|s| name.strip_suffix(s)) else { continue };
+            let Some(owner) = SUFFIXES.iter().find_map(|s| name.strip_suffix(s)) else {
+                continue;
+            };
             if !dir.join(format!("{owner}.md")).is_file() {
                 out.push(format!(".guild/{rel}/{name}"));
             }
@@ -213,7 +219,7 @@ pub fn orphan_sidecars(paths: &crate::repo::GuildPaths) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::ops;
-    use crate::repo::{seed_guild_dir, QuestFile, QuestFrontmatter};
+    use crate::repo::{QuestFile, QuestFrontmatter, seed_guild_dir};
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()
@@ -285,7 +291,11 @@ mod tests {
         let slug = &q.quest_id;
         let comments = store.paths.quests_dir().join(format!("{slug}.comments.md"));
         let memo = store.paths.quests_dir().join(format!("{slug}.memo.md"));
-        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\n사용자 댓글\n").unwrap();
+        std::fs::write(
+            &comments,
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\n사용자 댓글\n",
+        )
+        .unwrap();
         std::fs::write(&memo, "personal note").unwrap();
 
         let report = detect_drift(&store).await.unwrap();
@@ -430,7 +440,9 @@ mod tests {
 
         let r2 = detect_drift(&store).await.unwrap();
         assert!(
-            r2.fresh_siblings.iter().any(|n| n.ends_with(".comments.md")),
+            r2.fresh_siblings
+                .iter()
+                .any(|n| n.ends_with(".comments.md")),
             "외부 편집한 sibling 은 fresh: {:?}",
             r2.fresh_siblings
         );
@@ -559,18 +571,28 @@ mod tests {
         let slug = &q.quest_id;
         let comments = store.paths.quests_dir().join(format!("{slug}.comments.md"));
         let memo = store.paths.quests_dir().join(format!("{slug}.memo.md"));
-        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\nx\n").unwrap();
+        std::fs::write(
+            &comments,
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\nx\n",
+        )
+        .unwrap();
         std::fs::write(&memo, "private").unwrap();
 
         let report = detect_drift(&store).await.unwrap();
         // sibling 두 파일이 fresh_siblings 에 잡혀야.
         assert!(
-            report.fresh_siblings.iter().any(|n| n.ends_with(".comments.md")),
+            report
+                .fresh_siblings
+                .iter()
+                .any(|n| n.ends_with(".comments.md")),
             "comments sibling not in fresh: {:?}",
             report.fresh_siblings
         );
         assert!(
-            report.fresh_siblings.iter().any(|n| n.ends_with(".memo.md")),
+            report
+                .fresh_siblings
+                .iter()
+                .any(|n| n.ends_with(".memo.md")),
             "memo sibling not in fresh: {:?}",
             report.fresh_siblings
         );
@@ -714,13 +736,11 @@ mod tests {
         assert!(report.is_some(), "drift 시 reindex 실행됨");
 
         // 이제 index 에 들어와 있음
-        let title: String = sqlx::query_scalar(
-            "SELECT title FROM quests WHERE id = ?",
-        )
-        .bind(1_i64)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let title: String = sqlx::query_scalar("SELECT title FROM quests WHERE id = ?")
+            .bind(1_i64)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(title, "drift target");
 
         let _ = std::fs::remove_dir_all(&dir);

@@ -97,7 +97,9 @@ fn has_tz_marker(s: &str) -> bool {
     let last6_sign_pos = n.checked_sub(6);
     let is_sign = |b: u8| b == b'+' || b == b'-';
     if is_sign(bytes[last5_sign_pos])
-        && bytes[last5_sign_pos + 1..].iter().all(|b| b.is_ascii_digit())
+        && bytes[last5_sign_pos + 1..]
+            .iter()
+            .all(|b| b.is_ascii_digit())
     {
         return true;
     }
@@ -166,8 +168,13 @@ mod tests {
             return false;
         }
         let bytes = s.as_bytes();
-        bytes[4] == b'-' && bytes[7] == b'-' && bytes[10] == b'T' && bytes[13] == b':'
-            && bytes[16] == b':' && (bytes[19] == b'+' || bytes[19] == b'-') && bytes[22] == b':'
+        bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes[10] == b'T'
+            && bytes[13] == b':'
+            && bytes[16] == b':'
+            && (bytes[19] == b'+' || bytes[19] == b'-')
+            && bytes[22] == b':'
     }
 
     #[test]
@@ -199,7 +206,10 @@ mod tests {
 
     #[test]
     fn filter_ts_passes_through_z() {
-        assert_eq!(normalize_filter_ts("2026-05-22T00:00:00Z"), "2026-05-22T00:00:00Z");
+        assert_eq!(
+            normalize_filter_ts("2026-05-22T00:00:00Z"),
+            "2026-05-22T00:00:00Z"
+        );
     }
 
     #[test]
@@ -253,15 +263,20 @@ mod tests {
         // 방금 인 ts.
         let now = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
         let out = format_relative(&now).expect("recent should produce some label");
-        assert!(out == "방금" || out.ends_with("분 전"),
-            "recent label unexpected: {out:?}");
+        assert!(
+            out == "방금" || out.ends_with("분 전"),
+            "recent label unexpected: {out:?}"
+        );
     }
 
     #[test]
     fn format_relative_old_returns_none() {
         // 1년 전 — 7일 초과.
         let out = format_relative("2024-01-01T00:00:00+09:00");
-        assert!(out.is_none(), "오래된 ts → None 으로 absolute fallback 유도");
+        assert!(
+            out.is_none(),
+            "오래된 ts → None 으로 absolute fallback 유도"
+        );
     }
 
     #[test]

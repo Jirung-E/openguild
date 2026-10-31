@@ -68,8 +68,8 @@ pub fn load_saved() -> Result<Locale> {
     }
     let raw = std::fs::read_to_string(&path)
         .with_context(|| format!("read locale file: {}", path.display()))?;
-    let parsed: LocaleFile =
-        serde_json::from_str(&raw).with_context(|| format!("parse locale file: {}", path.display()))?;
+    let parsed: LocaleFile = serde_json::from_str(&raw)
+        .with_context(|| format!("parse locale file: {}", path.display()))?;
     Ok(parsed.locale)
 }
 
@@ -97,7 +97,9 @@ pub async fn scoped<F: std::future::Future>(locale: Locale, f: F) -> F::Output {
 /// core::ops 의 사용자-노출 에러 메시지(`AppError::NotFound`/`BadRequest`)는
 /// 이걸로 분기해야 서버 응답이 요청자의 Accept-Language 를 따른다.
 pub fn effective() -> Locale {
-    REQUEST_LOCALE.try_with(|l| *l).unwrap_or_else(|_| current())
+    REQUEST_LOCALE
+        .try_with(|l| *l)
+        .unwrap_or_else(|_| current())
 }
 
 /// CLI 의 `tf!`(cli/src/main.rs) 와 동일한 최소 침습 이중 언어 헬퍼 — core 의
@@ -125,7 +127,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-locale-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-locale-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -233,7 +236,10 @@ mod tests {
                 }
                 _ => after.len(),
             };
-            out.extend(std::iter::repeat_n('\n', after[..end].matches('\n').count()));
+            out.extend(std::iter::repeat_n(
+                '\n',
+                after[..end].matches('\n').count(),
+            ));
             rest = &after[end..];
         }
         out.push_str(rest);
@@ -259,10 +265,13 @@ mod tests {
                     (Some(_), Some((n, '\''))) => n + 2,
                     _ => 1,
                 };
-            } else if b[i] == b'r' && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')) && {
-                let h = code[i + 1..].bytes().take_while(|c| *c == b'#').count();
-                code[i + 1 + h..].starts_with('"')
-            } {
+            } else if b[i] == b'r'
+                && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_'))
+                && {
+                    let h = code[i + 1..].bytes().take_while(|c| *c == b'#').count();
+                    code[i + 1 + h..].starts_with('"')
+                }
+            {
                 let h = code[i + 1..].bytes().take_while(|c| *c == b'#').count();
                 let start = i + 2 + h;
                 let close = format!("\"{}", "#".repeat(h));
@@ -288,25 +297,43 @@ mod tests {
     #[test]
     fn user_facing_errors_are_bilingual() {
         let mut files = Vec::new();
-        rust_files(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        rust_files(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
         let mut bad = Vec::new();
         for f in files {
             let code = without_tests(&std::fs::read_to_string(&f).unwrap());
-            for kind in ["AppError::BadRequest(", "AppError::NotFound(", "AppError::Cancelled("] {
+            for kind in [
+                "AppError::BadRequest(",
+                "AppError::NotFound(",
+                "AppError::Cancelled(",
+            ] {
                 for (i, _) in code.match_indices(kind) {
                     let rest = code[i + kind.len()..].trim_start();
-                    let rest = rest.strip_prefix("format!(").map(str::trim_start).unwrap_or(rest);
+                    let rest = rest
+                        .strip_prefix("format!(")
+                        .map(str::trim_start)
+                        .unwrap_or(rest);
                     if let Some(lit) = rest.strip_prefix('"') {
                         let lit = lit.split('"').next().unwrap_or("");
                         if hangul(lit) {
                             let line = code[..i].matches('\n').count() + 1;
-                            bad.push(format!("{}:{line}: {}", f.display(), lit.chars().take(40).collect::<String>()));
+                            bad.push(format!(
+                                "{}:{line}: {}",
+                                f.display(),
+                                lit.chars().take(40).collect::<String>()
+                            ));
                         }
                     }
                 }
             }
         }
-        assert!(bad.is_empty(), "한국어만 적힌 오류 — tf!(한국어, 영어) 로 감쌀 것:\n{}", bad.join("\n"));
+        assert!(
+            bad.is_empty(),
+            "한국어만 적힌 오류 — tf!(한국어, 영어) 로 감쌀 것:\n{}",
+            bad.join("\n")
+        );
     }
 
     /// BUG-350: 영어 화면에서는 플러그인 정의 오류도 영어로 나온다(고치기 전엔 한국어만).
@@ -314,7 +341,9 @@ mod tests {
     fn plugin_definition_errors_follow_the_locale() {
         let raw = "name = \"demo\"\nscope = [\"cli\"]\nhandlers = []\n";
         let msg = |l: Locale| {
-            REQUEST_LOCALE.sync_scope(l, || crate::plugins::parse_def(raw).unwrap_err().to_string())
+            REQUEST_LOCALE.sync_scope(l, || {
+                crate::plugins::parse_def(raw).unwrap_err().to_string()
+            })
         };
         let en = msg(Locale::En);
         assert!(en.contains("no `[[handlers]]`"), "{en}");
@@ -328,7 +357,9 @@ mod tests {
     /// 빼는 것: 시험 코드, `expect(...)`(코드가 틀렸을 때만 나는 패닉), `schema.rs`(편집기용 JSON 스키마 설명 — 문서다).
     #[test]
     fn plugin_messages_are_bilingual() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join("plugins");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("plugins");
         let mut files = Vec::new();
         rust_files(&root, &mut files);
         let mut bad = Vec::new();
@@ -347,9 +378,17 @@ mod tests {
                     continue;
                 }
                 let line = code[..at].matches('\n').count() + 1;
-                bad.push(format!("{}:{line}: {}", f.display(), lit.chars().take(40).collect::<String>()));
+                bad.push(format!(
+                    "{}:{line}: {}",
+                    f.display(),
+                    lit.chars().take(40).collect::<String>()
+                ));
             }
         }
-        assert!(bad.is_empty(), "한국어만 적힌 플러그인 문장 — tf!(한국어, 영어) 로 감쌀 것:\n{}", bad.join("\n"));
+        assert!(
+            bad.is_empty(),
+            "한국어만 적힌 플러그인 문장 — tf!(한국어, 영어) 로 감쌀 것:\n{}",
+            bad.join("\n")
+        );
     }
 }

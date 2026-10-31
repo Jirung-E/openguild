@@ -109,9 +109,9 @@ async fn static_cache_headers(
     } else {
         "no-cache"
     };
-    res.headers_mut().entry(axum::http::header::CACHE_CONTROL).or_insert(
-        axum::http::HeaderValue::from_static(value),
-    );
+    res.headers_mut()
+        .entry(axum::http::header::CACHE_CONTROL)
+        .or_insert(axum::http::HeaderValue::from_static(value));
     res
 }
 
@@ -275,8 +275,8 @@ fn load_server_config(explicit: Option<&str>) -> Result<Option<(ServerConfig, Pa
 
     let raw = std::fs::read_to_string(&path)
         .with_context(|| format!("설정 파일 읽기 실패: {}", path.display()))?;
-    let cfg: ServerConfig = toml::from_str(&raw)
-        .with_context(|| format!("설정 파일 파싱 실패: {}", path.display()))?;
+    let cfg: ServerConfig =
+        toml::from_str(&raw).with_context(|| format!("설정 파일 파싱 실패: {}", path.display()))?;
     Ok(Some((cfg, path)))
 }
 
@@ -301,9 +301,12 @@ fn main() -> Result<()> {
         .build()?;
 
     match cli.command {
-        Command::Host { port, bind, frontend_dist, config } => {
-            rt.block_on(run_host(port, bind, frontend_dist, config))
-        }
+        Command::Host {
+            port,
+            bind,
+            frontend_dist,
+            config,
+        } => rt.block_on(run_host(port, bind, frontend_dist, config)),
         Command::Locale { .. } => unreachable!("handled above"),
     }
 }
@@ -314,9 +317,9 @@ fn resolve_bind_ip(raw: &str) -> Result<std::net::IpAddr> {
     match raw.trim() {
         "local" => Ok(std::net::IpAddr::from([127, 0, 0, 1])),
         "public" => Ok(std::net::IpAddr::from([0, 0, 0, 0])),
-        other => other
-            .parse()
-            .with_context(|| format!("--bind 값을 IP 로 해석할 수 없음: '{other}' (local / public / IP 리터럴)")),
+        other => other.parse().with_context(|| {
+            format!("--bind 값을 IP 로 해석할 수 없음: '{other}' (local / public / IP 리터럴)")
+        }),
     }
 }
 
@@ -364,7 +367,9 @@ fn load_guild() -> Result<GuildCtx> {
     // BUG-377: 길드는 **절대 경로로** 연다. `GUILD_PATH` 가 없으면 "." 인데 그대로 열면 훅에
     // `OPENGUILD_GUILD_DIR=.` 가 넘어가, 훅이 `cd` 하면 길드를 잃는다(BUG-330 이 이 값을 둔 까닭).
     // 윈도우의 `\\?\` 는 뗀다(BUG-294 — 훅에 넘기는 경로 · sqlite 경로가 깨진다).
-    let abs_path = PathBuf::from(openguild_core::recents::normalize_abs(Path::new(&guild_path)));
+    let abs_path = PathBuf::from(openguild_core::recents::normalize_abs(Path::new(
+        &guild_path,
+    )));
     Ok(GuildCtx { guild, abs_path })
 }
 
@@ -728,8 +733,7 @@ mod cli_tests {
 
     #[test]
     fn parse_host_with_bind() {
-        let cli =
-            Cli::try_parse_from(["openguild-server", "host", "--bind", "public"]).unwrap();
+        let cli = Cli::try_parse_from(["openguild-server", "host", "--bind", "public"]).unwrap();
         match cli.command {
             Command::Host { bind, .. } => assert_eq!(bind, Some("public".to_string())),
             Command::Locale { .. } => unreachable!(),
@@ -749,7 +753,11 @@ mod cli_tests {
         ])
         .unwrap();
         match cli.command {
-            Command::Host { frontend_dist, config, .. } => {
+            Command::Host {
+                frontend_dist,
+                config,
+                ..
+            } => {
                 assert_eq!(frontend_dist, Some("C:/dist".to_string()));
                 assert_eq!(config, Some("C:/my.toml".to_string()));
             }
@@ -764,7 +772,10 @@ mod cli_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-srv-cfg-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let dir = std::env::temp_dir().join(format!("og-srv-cfg-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join("openguild-server.toml");
         std::fs::write(&cfg_path, "[server]\nfrontend_dist = \"C:/from/config\"\n").unwrap();
@@ -802,7 +813,10 @@ mod cli_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let home = std::env::temp_dir().join(format!("og-srv-cfg-none-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let home = std::env::temp_dir().join(format!("og-srv-cfg-none-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         std::fs::create_dir_all(&home).unwrap();
 
         let prev = std::env::var("OPENGUILD_HOME").ok();
@@ -827,7 +841,10 @@ mod cli_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-srv-cfg-bad-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let dir = std::env::temp_dir().join(format!("og-srv-cfg-bad-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join("bad.toml");
         std::fs::write(&cfg_path, "not = [valid toml").unwrap();
@@ -838,8 +855,14 @@ mod cli_tests {
 
     #[test]
     fn resolve_bind_ip_aliases() {
-        assert_eq!(resolve_bind_ip("local").unwrap(), std::net::IpAddr::from([127, 0, 0, 1]));
-        assert_eq!(resolve_bind_ip("public").unwrap(), std::net::IpAddr::from([0, 0, 0, 0]));
+        assert_eq!(
+            resolve_bind_ip("local").unwrap(),
+            std::net::IpAddr::from([127, 0, 0, 1])
+        );
+        assert_eq!(
+            resolve_bind_ip("public").unwrap(),
+            std::net::IpAddr::from([0, 0, 0, 0])
+        );
         assert_eq!(
             resolve_bind_ip("192.168.1.10").unwrap(),
             std::net::IpAddr::from([192, 168, 1, 10])
@@ -863,7 +886,10 @@ mod cli_tests {
     fn unknown_subcommand_errors() {
         // DEV-163: 옛 정비 서브커맨드(reindex 등)는 이제 server 에 없음 → 알 수 없는 명령.
         let err = Cli::try_parse_from(["openguild-server", "reindex"]).unwrap_err();
-        assert!(matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand));
+        assert!(matches!(
+            err.kind(),
+            clap::error::ErrorKind::InvalidSubcommand
+        ));
     }
 
     /// 사용자 보고(2026-06-29): `openguild-server host --help` 가
@@ -904,7 +930,9 @@ mod cli_tests {
         let bytes = s.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
-            let Some(dash_rel) = s[i..].find('-') else { break };
+            let Some(dash_rel) = s[i..].find('-') else {
+                break;
+            };
             let dash = i + dash_rel;
             let prefix_end = dash;
             let mut prefix_start = prefix_end;
@@ -949,7 +977,10 @@ mod helper_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-server-{label}-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let dir = std::env::temp_dir().join(format!("og-server-{label}-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("test.guild"),

@@ -23,12 +23,7 @@
 import { writable, get } from 'svelte/store';
 // DEV-205: 사용자 노출 문자열(가져오기 에러) 언어 반응용.
 import { locale } from './locale';
-import {
-	setTheme,
-	setPaletteOverrides,
-	type ThemePalette,
-	type EffectiveTheme
-} from './theme';
+import { setTheme, setPaletteOverrides, type ThemePalette, type EffectiveTheme } from './theme';
 
 /** 사용자 노출 토큰 정의. palette = themePalette 필드 매핑(보드 연동용). */
 export interface TokenDef {
@@ -53,35 +48,121 @@ export function tokenLabel(d: TokenDef, loc: 'ko' | 'en'): string {
 export const TOKEN_CATALOG: TokenDef[] = [
 	// ─── 핵심 (기본 노출) ───
 	{ token: '--bg', label: '배경', labelEn: 'Background', palette: 'bg' },
-	{ token: '--bg-elevated', label: '배경 (카드)', labelEn: 'Background (card)', palette: 'bgElevated' },
+	{
+		token: '--bg-elevated',
+		label: '배경 (카드)',
+		labelEn: 'Background (card)',
+		palette: 'bgElevated'
+	},
 	{ token: '--bg-subtle', label: '배경 (강조)', labelEn: 'Background (subtle)' },
 	{ token: '--border', label: '테두리', labelEn: 'Border' },
 	{ token: '--text', label: '텍스트', labelEn: 'Text', palette: 'text' },
 	{ token: '--text-muted', label: '텍스트 (보조)', labelEn: 'Text (muted)', palette: 'textMuted' },
 	{ token: '--accent', label: '강조색', labelEn: 'Accent', palette: 'accent' },
 	{ token: '--success', label: '성공', labelEn: 'Success', palette: 'success' },
-	{ token: '--success-strong', label: '성공 (진함/주 버튼)', labelEn: 'Success (strong/primary button)', palette: 'successStrong' },
+	{
+		token: '--success-strong',
+		label: '성공 (진함/주 버튼)',
+		labelEn: 'Success (strong/primary button)',
+		palette: 'successStrong'
+	},
 	{ token: '--warning', label: '경고', labelEn: 'Warning', palette: 'warning' },
 	{ token: '--danger', label: '위험', labelEn: 'Danger', palette: 'danger' },
 	{ token: '--nav-bg', label: '내비게이션 배경', labelEn: 'Navigation background' },
 	// ─── 고급 ───
 	{ token: '--text-strong', label: '텍스트 (진함)', labelEn: 'Text (strong)', advanced: true },
-	{ token: '--text-faint', label: '텍스트 (희미)', labelEn: 'Text (faint)', palette: 'textFaint', advanced: true },
+	{
+		token: '--text-faint',
+		label: '텍스트 (희미)',
+		labelEn: 'Text (faint)',
+		palette: 'textFaint',
+		advanced: true
+	},
 	{ token: '--border-muted', label: '테두리 (연함)', labelEn: 'Border (muted)', advanced: true },
 	{ token: '--accent-strong', label: '강조색 (진함)', labelEn: 'Accent (strong)', advanced: true },
-	{ token: '--accent-secondary', label: '강조색 (보조)', labelEn: 'Accent (secondary)', palette: 'accentSecondary', advanced: true },
+	{
+		token: '--accent-secondary',
+		label: '강조색 (보조)',
+		labelEn: 'Accent (secondary)',
+		palette: 'accentSecondary',
+		advanced: true
+	},
 	{ token: '--orange', label: '오렌지', labelEn: 'Orange', palette: 'orange', advanced: true },
-	{ token: '--nav-border', label: '내비게이션 테두리', labelEn: 'Navigation border', advanced: true },
-	{ token: '--nav-hover-bg', label: '내비게이션 hover', labelEn: 'Navigation hover', advanced: true },
-	{ token: '--hl-pre', label: '보드: 선행 강조', labelEn: 'Board: prereq highlight', palette: 'hlPre', advanced: true },
-	{ token: '--hl-pre-bg', label: '보드: 선행 배경', labelEn: 'Board: prereq background', palette: 'hlPreBg', advanced: true },
-	{ token: '--hl-sub', label: '보드: 서브 강조', labelEn: 'Board: sub highlight', palette: 'hlSub', advanced: true },
-	{ token: '--hl-sub-bg', label: '보드: 서브 배경', labelEn: 'Board: sub background', palette: 'hlSubBg', advanced: true },
-	{ token: '--hl-next', label: '보드: 후속 강조', labelEn: 'Board: successor highlight', palette: 'hlNext', advanced: true },
-	{ token: '--hl-next-bg', label: '보드: 후속 배경', labelEn: 'Board: successor background', palette: 'hlNextBg', advanced: true },
-	{ token: '--hl-parent-bg', label: '보드: 부모 배경', labelEn: 'Board: parent background', palette: 'hlParentBg', advanced: true },
-	{ token: '--selected-bg', label: '보드: 선택 배경', labelEn: 'Board: selection background', palette: 'selectedBg', advanced: true },
-	{ token: '--edge-pre', label: '보드: 의존 엣지', labelEn: 'Board: dependency edge', palette: 'edgePre', advanced: true }
+	{
+		token: '--nav-border',
+		label: '내비게이션 테두리',
+		labelEn: 'Navigation border',
+		advanced: true
+	},
+	{
+		token: '--nav-hover-bg',
+		label: '내비게이션 hover',
+		labelEn: 'Navigation hover',
+		advanced: true
+	},
+	{
+		token: '--hl-pre',
+		label: '보드: 선행 강조',
+		labelEn: 'Board: prereq highlight',
+		palette: 'hlPre',
+		advanced: true
+	},
+	{
+		token: '--hl-pre-bg',
+		label: '보드: 선행 배경',
+		labelEn: 'Board: prereq background',
+		palette: 'hlPreBg',
+		advanced: true
+	},
+	{
+		token: '--hl-sub',
+		label: '보드: 서브 강조',
+		labelEn: 'Board: sub highlight',
+		palette: 'hlSub',
+		advanced: true
+	},
+	{
+		token: '--hl-sub-bg',
+		label: '보드: 서브 배경',
+		labelEn: 'Board: sub background',
+		palette: 'hlSubBg',
+		advanced: true
+	},
+	{
+		token: '--hl-next',
+		label: '보드: 후속 강조',
+		labelEn: 'Board: successor highlight',
+		palette: 'hlNext',
+		advanced: true
+	},
+	{
+		token: '--hl-next-bg',
+		label: '보드: 후속 배경',
+		labelEn: 'Board: successor background',
+		palette: 'hlNextBg',
+		advanced: true
+	},
+	{
+		token: '--hl-parent-bg',
+		label: '보드: 부모 배경',
+		labelEn: 'Board: parent background',
+		palette: 'hlParentBg',
+		advanced: true
+	},
+	{
+		token: '--selected-bg',
+		label: '보드: 선택 배경',
+		labelEn: 'Board: selection background',
+		palette: 'selectedBg',
+		advanced: true
+	},
+	{
+		token: '--edge-pre',
+		label: '보드: 의존 엣지',
+		labelEn: 'Board: dependency edge',
+		palette: 'edgePre',
+		advanced: true
+	}
 ];
 
 export interface CustomTheme {
@@ -298,9 +379,7 @@ export async function initCustomTheme() {
 			const raw = await invoke<string | null>('load_custom_themes');
 			if (raw) {
 				const parsed = JSON.parse(raw) as Partial<ThemesFile>;
-				const presets = Array.isArray(parsed.presets)
-					? parsed.presets.filter(isValidPreset)
-					: [];
+				const presets = Array.isArray(parsed.presets) ? parsed.presets.filter(isValidPreset) : [];
 				customThemes.set(presets);
 				activeCustomTheme.set(
 					typeof parsed.active === 'string' && parsed.active ? parsed.active : null

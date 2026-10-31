@@ -26,10 +26,7 @@ export function boardLodForZoom(zoom: number): BoardLod {
  * 점의 반지름은 화면 px 기준으로 유지하고, 배경 offset은 pan/zoom에
  * 따라 연속적으로 변한다.
  */
-export function screenGridMetrics(
-	zoom: number,
-	cellH: number
-): ScreenGridMetrics {
+export function screenGridMetrics(zoom: number, cellH: number): ScreenGridMetrics {
 	const safeZoom = Math.max(zoom, 0.0001);
 	const stepY = Math.max(cellH * safeZoom, 1);
 	const dotRadius = Math.max(0.55, Math.min(1.35, stepY * 0.18));

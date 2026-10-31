@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::repo::GuildPaths;
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotInfo {
@@ -102,7 +102,15 @@ const SOURCE_SUBDIRS: &[&str] = &[
 /// 복원은 스냅샷이 **담은** 폴더만 지운다. 옛 스냅샷에 지금 목록을 그대로 적용하면 그 스냅샷에
 /// 없는 폴더(templates · plugins)가 지워지고 돌아오지 않는다.
 const LEGACY_DB_SUBDIRS: &[&str] = &[
-    "quests", "campaigns", "rules", "tags", "types", "statuses", "history", "library", "worklog",
+    "quests",
+    "campaigns",
+    "rules",
+    "tags",
+    "types",
+    "statuses",
+    "history",
+    "library",
+    "worklog",
 ];
 
 /// 스냅샷 `meta` 표에 "무엇을 담았나" 를 적는 키.
@@ -115,8 +123,8 @@ fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
     }
     std::fs::create_dir_all(dst)
         .with_context(|| format!("디렉토리 생성 실패: {}", dst.display()))?;
-    for entry in std::fs::read_dir(src)
-        .with_context(|| format!("디렉토리 읽기 실패: {}", src.display()))?
+    for entry in
+        std::fs::read_dir(src).with_context(|| format!("디렉토리 읽기 실패: {}", src.display()))?
     {
         let entry = entry?;
         let from = entry.path();
@@ -178,9 +186,11 @@ async fn snapshot_db_write(
     let pool = crate::db::create_pool_from_path(db_path, false)
         .await
         .with_context(|| format!("snapshot db 생성 실패: {}", db_path.display()))?;
-    sqlx::query("CREATE TABLE IF NOT EXISTS files (rel_path TEXT PRIMARY KEY, content BLOB NOT NULL)")
-        .execute(&pool)
-        .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS files (rel_path TEXT PRIMARY KEY, content BLOB NOT NULL)",
+    )
+    .execute(&pool)
+    .await?;
     sqlx::query("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         .execute(&pool)
         .await?;
@@ -227,7 +237,11 @@ async fn snapshot_db_subdirs(db_path: &std::path::Path) -> Result<Vec<String>> {
         .await?;
     pool.close().await;
     Ok(match row {
-        Some((v,)) => v.split(',').filter(|x| !x.is_empty()).map(str::to_string).collect(),
+        Some((v,)) => v
+            .split(',')
+            .filter(|x| !x.is_empty())
+            .map(str::to_string)
+            .collect(),
         None => LEGACY_DB_SUBDIRS.iter().map(|x| x.to_string()).collect(),
     })
 }
@@ -378,7 +392,9 @@ fn stamp_of(p: &std::path::Path) -> Option<Stamp> {
 
 /// BUG-344: 잠그지 않고 읽어 둔 내용 — 길드 루트 기준 경로 → (읽기 전 표, 내용). 읽는 사이 바뀌거나 사라진 파일은
 /// 표가 안 맞거나 빠져서 잠근 뒤 다시 읽힌다.
-fn prefetch_guild_source(paths: &GuildPaths) -> std::collections::HashMap<String, (Stamp, Vec<u8>)> {
+fn prefetch_guild_source(
+    paths: &GuildPaths,
+) -> std::collections::HashMap<String, (Stamp, Vec<u8>)> {
     let mut out = std::collections::HashMap::new();
     let _ = walk_guild_source(paths, &mut |rel, p| {
         if let Some(st) = stamp_of(p)
@@ -411,15 +427,22 @@ async fn read_guild_for_backup_from(
     let journal_upto = journal::max_id(&store.journal_pool)
         .await
         .context("journal 위치 조회 실패")?;
-    Ok(BackupRead { files, journal_upto })
+    Ok(BackupRead {
+        files,
+        journal_upto,
+    })
 }
 
 /// BUG-340 2단계: 잠금 밖 — 백업 파일 쓰기, journal 정리, 오래된 것 지우기, 알리기.
 async fn finish_backup(store: &Store, read: BackupRead, automatic: bool) -> Result<SnapshotInfo> {
     let paths = &store.paths;
 
-    std::fs::create_dir_all(paths.snapshots_dir())
-        .with_context(|| format!("snapshots 디렉토리 생성 실패: {}", paths.snapshots_dir().display()))?;
+    std::fs::create_dir_all(paths.snapshots_dir()).with_context(|| {
+        format!(
+            "snapshots 디렉토리 생성 실패: {}",
+            paths.snapshots_dir().display()
+        )
+    })?;
 
     // BUG-108: now_compact() 는 초 단위라 짧은 시간 안에 snapshot 이 두 번
     // 생성되면(테스트, 또는 replay_to 의 pre_backup 처럼 한 호출 안에서
@@ -436,11 +459,17 @@ async fn finish_backup(store: &Store, read: BackupRead, automatic: bool) -> Resu
         let candidate = paths.snapshots_dir().join(format!("{ts}.db"));
         // 레거시 디렉토리 스냅샷과도 이름이 겹치지 않게 둘 다 확인.
         if !paths.snapshots_dir().join(&ts).exists() {
-            match std::fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
                 Ok(_) => break candidate,
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(e) => {
-                    return Err(e).with_context(|| format!("백업 파일을 만들지 못했다: {}", candidate.display()));
+                    return Err(e).with_context(|| {
+                        format!("백업 파일을 만들지 못했다: {}", candidate.display())
+                    });
                 }
             }
         }
@@ -565,18 +594,26 @@ pub fn ts_to_local_display(ts: &str) -> String {
 /// 문자열로 세우면 `-100` 이 `-99` 앞에 선다.
 fn order_key(ts: &str) -> (String, u32) {
     let (base, rest) = ts.split_at(ts.len().min(15));
-    let n = rest.strip_prefix('-').and_then(|x| x.parse().ok()).unwrap_or(0);
+    let n = rest
+        .strip_prefix('-')
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(0);
     (base.to_string(), n)
 }
 
 fn snapshot_timestamp_of(path: &std::path::Path) -> Option<String> {
     if path.is_dir() {
-        return path.file_name().and_then(|s| s.to_str()).map(str::to_string);
+        return path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(str::to_string);
     }
     if path.extension().and_then(|x| x.to_str()) != Some("db") {
         return None;
     }
-    path.file_stem().and_then(|s| s.to_str()).map(str::to_string)
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
 }
 
 /// 사용 가능한 snapshot 목록 (오래된 순부터).
@@ -642,7 +679,10 @@ pub fn latest_snapshot_timestamp(paths: &GuildPaths) -> Result<Option<String>> {
             continue;
         };
         // 이름이 "YYYYMMDD-HHMMSS[-NN]"(UTC 정규형, BUG-086). BUG-341: 목록과 같은 열쇠로 비교한다.
-        if latest.as_deref().is_none_or(|cur| order_key(&name) > order_key(cur)) {
+        if latest
+            .as_deref()
+            .is_none_or(|cur| order_key(&name) > order_key(cur))
+        {
             latest = Some(name);
         }
     }
@@ -750,7 +790,9 @@ pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<
             if rel.contains("..") || rel.starts_with('/') || rel.contains(':') {
                 anyhow::bail!("snapshot 안에 잘못된 경로: {rel}");
             }
-            let dst = paths.guild_root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+            let dst = paths
+                .guild_root
+                .join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
             if let Some(parent) = dst.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -784,7 +826,10 @@ pub struct BackupFileInfo {
 
 /// DEV-436: 길드 밖 백업 파일(backup-archive 가 쌓아 둔 `{시각}.db` 등)을 읽어 본다 — 고치지 않는다.
 /// openguild 백업이 아니면(표 `files` · `meta` 가 없으면) 오류.
-pub async fn inspect_backup_file(paths: &GuildPaths, file: &std::path::Path) -> Result<BackupFileInfo> {
+pub async fn inspect_backup_file(
+    paths: &GuildPaths,
+    file: &std::path::Path,
+) -> Result<BackupFileInfo> {
     let not_backup = || {
         anyhow::anyhow!(crate::tf!(
             "openguild 백업 파일이 아닙니다: {}",
@@ -799,18 +844,26 @@ pub async fn inspect_backup_file(paths: &GuildPaths, file: &std::path::Path) -> 
             file.display()
         )));
     }
-    let pool = crate::db::create_pool_from_path(file, true).await.map_err(|_| not_backup())?;
-    let meta: Result<Vec<(String, String)>, _> =
-        sqlx::query_as("SELECT key, value FROM meta").fetch_all(&pool).await;
-    let names: Result<Vec<String>, _> =
-        sqlx::query_scalar("SELECT rel_path FROM files WHERE rel_path NOT LIKE '%/%' AND rel_path LIKE '%.guild'")
-            .fetch_all(&pool)
-            .await;
+    let pool = crate::db::create_pool_from_path(file, true)
+        .await
+        .map_err(|_| not_backup())?;
+    let meta: Result<Vec<(String, String)>, _> = sqlx::query_as("SELECT key, value FROM meta")
+        .fetch_all(&pool)
+        .await;
+    let names: Result<Vec<String>, _> = sqlx::query_scalar(
+        "SELECT rel_path FROM files WHERE rel_path NOT LIKE '%/%' AND rel_path LIKE '%.guild'",
+    )
+    .fetch_all(&pool)
+    .await;
     pool.close().await;
     let (Ok(meta), Ok(guilds)) = (meta, names) else {
         return Err(not_backup());
     };
-    let get = |k: &str| meta.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+    let get = |k: &str| {
+        meta.iter()
+            .find(|(key, _)| key == k)
+            .map(|(_, v)| v.clone())
+    };
     let timestamp = get("ts").ok_or_else(not_backup)?;
     let file_count = get("file_count").and_then(|v| v.parse().ok()).unwrap_or(0);
     let mine: Vec<String> = std::fs::read_dir(&paths.guild_root)
@@ -822,7 +875,8 @@ pub async fn inspect_backup_file(paths: &GuildPaths, file: &std::path::Path) -> 
         })
         .unwrap_or_default();
     // 어느 한쪽에 마커가 없으면(아주 옛 길드) 가를 수 없다 — 막지 않는다.
-    let same_guild = guilds.is_empty() || mine.is_empty() || guilds.iter().any(|g| mine.contains(g));
+    let same_guild =
+        guilds.is_empty() || mine.is_empty() || guilds.iter().any(|g| mine.contains(g));
     Ok(BackupFileInfo {
         path: file.to_path_buf(),
         timestamp,
@@ -905,7 +959,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-snapshot-{label}-{ns}-{}", crate::test_seq()));
+        let p =
+            std::env::temp_dir().join(format!("og-snapshot-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
@@ -974,7 +1029,10 @@ mod tests {
         std::fs::remove_dir_all(dot.join("plugins")).unwrap();
         restore_snapshot(&store, &info).await.unwrap();
 
-        assert_eq!(std::fs::read_to_string(dot.join("templates/버그.md")).unwrap(), "## 재현\n");
+        assert_eq!(
+            std::fs::read_to_string(dot.join("templates/버그.md")).unwrap(),
+            "## 재현\n"
+        );
         assert_eq!(
             std::fs::read_to_string(dot.join("plugins/알림/plugin.toml")).unwrap(),
             "name = \"알림\"\n"
@@ -994,7 +1052,9 @@ mod tests {
         let info = create_snapshot(&store).await.unwrap();
         // 옛 스냅샷으로 만든다: `subdirs` 를 지우고, 옛 목록에 없던 폴더의 파일도 뺀다.
         {
-            let pool = crate::db::create_pool_from_path(&info.path, false).await.unwrap();
+            let pool = crate::db::create_pool_from_path(&info.path, false)
+                .await
+                .unwrap();
             sqlx::query("DELETE FROM meta WHERE key = ?")
                 .bind(META_SUBDIRS)
                 .execute(&pool)
@@ -1018,9 +1078,18 @@ mod tests {
 
         restore_snapshot(&store, &info).await.unwrap();
 
-        assert!(dot.join("templates/나중.md").exists(), "옛 스냅샷이 템플릿을 지웠다");
-        assert!(dot.join("plugins/나중/plugin.toml").exists(), "옛 스냅샷이 플러그인을 지웠다");
-        assert!(std::fs::read_dir(&types_dir).unwrap().count() > 0, "담던 폴더는 되돌아와야 한다");
+        assert!(
+            dot.join("templates/나중.md").exists(),
+            "옛 스냅샷이 템플릿을 지웠다"
+        );
+        assert!(
+            dot.join("plugins/나중/plugin.toml").exists(),
+            "옛 스냅샷이 플러그인을 지웠다"
+        );
+        assert!(
+            std::fs::read_dir(&types_dir).unwrap().count() > 0,
+            "담던 폴더는 되돌아와야 한다"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1095,7 +1164,11 @@ mod tests {
         assert_eq!(list.len(), 7, "should keep exactly 7");
         // 가장 오래된 두 개 삭제됐는지 (fake 들 중 0, 1)
         let names: Vec<_> = list.iter().map(|s| s.timestamp.clone()).collect();
-        assert!(!names.iter().any(|n| n.starts_with("20260100") || n.starts_with("20260101")));
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.starts_with("20260100") || n.starts_with("20260101"))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1181,7 +1254,11 @@ mod tests {
                 assert!(p.is_absolute(), "{}", p.display());
             }
             let last = PathBuf::from(got[7].data["path"].as_str().unwrap());
-            assert!(last.exists(), "방금 만든 백업이 이미 없다: {}", last.display());
+            assert!(
+                last.exists(),
+                "방금 만든 백업이 이미 없다: {}",
+                last.display()
+            );
         }
 
         // 자동 백업 — 임계치를 1 로 낮추고 변경 하나를 남긴다.
@@ -1204,7 +1281,10 @@ mod tests {
         .unwrap();
         assert!(auto.is_some(), "자동 백업이 안 만들어졌다");
         let got = rec.0.lock().unwrap();
-        assert_eq!(got.last().unwrap().data["automatic"], serde_json::json!(true));
+        assert_eq!(
+            got.last().unwrap().data["automatic"],
+            serde_json::json!(true)
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1379,7 +1459,14 @@ mod tests {
 
         // BUG-076: pre-restore 백업은 이제 backups/.pre-restore/ 디렉토리 + 그 안 index.db.
         assert!(store.paths.backups_dir().join(".pre-restore").exists());
-        assert!(store.paths.backups_dir().join(".pre-restore").join("index.db").exists());
+        assert!(
+            store
+                .paths
+                .backups_dir()
+                .join(".pre-restore")
+                .join("index.db")
+                .exists()
+        );
         let _ = initial_size;
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1455,22 +1542,20 @@ mod tests {
             .unwrap();
         assert_eq!(c_after_restore, 1, "댓글이 snapshot 에서 복원되어야");
 
-        let (entry_id, author, body): (i64, String, String) = sqlx::query_as(
-            "SELECT entry_id, author, body FROM quest_comments",
-        )
-        .fetch_one(&store2.index_pool)
-        .await
-        .unwrap();
+        let (entry_id, author, body): (i64, String, String) =
+            sqlx::query_as("SELECT entry_id, author, body FROM quest_comments")
+                .fetch_one(&store2.index_pool)
+                .await
+                .unwrap();
         assert_eq!(entry_id, entry.id as i64);
         assert_eq!(author, "alice");
         assert_eq!(body, "hello");
 
-        let memo_content: String = sqlx::query_scalar(
-            "SELECT content FROM quest_memos WHERE user_id = 0",
-        )
-        .fetch_one(&store2.index_pool)
-        .await
-        .unwrap();
+        let memo_content: String =
+            sqlx::query_scalar("SELECT content FROM quest_memos WHERE user_id = 0")
+                .fetch_one(&store2.index_pool)
+                .await
+                .unwrap();
         assert_eq!(memo_content, "private note");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1533,13 +1618,11 @@ mod tests {
         restore_snapshot(&store, &snap).await.unwrap();
 
         let store2 = Store::open(&dir).await.unwrap();
-        let n: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?",
-        )
-        .bind(&q.quest_id)
-        .fetch_one(&store2.index_pool)
-        .await
-        .unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?")
+            .bind(&q.quest_id)
+            .fetch_one(&store2.index_pool)
+            .await
+            .unwrap();
         assert_eq!(n, 1, "restore 후 사이드카 기반으로 quest_history 복원돼야");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1588,20 +1671,32 @@ mod tests {
         assert!(
             !snapshot_contains(
                 &snap,
-                &format!(".guild/attachments/{}", rel.trim_start_matches("attachments/"))
+                &format!(
+                    ".guild/attachments/{}",
+                    rel.trim_start_matches("attachments/")
+                )
             )
             .await,
             "첨부 bytes 는 스냅샷에 들어가면 안 됨"
         );
 
         // DB 캐시만 손실 시나리오.
-        sqlx::query("DELETE FROM library_docs").execute(&store.index_pool).await.unwrap();
-        sqlx::query("DELETE FROM library_folders").execute(&store.index_pool).await.unwrap();
+        sqlx::query("DELETE FROM library_docs")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM library_folders")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
 
         restore_snapshot(&store, &snap).await.unwrap();
 
         let store2 = Store::open(&dir).await.unwrap();
-        let restored = lib_ops::get_book(&store2, &book.book_id()).await.unwrap().unwrap();
+        let restored = lib_ops::get_book(&store2, &book.book_id())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(restored.title, "라우터 설계");
         assert_eq!(restored.path, "아키텍처", "폴더 소속도 복원돼야");
 
@@ -1612,7 +1707,11 @@ mod tests {
         assert_eq!(atts.len(), 1);
         assert_eq!(atts[0].name, "spec.pdf");
         let abs = store2.paths.dot_guild().join(&rel);
-        assert_eq!(std::fs::read(&abs).unwrap(), b"SPEC-BYTES", "첨부 bytes 자체도 복원돼야");
+        assert_eq!(
+            std::fs::read(&abs).unwrap(),
+            b"SPEC-BYTES",
+            "첨부 bytes 자체도 복원돼야"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1632,10 +1731,21 @@ mod tests {
         // 변경이 잠금 안에서 마저 쓴다 — 백업은 이 뒤의 모습을 찍어야 한다.
         std::fs::write(&doc, "다 씀").unwrap();
         drop(held);
-        let snap = tokio::time::timeout(Duration::from_secs(10), h).await.unwrap().unwrap().unwrap();
+        let snap = tokio::time::timeout(Duration::from_secs(10), h)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
         let files = snapshot_db_read(&snap.path).await.unwrap();
-        let (_, body) = files.iter().find(|(p, _)| p == ".guild/quests/HALF.md").unwrap();
-        assert_eq!(String::from_utf8_lossy(body), "다 씀", "쓰다 만 모습을 찍었다");
+        let (_, body) = files
+            .iter()
+            .find(|(p, _)| p == ".guild/quests/HALF.md")
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(body),
+            "다 씀",
+            "쓰다 만 모습을 찍었다"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1651,7 +1761,11 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(!h.is_finished(), "잠금을 쥔 동안 복원이 끝나 버렸다");
         drop(held);
-        tokio::time::timeout(Duration::from_secs(10), h).await.unwrap().unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(10), h)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1662,10 +1776,16 @@ mod tests {
         let dir = fresh_tmp("bk-journal");
         let store = setup(&dir).await;
         let op = |i: i64| serde_json::json!({ "i": i });
-        journal::append(&store.journal_pool, "t", &op(1), None::<&serde_json::Value>).await.unwrap();
-        journal::append(&store.journal_pool, "t", &op(2), None::<&serde_json::Value>).await.unwrap();
+        journal::append(&store.journal_pool, "t", &op(1), None::<&serde_json::Value>)
+            .await
+            .unwrap();
+        journal::append(&store.journal_pool, "t", &op(2), None::<&serde_json::Value>)
+            .await
+            .unwrap();
         let read = read_guild_for_backup(&store).await.unwrap();
-        journal::append(&store.journal_pool, "t", &op(3), None::<&serde_json::Value>).await.unwrap();
+        journal::append(&store.journal_pool, "t", &op(3), None::<&serde_json::Value>)
+            .await
+            .unwrap();
         finish_backup(&store, read, false).await.unwrap();
         let left = journal::list_all(&store.journal_pool).await.unwrap();
         assert_eq!(left.len(), 1, "읽은 뒤의 변경 하나만 남아야 한다: {left:?}");
@@ -1688,11 +1808,18 @@ mod tests {
             urgency: Some(3),
             parent_quest_id: None,
         };
-        tokio::time::timeout(Duration::from_secs(10), crate::ops::create_quest(&store, req))
-            .await
-            .expect("자동 백업이 제 잠금을 기다리며 멈췄다")
-            .unwrap();
-        assert_eq!(list_snapshots(&store.paths).unwrap().len(), 1, "자동 백업이 떠야 한다");
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            crate::ops::create_quest(&store, req),
+        )
+        .await
+        .expect("자동 백업이 제 잠금을 기다리며 멈췄다")
+        .unwrap();
+        assert_eq!(
+            list_snapshots(&store.paths).unwrap().len(),
+            1,
+            "자동 백업이 떠야 한다"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1715,9 +1842,16 @@ mod tests {
         for ts in want.iter().rev() {
             std::fs::write(snaps.join(format!("{ts}.db")), b"").unwrap();
         }
-        let got: Vec<String> = list_snapshots(&store.paths).unwrap().into_iter().map(|s| s.timestamp).collect();
+        let got: Vec<String> = list_snapshots(&store.paths)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.timestamp)
+            .collect();
         assert_eq!(got, want);
-        assert_eq!(latest_snapshot(&store.paths).unwrap().unwrap().timestamp, "20260101-120001");
+        assert_eq!(
+            latest_snapshot(&store.paths).unwrap().unwrap().timestamp,
+            "20260101-120001"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1767,7 +1901,11 @@ mod tests {
         std::fs::write(&q, "그 뒤에 바뀐 모습").unwrap();
 
         let info = inspect_backup_file(&store.paths, &outside).await.unwrap();
-        assert!(info.same_guild, "같은 길드의 백업인데 아니라고 했다: {:?}", info.guilds);
+        assert!(
+            info.same_guild,
+            "같은 길드의 백업인데 아니라고 했다: {:?}",
+            info.guilds
+        );
         assert_eq!(info.timestamp, snap.timestamp);
         assert!(info.file_count > 0);
 
@@ -1793,11 +1931,20 @@ mod tests {
         std::fs::write(&bogus, "그냥 글자").unwrap();
         assert!(inspect_backup_file(&store_a.paths, &bogus).await.is_err());
 
-        let info = inspect_backup_file(&store_a.paths, &snap_b.path).await.unwrap();
+        let info = inspect_backup_file(&store_a.paths, &snap_b.path)
+            .await
+            .unwrap();
         assert!(!info.same_guild);
         assert_eq!(info.guilds, vec!["other.guild".to_string()]);
-        assert!(restore_backup_file(&store_a, &snap_b.path, false).await.is_err(), "다른 길드 백업을 묻지 않고 복원했다");
-        restore_backup_file(&store_a, &snap_b.path, true).await.unwrap();
+        assert!(
+            restore_backup_file(&store_a, &snap_b.path, false)
+                .await
+                .is_err(),
+            "다른 길드 백업을 묻지 않고 복원했다"
+        );
+        restore_backup_file(&store_a, &snap_b.path, true)
+            .await
+            .unwrap();
 
         let _ = std::fs::remove_dir_all(&a);
         let _ = std::fs::remove_dir_all(&b);

@@ -28,17 +28,26 @@ beforeEach(() => {
 describe('BUG-176 sameGuild', () => {
 	it('같은 로컬 경로면 같은 길드', async () => {
 		const m = await import('./guildIdentity');
-		expect(m.sameGuild({ kind: 'local', path: 'C:/a' }, { kind: 'local', path: 'C:/a' })).toBe(true);
+		expect(m.sameGuild({ kind: 'local', path: 'C:/a' }, { kind: 'local', path: 'C:/a' })).toBe(
+			true
+		);
 	});
 
 	it('다른 로컬 경로면 다른 길드 — 이 경우가 원래 버그(A 항목에 B 가 그려짐)', async () => {
 		const m = await import('./guildIdentity');
-		expect(m.sameGuild({ kind: 'local', path: 'C:/a' }, { kind: 'local', path: 'C:/b' })).toBe(false);
+		expect(m.sameGuild({ kind: 'local', path: 'C:/a' }, { kind: 'local', path: 'C:/b' })).toBe(
+			false
+		);
 	});
 
 	it('같은 원격 URL 이면 같은 길드', async () => {
 		const m = await import('./guildIdentity');
-		expect(m.sameGuild({ kind: 'remote', url: 'http://h:3000' }, { kind: 'remote', url: 'http://h:3000' })).toBe(true);
+		expect(
+			m.sameGuild(
+				{ kind: 'remote', url: 'http://h:3000' },
+				{ kind: 'remote', url: 'http://h:3000' }
+			)
+		).toBe(true);
 	});
 
 	it('로컬과 원격은 경로/URL 이 비슷해도 항상 다른 길드', async () => {

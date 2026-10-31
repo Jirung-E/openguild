@@ -134,12 +134,7 @@
 		try {
 			await (grant ? pluginApi.allow(name) : pluginApi.revoke(name));
 			await refreshPlugins();
-			showToast(
-				grant
-					? t('plugins.allowed', $locale)
-					: t('plugins.revoked', $locale),
-				'success'
-			);
+			showToast(grant ? t('plugins.allowed', $locale) : t('plugins.revoked', $locale), 'success');
 			// 다시 그려진 뒤에 잡아야 새 버튼이 잡힌다.
 			await tick();
 			pluginBtns[name]?.focus();
@@ -223,7 +218,9 @@
 					'success'
 				);
 				await tick();
-				document.getElementById(`plugin-source-${out.source}`)?.scrollIntoView?.({ block: 'center' });
+				document
+					.getElementById(`plugin-source-${out.source}`)
+					?.scrollIntoView?.({ block: 'center' });
 			}
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : String(e), 'error');
@@ -262,9 +259,8 @@
 	function folderOf(p: PluginView): string | null {
 		if (!p.source) return null;
 		return (
-			sources
-				.find((s) => s.name === p.source)
-				?.plugins.find((x) => x.used && x.name === p.name)?.folder ?? null
+			sources.find((s) => s.name === p.source)?.plugins.find((x) => x.used && x.name === p.name)
+				?.folder ?? null
 		);
 	}
 
@@ -313,353 +309,350 @@
 	}
 </script>
 
-		<h2>{t('plugins.heading', $locale)}</h2>
-		<!-- DEV-383: 길드를 안 열었으면 그 사실만 말한다. 예전엔 "플러그인이
+<h2>{t('plugins.heading', $locale)}</h2>
+<!-- DEV-383: 길드를 안 열었으면 그 사실만 말한다. 예전엔 "플러그인이
 		     없습니다. .guild/plugins/… 에 정의하세요" 와 "조회만 가능합니다"
 		     가 함께 떴는데, 그 상황에서는 **둘 다 틀린 말**이다. -->
-		{#if pluginStatus?.no_guild}
-			<p class="scale-hint">{t('plugins.noGuild', $locale)}</p>
-		{:else}
-			<!-- DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑의
+{#if pluginStatus?.no_guild}
+	<p class="scale-hint">{t('plugins.noGuild', $locale)}</p>
+{:else}
+	<!-- DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑의
 			     "전부 허용돼 있습니다" 와 정면으로 어긋난다. 위치만 알린다. -->
-			<p class="scale-hint">
-				{pluginStatus?.auto_allow
-					? t('plugins.introAuto', $locale)
-					: t('plugins.intro', $locale)}
-			</p>
-			<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다.
+	<p class="scale-hint">
+		{pluginStatus?.auto_allow ? t('plugins.introAuto', $locale) : t('plugins.intro', $locale)}
+	</p>
+	<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다.
 			     DEV-383: **답을 받은 뒤에만** 판단한다 — 받기 전에 띄우면
 			     로컬 데스크톱에서도 잠깐 스쳐 지나가고, 실패하면 굳는다. -->
-			{#if pluginsLoaded && !canManage}
-				<p class="scale-hint">{t('plugins.readOnly', $locale)}</p>
-			{/if}
-		{/if}
-		{#if true}
-			<!-- DEV-384: 조회 오류와 전달 실패는 **비동기로** 나타난다. 라이브
+	{#if pluginsLoaded && !canManage}
+		<p class="scale-hint">{t('plugins.readOnly', $locale)}</p>
+	{/if}
+{/if}
+{#if true}
+	<!-- DEV-384: 조회 오류와 전달 실패는 **비동기로** 나타난다. 라이브
 			     리전이 없으면 스크린리더는 그게 생긴 줄도 모른다. -->
-			{#if pluginError}
-				<!-- DEV-383: 실패했을 때 다시 시도할 방법이 없으면 탭을 다시
+	{#if pluginError}
+		<!-- DEV-383: 실패했을 때 다시 시도할 방법이 없으면 탭을 다시
 				     누를 생각을 못 한 사람은 그대로 막힌다. -->
-				<p class="plugin-error" role="alert">
-					{pluginError}
-					<button class="btn" onclick={refreshPlugins}
-						>{t('plugins.retry', $locale)}</button
-					>
-				</p>
-			{/if}
-			{#if canManage && pluginStatus && !pluginStatus.no_guild}
-				<!-- BUG-288: 일괄 조작 셋을 **한 자리에.** 예전엔 "전부 허용" 은 목록 맨 아래,
+		<p class="plugin-error" role="alert">
+			{pluginError}
+			<button class="btn" onclick={refreshPlugins}>{t('plugins.retry', $locale)}</button>
+		</p>
+	{/if}
+	{#if canManage && pluginStatus && !pluginStatus.no_guild}
+		<!-- BUG-288: 일괄 조작 셋을 **한 자리에.** 예전엔 "전부 허용" 은 목록 맨 아래,
 				     해제는 위 안내문에 흩어져 있었고, 둘 다 모드를 켜고 끄는 것이라 켜 둔
 				     동안 개별 철회가 막혔다. 이제 전체 허용·해제는 개별 상태를 한 번에 바꿀
 				     뿐이고, 앞으로 올 것을 묻지 않는 것은 자동 허용이 따로 맡는다. -->
-				<!-- DEV-400 / DEV-394: 더하기와 다시 읽기. 일괄 동의와는 다른 일이라 줄을 나눈다. -->
-				<div class="plugin-toolbar">
-					<button type="button" class="btn btn-primary" disabled={sourceBusy} onclick={addPluginFolder}
-						>{t('plugins.add', $locale)}</button
-					>
-					<button type="button" class="btn" disabled={reloading} onclick={reload}
-						>{t('plugins.reload', $locale)}</button
-					>
-					<span class="plugin-auto-hint">{t('plugins.reloadHint', $locale)}</span>
-				</div>
-				<div class="plugin-bulk">
-					<button
-						class="btn"
-						disabled={bulkBusy || pluginStatus.plugins.length === 0}
-						onclick={() => (confirmBulk = 'allowAll')}
-						>{t('plugins.allowAll', $locale)}</button
-					>
-					<button
-						class="btn"
-						disabled={bulkBusy || pluginStatus.plugins.length === 0}
-						onclick={() => bulk('revokeAll')}>{t('plugins.revokeAll', $locale)}</button
-					>
-					<label class="plugin-auto">
-						<input
-							type="checkbox"
-							checked={pluginStatus.auto_allow}
-							disabled={bulkBusy}
-							onclick={(e) => {
-								// 켜는 것은 확인을 거친다 — 체크 표시는 답을 받은 뒤 상태로 그린다.
-								e.preventDefault();
-								if (pluginStatus?.auto_allow) bulk('autoOff');
-								else confirmBulk = 'autoOn';
-							}}
-						/>
-						{t('plugins.autoAllow', $locale)}
-					</label>
-					<span class="plugin-auto-hint">{t('plugins.autoAllowHint', $locale)}</span>
-				</div>
-			{/if}
-			{#if pluginStatus &&
-				!pluginStatus.no_guild &&
-				pluginStatus.plugins.length === 0 &&
-				pluginStatus.errors.length === 0}
-				<p class="scale-hint">{t('plugins.none', $locale)}</p>
-			{/if}
-			<!-- REQ-032: 설치본에는 예제가 안 들어간다(복사해 고치라고 두는 것이라
+		<!-- DEV-400 / DEV-394: 더하기와 다시 읽기. 일괄 동의와는 다른 일이라 줄을 나눈다. -->
+		<div class="plugin-toolbar">
+			<button type="button" class="btn btn-primary" disabled={sourceBusy} onclick={addPluginFolder}
+				>{t('plugins.add', $locale)}</button
+			>
+			<button type="button" class="btn" disabled={reloading} onclick={reload}
+				>{t('plugins.reload', $locale)}</button
+			>
+			<span class="plugin-auto-hint">{t('plugins.reloadHint', $locale)}</span>
+		</div>
+		<div class="plugin-bulk">
+			<button
+				class="btn"
+				disabled={bulkBusy || pluginStatus.plugins.length === 0}
+				onclick={() => (confirmBulk = 'allowAll')}>{t('plugins.allowAll', $locale)}</button
+			>
+			<button
+				class="btn"
+				disabled={bulkBusy || pluginStatus.plugins.length === 0}
+				onclick={() => bulk('revokeAll')}>{t('plugins.revokeAll', $locale)}</button
+			>
+			<label class="plugin-auto">
+				<input
+					type="checkbox"
+					checked={pluginStatus.auto_allow}
+					disabled={bulkBusy}
+					onclick={(e) => {
+						// 켜는 것은 확인을 거친다 — 체크 표시는 답을 받은 뒤 상태로 그린다.
+						e.preventDefault();
+						if (pluginStatus?.auto_allow) bulk('autoOff');
+						else confirmBulk = 'autoOn';
+					}}
+				/>
+				{t('plugins.autoAllow', $locale)}
+			</label>
+			<span class="plugin-auto-hint">{t('plugins.autoAllowHint', $locale)}</span>
+		</div>
+	{/if}
+	{#if pluginStatus && !pluginStatus.no_guild && pluginStatus.plugins.length === 0 && pluginStatus.errors.length === 0}
+		<p class="scale-hint">{t('plugins.none', $locale)}</p>
+	{/if}
+	<!-- REQ-032: 설치본에는 예제가 안 들어간다(복사해 고치라고 두는 것이라
 			     설치 폴더에 있으면 안 된다). 예전엔 플러그인이 하나도 없을 때만 보였는데,
 			     이미 쓰고 있어도 새 것을 만들 때 예제를 찾는다 — 늘 보인다(admin). -->
-			{#if pluginStatus && !pluginStatus.no_guild && pluginStatus.examples_url}
-				<p class="scale-hint">
-					{t('plugins.examplesHint', $locale)}
-					<a class="examples-link" href={pluginStatus.examples_url} target="_blank" rel="noreferrer noopener"
-						>{t('plugins.examplesLink', $locale)}</a
-					>
-					<code class="examples-url">{pluginStatus.examples_url}</code>
-				</p>
-			{/if}
-			<ul class="plugin-list" aria-busy={pluginBusy.length > 0}>
-				{#each pluginStatus?.plugins ?? [] as p (p.name)}
-					<li class="plugin" class:pending={!p.granted} class:fresh={fresh === p.name} id={`plugin-${p.name}`}>
-						<div class="plugin-head">
-							<strong>{p.name}</strong>
-						</div>
-						<!-- REQ-020: 나머지 줄은 전부 기계가 읽는 값이라, 처음 보는
+	{#if pluginStatus && !pluginStatus.no_guild && pluginStatus.examples_url}
+		<p class="scale-hint">
+			{t('plugins.examplesHint', $locale)}
+			<a
+				class="examples-link"
+				href={pluginStatus.examples_url}
+				target="_blank"
+				rel="noreferrer noopener">{t('plugins.examplesLink', $locale)}</a
+			>
+			<code class="examples-url">{pluginStatus.examples_url}</code>
+		</p>
+	{/if}
+	<ul class="plugin-list" aria-busy={pluginBusy.length > 0}>
+		{#each pluginStatus?.plugins ?? [] as p (p.name)}
+			<li
+				class="plugin"
+				class:pending={!p.granted}
+				class:fresh={fresh === p.name}
+				id={`plugin-${p.name}`}
+			>
+				<div class="plugin-head">
+					<strong>{p.name}</strong>
+				</div>
+				<!-- REQ-020: 나머지 줄은 전부 기계가 읽는 값이라, 처음 보는
 						     플러그인 앞에서 "이게 무슨 일을 하는가" 를 알려주는 것이
 						     하나도 없었다. 정의가 안 적었으면 자리도 안 만든다 —
 						     빈 줄은 없는 것보다 나쁘다. -->
-						{#if p.description}
-							<p class="plugin-desc">{p.description}</p>
-						{/if}
-						<div class="plugin-meta">
-							<span>{t('plugins.scope', $locale)}: {p.scope.join(', ')}</span>
-							<!-- DEV-469: 플러그인끼리의 순서 — 앞 플러그인이 막거나 대신 처리하면 뒤는 그 일을 못 본다. -->
-							{#if p.run_after?.length}
-								<span>{t('plugins.runAfter', $locale).replace('{ids}', p.run_after.join(', '))}</span>
-							{/if}
-							{#if p.run_before?.length}
-								<span>{t('plugins.runBefore', $locale).replace('{ids}', p.run_before.join(', '))}</span>
-							{/if}
-						</div>
-						<!-- DEV-403: 한 플러그인이 여러 줄을 갖는다 — 언제 → 무엇을, 적힌 순서대로. -->
-						<ol class="plugin-lines" aria-label={t('plugins.lines', $locale)}>
-							{#each p.handlers as h, i (i)}
-								<li>
-									{#if h.stage === 'every'}
-										<!-- DEV-458: 이벤트 대신 시간마다 — 간격과 받을 목록의 쿼리. -->
-										<span class="line-when"
-											>{t('plugins.stageEvery', $locale).replace('{every}', h.every ?? '')}
-											{t(
-												h.of === 'campaign'
-													? 'plugins.ofCampaign'
-													: h.of === 'library'
-														? 'plugins.ofLibrary'
-														: 'plugins.ofQuest',
-												$locale
-											)}
-											<code>{h.query}</code></span
-										>
-									{:else}
-										<span class="line-when"
-											>{h.stage === 'pre'
-												? t('plugins.stagePre', $locale)
-												: t('plugins.stagePost', $locale)}
-											{h.events.join(' ')}</span
-										>
-										{#if h.command}
-											<span class="line-when"
-												>{t('plugins.command', $locale)} <code>{h.command}</code></span
-											>
-										{/if}
-									{/if}
-									<Icon name="arrow-right" size="1em" />
-									<code class="plugin-target"
-										>{h.call
-											? `${h.call}()`
-											: (h.action ?? `${h.action_kind} ${h.action_target}`)}</code
-									>
-									{#if h.when.length > 0}
-										<span class="line-when">({h.when.join(', ')})</span>
-									{/if}
-									{#if h.with.length > 0}
-										<span class="line-label"
-											>{t('plugins.reads', $locale)}: {h.with.join(', ')}</span
-										>
-									{/if}
-									{#if h.group}
-										<span class="line-label">{t('plugins.group', $locale)}: {h.group}</span>
-									{/if}
-									<!-- DEV-414: 순서를 적은 줄은 적힌 순서와 다르게 돌 수 있다 — 보여 준다. -->
-									{#if h.run_after?.length}
-										<span class="line-label"
-											>{t('plugins.runAfter', $locale).replace('{ids}', h.run_after.join(', '))}</span
-										>
-									{/if}
-									{#if h.run_before?.length}
-										<span class="line-label"
-											>{t('plugins.runBefore', $locale).replace('{ids}', h.run_before.join(', '))}</span
-										>
-									{/if}
-									{#if h.wait || h.stage === 'pre'}
-										<span class="line-label">{t('plugins.waits', $locale)}</span>
-									{/if}
-									<!-- DEV-410: 바뀌기 전 줄은 그 일을 **막을 수 있다**. 기다린다는
-									     말만으로는 그게 안 드러난다. -->
-									{#if h.stage === 'pre'}
-										<span class="line-label">{t('plugins.canBlock', $locale)}</span>
-									{/if}
-									<span class="line-label">{h.label}</span>
-								</li>
-							{/each}
-						</ol>
-						{#if p.imports.length > 0}
-							<p class="plugin-datadir">
-								{t('plugins.imports', $locale)}: <code class="plugin-path">{p.imports.join(', ')}</code>
-								<span class="line-label">{t('plugins.importsNote', $locale)}</span>
-							</p>
-						{/if}
-						{#if p.permissions.length > 0}
-							<p class="plugin-datadir">
-								{t('plugins.permissions', $locale)}: {p.permissions.join(', ')}
-							</p>
-						{/if}
-						<!-- DEV-410: 어떤 비밀값을 쓰는지 — 이름만. 값은 서버도 앱도 안 싣는다. -->
-						{#if p.env.length > 0}
-							<p class="plugin-datadir">
-								{t('plugins.env', $locale)}: <code class="plugin-path">{p.env.join(', ')}</code>
-								<span class="line-label">{t('plugins.envNote', $locale)}</span>
-							</p>
-						{/if}
-						<!-- 어디로 나가고 무엇을 띄우는지 — 스크립트는 이 이름으로만 부른다. -->
-						{#if p.actions.length > 0}
-							<ul class="plugin-dests" aria-label={t('plugins.dests', $locale)}>
-								{#each p.actions as a (a.name)}
-									<li>
-										<code>{a.name}</code>
-										<span class="line-label">{a.kind}</span>
-										<code class="plugin-target">{a.target}</code>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-						<!-- DEV-400: 길드 것과 소스 것이 한 목록에 섞인다 — 어디서 왔는지 보여야 한다.
-						     소스 것은 길드 밖이라 경로도 함께. -->
-						<p class="plugin-datadir">
-							{#if p.source}
-								{t('plugins.fromSource', $locale).replace('{source}', p.source)}
-								{#if p.dir}<code class="plugin-path">{p.dir}</code>{/if}
+				{#if p.description}
+					<p class="plugin-desc">{p.description}</p>
+				{/if}
+				<div class="plugin-meta">
+					<span>{t('plugins.scope', $locale)}: {p.scope.join(', ')}</span>
+					<!-- DEV-469: 플러그인끼리의 순서 — 앞 플러그인이 막거나 대신 처리하면 뒤는 그 일을 못 본다. -->
+					{#if p.run_after?.length}
+						<span>{t('plugins.runAfter', $locale).replace('{ids}', p.run_after.join(', '))}</span>
+					{/if}
+					{#if p.run_before?.length}
+						<span>{t('plugins.runBefore', $locale).replace('{ids}', p.run_before.join(', '))}</span>
+					{/if}
+				</div>
+				<!-- DEV-403: 한 플러그인이 여러 줄을 갖는다 — 언제 → 무엇을, 적힌 순서대로. -->
+				<ol class="plugin-lines" aria-label={t('plugins.lines', $locale)}>
+					{#each p.handlers as h, i (i)}
+						<li>
+							{#if h.stage === 'every'}
+								<!-- DEV-458: 이벤트 대신 시간마다 — 간격과 받을 목록의 쿼리. -->
+								<span class="line-when"
+									>{t('plugins.stageEvery', $locale).replace('{every}', h.every ?? '')}
+									{t(
+										h.of === 'campaign'
+											? 'plugins.ofCampaign'
+											: h.of === 'library'
+												? 'plugins.ofLibrary'
+												: 'plugins.ofQuest',
+										$locale
+									)}
+									<code>{h.query}</code></span
+								>
 							{:else}
-								{t('plugins.fromGuild', $locale)}
+								<span class="line-when"
+									>{h.stage === 'pre'
+										? t('plugins.stagePre', $locale)
+										: t('plugins.stagePost', $locale)}
+									{h.events.join(' ')}</span
+								>
+								{#if h.command}
+									<span class="line-when"
+										>{t('plugins.command', $locale)} <code>{h.command}</code></span
+									>
+								{/if}
 							{/if}
-						</p>
-						<!-- BUG-279: run 훅은 플러그인 폴더가 아니라 여기에 쓴다.
+							<Icon name="arrow-right" size="1em" />
+							<code class="plugin-target"
+								>{h.call
+									? `${h.call}()`
+									: (h.action ?? `${h.action_kind} ${h.action_target}`)}</code
+							>
+							{#if h.when.length > 0}
+								<span class="line-when">({h.when.join(', ')})</span>
+							{/if}
+							{#if h.with.length > 0}
+								<span class="line-label">{t('plugins.reads', $locale)}: {h.with.join(', ')}</span>
+							{/if}
+							{#if h.group}
+								<span class="line-label">{t('plugins.group', $locale)}: {h.group}</span>
+							{/if}
+							<!-- DEV-414: 순서를 적은 줄은 적힌 순서와 다르게 돌 수 있다 — 보여 준다. -->
+							{#if h.run_after?.length}
+								<span class="line-label"
+									>{t('plugins.runAfter', $locale).replace('{ids}', h.run_after.join(', '))}</span
+								>
+							{/if}
+							{#if h.run_before?.length}
+								<span class="line-label"
+									>{t('plugins.runBefore', $locale).replace('{ids}', h.run_before.join(', '))}</span
+								>
+							{/if}
+							{#if h.wait || h.stage === 'pre'}
+								<span class="line-label">{t('plugins.waits', $locale)}</span>
+							{/if}
+							<!-- DEV-410: 바뀌기 전 줄은 그 일을 **막을 수 있다**. 기다린다는
+									     말만으로는 그게 안 드러난다. -->
+							{#if h.stage === 'pre'}
+								<span class="line-label">{t('plugins.canBlock', $locale)}</span>
+							{/if}
+							<span class="line-label">{h.label}</span>
+						</li>
+					{/each}
+				</ol>
+				{#if p.imports.length > 0}
+					<p class="plugin-datadir">
+						{t('plugins.imports', $locale)}: <code class="plugin-path">{p.imports.join(', ')}</code>
+						<span class="line-label">{t('plugins.importsNote', $locale)}</span>
+					</p>
+				{/if}
+				{#if p.permissions.length > 0}
+					<p class="plugin-datadir">
+						{t('plugins.permissions', $locale)}: {p.permissions.join(', ')}
+					</p>
+				{/if}
+				<!-- DEV-410: 어떤 비밀값을 쓰는지 — 이름만. 값은 서버도 앱도 안 싣는다. -->
+				{#if p.env.length > 0}
+					<p class="plugin-datadir">
+						{t('plugins.env', $locale)}: <code class="plugin-path">{p.env.join(', ')}</code>
+						<span class="line-label">{t('plugins.envNote', $locale)}</span>
+					</p>
+				{/if}
+				<!-- 어디로 나가고 무엇을 띄우는지 — 스크립트는 이 이름으로만 부른다. -->
+				{#if p.actions.length > 0}
+					<ul class="plugin-dests" aria-label={t('plugins.dests', $locale)}>
+						{#each p.actions as a (a.name)}
+							<li>
+								<code>{a.name}</code>
+								<span class="line-label">{a.kind}</span>
+								<code class="plugin-target">{a.target}</code>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				<!-- DEV-400: 길드 것과 소스 것이 한 목록에 섞인다 — 어디서 왔는지 보여야 한다.
+						     소스 것은 길드 밖이라 경로도 함께. -->
+				<p class="plugin-datadir">
+					{#if p.source}
+						{t('plugins.fromSource', $locale).replace('{source}', p.source)}
+						{#if p.dir}<code class="plugin-path">{p.dir}</code>{/if}
+					{:else}
+						{t('plugins.fromGuild', $locale)}
+					{/if}
+				</p>
+				<!-- BUG-279: run 훅은 플러그인 폴더가 아니라 여기에 쓴다.
 						     안 알려주면 훅이 만든 파일을 찾을 방법이 없다. -->
-						{#if p.data_dir}
-							<p class="plugin-datadir">
-								{t('plugins.dataDir', $locale)}:
-								<!-- 라벨과 경로가 한 줄에 이어 붙는데, 영어에서는 둘이 같은
+				{#if p.data_dir}
+					<p class="plugin-datadir">
+						{t('plugins.dataDir', $locale)}:
+						<!-- 라벨과 경로가 한 줄에 이어 붙는데, 영어에서는 둘이 같은
 								     문자 집합이라 "writes files to: /Users/…" 가 한 덩어리로
 								     읽힌다(한국어 라벨일 때는 글자가 달라 저절로 갈렸다).
 								     글꼴만으로는 부족해서 본문 마크다운의 인라인 코드와
 								     **같은 모양**을 준다 — 앱 안에서 "코드/경로" 는 이미
 								     그 모양이므로 새 표기를 만들지 않는다. -->
-								<code class="plugin-path">{p.data_dir}</code>
-							</p>
-						{/if}
-						<!-- REQ-021: admin 이 요청한 자리 — "해당 플러그인 설명 아래에
+						<code class="plugin-path">{p.data_dir}</code>
+					</p>
+				{/if}
+				<!-- REQ-021: admin 이 요청한 자리 — "해당 플러그인 설명 아래에
 						     입력란". 위젯 종류는 정의가 선언한다: 토큰은 텍스트,
 						     알림 여부는 체크박스, 주기는 선택상자. -->
-						{#if p.inputs.length > 0}
-							<div class="plugin-inputs">
-								{#each p.inputs as i (i.key)}
-									{@const busy = inputBusy.includes(draftKey(p.name, i.key))}
-									<div class="plugin-input" class:missing={i.source === 'missing'}>
-										{#if i.type === 'checkbox'}
-											<label class="pi-check">
-												<input
-													type="checkbox"
-													checked={draftOf(p.name, i) === true}
-													disabled={busy || !canManage}
-													onchange={(e) =>
-														setDraft(p.name, i.key, e.currentTarget.checked)}
-												/>
-												<span>{i.label}</span>
-											</label>
-										{:else}
-											<label class="pi-label" for={`pi-${p.name}-${i.key}`}>{i.label}</label>
-											{#if i.type === 'select'}
-												<!-- BUG-328: 고른 값은 **`select` 에** 준다. `option` 의 `selected` 는
+				{#if p.inputs.length > 0}
+					<div class="plugin-inputs">
+						{#each p.inputs as i (i.key)}
+							{@const busy = inputBusy.includes(draftKey(p.name, i.key))}
+							<div class="plugin-input" class:missing={i.source === 'missing'}>
+								{#if i.type === 'checkbox'}
+									<label class="pi-check">
+										<input
+											type="checkbox"
+											checked={draftOf(p.name, i) === true}
+											disabled={busy || !canManage}
+											onchange={(e) => setDraft(p.name, i.key, e.currentTarget.checked)}
+										/>
+										<span>{i.label}</span>
+									</label>
+								{:else}
+									<label class="pi-label" for={`pi-${p.name}-${i.key}`}>{i.label}</label>
+									{#if i.type === 'select'}
+										<!-- BUG-328: 고른 값은 **`select` 에** 준다. `option` 의 `selected` 는
 												     처음 그릴 때의 속성이라, 저장 뒤 다시 그려도 이미 그려진 상자의
 												     선택은 안 바뀐다 — 그래서 두 번 저장해야 맞아 보였다(admin). -->
-												<select
-													id={`pi-${p.name}-${i.key}`}
-													class="input pi-field"
-													disabled={busy || !canManage}
-													value={draftOf(p.name, i)}
-													onchange={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
-												>
-													{#each i.options as o (o.value)}
-														<option value={o.value}>{o.label}</option>
-													{/each}
-												</select>
-											{:else}
-												<input
-													id={`pi-${p.name}-${i.key}`}
-													class="input pi-field"
-													type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
-													autocomplete="off"
-													placeholder={i.has_value && (i.value === null || i.value === undefined)
-														? t('plugins.valueSet', $locale)
-														: ''}
-													value={draftOf(p.name, i)}
-													disabled={busy || !canManage}
-													oninput={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
-												/>
-											{/if}
-										{/if}
-										<div class="pi-actions">
-											{#if isDirty(p.name, i)}
-												<button
-													type="button"
-													class="btn btn-primary"
-													disabled={busy}
-													onclick={() => saveInput(p.name, i)}
-													aria-label={`${t('plugins.valueSave', $locale)} — ${i.label}`}
-													>{t('plugins.valueSave', $locale)}</button
-												>
-											{:else if i.source === 'stored' && canManage}
-												<button
-													type="button"
-													class="btn"
-													disabled={busy}
-													onclick={() => clearInput(p.name, i)}
-													aria-label={`${t('plugins.valueClear', $locale)} — ${i.label}`}
-													>{t('plugins.valueClear', $locale)}</button
-												>
-											{/if}
-										</div>
-										<!-- 값이 어디서 왔는지 안 보여주면 "이미 있는데 왜 또 넣지" 가
+										<select
+											id={`pi-${p.name}-${i.key}`}
+											class="input pi-field"
+											disabled={busy || !canManage}
+											value={draftOf(p.name, i)}
+											onchange={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
+										>
+											{#each i.options as o (o.value)}
+												<option value={o.value}>{o.label}</option>
+											{/each}
+										</select>
+									{:else}
+										<input
+											id={`pi-${p.name}-${i.key}`}
+											class="input pi-field"
+											type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
+											autocomplete="off"
+											placeholder={i.has_value && (i.value === null || i.value === undefined)
+												? t('plugins.valueSet', $locale)
+												: ''}
+											value={draftOf(p.name, i)}
+											disabled={busy || !canManage}
+											oninput={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
+										/>
+									{/if}
+								{/if}
+								<div class="pi-actions">
+									{#if isDirty(p.name, i)}
+										<button
+											type="button"
+											class="btn btn-primary"
+											disabled={busy}
+											onclick={() => saveInput(p.name, i)}
+											aria-label={`${t('plugins.valueSave', $locale)} — ${i.label}`}
+											>{t('plugins.valueSave', $locale)}</button
+										>
+									{:else if i.source === 'stored' && canManage}
+										<button
+											type="button"
+											class="btn"
+											disabled={busy}
+											onclick={() => clearInput(p.name, i)}
+											aria-label={`${t('plugins.valueClear', $locale)} — ${i.label}`}
+											>{t('plugins.valueClear', $locale)}</button
+										>
+									{/if}
+								</div>
+								<!-- 값이 어디서 왔는지 안 보여주면 "이미 있는데 왜 또 넣지" 가
 										     된다. 없는 값은 동작 · 명령이 쓰는 것이면 이 플러그인이 못 도는 이유고(DEV-464),
 										     스크립트만 읽는 것이면 비워 둬도 된다 — 설명이 비웠을 때를 알려 준다. -->
-										<p class="pi-help">
-											{#if i.source === 'missing' && i.required !== false}
-												<strong>{t('plugins.valueMissing', $locale)}</strong>
-											{:else if i.source === 'missing'}
-												{t('plugins.valueEmptyOk', $locale)}
-											{:else if i.source === 'env'}
-												{t('plugins.valueFromEnv', $locale)}
-											{:else if i.source === 'default'}
-												{t('plugins.valueFromDefault', $locale)}
-											{/if}
-											{#if i.help}<span class="pi-help-text">{i.help}</span>{/if}
-										</p>
-									</div>
-								{/each}
-								<p class="pi-note">{t('plugins.valuesPlaintext', $locale)}</p>
+								<p class="pi-help">
+									{#if i.source === 'missing' && i.required !== false}
+										<strong>{t('plugins.valueMissing', $locale)}</strong>
+									{:else if i.source === 'missing'}
+										{t('plugins.valueEmptyOk', $locale)}
+									{:else if i.source === 'env'}
+										{t('plugins.valueFromEnv', $locale)}
+									{:else if i.source === 'default'}
+										{t('plugins.valueFromDefault', $locale)}
+									{/if}
+									{#if i.help}<span class="pi-help-text">{i.help}</span>{/if}
+								</p>
 							</div>
-						{/if}
-						<div class="plugin-state">
-							{#if !p.granted}
-								{t('plugins.pending', $locale)}
-							{:else if p.runs_here}
-								{t('plugins.running', $locale)}
-							{:else}
-								{t('plugins.otherScope', $locale)}
-							{/if}
-						</div>
-						{#if p.script_src}
-							<!-- DEV-383: 이 화면의 존재 이유가 "무엇에 동의하는지 보여
+						{/each}
+						<p class="pi-note">{t('plugins.valuesPlaintext', $locale)}</p>
+					</div>
+				{/if}
+				<div class="plugin-state">
+					{#if !p.granted}
+						{t('plugins.pending', $locale)}
+					{:else if p.runs_here}
+						{t('plugins.running', $locale)}
+					{:else}
+						{t('plugins.otherScope', $locale)}
+					{/if}
+				</div>
+				{#if p.script_src}
+					<!-- DEV-383: 이 화면의 존재 이유가 "무엇에 동의하는지 보여
 							     주는 것" 인데, 펼침 상태가 스크린리더에 안 전달되면
 							     그 코드는 사실상 안 보이는 것과 같다.
 
@@ -670,181 +663,176 @@
 							     — 이름은 같은 항목 세 줄 위에 이미 있다. 고쳐야 했던
 							     것은 접근 이름뿐이다. 접근 이름이 보이는 문구를 그대로
 							     포함하므로 WCAG 2.5.3(Label in Name)도 지킨다. -->
+					<button
+						type="button"
+						class="link-btn"
+						aria-expanded={openScript === p.name}
+						aria-controls={`plugin-script-${p.name}`}
+						aria-label={`${
+							openScript === p.name
+								? t('plugins.hideScript', $locale)
+								: t('plugins.showScript', $locale)
+						} — ${p.name}`}
+						onclick={() => (openScript = openScript === p.name ? null : p.name)}
+						>{openScript === p.name
+							? t('plugins.hideScript', $locale)
+							: t('plugins.showScript', $locale)}</button
+					>
+					{#if openScript === p.name}
+						<pre id={`plugin-script-${p.name}`} class="plugin-script">{p.script_src}</pre>
+					{/if}
+				{/if}
+				{#if canManage}
+					<div class="plugin-actions">
+						<!-- BUG-288: 자동 허용 중에도 개별 철회가 먹는다 — 철회가 판정에서 앞선다. -->
+						{#if p.granted}
 							<button
 								type="button"
-								class="link-btn"
-								aria-expanded={openScript === p.name}
-								aria-controls={`plugin-script-${p.name}`}
-								aria-label={`${
-									openScript === p.name
-										? t('plugins.hideScript', $locale)
-										: t('plugins.showScript', $locale)
-								} — ${p.name}`}
-								onclick={() => (openScript = openScript === p.name ? null : p.name)}
-								>{openScript === p.name
-									? t('plugins.hideScript', $locale)
-									: t('plugins.showScript', $locale)}</button
+								class="btn"
+								bind:this={pluginBtns[p.name]}
+								disabled={pluginBusy.includes(p.name)}
+								aria-label={`${t('plugins.revoke', $locale)} — ${p.name}`}
+								onclick={() => togglePlugin(p.name, false)}>{t('plugins.revoke', $locale)}</button
 							>
-							{#if openScript === p.name}
-								<pre id={`plugin-script-${p.name}`} class="plugin-script">{p.script_src}</pre>
+						{:else}
+							<button
+								type="button"
+								class="btn btn-primary"
+								bind:this={pluginBtns[p.name]}
+								disabled={pluginBusy.includes(p.name)}
+								aria-label={`${t('plugins.allow', $locale)} — ${p.name}`}
+								onclick={() => togglePlugin(p.name, true)}>{t('plugins.allow', $locale)}</button
+							>
+						{/if}
+						{#if p.source}
+							{@const folder = folderOf(p)}
+							{#if folder !== null}
+								<button
+									type="button"
+									class="btn"
+									disabled={sourceBusy}
+									aria-label={`${t('plugins.stopUsing', $locale)} — ${p.name}`}
+									onclick={() => p.source && stopUsing(p.source, folder)}
+									>{t('plugins.stopUsing', $locale)}</button
+								>
 							{/if}
 						{/if}
-						{#if canManage}
+					</div>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+	<!-- DEV-469: 플러그인 여럿에 걸친 경고 — 같은 댓글 명령을 둘 이상이 잡으면 앞의 것만 돌기 쉽다. -->
+	{#if (pluginStatus?.warnings ?? []).length > 0}
+		<h3 class="plugin-broken-h">{t('plugins.warnings', $locale)}</h3>
+		<ul class="plugin-list">
+			{#each pluginStatus?.warnings ?? [] as w, i (i)}
+				<li class="plugin broken"><span>{w}</span></li>
+			{/each}
+		</ul>
+	{/if}
+	<!-- DEV-381: 전달 실패는 대개 설정 문제라 설정 옆에 있는 편이 낫다.
+			     토스트로 띄우면 시끄럽고, 안 보여주면 조용히 실패한다. -->
+	{#if (pluginStatus?.problems ?? []).length > 0}
+		<h3 class="plugin-broken-h">{t('plugins.problems', $locale)}</h3>
+		<ul class="plugin-list" role="status" aria-live="polite">
+			{#each pluginStatus?.problems ?? [] as p, i (i)}
+				<li class="plugin broken"><span>{p}</span></li>
+			{/each}
+		</ul>
+	{/if}
+	{#if (pluginStatus?.errors ?? []).length > 0}
+		<h3 class="plugin-broken-h">{t('plugins.broken', $locale)}</h3>
+		<ul class="plugin-list">
+			{#each pluginStatus?.errors ?? [] as [name, why] (name)}
+				<li class="plugin broken"><strong>{name}</strong><span>{why}</span></li>
+			{/each}
+		</ul>
+	{/if}
+	<!-- DEV-400: 소스 — 이 기계에 등록한 폴더들. 여럿 든 소스에서는 여기서 골라 쓴다.
+			     사라진 폴더도 이유와 함께 남긴다(조용히 빠지면 "왜 안 돌지" 가 된다). -->
+	{#if canManage && pluginStatus && !pluginStatus.no_guild}
+		<h3 class="plugin-broken-h">{t('plugins.sources', $locale)}</h3>
+		<p class="scale-hint">{t('plugins.sourcesHint', $locale)}</p>
+		{#if sources.length === 0}
+			<p class="scale-hint">{t('plugins.sourcesNone', $locale)}</p>
+		{:else}
+			<ul class="plugin-list">
+				{#each sources as src (src.name)}
+					<li class="plugin" class:broken-src={src.problem} id={`plugin-source-${src.name}`}>
+						<button
+							type="button"
+							class="src-head"
+							aria-expanded={sourceOpen(src)}
+							onclick={() => toggleSource(src)}
+						>
+							<span class="src-caret" aria-hidden="true"
+								><Icon
+									name={sourceOpen(src) ? 'caret-down-sm' : 'caret-right-sm'}
+									size="1em"
+								/></span
+							>
+							<strong>{src.name}</strong>
+							<span class="src-count">
+								{t('plugins.sourceCount', $locale).replace('{n}', String(src.plugins.length))}
+								{#if !src.plugins.some((p) => p.used)}
+									· {t('plugins.sourceNoneUsed', $locale)}
+								{/if}
+							</span>
+						</button>
+						{#if sourceOpen(src)}
+							<code class="plugin-path">{src.path}</code>
+						{/if}
+						{#if src.problem}
+							<p class="plugin-error">{src.problem}</p>
+						{/if}
+						{#if sourceOpen(src) && src.plugins.length > 0}
+							<ul class="source-plugins">
+								{#each src.plugins as sp (sp.folder)}
+									<li>
+										<span class="sp-name">{sp.name}</span>
+										{#if sp.used}
+											<span class="sp-used">{t('plugins.inUse', $locale)}</span>
+											<button
+												type="button"
+												class="btn"
+												disabled={sourceBusy}
+												aria-label={`${t('plugins.stopUsing', $locale)} — ${sp.name}`}
+												onclick={() => stopUsing(src.name, sp.folder)}
+												>{t('plugins.stopUsing', $locale)}</button
+											>
+										{:else}
+											<button
+												type="button"
+												class="btn btn-primary"
+												disabled={sourceBusy}
+												aria-label={`${t('plugins.use', $locale)} — ${sp.name}`}
+												onclick={() => usePlugin(src.name, sp.folder, sp.name)}
+												>{t('plugins.use', $locale)}</button
+											>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+						{#if sourceOpen(src)}
 							<div class="plugin-actions">
-								<!-- BUG-288: 자동 허용 중에도 개별 철회가 먹는다 — 철회가 판정에서 앞선다. -->
-								{#if p.granted}
-									<button
-										type="button"
-										class="btn"
-										bind:this={pluginBtns[p.name]}
-										disabled={pluginBusy.includes(p.name)}
-										aria-label={`${t('plugins.revoke', $locale)} — ${p.name}`}
-										onclick={() => togglePlugin(p.name, false)}
-										>{t('plugins.revoke', $locale)}</button
-									>
-								{:else}
-									<button
-										type="button"
-										class="btn btn-primary"
-										bind:this={pluginBtns[p.name]}
-										disabled={pluginBusy.includes(p.name)}
-										aria-label={`${t('plugins.allow', $locale)} — ${p.name}`}
-										onclick={() => togglePlugin(p.name, true)}
-										>{t('plugins.allow', $locale)}</button
-									>
-								{/if}
-								{#if p.source}
-									{@const folder = folderOf(p)}
-									{#if folder !== null}
-										<button
-											type="button"
-											class="btn"
-											disabled={sourceBusy}
-											aria-label={`${t('plugins.stopUsing', $locale)} — ${p.name}`}
-											onclick={() => p.source && stopUsing(p.source, folder)}
-											>{t('plugins.stopUsing', $locale)}</button
-										>
-									{/if}
-								{/if}
+								<button
+									type="button"
+									class="btn"
+									disabled={sourceBusy}
+									aria-label={`${t('plugins.removeSource', $locale)} — ${src.name}`}
+									onclick={() => (confirmSource = src.name)}
+									>{t('plugins.removeSource', $locale)}</button
+								>
 							</div>
 						{/if}
 					</li>
 				{/each}
 			</ul>
-			<!-- DEV-469: 플러그인 여럿에 걸친 경고 — 같은 댓글 명령을 둘 이상이 잡으면 앞의 것만 돌기 쉽다. -->
-			{#if (pluginStatus?.warnings ?? []).length > 0}
-				<h3 class="plugin-broken-h">{t('plugins.warnings', $locale)}</h3>
-				<ul class="plugin-list">
-					{#each pluginStatus?.warnings ?? [] as w, i (i)}
-						<li class="plugin broken"><span>{w}</span></li>
-					{/each}
-				</ul>
-			{/if}
-			<!-- DEV-381: 전달 실패는 대개 설정 문제라 설정 옆에 있는 편이 낫다.
-			     토스트로 띄우면 시끄럽고, 안 보여주면 조용히 실패한다. -->
-			{#if (pluginStatus?.problems ?? []).length > 0}
-				<h3 class="plugin-broken-h">{t('plugins.problems', $locale)}</h3>
-				<ul class="plugin-list" role="status" aria-live="polite">
-					{#each pluginStatus?.problems ?? [] as p, i (i)}
-						<li class="plugin broken"><span>{p}</span></li>
-					{/each}
-				</ul>
-			{/if}
-			{#if (pluginStatus?.errors ?? []).length > 0}
-				<h3 class="plugin-broken-h">{t('plugins.broken', $locale)}</h3>
-				<ul class="plugin-list">
-					{#each pluginStatus?.errors ?? [] as [name, why] (name)}
-						<li class="plugin broken"><strong>{name}</strong><span>{why}</span></li>
-					{/each}
-				</ul>
-			{/if}
-			<!-- DEV-400: 소스 — 이 기계에 등록한 폴더들. 여럿 든 소스에서는 여기서 골라 쓴다.
-			     사라진 폴더도 이유와 함께 남긴다(조용히 빠지면 "왜 안 돌지" 가 된다). -->
-			{#if canManage && pluginStatus && !pluginStatus.no_guild}
-				<h3 class="plugin-broken-h">{t('plugins.sources', $locale)}</h3>
-				<p class="scale-hint">{t('plugins.sourcesHint', $locale)}</p>
-				{#if sources.length === 0}
-					<p class="scale-hint">{t('plugins.sourcesNone', $locale)}</p>
-				{:else}
-					<ul class="plugin-list">
-						{#each sources as src (src.name)}
-							<li class="plugin" class:broken-src={src.problem} id={`plugin-source-${src.name}`}>
-								<button
-									type="button"
-									class="src-head"
-									aria-expanded={sourceOpen(src)}
-									onclick={() => toggleSource(src)}
-								>
-									<span class="src-caret" aria-hidden="true"
-										><Icon
-											name={sourceOpen(src) ? 'caret-down-sm' : 'caret-right-sm'}
-											size="1em"
-										/></span
-									>
-									<strong>{src.name}</strong>
-									<span class="src-count">
-										{t('plugins.sourceCount', $locale).replace(
-											'{n}',
-											String(src.plugins.length)
-										)}
-										{#if !src.plugins.some((p) => p.used)}
-											· {t('plugins.sourceNoneUsed', $locale)}
-										{/if}
-									</span>
-								</button>
-								{#if sourceOpen(src)}
-									<code class="plugin-path">{src.path}</code>
-								{/if}
-								{#if src.problem}
-									<p class="plugin-error">{src.problem}</p>
-								{/if}
-								{#if sourceOpen(src) && src.plugins.length > 0}
-									<ul class="source-plugins">
-										{#each src.plugins as sp (sp.folder)}
-											<li>
-												<span class="sp-name">{sp.name}</span>
-												{#if sp.used}
-													<span class="sp-used">{t('plugins.inUse', $locale)}</span>
-													<button
-														type="button"
-														class="btn"
-														disabled={sourceBusy}
-														aria-label={`${t('plugins.stopUsing', $locale)} — ${sp.name}`}
-														onclick={() => stopUsing(src.name, sp.folder)}
-														>{t('plugins.stopUsing', $locale)}</button
-													>
-												{:else}
-													<button
-														type="button"
-														class="btn btn-primary"
-														disabled={sourceBusy}
-														aria-label={`${t('plugins.use', $locale)} — ${sp.name}`}
-														onclick={() => usePlugin(src.name, sp.folder, sp.name)}
-														>{t('plugins.use', $locale)}</button
-													>
-												{/if}
-											</li>
-										{/each}
-									</ul>
-								{/if}
-								{#if sourceOpen(src)}
-								<div class="plugin-actions">
-									<button
-										type="button"
-										class="btn"
-										disabled={sourceBusy}
-										aria-label={`${t('plugins.removeSource', $locale)} — ${src.name}`}
-										onclick={() => (confirmSource = src.name)}
-										>{t('plugins.removeSource', $locale)}</button
-									>
-								</div>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{/if}
 		{/if}
+	{/if}
+{/if}
 
 <!-- DEV-379 / BUG-288: 둘 다 보지 않은 코드를 이 기계에서 돌리게 한다 — 확인 없이 받지 않는다. -->
 <ConfirmDialog

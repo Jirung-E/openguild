@@ -11,14 +11,14 @@
 //! 파일이 진리원, DB 는 snapshot 백업 + 빠른 쿼리용 캐시. quest 가 index.db 에
 //! 없으면 (drift 상태) DB UPSERT 는 silently skip — 다음 reindex 가 일관시킴.
 
-use crate::lock::DocKey;
 use crate::events::{names as ev, payload};
+use crate::lock::DocKey;
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
 use crate::repo::comments as repo;
 use crate::services::comments as svc;
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 
 pub use crate::repo::comments::CommentEntry;
 
@@ -37,11 +37,7 @@ async fn lookup_quest_id(store: &Store, slug: &str) -> AppResult<Option<i64>> {
 
 /// DEV-102: 한 댓글 entry 를 `quest_comments` 에 UPSERT. drift 상태 (quest 없음)
 /// 면 skip — 다음 reindex 시 일관.
-async fn upsert_comment_entry_db(
-    store: &Store,
-    slug: &str,
-    entry: &CommentEntry,
-) -> AppResult<()> {
+async fn upsert_comment_entry_db(store: &Store, slug: &str, entry: &CommentEntry) -> AppResult<()> {
     let Some(qid) = lookup_quest_id(store, slug).await? else {
         return Ok(());
     };
@@ -232,7 +228,8 @@ pub async fn add_comment_entry(
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — 댓글에 건 참조도 backlink
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug)
+        .await;
     store.emit_post(
         ev::COMMENT_ADDED,
         || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&entry) }),
@@ -286,7 +283,8 @@ pub async fn update_comment_entry_with(
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — 댓글에 건 참조도 backlink
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug)
+        .await;
     store.emit_post(
         ev::COMMENT_UPDATED,
         || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
@@ -307,22 +305,25 @@ pub async fn toggle_comment_reaction(
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
-        return Err(AppError::BadRequest(
-            crate::tf!(
-                "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음",
-                "emoji must not be empty or contain , \" : |"
-            ),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음",
+            "emoji must not be empty or contain , \" : |"
+        )));
     }
     // DEV-108: 누가 반응했는지 기록 — 빈 author 는 '(익명)' 으로 대체해 항상 1명
     // 이상 보장 (toggle 로직 단순화 + 호버에 표시할 이름 보장).
     let author = author.trim();
     if author.contains(bad) {
-        return Err(AppError::BadRequest(
-            crate::tf!("author 는 , \" : | 를 포함할 수 없음", "author must not contain , \" : |"),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "author 는 , \" : | 를 포함할 수 없음",
+            "author must not contain , \" : |"
+        )));
     }
-    let author = if author.is_empty() { "(익명)" } else { author };
+    let author = if author.is_empty() {
+        "(익명)"
+    } else {
+        author
+    };
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_reaction",
@@ -461,7 +462,11 @@ pub async fn toggle_comment_resolved(
     // quest_history 를 소스로 쓰므로 이것만으로 타임라인에 표출됨. discussion
     // 최초 표시(marked)는 범위 밖(admin 결정 — "과기록은 노이즈, 우선 resolve
     // 전환만").
-    let op = if updated.resolved { "discussion_resolved" } else { "discussion_reopened" };
+    let op = if updated.resolved {
+        "discussion_resolved"
+    } else {
+        "discussion_reopened"
+    };
     record_discussion_history(store, slug, op, id).await?;
     // DEV-374: 방향까지 가른다 — "해결됨" 을 구독하는데 해제까지 오면 쓸모없다.
     let name = if updated.resolved {
@@ -583,7 +588,8 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — 댓글에 건 참조도 backlink
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug)
+        .await;
     store.emit_post(ev::COMMENT_DELETED, || {
         let comment = match &doomed {
             Some(e) => payload::comment(e),
@@ -627,7 +633,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-ops-comments-{label}-{ns}-{}", crate::test_seq()));
+        let dir = std::env::temp_dir().join(format!(
+            "og-ops-comments-{label}-{ns}-{}",
+            crate::test_seq()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -655,13 +664,12 @@ mod tests {
         let e = add_comment_entry(&store, &slug, "alice".into(), "hello".into(), None, false)
             .await
             .unwrap();
-        let row: (String, String, Option<i64>) = sqlx::query_as(
-            "SELECT author, body, parent_id FROM quest_comments WHERE entry_id = ?",
-        )
-        .bind(e.id as i64)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let row: (String, String, Option<i64>) =
+            sqlx::query_as("SELECT author, body, parent_id FROM quest_comments WHERE entry_id = ?")
+                .bind(e.id as i64)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(row.0, "alice");
         assert_eq!(row.1, "hello");
         assert_eq!(row.2, None);
@@ -675,14 +683,14 @@ mod tests {
         let e = add_comment_entry(&store, &slug, "alice".into(), "v1".into(), None, false)
             .await
             .unwrap();
-        let _ = update_comment_entry(&store, &slug, e.id, "v2".into()).await.unwrap();
-        let body: String = sqlx::query_scalar(
-            "SELECT body FROM quest_comments WHERE entry_id = ?",
-        )
-        .bind(e.id as i64)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let _ = update_comment_entry(&store, &slug, e.id, "v2".into())
+            .await
+            .unwrap();
+        let body: String = sqlx::query_scalar("SELECT body FROM quest_comments WHERE entry_id = ?")
+            .bind(e.id as i64)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(body, "v2");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -695,13 +703,11 @@ mod tests {
             .await
             .unwrap();
         delete_comment_entry(&store, &slug, e.id).await.unwrap();
-        let n: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM quest_comments WHERE entry_id = ?",
-        )
-        .bind(e.id as i64)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments WHERE entry_id = ?")
+            .bind(e.id as i64)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(n, 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -713,12 +719,10 @@ mod tests {
         let (dir, store, slug) = fresh("memo").await;
         set_memo(&store, &slug, "v1".into()).await.unwrap();
         set_memo(&store, &slug, "v2".into()).await.unwrap();
-        let rows: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT user_id, content FROM quest_memos",
-        )
-        .fetch_all(&store.index_pool)
-        .await
-        .unwrap();
+        let rows: Vec<(i64, String)> = sqlx::query_as("SELECT user_id, content FROM quest_memos")
+            .fetch_all(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1, "single-user 단계 — row 1 개");
         assert_eq!(rows[0].0, 0);
         assert_eq!(rows[0].1, "v2");
@@ -767,10 +771,26 @@ mod tests {
         assert_eq!(anon.reactions, vec!["✅:(익명)"]);
 
         // validation — 빈 emoji / 콤마 / 콜론 거부, 없는 entry NotFound.
-        assert!(toggle_comment_reaction(&store, &slug, 1, " ", "a").await.is_err());
-        assert!(toggle_comment_reaction(&store, &slug, 1, "a,b", "a").await.is_err());
-        assert!(toggle_comment_reaction(&store, &slug, 1, "a:b", "a").await.is_err());
-        assert!(toggle_comment_reaction(&store, &slug, 99, "👍", "a").await.is_err());
+        assert!(
+            toggle_comment_reaction(&store, &slug, 1, " ", "a")
+                .await
+                .is_err()
+        );
+        assert!(
+            toggle_comment_reaction(&store, &slug, 1, "a,b", "a")
+                .await
+                .is_err()
+        );
+        assert!(
+            toggle_comment_reaction(&store, &slug, 1, "a:b", "a")
+                .await
+                .is_err()
+        );
+        assert!(
+            toggle_comment_reaction(&store, &slug, 99, "👍", "a")
+                .await
+                .is_err()
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -785,13 +805,12 @@ mod tests {
         let r = add_comment_entry(&store, &slug, "b".into(), "2".into(), Some(top.id), false)
             .await
             .unwrap();
-        let parent_id: Option<i64> = sqlx::query_scalar(
-            "SELECT parent_id FROM quest_comments WHERE entry_id = ?",
-        )
-        .bind(r.id as i64)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let parent_id: Option<i64> =
+            sqlx::query_scalar("SELECT parent_id FROM quest_comments WHERE entry_id = ?")
+                .bind(r.id as i64)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(parent_id, Some(top.id as i64));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -832,9 +851,16 @@ mod tests {
     #[tokio::test]
     async fn add_comment_entry_can_create_discussion_in_one_write() {
         let (dir, store, slug) = fresh("add-discussion").await;
-        let e = add_comment_entry(&store, &slug, "a".into(), "토론으로 시작".into(), None, true)
-            .await
-            .unwrap();
+        let e = add_comment_entry(
+            &store,
+            &slug,
+            "a".into(),
+            "토론으로 시작".into(),
+            None,
+            true,
+        )
+        .await
+        .unwrap();
         assert!(e.discussion, "반환 entry 가 토론이어야 한다");
         assert!(!e.resolved, "새 토론은 미해결이어야 한다");
 
@@ -847,9 +873,9 @@ mod tests {
         let flag: i64 =
             sqlx::query_scalar("SELECT discussion FROM quest_comments WHERE entry_id = ?")
                 .bind(e.id as i64)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(flag, 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -904,7 +930,9 @@ mod tests {
         let e = add_comment_entry(&store, &slug, "a".into(), "토론 필요".into(), None, false)
             .await
             .unwrap();
-        toggle_comment_discussion(&store, &slug, e.id).await.unwrap();
+        toggle_comment_discussion(&store, &slug, e.id)
+            .await
+            .unwrap();
         // discussion 최초 표시는 기록 대상 아님(admin 결정 — 과기록 방지).
         let n0: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?")
             .bind(&slug)
@@ -927,13 +955,12 @@ mod tests {
 
         // 재개(unresolve) 도 기록.
         toggle_comment_resolved(&store, &slug, e.id).await.unwrap();
-        let rows2: Vec<String> = sqlx::query_scalar(
-            "SELECT op FROM quest_history WHERE quest_slug = ? ORDER BY id",
-        )
-        .bind(&slug)
-        .fetch_all(&store.index_pool)
-        .await
-        .unwrap();
+        let rows2: Vec<String> =
+            sqlx::query_scalar("SELECT op FROM quest_history WHERE quest_slug = ? ORDER BY id")
+                .bind(&slug)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(rows2, vec!["discussion_resolved", "discussion_reopened"]);
 
         let _ = std::fs::remove_dir_all(&dir);

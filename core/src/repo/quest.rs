@@ -19,12 +19,12 @@
 //! Auto 블록 생성 자체는 F4 (auto.rs) 에서 처리 — 본 모듈은 read/write 와
 //! 사용자 description 분리만 담당.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
-
 /// Auto 블록 시작 마커. 도구가 매번 재생성하는 영역의 시작.
-pub const AUTO_BEGIN: &str = "<!-- openguild:auto-begin — 아래는 자동 생성. 직접 수정하지 마세요. -->";
+pub const AUTO_BEGIN: &str =
+    "<!-- openguild:auto-begin — 아래는 자동 생성. 직접 수정하지 마세요. -->";
 /// Auto 블록 종료 마커.
 pub const AUTO_END: &str = "<!-- openguild:auto-end -->";
 
@@ -129,7 +129,12 @@ impl QuestFile {
     /// 파일에 atomic 쓰기.
     pub fn write<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
         // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
-        super::version::write(path.as_ref(), &self.serialize()?, super::version::Place::Frontmatter).map(|_| ())
+        super::version::write(
+            path.as_ref(),
+            &self.serialize()?,
+            super::version::Place::Frontmatter,
+        )
+        .map(|_| ())
     }
 
     /// `quest_id` 의 type prefix 추출 ("DEV-001" → "DEV").

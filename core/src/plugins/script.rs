@@ -297,7 +297,8 @@ impl Script {
         event: &Event,
         config: &std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<Vec<Command>, String> {
-        self.call_handler_with(func, event, &[], config).map(|(_, c)| c)
+        self.call_handler_with(func, event, &[], config)
+            .map(|(_, c)| c)
     }
 
     /// DEV-405: 이벤트 뒤에 연결 데이터(`with`)를 차례로 넘긴다.
@@ -353,11 +354,19 @@ fn push(
     action: String,
     body: Value,
 ) -> Result<(), Box<rhai::EvalAltResult>> {
-    let mut list = cmds
-        .lock()
-        .map_err(|_| -> Box<rhai::EvalAltResult> { crate::tf!("할 일 목록을 잠그지 못했습니다", "could not lock the command list").into() })?;
+    let mut list = cmds.lock().map_err(|_| -> Box<rhai::EvalAltResult> {
+        crate::tf!(
+            "할 일 목록을 잠그지 못했습니다",
+            "could not lock the command list"
+        )
+        .into()
+    })?;
     if list.len() >= MAX_COMMANDS {
-        return Err(crate::tf!("한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다", "at most {MAX_COMMANDS} commands can be queued at once").into());
+        return Err(crate::tf!(
+            "한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다",
+            "at most {MAX_COMMANDS} commands can be queued at once"
+        )
+        .into());
     }
     list.push(Command { kind, action, body });
     Ok(())
@@ -378,7 +387,12 @@ fn sandboxed_engine(
         e.register_fn(
             "notify",
             move |text: &str| -> Result<(), Box<rhai::EvalAltResult>> {
-                push(&cmds, CommandKind::Notify, String::new(), Value::String(text.to_string()))
+                push(
+                    &cmds,
+                    CommandKind::Notify,
+                    String::new(),
+                    Value::String(text.to_string()),
+                )
             },
         );
         let cmds = commands.clone();
@@ -468,7 +482,10 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
     let h = hooks.clone();
     e.register_fn(
         "fire",
-        move |name: &str, payload: Dynamic, with: Dynamic| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+        move |name: &str,
+              payload: Dynamic,
+              with: Dynamic|
+              -> Result<Dynamic, Box<rhai::EvalAltResult>> {
             fire(&*h, name, payload, with)
         },
     );
@@ -500,13 +517,24 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
             Ok(())
         },
     );
-    e.register_fn("assert", |ok: bool| -> Result<(), Box<rhai::EvalAltResult>> {
-        if ok { Ok(()) } else { Err(crate::tf!("assert 실패", "assert failed").into()) }
-    });
+    e.register_fn(
+        "assert",
+        |ok: bool| -> Result<(), Box<rhai::EvalAltResult>> {
+            if ok {
+                Ok(())
+            } else {
+                Err(crate::tf!("assert 실패", "assert failed").into())
+            }
+        },
+    );
     e.register_fn(
         "assert",
         |ok: bool, msg: &str| -> Result<(), Box<rhai::EvalAltResult>> {
-            if ok { Ok(()) } else { Err(crate::tf!("assert 실패 — {msg}", "assert failed — {msg}").into()) }
+            if ok {
+                Ok(())
+            } else {
+                Err(crate::tf!("assert 실패 — {msg}", "assert failed — {msg}").into())
+            }
         },
     );
     e.register_fn(
@@ -518,7 +546,8 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
             } else {
                 // 무엇이 달랐는지 눈에 보여야 한다 — "실패" 만 나오면 다시 찍어 보게 된다.
                 Err(crate::tf!(
-                    "assert_eq 실패 — 왼쪽 {} · 오른쪽 {}", "assert_eq failed — left {} · right {}",
+                    "assert_eq 실패 — 왼쪽 {} · 오른쪽 {}",
+                    "assert_eq failed — left {} · right {}",
                     show(&x),
                     show(&y)
                 )
@@ -542,10 +571,18 @@ fn fire(
     with: Dynamic,
 ) -> Result<Dynamic, Box<rhai::EvalAltResult>> {
     let payload = from_dynamic(&payload).map_err(|e| -> Box<rhai::EvalAltResult> {
-        crate::tf!("fire(\"{name}\"): 이벤트 값을 옮기지 못했습니다 — {e}", "fire(\"{name}\"): could not convert the event value — {e}").into()
+        crate::tf!(
+            "fire(\"{name}\"): 이벤트 값을 옮기지 못했습니다 — {e}",
+            "fire(\"{name}\"): could not convert the event value — {e}"
+        )
+        .into()
     })?;
     let with = from_dynamic(&with).map_err(|e| -> Box<rhai::EvalAltResult> {
-        crate::tf!("fire(\"{name}\"): with 값을 옮기지 못했습니다 — {e}", "fire(\"{name}\"): could not convert the with value — {e}").into()
+        crate::tf!(
+            "fire(\"{name}\"): with 값을 옮기지 못했습니다 — {e}",
+            "fire(\"{name}\"): could not convert the with value — {e}"
+        )
+        .into()
     })?;
     let out = hooks
         .fire(name, payload, with)
@@ -669,7 +706,11 @@ fn from_dynamic(d: &Dynamic) -> Result<Value, String> {
         }
         return Ok(Value::Object(out));
     }
-    Err(crate::tf!("보낼 수 없는 값입니다: {}", "this value cannot be sent: {}", d.type_name()))
+    Err(crate::tf!(
+        "보낼 수 없는 값입니다: {}",
+        "this value cannot be sent: {}",
+        d.type_name()
+    ))
 }
 
 #[cfg(test)]
@@ -727,10 +768,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(got.len(), 2);
-        assert_eq!((got[0].kind, got[0].action.as_str()), (CommandKind::Send, "ai"));
+        assert_eq!(
+            (got[0].kind, got[0].action.as_str()),
+            (CommandKind::Send, "ai")
+        );
         assert_eq!(got[0].body["text"], "[DEV-1] kim: 확인 바람");
         assert_eq!(got[0].body["nested"]["list"][1], "둘");
-        assert_eq!((got[1].kind, got[1].action.as_str()), (CommandKind::Run, "archive"));
+        assert_eq!(
+            (got[1].kind, got[1].action.as_str()),
+            (CommandKind::Run, "archive")
+        );
         assert_eq!(got[1].body, json!("DEV-1"));
     }
 
@@ -751,14 +798,21 @@ mod tests {
     /// DEV-401: 스크립트가 "누가 일으켰나" 를 본다 — 사람이 한 것만 고를 수 있다.
     #[test]
     fn a_script_can_tell_who_caused_the_event() {
-        let sc = Script::compile_source(
-            r#"fn h(e) { if e.origin.by == "user" { send("x", 1) } }"#,
-        )
-        .unwrap();
-        assert_eq!(sc.call_handler("h", &ev(), &Default::default()).unwrap().len(), 1);
+        let sc = Script::compile_source(r#"fn h(e) { if e.origin.by == "user" { send("x", 1) } }"#)
+            .unwrap();
+        assert_eq!(
+            sc.call_handler("h", &ev(), &Default::default())
+                .unwrap()
+                .len(),
+            1
+        );
         let mut by_hook = ev();
         by_hook.origin = crate::events::origin::Origin::from_chain(["other"]);
-        assert!(sc.call_handler("h", &by_hook, &Default::default()).unwrap().is_empty());
+        assert!(
+            sc.call_handler("h", &by_hook, &Default::default())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// 호출마다 목록이 새로 시작한다 — 앞 호출의 일이 뒤로 새지 않는다.
@@ -766,7 +820,12 @@ mod tests {
     fn each_call_starts_with_an_empty_list() {
         let sc = Script::compile_source(r#"fn h(e) { send("x", 1) }"#).unwrap();
         for _ in 0..3 {
-            assert_eq!(sc.call_handler("h", &ev(), &Default::default()).unwrap().len(), 1);
+            assert_eq!(
+                sc.call_handler("h", &ev(), &Default::default())
+                    .unwrap()
+                    .len(),
+                1
+            );
         }
     }
 
@@ -774,10 +833,16 @@ mod tests {
     #[test]
     fn a_throwing_handler_drops_what_it_wrote() {
         let sc = Script::compile_source(r#"fn h(e) { send("x", 1); throw "안 돼" }"#).unwrap();
-        let e = sc.call_handler("h", &ev(), &Default::default()).unwrap_err();
+        let e = sc
+            .call_handler("h", &ev(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("안 돼"), "{e}");
         let ok = Script::compile_source(r#"fn h(e) { }"#).unwrap();
-        assert!(ok.call_handler("h", &ev(), &Default::default()).unwrap().is_empty());
+        assert!(
+            ok.call_handler("h", &ev(), &Default::default())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// 반복문 하나가 보내기를 끝없이 쌓지 못한다.
@@ -806,8 +871,14 @@ mod tests {
     #[test]
     fn several_files_share_one_namespace_and_refuse_duplicates() {
         let sc = Script::compile_sources(&[
-            ("main.rhai".into(), r#"fn h(e) { send("x", title(e)) }"#.into()),
-            ("fmt.rhai".into(), r#"fn title(e) { "제목: " + e.quest.title }"#.into()),
+            (
+                "main.rhai".into(),
+                r#"fn h(e) { send("x", title(e)) }"#.into(),
+            ),
+            (
+                "fmt.rhai".into(),
+                r#"fn title(e) { "제목: " + e.quest.title }"#.into(),
+            ),
         ])
         .unwrap();
         let got = sc.call_handler("h", &ev(), &Default::default()).unwrap();
@@ -820,7 +891,10 @@ mod tests {
             ("b.rhai".into(), "fn h(e) { }".into()),
         ])
         .unwrap_err();
-        assert!(e.to_string().contains("a.rhai") && e.to_string().contains("b.rhai"), "{e}");
+        assert!(
+            e.to_string().contains("a.rhai") && e.to_string().contains("b.rhai"),
+            "{e}"
+        );
     }
 
     // ── 샌드박스 ────────────────────────────────────────
@@ -833,7 +907,9 @@ mod tests {
     #[test]
     fn import_only_resolves_what_the_core_handed_over() {
         let sc = Script::compile_source(r#"import "std" as s; fn h(e) { }"#).unwrap();
-        let e = sc.call_handler("h", &ev(), &Default::default()).unwrap_err();
+        let e = sc
+            .call_handler("h", &ev(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("std"), "{e}");
 
         // 넘긴 것은 풀리고, 그 함수를 쓸 수 있다.
@@ -862,7 +938,10 @@ mod tests {
                 r#"import "a.rhai" as a; fn h(e) { send("x", a::top()) }"#.into(),
             )],
             &[
-                ("a.rhai".into(), r#"import "b.rhai" as b; fn top() { b::deep() + "!" }"#.into()),
+                (
+                    "a.rhai".into(),
+                    r#"import "b.rhai" as b; fn top() { b::deep() + "!" }"#.into(),
+                ),
                 ("b.rhai".into(), r#"fn deep() { "바닥" }"#.into()),
             ],
         )
@@ -958,7 +1037,10 @@ mod tests {
         assert_eq!(got[0].body["status"], "완료");
         assert_eq!(got[0].body["en"], "Done");
         assert_eq!(got[0].body["kind"], "일반 개발 작업");
-        assert_eq!(got[0].body["guild"], dir.file_name().unwrap().to_str().unwrap());
+        assert_eq!(
+            got[0].body["guild"],
+            dir.file_name().unwrap().to_str().unwrap()
+        );
         assert_eq!(got[0].body["url"], "/quests/DEV-1");
         assert_eq!(got[0].body["short"], "확인…");
         let _ = std::fs::remove_dir_all(&dir);
@@ -981,8 +1063,9 @@ mod tests {
     /// 등록한 게 없다는 것을 반대편에서도 확인한다 — 순수 계산은 된다.
     #[test]
     fn pure_computation_still_works() {
-        let got = call(r#"fn h(e) { let n = 0; for i in 0..10 { n += i } send("x", #{ sum: n }) }"#)
-            .unwrap();
+        let got =
+            call(r#"fn h(e) { let n = 0; for i in 0..10 { n += i } send("x", #{ sum: n }) }"#)
+                .unwrap();
         assert_eq!(got[0].body["sum"], 45);
     }
 }

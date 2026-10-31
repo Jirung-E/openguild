@@ -353,7 +353,8 @@
 					title={t('titlebar.newQuest', $locale)}
 					aria-label={t('titlebar.newQuest', $locale)}
 				>
-					<svg class="tb-ico"
+					<svg
+						class="tb-ico"
 						width="15"
 						height="15"
 						viewBox="0 0 16 16"
@@ -377,7 +378,8 @@
 				<span class="nav-pill-name">{guildName}</span>
 				{#if isRemote}
 					<span class="nav-remote" title={t('nav.remoteConnected', $locale)}>
-						<svg class="tb-ico-sm"
+						<svg
+							class="tb-ico-sm"
 							width="13"
 							height="13"
 							viewBox="0 0 16 16"
@@ -407,7 +409,8 @@
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 					>
-						<svg class="tb-ico"
+						<svg
+							class="tb-ico"
 							width="15"
 							height="15"
 							viewBox="0 0 16 16"

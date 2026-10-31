@@ -211,7 +211,10 @@ mod tests {
 
     #[test]
     fn json_shape_names_who() {
-        assert_eq!(Origin::user().to_json(), json!({ "by": "user", "chain": [] }));
+        assert_eq!(
+            Origin::user().to_json(),
+            json!({ "by": "user", "chain": [] })
+        );
         assert_eq!(
             Origin::from_chain(["a"]).to_json(),
             json!({ "by": "plugin", "chain": ["a"] })

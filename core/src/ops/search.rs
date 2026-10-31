@@ -60,7 +60,11 @@ impl SearchField {
 
     /// 기본 검색 영역 — **메모는 빠져 있다**(위 설계 판단 참고).
     pub fn defaults() -> Vec<SearchField> {
-        vec![SearchField::Body, SearchField::Comment, SearchField::Attachment]
+        vec![
+            SearchField::Body,
+            SearchField::Comment,
+            SearchField::Attachment,
+        ]
     }
 }
 
@@ -240,13 +244,16 @@ pub async fn search(
             .fetch_all(&store.index_pool)
             .await?;
     for (n, title, body) in books {
-        let e = docs.entry(("book".into(), crate::repo::library::book_slug(n))).or_default();
+        let e = docs
+            .entry(("book".into(), crate::repo::library::book_slug(n)))
+            .or_default();
         e.title = title;
         e.body = body;
     }
 
     // 규칙은 index.db 캐시가 없다(file-truth-db-cache §4) — 파일 직독.
-    for r in crate::repo::rules::list_rules(&store.paths).map_err(crate::error::AppError::Internal)?
+    for r in
+        crate::repo::rules::list_rules(&store.paths).map_err(crate::error::AppError::Internal)?
     {
         let e = docs.entry(("rule".into(), r.slug.clone())).or_default();
         e.title = r.slug; // 규칙은 slug 가 곧 이름.
@@ -362,8 +369,10 @@ pub async fn search(
             })
             .unwrap_or_default();
 
-        let mut matched_in: Vec<String> =
-            matched_fields.iter().map(|f| f.as_str().to_string()).collect();
+        let mut matched_in: Vec<String> = matched_fields
+            .iter()
+            .map(|f| f.as_str().to_string())
+            .collect();
         if title_matched {
             matched_in.insert(0, "title".to_string());
         }
@@ -394,7 +403,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-search-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-search-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -423,7 +433,9 @@ mod tests {
     async fn finds_in_body() {
         let (_d, store) = setup("body").await;
         make_quest(&store, "제목", "본문에 마법사가 있다").await;
-        let hits = search(&store, "마법사", &SearchField::defaults(), None).await.unwrap();
+        let hits = search(&store, "마법사", &SearchField::defaults(), None)
+            .await
+            .unwrap();
         assert_eq!(hits.len(), 1);
         assert!(hits[0].matched_in.contains(&"body".to_string()));
         assert!(hits[0].excerpt.contains("마법사"));
@@ -445,10 +457,15 @@ mod tests {
         .await
         .unwrap();
 
-        let hits = search(&store, "도깨비", &SearchField::defaults(), None).await.unwrap();
+        let hits = search(&store, "도깨비", &SearchField::defaults(), None)
+            .await
+            .unwrap();
         assert_eq!(hits.len(), 1, "댓글에만 있는 단어를 찾아야 한다");
         assert!(hits[0].matched_in.contains(&"comment".to_string()));
-        assert!(hits[0].excerpt.contains("도깨비"), "발췌가 맞은 지점이어야 한다");
+        assert!(
+            hits[0].excerpt.contains("도깨비"),
+            "발췌가 맞은 지점이어야 한다"
+        );
     }
 
     /// REQ-009 의 핵심 계약: **메모는 기본으로 검색되지 않는다.**
@@ -461,7 +478,9 @@ mod tests {
             .await
             .unwrap();
 
-        let default_hits = search(&store, "비밀", &SearchField::defaults(), None).await.unwrap();
+        let default_hits = search(&store, "비밀", &SearchField::defaults(), None)
+            .await
+            .unwrap();
         assert!(default_hits.is_empty(), "기본 검색에 메모가 새면 안 된다");
 
         let mut with_memo = SearchField::defaults();
@@ -487,10 +506,14 @@ mod tests {
         .await
         .unwrap();
 
-        let both = search(&store, "사과 바나나", &SearchField::defaults(), None).await.unwrap();
+        let both = search(&store, "사과 바나나", &SearchField::defaults(), None)
+            .await
+            .unwrap();
         assert_eq!(both.len(), 1, "본문+댓글에 흩어져 있어도 AND 매치");
 
-        let missing = search(&store, "사과 포도", &SearchField::defaults(), None).await.unwrap();
+        let missing = search(&store, "사과 포도", &SearchField::defaults(), None)
+            .await
+            .unwrap();
         assert!(missing.is_empty(), "한 토큰이라도 없으면 매치 아님");
     }
 
@@ -541,9 +564,15 @@ mod tests {
         let text = format!("İ{} 근데 이건 찾아야 한다", "가".repeat(800));
         // 패닉하지 않아야 한다.
         let out = excerpt_around(&text, "근데", 40);
-        assert!(out.contains("근데"), "발췌에 매치가 들어 있어야 한다: {out}");
+        assert!(
+            out.contains("근데"),
+            "발췌에 매치가 들어 있어야 한다: {out}"
+        );
         // 잘린 조각이 온전한 문자열이어야 한다(깨진 바이트 없음).
-        assert!(out.chars().all(|c| c != '\u{FFFD}'), "깨진 문자가 있다: {out}");
+        assert!(
+            out.chars().all(|c| c != '\u{FFFD}'),
+            "깨진 문자가 있다: {out}"
+        );
     }
 
     /// 패닉만 막는 걸로는 부족하다 — **위치가 밀리는 것**도 잡아야 한다.
@@ -570,7 +599,9 @@ mod tests {
     async fn korean_substring_matches() {
         let (_d, store) = setup("ko").await;
         make_quest(&store, "제목", "다크테마전환이 느리다").await;
-        let hits = search(&store, "테마전환", &SearchField::defaults(), None).await.unwrap();
+        let hits = search(&store, "테마전환", &SearchField::defaults(), None)
+            .await
+            .unwrap();
         assert_eq!(hits.len(), 1, "띄어쓰기 없는 한글 부분일치가 되어야 한다");
     }
 
@@ -578,6 +609,11 @@ mod tests {
     async fn empty_query_returns_nothing() {
         let (_d, store) = setup("empty").await;
         make_quest(&store, "제목", "본문").await;
-        assert!(search(&store, "   ", &SearchField::defaults(), None).await.unwrap().is_empty());
+        assert!(
+            search(&store, "   ", &SearchField::defaults(), None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

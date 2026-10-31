@@ -18,10 +18,10 @@
 
 use serde_json::json;
 
-use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{names as ev, payload};
-use crate::store::{journal, Store};
+use crate::lock::DocKey;
+use crate::store::{Store, journal};
 
 /// REQ-002: `.guild/` 하위에서 열람/복사해도 되는 상대경로인지 검증한다.
 /// `attachments/` · `assets/` 아래만 허용하는 **allowlist**.
@@ -108,11 +108,7 @@ fn sanitize_stem(name: &str) -> String {
     let mut out: String = trimmed.chars().take(60).collect();
     // take(60) 이 문자 경계에서 끝나므로 재-trim 만 하면 된다.
     out = out.trim().trim_matches('.').trim().to_string();
-    if out.is_empty() {
-        "file".into()
-    } else {
-        out
-    }
+    if out.is_empty() { "file".into() } else { out }
 }
 
 /// BUG-219: 프로세스 전역 카운터 — 클럭 해상도가 성겨 연속 호출이 같은
@@ -157,7 +153,10 @@ pub async fn save_attachment(
 ) -> AppResult<String> {
     let ext = sanitize_ext(ext);
     if bytes.is_empty() {
-        return Err(AppError::BadRequest(crate::tf!("빈 첨부", "empty attachment")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "빈 첨부",
+            "empty attachment"
+        )));
     }
     let _ = journal::append(
         &store.journal_pool,
@@ -173,8 +172,12 @@ pub async fn save_attachment(
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let path = store.paths.dot_guild().join(&rel);
-    std::fs::write(&path, bytes)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("첨부 write 실패: {e}", "attachment write failed: {e}"))))?;
+    std::fs::write(&path, bytes).map_err(|e| {
+        AppError::Internal(anyhow::anyhow!(crate::tf!(
+            "첨부 write 실패: {e}",
+            "attachment write failed: {e}"
+        )))
+    })?;
 
     Ok(rel)
 }
@@ -264,10 +267,17 @@ pub async fn save_attachment_from_file_cancellable(
     is_cancelled: impl Fn() -> bool,
 ) -> AppResult<String> {
     let ext = sanitize_ext(ext);
-    let meta = std::fs::metadata(src)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("첨부 원본 확인 실패: {e}", "attachment source stat failed: {e}"))))?;
+    let meta = std::fs::metadata(src).map_err(|e| {
+        AppError::Internal(anyhow::anyhow!(crate::tf!(
+            "첨부 원본 확인 실패: {e}",
+            "attachment source stat failed: {e}"
+        )))
+    })?;
     if meta.len() == 0 {
-        return Err(AppError::BadRequest(crate::tf!("빈 첨부", "empty attachment")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "빈 첨부",
+            "empty attachment"
+        )));
     }
     let _ = journal::append(
         &store.journal_pool,
@@ -278,10 +288,7 @@ pub async fn save_attachment_from_file_cancellable(
     .await
     .map_err(AppError::Internal)?;
 
-    let rel = new_attachment_rel(
-        &ext,
-        src.file_name().and_then(|n| n.to_str()),
-    );
+    let rel = new_attachment_rel(&ext, src.file_name().and_then(|n| n.to_str()));
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let dst = store.paths.dot_guild().join(&rel);
@@ -345,7 +352,6 @@ fn copy_with_progress(
     Ok(true)
 }
 
-
 // ───────────────────────── DEV-156: 첨부 목록 (Jira 식) ─────────────────────────
 // 본문과 별개로 quest/campaign 에 "첨부된" 파일 목록. 진리원은 sidecar
 // `.guild/{quests|campaigns}/{slug}.attachments.json`. 파일 바이트는 DEV-069 의
@@ -396,8 +402,15 @@ pub async fn add_quest_attachment(
     path: &str,
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    add_attachment(store, &store.paths.quest_attachments_meta_path(slug), "quest", slug, path, name)
-        .await
+    add_attachment(
+        store,
+        &store.paths.quest_attachments_meta_path(slug),
+        "quest",
+        slug,
+        path,
+        name,
+    )
+    .await
 }
 
 /// campaign 에 첨부 추가. 갱신된 목록 반환.
@@ -450,7 +463,10 @@ async fn add_attachment(
 ) -> AppResult<Vec<QuestAttachment>> {
     let _g = store.lock_docs(&[owner_key(kind, slug)]).await?;
     if path.trim().is_empty() {
-        return Err(AppError::BadRequest(crate::tf!("빈 첨부 경로", "empty attachment path")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "빈 첨부 경로",
+            "empty attachment path"
+        )));
     }
     // REQ-002: 쓰기 시점 검증. 여기서 막아도 이미 사이드카에 심어진 항목은
     // 못 막으므로 읽는 쪽(GUI open/copy, server 서빙)도 같은 검증을 한다.
@@ -475,7 +491,11 @@ async fn add_attachment(
         // 이름이 갈리지 않는다.
         let entry = QuestAttachment {
             path: path.to_string(),
-            name: if name.trim().is_empty() { path.to_string() } else { name.to_string() },
+            name: if name.trim().is_empty() {
+                path.to_string()
+            } else {
+                name.to_string()
+            },
         };
         list.push(entry.clone());
         write_attachment_list(meta_path, &list)?;
@@ -499,8 +519,14 @@ pub async fn remove_quest_attachment(
     slug: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    remove_attachment(store, &store.paths.quest_attachments_meta_path(slug), "quest", slug, path)
-        .await
+    remove_attachment(
+        store,
+        &store.paths.quest_attachments_meta_path(slug),
+        "quest",
+        slug,
+        path,
+    )
+    .await
 }
 
 /// campaign 첨부 제거. 갱신 목록 반환.
@@ -652,10 +678,19 @@ mod tests {
     /// REQ-002: allowlist 검증 — 정상 경로는 통과.
     #[test]
     fn validate_guild_rel_accepts_allowed_prefixes() {
-        assert_eq!(validate_guild_rel("attachments/a.png").unwrap(), "attachments/a.png");
-        assert_eq!(validate_guild_rel("assets/banner/x.jpg").unwrap(), "assets/banner/x.jpg");
+        assert_eq!(
+            validate_guild_rel("attachments/a.png").unwrap(),
+            "attachments/a.png"
+        );
+        assert_eq!(
+            validate_guild_rel("assets/banner/x.jpg").unwrap(),
+            "assets/banner/x.jpg"
+        );
         // 역슬래시는 `/` 로 정규화되어 통과(Windows 에서 만들어진 항목).
-        assert_eq!(validate_guild_rel("attachments\\sub\\b.zip").unwrap(), "attachments/sub/b.zip");
+        assert_eq!(
+            validate_guild_rel("attachments\\sub\\b.zip").unwrap(),
+            "attachments/sub/b.zip"
+        );
     }
 
     /// REQ-002 의 핵심: 절대경로는 `..` 이 없어도 거부돼야 한다.
@@ -692,7 +727,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-attach-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-attach-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -702,11 +738,15 @@ mod tests {
     #[tokio::test]
     async fn save_writes_file() {
         let (dir, store) = setup("save").await;
-        let rel = save_attachment(&store, b"PNGDATA", "png", None).await.unwrap();
+        let rel = save_attachment(&store, b"PNGDATA", "png", None)
+            .await
+            .unwrap();
         assert!(rel.starts_with("attachments/") && rel.ends_with(".png"));
         assert!(store.paths.dot_guild().join(&rel).exists());
         // DEV-069 후속(admin #8): 임의 확장자 허용 — 미디어 외 파일도 첨부 가능.
-        let z = save_attachment(&store, b"ZIPDATA", "zip", None).await.unwrap();
+        let z = save_attachment(&store, b"ZIPDATA", "zip", None)
+            .await
+            .unwrap();
         assert!(z.ends_with(".zip"));
         // 확장자 없으면 .bin 으로 정규화.
         let b = save_attachment(&store, b"RAW", "", None).await.unwrap();
@@ -746,7 +786,9 @@ mod tests {
         assert_eq!(l3.len(), 1);
         assert_eq!(l3[0].path, "attachments/b.pdf");
         // 마지막 제거 시 sidecar 삭제.
-        remove_quest_attachment(&store, "DEV-001", "attachments/b.pdf").await.unwrap();
+        remove_quest_attachment(&store, "DEV-001", "attachments/b.pdf")
+            .await
+            .unwrap();
         assert!(!store.paths.quest_attachments_meta_path("DEV-001").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -756,11 +798,15 @@ mod tests {
     async fn remove_deletes_orphan_file() {
         let (dir, store) = setup("gc").await;
         let rel = save_attachment(&store, b"DATA", "zip", None).await.unwrap();
-        add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "f.zip")
+            .await
+            .unwrap();
         let abs = store.paths.dot_guild().join(&rel);
         assert!(abs.exists());
 
-        remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
+        remove_quest_attachment(&store, "DEV-001", &rel)
+            .await
+            .unwrap();
         assert!(!abs.exists(), "orphan 파일이 삭제되어야");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -779,7 +825,11 @@ mod tests {
         // 경로 구분자·상위 이동은 파일명 안에 남으면 안 된다(traversal).
         let evil = rel(Some("../../etc/passwd.zip"));
         assert!(!evil.contains(".."), "{evil}");
-        assert_eq!(evil.matches('/').count(), 1, "attachments/ 외 구분자 없음: {evil}");
+        assert_eq!(
+            evil.matches('/').count(),
+            1,
+            "attachments/ 외 구분자 없음: {evil}"
+        );
 
         // 윈도우 예약문자/제어문자는 치환.
         let weird = rel(Some("a:b*c?d\u{7}e.zip"));
@@ -787,8 +837,14 @@ mod tests {
 
         // 이름을 모르면 예전처럼 고유값만.
         let anon = rel(None);
-        assert!(anon.starts_with("attachments/") && anon.ends_with(".zip"), "{anon}");
-        assert!(!anon.contains('-'), "이름 없는 첨부에 구분자가 붙음: {anon}");
+        assert!(
+            anon.starts_with("attachments/") && anon.ends_with(".zip"),
+            "{anon}"
+        );
+        assert!(
+            !anon.contains('-'),
+            "이름 없는 첨부에 구분자가 붙음: {anon}"
+        );
 
         // 같은 이름을 두 번 올려도 서로 다른 파일이어야 한다.
         assert_ne!(rel(Some("같은이름.zip")), rel(Some("같은이름.zip")));
@@ -796,7 +852,11 @@ mod tests {
         // 아주 긴 이름은 잘린다(경로 길이 상한 여유).
         let long = rel(Some(&format!("{}.zip", "가".repeat(200))));
         let stem = long.trim_start_matches("attachments/");
-        assert!(stem.chars().count() < 90, "너무 긴 파일명: {}", stem.chars().count());
+        assert!(
+            stem.chars().count() < 90,
+            "너무 긴 파일명: {}",
+            stem.chars().count()
+        );
 
         // 점/공백만 있는 이름도 파일명이 성립해야.
         assert!(rel(Some("....zip")).starts_with("attachments/file-"));
@@ -865,11 +925,10 @@ mod tests {
         std::fs::write(&src, vec![7u8; size]).unwrap();
 
         let mut seen: Vec<(u64, u64)> = Vec::new();
-        let rel = save_attachment_from_file_with_progress(&store, &src, "bin", |c, t| {
-            seen.push((c, t))
-        })
-        .await
-        .unwrap();
+        let rel =
+            save_attachment_from_file_with_progress(&store, &src, "bin", |c, t| seen.push((c, t)))
+                .await
+                .unwrap();
 
         assert!(seen.len() > 2, "청크마다 보고되어야: {}", seen.len());
         assert_eq!(seen.first().unwrap().0, 0, "0 에서 시작");
@@ -897,7 +956,9 @@ mod tests {
         let src = dir.join("원본.ZIP");
         std::fs::write(&src, b"ZIPBYTES").unwrap();
 
-        let rel = save_attachment_from_file(&store, &src, "ZIP").await.unwrap();
+        let rel = save_attachment_from_file(&store, &src, "ZIP")
+            .await
+            .unwrap();
         assert!(rel.ends_with(".zip"), "확장자는 소문자로 정규화: {rel}");
         let dst = store.paths.dot_guild().join(&rel);
         assert_eq!(std::fs::read(&dst).unwrap(), b"ZIPBYTES");
@@ -906,7 +967,11 @@ mod tests {
         // 빈 파일 / 없는 파일은 거부.
         let empty = dir.join("empty.bin");
         std::fs::write(&empty, b"").unwrap();
-        assert!(save_attachment_from_file(&store, &empty, "bin").await.is_err());
+        assert!(
+            save_attachment_from_file(&store, &empty, "bin")
+                .await
+                .is_err()
+        );
         assert!(
             save_attachment_from_file(&store, &dir.join("없는파일.zip"), "zip")
                 .await
@@ -920,11 +985,17 @@ mod tests {
     async fn remove_keeps_referenced_file() {
         let (dir, store) = setup("gckeep").await;
         let rel = save_attachment(&store, b"DATA", "zip", None).await.unwrap();
-        add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
-        add_quest_attachment(&store, "DEV-002", &rel, "f.zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "f.zip")
+            .await
+            .unwrap();
+        add_quest_attachment(&store, "DEV-002", &rel, "f.zip")
+            .await
+            .unwrap();
         let abs = store.paths.dot_guild().join(&rel);
 
-        remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
+        remove_quest_attachment(&store, "DEV-001", &rel)
+            .await
+            .unwrap();
         assert!(abs.exists(), "다른 첨부가 참조 중이면 파일 유지");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -937,8 +1008,12 @@ mod tests {
     #[tokio::test]
     async fn attachments_are_not_backed_up_into_index_db() {
         let (dir, store) = setup("no-blob").await;
-        let rel = save_attachment(&store, b"IMAGE", "png", None).await.unwrap();
-        add_quest_attachment(&store, "DEV-001", &rel, "img.png").await.unwrap();
+        let rel = save_attachment(&store, b"IMAGE", "png", None)
+            .await
+            .unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "img.png")
+            .await
+            .unwrap();
 
         let tables: Vec<String> = sqlx::query_scalar(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'attachment_blobs'",
@@ -946,7 +1021,10 @@ mod tests {
         .fetch_all(&store.index_pool)
         .await
         .unwrap();
-        assert!(tables.is_empty(), "attachment_blobs 가 남아 있으면 안 됨: {tables:?}");
+        assert!(
+            tables.is_empty(),
+            "attachment_blobs 가 남아 있으면 안 됨: {tables:?}"
+        );
 
         // 파일을 지우면 그걸로 끝 — 재색인이 되살리지 않는다.
         let path = store.paths.dot_guild().join(&rel);
@@ -972,7 +1050,9 @@ mod tests {
         assert!(store.paths.book_attachments_meta_path("BOOK-001").exists());
 
         let abs = store.paths.dot_guild().join(&rel);
-        remove_book_attachment(&store, "BOOK-001", &rel).await.unwrap();
+        remove_book_attachment(&store, "BOOK-001", &rel)
+            .await
+            .unwrap();
         assert!(!abs.exists(), "미참조 첨부는 제거 시 파일도 삭제");
         assert!(!store.paths.book_attachments_meta_path("BOOK-001").exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -983,11 +1063,17 @@ mod tests {
     async fn book_attachment_referenced_keeps_quest_attachment() {
         let (dir, store) = setup("book-xref").await;
         let rel = save_attachment(&store, b"DATA", "zip", None).await.unwrap();
-        add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
-        add_book_attachment(&store, "BOOK-001", &rel, "f.zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "f.zip")
+            .await
+            .unwrap();
+        add_book_attachment(&store, "BOOK-001", &rel, "f.zip")
+            .await
+            .unwrap();
         let abs = store.paths.dot_guild().join(&rel);
 
-        remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
+        remove_quest_attachment(&store, "DEV-001", &rel)
+            .await
+            .unwrap();
         assert!(abs.exists(), "도서관 문서가 여전히 참조 중이면 파일 유지");
         let _ = std::fs::remove_dir_all(&dir);
     }

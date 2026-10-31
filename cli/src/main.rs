@@ -12,12 +12,12 @@
 //!   --guild PATH     로컬 모드에서 .guild 가 있는 디렉토리 직접 지정 (cwd 자동탐색 대체)
 //!   --json           JSON 출력 (agent 용)
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use openguild_core::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
-    CreateQuestRequest,
-    ListQuery, QuestDetail, QuestRow as Quest, QuestStatus, QuestType, UpdateQuestRequest,
+    CreateQuestRequest, ListQuery, QuestDetail, QuestRow as Quest, QuestStatus, QuestType,
+    UpdateQuestRequest,
 };
 use openguild_core::services::{
     comments::{GlobalComment, GlobalCommentsFilter},
@@ -392,9 +392,7 @@ enum PluginCmd {
         target: String,
     },
     #[command(about = tf!("이 길드에서 안 쓴다 — 목록에서 빠진다. 파일은 안 지운다.", "Stop using it in this guild — it leaves the list. Files are not deleted."))]
-    Remove {
-        name: String,
-    },
+    Remove { name: String },
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
     // DEV-411: 적재는 깨진 플러그인을 조용히 끄고 넘어간다 — 만드는 쪽에서는 왜 안 도는지
@@ -1134,8 +1132,7 @@ enum StatusesCmd {
 /// 사용자 보고). tty 면 즉시 에러로 사용법 안내 + 비정상 종료.
 fn read_content(path: Option<&std::path::Path>) -> Result<String> {
     if let Some(p) = path {
-        std::fs::read_to_string(p)
-            .with_context(|| format!("파일 읽기 실패: {}", p.display()))
+        std::fs::read_to_string(p).with_context(|| format!("파일 읽기 실패: {}", p.display()))
     } else {
         use std::io::{IsTerminal, Read};
         if std::io::stdin().is_terminal() {
@@ -1228,10 +1225,7 @@ enum RulesCmd {
         force: bool,
     },
     #[command(about = tf!("규칙 slug 변경.", "Rename a rule's slug."))]
-    Rename {
-        slug: String,
-        new_slug: String,
-    },
+    Rename { slug: String, new_slug: String },
     // DEV-333: 코어(set_rule_tags)·서버(PUT /api/rules/{slug}/tags)·GUI 에는
     // 있는데 CLI 만 없었다.
     #[command(about = tf!("태그 — list / add / remove / set. 진리원은 frontmatter.",
@@ -1534,25 +1528,13 @@ enum CampaignCmd {
 #[derive(Subcommand)]
 enum CampaignChecklistCmd {
     #[command(about = tf!("항목 추가 (캠페인 파일 본문 끝에 - [ ] {{text}} 한 줄 append)", "Add an item (appends a `- [ ] {{text}}` line to the end of the campaign file body)"))]
-    Add {
-        campaign_slug: String,
-        text: String,
-    },
+    Add { campaign_slug: String, text: String },
     #[command(about = tf!("N번째 (1-based) 항목 체크", "Check the Nth (1-based) item"))]
-    Check {
-        campaign_slug: String,
-        index: usize,
-    },
+    Check { campaign_slug: String, index: usize },
     #[command(about = tf!("N번째 (1-based) 항목 언체크", "Uncheck the Nth (1-based) item"))]
-    Uncheck {
-        campaign_slug: String,
-        index: usize,
-    },
+    Uncheck { campaign_slug: String, index: usize },
     #[command(name = "remove", about = tf!("N번째 (1-based) 항목 삭제", "Delete the Nth (1-based) item"))]
-    Rm {
-        campaign_slug: String,
-        index: usize,
-    },
+    Rm { campaign_slug: String, index: usize },
 }
 
 // DTO 는 `openguild_core::models` 에서 직접 사용. 위 use 문 참고.
@@ -1593,10 +1575,7 @@ impl HttpClient {
     }
 
     /// 응답 코드 검사 후 JSON 디코드. 4xx/5xx 면 {"error": "..."} 추출.
-    fn handle<T: for<'de> Deserialize<'de>>(
-        &self,
-        res: reqwest::blocking::Response,
-    ) -> Result<T> {
+    fn handle<T: for<'de> Deserialize<'de>>(&self, res: reqwest::blocking::Response) -> Result<T> {
         let status = res.status();
         let body = res.text().unwrap_or_default();
         // DEV-465: 플러그인이 대신 처리했다 — 본문은 만든 것이 아니라 `{"instead": 문장}` 이다.
@@ -1638,20 +1617,12 @@ impl HttpClient {
         self.handle(res)
     }
 
-    fn post<B: Serialize, T: for<'de> Deserialize<'de>>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<T> {
+    fn post<B: Serialize, T: for<'de> Deserialize<'de>>(&self, path: &str, body: &B) -> Result<T> {
         let res = self.http.post(self.url(path)).json(body).send()?;
         self.handle(res)
     }
 
-    fn patch<B: Serialize, T: for<'de> Deserialize<'de>>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<T> {
+    fn patch<B: Serialize, T: for<'de> Deserialize<'de>>(&self, path: &str, body: &B) -> Result<T> {
         let res = self.http.patch(self.url(path)).json(body).send()?;
         self.handle(res)
     }
@@ -1731,7 +1702,10 @@ impl HttpClient {
         self.get(&format!("/api/quests/by/{}", urlenc(slug)))
     }
 
-    fn list_quest_history(&self, id: i64) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
+    fn list_quest_history(
+        &self,
+        id: i64,
+    ) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
         self.get(&format!("/api/quests/{id}/history"))
     }
 
@@ -1831,7 +1805,10 @@ impl HttpClient {
         if let Some(v) = required_due {
             body.insert("required_due".into(), serde_json::to_value(v).unwrap());
         }
-        self.patch(&format!("/api/quests/{id}/due"), &serde_json::Value::Object(body))
+        self.patch(
+            &format!("/api/quests/{id}/due"),
+            &serde_json::Value::Object(body),
+        )
     }
 
     fn create_snapshot(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
@@ -1859,21 +1836,28 @@ impl HttpClient {
         let ts = resp
             .get("restored_to")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!(tf!("server 응답에 restored_to 누락", "server response missing restored_to")))?
+            .ok_or_else(|| {
+                anyhow!(tf!(
+                    "server 응답에 restored_to 누락",
+                    "server response missing restored_to"
+                ))
+            })?
             .to_string();
         let list = self.list_snapshots()?;
-        list.into_iter()
-            .find(|s| s.timestamp == ts)
-            .ok_or_else(|| anyhow!(tf!("복원된 snapshot 정보 누락", "restored snapshot info missing")))
+        list.into_iter().find(|s| s.timestamp == ts).ok_or_else(|| {
+            anyhow!(tf!(
+                "복원된 snapshot 정보 누락",
+                "restored snapshot info missing"
+            ))
+        })
     }
 
     /// DEV-022: 시점 복원 (journal replay) — HTTP admin.
-    fn restore_to_point(
-        &self,
-        target_ts: &str,
-    ) -> Result<openguild_core::replay::ReplayReport> {
-        let resp: serde_json::Value =
-            self.post("/api/admin/restore", &serde_json::json!({ "at": target_ts }))?;
+    fn restore_to_point(&self, target_ts: &str) -> Result<openguild_core::replay::ReplayReport> {
+        let resp: serde_json::Value = self.post(
+            "/api/admin/restore",
+            &serde_json::json!({ "at": target_ts }),
+        )?;
         Ok(openguild_core::replay::ReplayReport {
             target_ts: resp
                 .get("replayed_to")
@@ -1917,10 +1901,7 @@ impl HttpClient {
         self.get(&path)
     }
 
-    fn campaign_show(
-        &self,
-        slug: &str,
-    ) -> Result<openguild_core::models::CampaignDetail> {
+    fn campaign_show(&self, slug: &str) -> Result<openguild_core::models::CampaignDetail> {
         self.get(&format!("/api/campaigns/{slug}"))
     }
 
@@ -1989,9 +1970,7 @@ impl HttpClient {
     }
 
     fn campaign_checklist_rm(&self, campaign_slug: &str, index: usize) -> Result<()> {
-        self.delete_no_body(&format!(
-            "/api/campaigns/{campaign_slug}/checklist/{index}"
-        ))
+        self.delete_no_body(&format!("/api/campaigns/{campaign_slug}/checklist/{index}"))
     }
 
     // ─── 태그 정의 (top-level tag 그룹) ───
@@ -2072,7 +2051,11 @@ fn remote_library_export(
     } else if let Some(f) = folder {
         query.push(("folder", f));
     }
-    let res = h.http.get(h.url("/api/library/export.zip")).query(&query).send()?;
+    let res = h
+        .http
+        .get(h.url("/api/library/export.zip"))
+        .query(&query)
+        .send()?;
     let status = res.status();
     if !status.is_success() {
         let body = res.text().unwrap_or_default();
@@ -2088,7 +2071,12 @@ fn remote_library_export(
     rt.block_on(async {
         let zip = async_zip::base::read::mem::ZipFileReader::new(bytes)
             .await
-            .map_err(|e| anyhow!(tf!("받은 zip 을 읽지 못했습니다: {e}", "could not read the zip: {e}")))?;
+            .map_err(|e| {
+                anyhow!(tf!(
+                    "받은 zip 을 읽지 못했습니다: {e}",
+                    "could not read the zip: {e}"
+                ))
+            })?;
         let mut written = Vec::new();
         for i in 0..zip.file().entries().len() {
             let name = zip.file().entries()[i]
@@ -2141,7 +2129,11 @@ fn safe_zip_rel(name: &str) -> Option<std::path::PathBuf> {
         }
         out.push(seg);
     }
-    if out.as_os_str().is_empty() { None } else { Some(out) }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// 이미 있으면 ` (2)`, ` (3)` … — 내보내기가 남의 파일을 지우면 안 된다.
@@ -2149,7 +2141,10 @@ fn unique_path(p: &std::path::Path) -> std::path::PathBuf {
     if !p.exists() {
         return p.to_path_buf();
     }
-    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let ext = p.extension().map(|e| e.to_string_lossy().into_owned());
     for n in 2.. {
         let name = match &ext {
@@ -2287,8 +2282,11 @@ fn select_thread(
     for _ in 0..depth {
         let mut next = Vec::new();
         for pid in &frontier {
-            let mut children: Vec<_> =
-                by_id.values().filter(|e| e.parent_id == Some(*pid)).cloned().collect();
+            let mut children: Vec<_> = by_id
+                .values()
+                .filter(|e| e.parent_id == Some(*pid))
+                .cloned()
+                .collect();
             children.sort_by(|a, b| a.ts.cmp(&b.ts));
             for c in children {
                 next.push(c.id);
@@ -2640,18 +2638,22 @@ impl Backend {
             }
             return c.get_query("/api/comments", &query);
         }
-        let Backend::Local(l) = self else { unreachable!() };
-        Self::map_err(l.rt.block_on(openguild_core::services::comments::search_global(
-            &l.store.index_pool,
-            GlobalCommentsFilter {
-                author,
-                since,
-                until,
-                grep,
-                discussion,
-                unresolved,
-            },
-        )))
+        let Backend::Local(l) = self else {
+            unreachable!()
+        };
+        Self::map_err(
+            l.rt.block_on(openguild_core::services::comments::search_global(
+                &l.store.index_pool,
+                GlobalCommentsFilter {
+                    author,
+                    since,
+                    until,
+                    grep,
+                    discussion,
+                    unresolved,
+                },
+            )),
+        )
     }
 
     /// REQ-009: 강화된 검색. HTTP / 로컬 파리티 — 서버 라우트와 core 호출이
@@ -2664,17 +2666,23 @@ impl Backend {
     ) -> Result<Vec<openguild_core::ops::search::SearchHit>> {
         if let Backend::Http(c) = self {
             let mut q: Vec<(&str, String)> = vec![("q", query.to_string())];
-            let joined = fields.iter().map(|f| f.as_str()).collect::<Vec<_>>().join(",");
+            let joined = fields
+                .iter()
+                .map(|f| f.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
             q.push(("in", joined));
             if let Some(n) = limit {
                 q.push(("limit", n.to_string()));
             }
             return c.get_query("/api/search", &q);
         }
-        let Backend::Local(l) = self else { unreachable!() };
-        Self::map_err(
-            l.rt.block_on(openguild_core::ops::search::search(&l.store, query, fields, limit)),
-        )
+        let Backend::Local(l) = self else {
+            unreachable!()
+        };
+        Self::map_err(l.rt.block_on(openguild_core::ops::search::search(
+            &l.store, query, fields, limit,
+        )))
     }
 
     fn ping(&self) -> Result<String> {
@@ -2721,30 +2729,33 @@ impl Backend {
         }
     }
 
-    fn list_quest_history(&self, id: i64) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
+    fn list_quest_history(
+        &self,
+        id: i64,
+    ) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
         match self {
             Backend::Http(c) => c.list_quest_history(id),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(quest_svc::list_history(&l.store.index_pool, id)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(quest_svc::list_history(&l.store.index_pool, id)))
+            }
         }
     }
 
     fn quest_types(&self) -> Result<Vec<QuestType>> {
         match self {
             Backend::Http(c) => c.quest_types(),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(meta_svc::list_quest_types(&l.store.index_pool)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(meta_svc::list_quest_types(&l.store.index_pool)))
+            }
         }
     }
 
     fn quest_statuses(&self) -> Result<Vec<QuestStatus>> {
         match self {
             Backend::Http(c) => c.quest_statuses(),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(meta_svc::list_quest_statuses(&l.store.index_pool)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(meta_svc::list_quest_statuses(&l.store.index_pool)))
+            }
         }
     }
 
@@ -2753,92 +2764,94 @@ impl Backend {
     fn create_quest(&self, body: CreateQuestRequest) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.create_quest(&body),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::create_quest(&l.store, body)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::create_quest(&l.store, body)))
+            }
         }
     }
 
     fn update_quest(&self, id: i64, body: UpdateQuestRequest) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.update_quest(id, &body),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::update_quest(&l.store, id, body)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::update_quest(&l.store, id, body)))
+            }
         }
     }
 
     fn delete_quest(&self, id: i64, cascade_ids: &[i64]) -> Result<()> {
         match self {
             Backend::Http(c) => c.delete_quest(id, cascade_ids),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::delete_quest(&l.store, id, cascade_ids)),
-            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::delete_quest(
+                &l.store,
+                id,
+                cascade_ids,
+            ))),
         }
     }
 
     fn restore_quest(&self, id: i64) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.restore_quest(id),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::restore_quest(&l.store, id)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::restore_quest(&l.store, id)))
+            }
         }
     }
 
     fn change_status(&self, id: i64, status_slug: &str) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.change_status(id, status_slug),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::change_status(
-                    &l.store,
-                    id,
-                    ChangeStatusRequest { status_slug: status_slug.to_string() },
-                ),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::change_status(
+                &l.store,
+                id,
+                ChangeStatusRequest {
+                    status_slug: status_slug.to_string(),
+                },
+            ))),
         }
     }
 
     fn change_type(&self, id: i64, type_prefix: &str) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.change_type(id, type_prefix),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::change_quest_type(
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::change_quest_type(
                     &l.store,
                     id,
-                    ChangeTypeRequest { new_type_prefix: type_prefix.to_string() },
-                ),
-            )),
+                    ChangeTypeRequest {
+                        new_type_prefix: type_prefix.to_string(),
+                    },
+                )))
+            }
         }
     }
 
     fn change_parent(&self, id: i64, parent_id: Option<i64>) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.change_parent(id, parent_id),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::change_parent(
-                    &l.store,
-                    id,
-                    ChangeParentRequest {
-                        parent_quest_id: parent_id,
-                    },
-                ),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::change_parent(
+                &l.store,
+                id,
+                ChangeParentRequest {
+                    parent_quest_id: parent_id,
+                },
+            ))),
         }
     }
 
     fn add_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
         match self {
             Backend::Http(c) => c.add_prerequisite(id, prereq_id),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::add_prerequisite(
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::add_prerequisite(
                     &l.store,
                     id,
                     AddPrerequisiteRequest {
                         prerequisite_id: prereq_id,
                     },
-                ),
-            )),
+                )))
+            }
         }
     }
 
@@ -2860,9 +2873,12 @@ impl Backend {
     ) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.set_due_dates(id, desired_due, required_due),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::set_due_dates(&l.store, id, desired_due, required_due),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::set_due_dates(
+                &l.store,
+                id,
+                desired_due,
+                required_due,
+            ))),
         }
     }
 
@@ -2883,9 +2899,12 @@ impl Backend {
                     "description": description,
                 }),
             ),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::create_type(&l.store, prefix, color, description),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::create_type(
+                &l.store,
+                prefix,
+                color,
+                description,
+            ))),
         }
     }
 
@@ -2914,27 +2933,22 @@ impl Backend {
                     &serde_json::Value::Object(body),
                 )
             }
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::update_type(
-                    &l.store,
-                    prefix,
-                    new_prefix,
-                    color,
-                    description,
-                ),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::update_type(
+                &l.store,
+                prefix,
+                new_prefix,
+                color,
+                description,
+            ))),
         }
     }
 
     fn delete_type(&self, prefix: String) -> Result<()> {
         match self {
-            Backend::Http(c) => c.delete_no_body(&format!(
-                "/api/admin/types/{}",
-                urlenc(&prefix)
-            )),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::delete_type(&l.store, prefix)),
-            ),
+            Backend::Http(c) => c.delete_no_body(&format!("/api/admin/types/{}", urlenc(&prefix))),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::delete_type(&l.store, prefix)))
+            }
         }
     }
 
@@ -2955,11 +2969,9 @@ impl Backend {
                     "sort_order": sort_order,
                 }),
             ),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::create_status(
-                    &l.store, name_en, name_ko, color, sort_order,
-                ),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::create_status(
+                &l.store, name_en, name_ko, color, sort_order,
+            ))),
         }
     }
 
@@ -2984,24 +2996,19 @@ impl Backend {
                     "sort_order": sort_order,
                 }),
             ),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::update_status(
-                    &l.store, slug, new_slug, name_en, name_ko, color, sort_order,
-                    None, // DEV-093: CLI 는 본 패치에서 counts_as_done 미노출.
-                ),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::update_status(
+                &l.store, slug, new_slug, name_en, name_ko, color, sort_order,
+                None, // DEV-093: CLI 는 본 패치에서 counts_as_done 미노출.
+            ))),
         }
     }
 
     fn delete_status(&self, slug: String) -> Result<()> {
         match self {
-            Backend::Http(c) => c.delete_no_body(&format!(
-                "/api/admin/statuses/{}",
-                urlenc(&slug)
-            )),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::delete_status(&l.store, slug)),
-            ),
+            Backend::Http(c) => c.delete_no_body(&format!("/api/admin/statuses/{}", urlenc(&slug))),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::delete_status(&l.store, slug)))
+            }
         }
     }
 
@@ -3013,9 +3020,9 @@ impl Backend {
     ) -> Result<openguild_core::models::CampaignRow> {
         match self {
             Backend::Http(c) => c.campaign_create(&body),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::campaigns::create_campaign(&l.store, body)),
-            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::campaigns::create_campaign(&l.store, body),
+            )),
         }
     }
 
@@ -3036,10 +3043,7 @@ impl Backend {
         }
     }
 
-    fn campaign_show(
-        &self,
-        slug: &str,
-    ) -> Result<openguild_core::models::CampaignDetail> {
+    fn campaign_show(&self, slug: &str) -> Result<openguild_core::models::CampaignDetail> {
         match self {
             Backend::Http(c) => c.campaign_show(slug),
             Backend::Local(l) => {
@@ -3062,13 +3066,10 @@ impl Backend {
         match self {
             Backend::Http(c) => c.campaign_history(slug),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
-                let row = openguild_core::services::campaigns::fetch_by_slug(
-                    &l.store.index_pool,
-                    slug,
-                )
-                .await?;
-                openguild_core::services::campaigns::list_history(&l.store.index_pool, row.id)
-                    .await
+                let row =
+                    openguild_core::services::campaigns::fetch_by_slug(&l.store.index_pool, slug)
+                        .await?;
+                openguild_core::services::campaigns::list_history(&l.store.index_pool, row.id).await
             })),
         }
     }
@@ -3083,11 +3084,9 @@ impl Backend {
         match self {
             Backend::Http(c) => c.campaign_update(slug, &req),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
-                let row = openguild_core::services::campaigns::fetch_by_slug(
-                    &l.store.index_pool,
-                    slug,
-                )
-                .await?;
+                let row =
+                    openguild_core::services::campaigns::fetch_by_slug(&l.store.index_pool, slug)
+                        .await?;
                 openguild_core::ops::campaigns::update_campaign(&l.store, row.id, req).await
             })),
         }
@@ -3107,11 +3106,9 @@ impl Backend {
                 },
             ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
-                let row = openguild_core::services::campaigns::fetch_by_slug(
-                    &l.store.index_pool,
-                    slug,
-                )
-                .await?;
+                let row =
+                    openguild_core::services::campaigns::fetch_by_slug(&l.store.index_pool, slug)
+                        .await?;
                 openguild_core::ops::campaigns::update_campaign(
                     &l.store,
                     row.id,
@@ -3134,10 +3131,8 @@ impl Backend {
                     campaign_slug,
                 )
                 .await?;
-                openguild_core::ops::campaigns::link_quest_by_slug(
-                    &l.store, row.id, quest_slug,
-                )
-                .await
+                openguild_core::ops::campaigns::link_quest_by_slug(&l.store, row.id, quest_slug)
+                    .await
             })),
         }
     }
@@ -3151,10 +3146,8 @@ impl Backend {
                     campaign_slug,
                 )
                 .await?;
-                openguild_core::ops::campaigns::unlink_quest_by_slug(
-                    &l.store, row.id, quest_slug,
-                )
-                .await
+                openguild_core::ops::campaigns::unlink_quest_by_slug(&l.store, row.id, quest_slug)
+                    .await
             })),
         }
     }
@@ -3163,11 +3156,9 @@ impl Backend {
         match self {
             Backend::Http(c) => c.campaign_delete(slug),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
-                let row = openguild_core::services::campaigns::fetch_by_slug(
-                    &l.store.index_pool,
-                    slug,
-                )
-                .await?;
+                let row =
+                    openguild_core::services::campaigns::fetch_by_slug(&l.store.index_pool, slug)
+                        .await?;
                 openguild_core::ops::campaigns::delete_campaign(&l.store, row.id).await
             })),
         }
@@ -3222,10 +3213,8 @@ impl Backend {
                     campaign_slug,
                 )
                 .await?;
-                openguild_core::ops::campaigns::remove_checklist_by_index(
-                    &l.store, row.id, index,
-                )
-                .await
+                openguild_core::ops::campaigns::remove_checklist_by_index(&l.store, row.id, index)
+                    .await
             })),
         }
     }
@@ -3235,9 +3224,9 @@ impl Backend {
     fn tag_defs(&self) -> Result<Vec<openguild_core::models::QuestTagDef>> {
         match self {
             Backend::Http(c) => c.tag_defs(),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(meta_svc::list_quest_tag_defs(&l.store.index_pool)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(meta_svc::list_quest_tag_defs(&l.store.index_pool)))
+            }
         }
     }
 
@@ -3249,14 +3238,14 @@ impl Backend {
     ) -> Result<openguild_core::models::QuestTagDef> {
         match self {
             Backend::Http(c) => c.tag_def_upsert(slug, color, description),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::meta::upsert_tag_def(
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::meta::upsert_tag_def(
                     &l.store,
                     slug.to_string(),
                     color.to_string(),
                     description.to_string(),
-                ),
-            )),
+                )))
+            }
         }
     }
 
@@ -3273,9 +3262,9 @@ impl Backend {
     fn tags_in_use(&self) -> Result<Vec<String>> {
         match self {
             Backend::Http(c) => c.get("/api/tags/used"),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(meta_svc::list_tags_in_use(&l.store.index_pool)),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(meta_svc::list_tags_in_use(&l.store.index_pool)))
+            }
         }
     }
 
@@ -3321,20 +3310,27 @@ impl Backend {
                 )?;
                 Ok(())
             }
-            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::rules::set_rule_with(
-                &l.store,
-                slug,
-                content,
-                openguild_core::ops::EditBase { text: None, version: base_version },
-            ))),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::rules::set_rule_with(
+                    &l.store,
+                    slug,
+                    content,
+                    openguild_core::ops::EditBase {
+                        text: None,
+                        version: base_version,
+                    },
+                )))
+            }
         }
     }
 
     fn rules_create(&self, slug: &str, content: String) -> Result<()> {
         match self {
             Backend::Http(c) => {
-                let _: RuleDto =
-                    c.post("/api/rules", &serde_json::json!({ "slug": slug, "content": content }))?;
+                let _: RuleDto = c.post(
+                    "/api/rules",
+                    &serde_json::json!({ "slug": slug, "content": content }),
+                )?;
                 Ok(())
             }
             Backend::Local(l) => Self::map_err(l.rt.block_on(
@@ -3346,9 +3342,9 @@ impl Backend {
     fn rules_delete(&self, slug: &str) -> Result<()> {
         match self {
             Backend::Http(c) => c.delete_no_body(&format!("/api/rules/{}", urlenc(slug))),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::rules::delete_rule(&l.store, slug),
-            )),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::rules::delete_rule(&l.store, slug)),
+            ),
         }
     }
 
@@ -3370,15 +3366,10 @@ impl Backend {
     /// DEV-290: 규칙 변경 이력(최신→과거). local + remote(HTTP) 둘 다 —
     /// 서버에 `/api/rules/{slug}/history` 라우트가 있으므로(다른 rules CLI 가
     /// 원격 미지원인 건 별개 버그). Local 은 사이드카 직독이라 sync.
-    fn rule_history(
-        &self,
-        slug: &str,
-    ) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
+    fn rule_history(&self, slug: &str) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
         match self {
             Backend::Http(c) => c.get(&format!("/api/rules/{}/history", urlenc(slug))),
-            Backend::Local(l) => {
-                Self::map_err(openguild_core::ops::rules::history(&l.store, slug))
-            }
+            Backend::Local(l) => Self::map_err(openguild_core::ops::rules::history(&l.store, slug)),
         }
     }
 
@@ -3427,7 +3418,10 @@ impl Backend {
                     l.rt.block_on(openguild_core::ops::library::get_book(&l.store, id)),
                 )?;
                 let mut dto = row.map(BookDto::from).ok_or_else(|| {
-                    anyhow!(tf!("도서관 문서 '{id}' 없음", "library doc '{id}' not found"))
+                    anyhow!(tf!(
+                        "도서관 문서 '{id}' 없음",
+                        "library doc '{id}' not found"
+                    ))
                 })?;
                 // BUG-295: 퀘스트와 같은 이유.
                 dto.attachments =
@@ -3448,9 +3442,7 @@ impl Backend {
     ) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
         match self {
             Backend::Http(c) => c.get(&format!("/api/library/{id}/history")),
-            Backend::Local(l) => {
-                Self::map_err(openguild_core::ops::library::history(&l.store, id))
-            }
+            Backend::Local(l) => Self::map_err(openguild_core::ops::library::history(&l.store, id)),
         }
     }
 
@@ -3506,10 +3498,10 @@ impl Backend {
     fn library_folder_list(&self) -> Result<Vec<FolderDto>> {
         match self {
             Backend::Http(c) => c.get("/api/library/folders"),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::library::list_folders(&l.store)),
-            )
-            .map(|rows| rows.into_iter().map(FolderDto::from).collect()),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(openguild_core::ops::library::list_folders(&l.store)))
+                    .map(|rows| rows.into_iter().map(FolderDto::from).collect())
+            }
         }
     }
 
@@ -3594,9 +3586,9 @@ impl Backend {
                 )?;
                 Ok(())
             }
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::worklog::set_note(&l.store, date, content)),
-            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::worklog::set_note(&l.store, date, content),
+            )),
         }
     }
 
@@ -3605,9 +3597,7 @@ impl Backend {
     fn templates_list(&self) -> Result<Vec<openguild_core::repo::TemplateFile>> {
         match self {
             Backend::Http(c) => c.get("/api/templates"),
-            Backend::Local(l) => {
-                openguild_core::repo::list_templates(&l.store.paths)
-            }
+            Backend::Local(l) => openguild_core::repo::list_templates(&l.store.paths),
         }
     }
 
@@ -3646,18 +3636,13 @@ impl Backend {
     ) -> Result<std::path::PathBuf> {
         match self {
             Backend::Http(c) => {
-                let response: SaveTemplateDto = c.post(
-                    &format!("/api/templates?force={force}"),
-                    tpl,
-                )?;
+                let response: SaveTemplateDto =
+                    c.post(&format!("/api/templates?force={force}"), tpl)?;
                 Ok(response.path.into())
             }
-            Backend::Local(l) => {
-                openguild_core::repo::save_template(&l.store.paths, tpl, force)
-            }
+            Backend::Local(l) => openguild_core::repo::save_template(&l.store.paths, tpl, force),
         }
     }
-
 
     // ── BUG-231: 첨부 (quest / campaign 공용) — local + remote ──
 
@@ -3668,15 +3653,17 @@ impl Backend {
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
             Backend::Http(c) => Ok(match scope {
-                CommentScope::Quest => c
-                    .get::<QuestDetail>(&format!("/api/quests/by/{}", urlenc(slug)))?
-                    .attachments,
-                CommentScope::Campaign => c
-                    .get::<openguild_core::models::CampaignDetail>(&format!(
+                CommentScope::Quest => {
+                    c.get::<QuestDetail>(&format!("/api/quests/by/{}", urlenc(slug)))?
+                        .attachments
+                }
+                CommentScope::Campaign => {
+                    c.get::<openguild_core::models::CampaignDetail>(&format!(
                         "/api/campaigns/{}",
                         urlenc(slug)
                     ))?
-                    .attachments,
+                    .attachments
+                }
             }),
             Backend::Local(l) => Ok(match scope {
                 CommentScope::Quest => {
@@ -3707,14 +3694,10 @@ impl Backend {
             Backend::Http(c) => {
                 let rel = c.upload_attachment_stream(file, ext, &display)?;
                 let endpoint = match scope {
-                    CommentScope::Quest => format!(
-                        "/api/quests/by/{}/attachments",
-                        urlenc(slug)
-                    ),
-                    CommentScope::Campaign => format!(
-                        "/api/campaigns/{}/attachments",
-                        urlenc(slug)
-                    ),
+                    CommentScope::Quest => format!("/api/quests/by/{}/attachments", urlenc(slug)),
+                    CommentScope::Campaign => {
+                        format!("/api/campaigns/{}/attachments", urlenc(slug))
+                    }
                 };
                 c.post(
                     &endpoint,
@@ -3724,32 +3707,31 @@ impl Backend {
             Backend::Local(l) => {
                 let bytes = std::fs::read(file)
                     .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
-                l.rt
-                    .block_on(async {
-                        let rel = openguild_core::ops::attachments::save_attachment(
-                            &l.store,
-                            &bytes,
-                            ext,
-                            // DEV-324: 저장 파일명에 원본 이름을 남긴다.
-                            Some(display.as_str()),
-                        )
-                        .await?;
-                        match scope {
-                            CommentScope::Quest => {
-                                openguild_core::ops::attachments::add_quest_attachment(
-                                    &l.store, slug, &rel, &display,
-                                )
-                                .await
-                            }
-                            CommentScope::Campaign => {
-                                openguild_core::ops::attachments::add_campaign_attachment(
-                                    &l.store, slug, &rel, &display,
-                                )
-                                .await
-                            }
+                l.rt.block_on(async {
+                    let rel = openguild_core::ops::attachments::save_attachment(
+                        &l.store,
+                        &bytes,
+                        ext,
+                        // DEV-324: 저장 파일명에 원본 이름을 남긴다.
+                        Some(display.as_str()),
+                    )
+                    .await?;
+                    match scope {
+                        CommentScope::Quest => {
+                            openguild_core::ops::attachments::add_quest_attachment(
+                                &l.store, slug, &rel, &display,
+                            )
+                            .await
                         }
-                    })
-                    .map_err(|e| anyhow!(e))
+                        CommentScope::Campaign => {
+                            openguild_core::ops::attachments::add_campaign_attachment(
+                                &l.store, slug, &rel, &display,
+                            )
+                            .await
+                        }
+                    }
+                })
+                .map_err(|e| anyhow!(e))
             }
         }
     }
@@ -3763,20 +3745,15 @@ impl Backend {
         match self {
             Backend::Http(c) => {
                 let endpoint = match scope {
-                    CommentScope::Quest => format!(
-                        "/api/quests/by/{}/attachments",
-                        urlenc(slug)
-                    ),
-                    CommentScope::Campaign => format!(
-                        "/api/campaigns/{}/attachments",
-                        urlenc(slug)
-                    ),
+                    CommentScope::Quest => format!("/api/quests/by/{}/attachments", urlenc(slug)),
+                    CommentScope::Campaign => {
+                        format!("/api/campaigns/{}/attachments", urlenc(slug))
+                    }
                 };
                 c.delete_query(&endpoint, &[("path", path)])
             }
-            Backend::Local(l) => l
-                .rt
-                .block_on(async {
+            Backend::Local(l) => {
+                l.rt.block_on(async {
                     match scope {
                         CommentScope::Quest => {
                             openguild_core::ops::attachments::remove_quest_attachment(
@@ -3792,7 +3769,8 @@ impl Backend {
                         }
                     }
                 })
-                .map_err(|e| anyhow!(e)),
+                .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -3836,22 +3814,21 @@ impl Backend {
             Backend::Local(l) => {
                 let bytes = std::fs::read(file)
                     .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
-                l.rt
-                    .block_on(async {
-                        let rel = openguild_core::ops::attachments::save_attachment(
-                            &l.store,
-                            &bytes,
-                            ext,
-                            // DEV-324: 저장 파일명에 원본 이름을 남긴다.
-                            Some(display.as_str()),
-                        )
-                        .await?;
-                        openguild_core::ops::attachments::add_book_attachment(
-                            &l.store, book_id, &rel, &display,
-                        )
-                        .await
-                    })
-                    .map_err(|e| anyhow!(e))
+                l.rt.block_on(async {
+                    let rel = openguild_core::ops::attachments::save_attachment(
+                        &l.store,
+                        &bytes,
+                        ext,
+                        // DEV-324: 저장 파일명에 원본 이름을 남긴다.
+                        Some(display.as_str()),
+                    )
+                    .await?;
+                    openguild_core::ops::attachments::add_book_attachment(
+                        &l.store, book_id, &rel, &display,
+                    )
+                    .await
+                })
+                .map_err(|e| anyhow!(e))
             }
         }
     }
@@ -3866,15 +3843,15 @@ impl Backend {
                 &format!("/api/library/{}/attachments", urlenc(book_id)),
                 &[("path", path)],
             ),
-            Backend::Local(l) => l
-                .rt
-                .block_on(async {
+            Backend::Local(l) => {
+                l.rt.block_on(async {
                     openguild_core::ops::attachments::remove_book_attachment(
                         &l.store, book_id, path,
                     )
                     .await
                 })
-                .map_err(|e| anyhow!(e)),
+                .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -3889,16 +3866,16 @@ impl Backend {
             Backend::Http(c) => Ok(c
                 .get::<CommentsListDto>(&comments_api_base(scope, slug))?
                 .entries),
-            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
-                match scope {
+            Backend::Local(l) => {
+                Self::map_err(Ok::<_, openguild_core::error::AppError>(match scope {
                     CommentScope::Quest => {
                         openguild_core::ops::comments::list_comment_entries(&l.store, slug)?
                     }
                     CommentScope::Campaign => {
                         openguild_core::ops::campaign_comments::list_entries(&l.store, slug)?
                     }
-                },
-            )),
+                }))
+            }
         }
     }
 
@@ -3946,10 +3923,7 @@ impl Backend {
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
             Backend::Http(c) => c.post(
-                &format!(
-                    "/api/quests/by/{}/comments/{id}/discussion",
-                    urlenc(slug)
-                ),
+                &format!("/api/quests/by/{}/comments/{id}/discussion", urlenc(slug)),
                 &serde_json::json!({}),
             ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
@@ -3965,10 +3939,7 @@ impl Backend {
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
             Backend::Http(c) => c.post(
-                &format!(
-                    "/api/quests/by/{}/comments/{id}/resolved",
-                    urlenc(slug)
-                ),
+                &format!("/api/quests/by/{}/comments/{id}/resolved", urlenc(slug)),
                 &serde_json::json!({}),
             ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
@@ -4014,14 +3985,10 @@ impl Backend {
             ),
             Backend::Local(l) => match scope {
                 CommentScope::Quest => Self::map_err(l.rt.block_on(
-                    openguild_core::ops::comments::update_comment_entry(
-                        &l.store, slug, id, body,
-                    ),
+                    openguild_core::ops::comments::update_comment_entry(&l.store, slug, id, body),
                 )),
                 CommentScope::Campaign => Self::map_err(l.rt.block_on(
-                    openguild_core::ops::campaign_comments::update_entry(
-                        &l.store, slug, id, body,
-                    ),
+                    openguild_core::ops::campaign_comments::update_entry(&l.store, slug, id, body),
                 )),
             },
         }
@@ -4076,16 +4043,14 @@ impl Backend {
     fn memo_get_scoped(&self, scope: CommentScope, slug: &str) -> Result<Option<String>> {
         match self {
             Backend::Http(c) => Ok(c.get::<ContentDto>(&memo_api_path(scope, slug))?.content),
-            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
-                match scope {
-                    CommentScope::Quest => {
-                        openguild_core::ops::comments::get_memo(&l.store, slug)?
-                    }
+            Backend::Local(l) => {
+                Self::map_err(Ok::<_, openguild_core::error::AppError>(match scope {
+                    CommentScope::Quest => openguild_core::ops::comments::get_memo(&l.store, slug)?,
                     CommentScope::Campaign => {
                         openguild_core::ops::campaign_comments::get_memo(&l.store, slug)?
                     }
-                },
-            )),
+                }))
+            }
         }
     }
 
@@ -4115,7 +4080,10 @@ impl Backend {
         Ok(match scope {
             HighlightScope::Quest => format!("quest:{}", self.quest_by_slug(id)?.quest.quest_id),
             HighlightScope::Campaign => {
-                format!("campaign:{}", self.campaign_show(id)?.campaign.campaign_slug)
+                format!(
+                    "campaign:{}",
+                    self.campaign_show(id)?.campaign.campaign_slug
+                )
             }
             HighlightScope::Rule => {
                 self.rules_get(id)?
@@ -4132,28 +4100,50 @@ impl Backend {
         let id = target.split_once(':').map_or(target, |(_, id)| id);
         let comment = part.strip_prefix("comment:");
         match (scope, part, comment) {
-            (HighlightScope::Quest, "body", _) => {
-                Ok(self.quest_by_slug(id)?.quest.description.unwrap_or_default())
-            }
-            (HighlightScope::Campaign, "body", _) => {
-                Ok(self.campaign_show(id)?.campaign.description.unwrap_or_default())
-            }
+            (HighlightScope::Quest, "body", _) => Ok(self
+                .quest_by_slug(id)?
+                .quest
+                .description
+                .unwrap_or_default()),
+            (HighlightScope::Campaign, "body", _) => Ok(self
+                .campaign_show(id)?
+                .campaign
+                .description
+                .unwrap_or_default()),
             (HighlightScope::Rule, "body", _) => Ok(self.rules_get(id)?.unwrap_or_default()),
             (HighlightScope::Library, "body", _) => Ok(self.library_get(id)?.body),
             (HighlightScope::Quest | HighlightScope::Campaign, "memo", _) => {
-                let s = if matches!(scope, HighlightScope::Quest) { CommentScope::Quest } else { CommentScope::Campaign };
+                let s = if matches!(scope, HighlightScope::Quest) {
+                    CommentScope::Quest
+                } else {
+                    CommentScope::Campaign
+                };
                 self.memo_get_scoped(s, id)?
                     .filter(|m| !m.trim().is_empty())
                     .ok_or_else(|| anyhow!(tf!("{id} 에 메모가 없습니다", "{id} has no memo")))
             }
             (HighlightScope::Quest | HighlightScope::Campaign, _, Some(n)) => {
-                let s = if matches!(scope, HighlightScope::Quest) { CommentScope::Quest } else { CommentScope::Campaign };
-                let n: u64 = n.parse().map_err(|_| anyhow!(tf!("댓글 번호가 아닙니다: {part}", "not a comment number: {part}")))?;
+                let s = if matches!(scope, HighlightScope::Quest) {
+                    CommentScope::Quest
+                } else {
+                    CommentScope::Campaign
+                };
+                let n: u64 = n.parse().map_err(|_| {
+                    anyhow!(tf!(
+                        "댓글 번호가 아닙니다: {part}",
+                        "not a comment number: {part}"
+                    ))
+                })?;
                 self.comments_list_scoped(s, id)?
                     .into_iter()
                     .find(|e| e.id == n)
                     .map(|e| e.body)
-                    .ok_or_else(|| anyhow!(tf!("{id} 에 댓글 #{n} 이 없습니다", "{id} has no comment #{n}")))
+                    .ok_or_else(|| {
+                        anyhow!(tf!(
+                            "{id} 에 댓글 #{n} 이 없습니다",
+                            "{id} has no comment #{n}"
+                        ))
+                    })
             }
             _ => bail!(tf!(
                 "이 대상에서는 칠할 수 없는 부분입니다: {part} (규칙 · 도서관은 body 만, 퀘스트 · 캠페인은 body · memo · comment:N)",
@@ -4201,12 +4191,15 @@ impl Backend {
         }
     }
 
-    fn highlight_list(&self, target: &str) -> Result<Vec<openguild_core::repo::highlights::Highlight>> {
+    fn highlight_list(
+        &self,
+        target: &str,
+    ) -> Result<Vec<openguild_core::repo::highlights::Highlight>> {
         match self {
             Backend::Http(c) => c.get(&format!("/api/highlights?target={}", urlenc(target))),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::highlights::list_highlights(&l.store, target)),
-            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::highlights::list_highlights(&l.store, target),
+            )),
         }
     }
 
@@ -4216,9 +4209,9 @@ impl Backend {
             Backend::Http(c) => Ok(c
                 .get::<QuestDetail>(&format!("/api/quests/by/{}", urlenc(slug)))?
                 .tags),
-            Backend::Local(l) => Self::map_err(
-                openguild_core::ops::quests::list_quest_tags(&l.store, slug),
-            ),
+            Backend::Local(l) => {
+                Self::map_err(openguild_core::ops::quests::list_quest_tags(&l.store, slug))
+            }
         }
     }
 
@@ -4253,9 +4246,9 @@ impl Backend {
             }
             Backend::Local(l) => {
                 let id = self.id_of(slug)?;
-                Self::map_err(l.rt.block_on(
-                    openguild_core::ops::set_quest_tags(&l.store, id, tags),
-                ))?;
+                Self::map_err(
+                    l.rt.block_on(openguild_core::ops::set_quest_tags(&l.store, id, tags)),
+                )?;
                 Ok(())
             }
         }
@@ -4277,7 +4270,11 @@ impl Backend {
     }
 
     /// BUG-287: 붙이기·떼기 — `tag_edit` 과 같은 이유.
-    fn library_tag_edit(&self, id: &str, edit: openguild_core::ops::TagEdit) -> Result<Vec<String>> {
+    fn library_tag_edit(
+        &self,
+        id: &str,
+        edit: openguild_core::ops::TagEdit,
+    ) -> Result<Vec<String>> {
         match self {
             Backend::Http(c) => {
                 let dto: BookDto = c.post(&format!("/api/library/{}/tags", urlenc(id)), &edit)?;
@@ -4318,8 +4315,7 @@ impl Backend {
                 Ok(e.tags)
             }
             Backend::Local(l) => {
-                let entries =
-                    Self::map_err(openguild_core::ops::rules::list_rules(&l.store))?;
+                let entries = Self::map_err(openguild_core::ops::rules::list_rules(&l.store))?;
                 entries
                     .into_iter()
                     .find(|e| e.slug == slug)
@@ -4333,13 +4329,14 @@ impl Backend {
     fn rule_tag_edit(&self, slug: &str, edit: openguild_core::ops::TagEdit) -> Result<Vec<String>> {
         match self {
             Backend::Http(c) => {
-                let e: RuleEntryDto = c.post(&format!("/api/rules/{}/tags", urlenc(slug)), &edit)?;
+                let e: RuleEntryDto =
+                    c.post(&format!("/api/rules/{}/tags", urlenc(slug)), &edit)?;
                 Ok(e.tags)
             }
             Backend::Local(l) => {
-                let e = Self::map_err(l.rt.block_on(
-                    openguild_core::ops::rules::edit_rule_tags(&l.store, slug, edit),
-                ))?;
+                let e = Self::map_err(l.rt.block_on(openguild_core::ops::rules::edit_rule_tags(
+                    &l.store, slug, edit,
+                )))?;
                 Ok(e.tags)
             }
         }
@@ -4355,9 +4352,9 @@ impl Backend {
                 Ok(e.tags)
             }
             Backend::Local(l) => {
-                let e = Self::map_err(l.rt.block_on(
-                    openguild_core::ops::rules::set_rule_tags(&l.store, slug, tags),
-                ))?;
+                let e = Self::map_err(l.rt.block_on(openguild_core::ops::rules::set_rule_tags(
+                    &l.store, slug, tags,
+                )))?;
                 Ok(e.tags)
             }
         }
@@ -4378,10 +4375,10 @@ impl Backend {
             Backend::Http(c) => c
                 .post::<_, ReindexHttpDto>("/api/admin/reindex", &serde_json::json!({}))
                 .map(Into::into),
-            Backend::Local(l) => l
-                .rt
-                .block_on(openguild_core::reindex::reindex(&l.store))
-                .map_err(|e| anyhow!(e)),
+            Backend::Local(l) => {
+                l.rt.block_on(openguild_core::reindex::reindex(&l.store))
+                    .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -4389,10 +4386,10 @@ impl Backend {
     fn check_drift(&self) -> Result<openguild_core::drift::DriftReport> {
         match self {
             Backend::Http(c) => c.get("/api/admin/drift"),
-            Backend::Local(l) => l
-                .rt
-                .block_on(openguild_core::drift::detect_drift(&l.store))
-                .map_err(|e| anyhow!(e)),
+            Backend::Local(l) => {
+                l.rt.block_on(openguild_core::drift::detect_drift(&l.store))
+                    .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -4400,10 +4397,10 @@ impl Backend {
     fn vacuum(&self) -> Result<openguild_core::maintenance::VacuumReport> {
         match self {
             Backend::Http(c) => c.post("/api/admin/vacuum", &serde_json::json!({})),
-            Backend::Local(l) => l
-                .rt
-                .block_on(openguild_core::maintenance::vacuum(&l.store))
-                .map_err(|e| anyhow!(e)),
+            Backend::Local(l) => {
+                l.rt.block_on(openguild_core::maintenance::vacuum(&l.store))
+                    .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -4413,10 +4410,13 @@ impl Backend {
             Backend::Http(c) => c
                 .get(&format!("/api/admin/journal?count={count}"))
                 .map(Some),
-            Backend::Local(l) => l
-                .rt
-                .block_on(openguild_core::maintenance::journal_tail(&l.store.paths, count))
-                .map_err(|e| anyhow!(e)),
+            Backend::Local(l) => {
+                l.rt.block_on(openguild_core::maintenance::journal_tail(
+                    &l.store.paths,
+                    count,
+                ))
+                .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -4431,14 +4431,11 @@ impl Backend {
     /// DEV-164: counter 정합 검사 / 보정.
     fn check_counters(&self, fix: bool) -> Result<openguild_core::ops::counter::CombinedReport> {
         match self {
-            Backend::Http(c) => c.post(
-                "/api/admin/counters",
-                &serde_json::json!({ "fix": fix }),
-            ),
-            Backend::Local(l) => l
-                .rt
-                .block_on(openguild_core::ops::check_and_fix_counters(&l.store, fix))
-                .map_err(|e| anyhow!(e)),
+            Backend::Http(c) => c.post("/api/admin/counters", &serde_json::json!({ "fix": fix })),
+            Backend::Local(l) => {
+                l.rt.block_on(openguild_core::ops::check_and_fix_counters(&l.store, fix))
+                    .map_err(|e| anyhow!(e))
+            }
         }
     }
 
@@ -4466,8 +4463,7 @@ impl Backend {
                          To overwrite, empty quests/ and retry."
                     )));
                 }
-                l.rt
-                    .block_on(openguild_core::migrate::migrate_to_files(&l.guild_path))
+                l.rt.block_on(openguild_core::migrate::migrate_to_files(&l.guild_path))
                     .map_err(|e| anyhow!(e))
             }
         }
@@ -4487,8 +4483,7 @@ impl Backend {
                 })
             }
             Backend::Local(l) => l.rt.block_on(async {
-                let guild =
-                    openguild_core::guild_file::load(&l.guild_path.to_string_lossy())?;
+                let guild = openguild_core::guild_file::load(&l.guild_path.to_string_lossy())?;
                 let summary = openguild_core::maintenance::index_summary(&l.store).await?;
                 let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
                 let journal_total = openguild_core::maintenance::journal_tail(&l.store.paths, 0)
@@ -4533,10 +4528,15 @@ impl Backend {
                         .iter()
                         .find(|s| s.timestamp == ts)
                         .cloned()
-                        .ok_or_else(|| anyhow!(tf!("snapshot 없음: {ts}", "no such snapshot: {ts}")))?
+                        .ok_or_else(|| {
+                            anyhow!(tf!("snapshot 없음: {ts}", "no such snapshot: {ts}"))
+                        })?
                 } else {
                     snapshots.last().cloned().ok_or_else(|| {
-                        anyhow!(tf!("사용 가능한 snapshot 이 없습니다", "no snapshots available"))
+                        anyhow!(tf!(
+                            "사용 가능한 snapshot 이 없습니다",
+                            "no snapshots available"
+                        ))
                     })?
                 };
                 l.rt.block_on(openguild_core::snapshot::restore_snapshot(
@@ -4549,10 +4549,7 @@ impl Backend {
 
     /// DEV-022: 시점 복원 — 최신 snapshot 복원 후 journal 을 `target_ts`(포함)까지
     /// replay. journal 은 최신 snapshot 이후만 보유하므로 replay 기준은 항상 최신.
-    fn restore_to_point(
-        &self,
-        target_ts: &str,
-    ) -> Result<openguild_core::replay::ReplayReport> {
+    fn restore_to_point(&self, target_ts: &str) -> Result<openguild_core::replay::ReplayReport> {
         match self {
             Backend::Http(c) => c.restore_to_point(target_ts),
             Backend::Local(l) => {
@@ -4563,9 +4560,10 @@ impl Backend {
                         "no snapshots available (replay is based on the latest snapshot)"
                     ))
                 })?;
-                let report = l
-                    .rt
-                    .block_on(openguild_core::replay::replay_to(&l.store, &latest, target_ts))
+                let report =
+                    l.rt.block_on(openguild_core::replay::replay_to(
+                        &l.store, &latest, target_ts,
+                    ))
                     .map_err(|e| anyhow!(tf!("replay 실패: {e}", "replay failed: {e}")))?;
                 Ok(report)
             }
@@ -4849,8 +4847,7 @@ fn merge_new_quest_inputs(
                 "--title is required (or specify --template with a title defined)"
             ))
         })?;
-    let description =
-        description.or_else(|| tpl.map(|t| t.body.clone()).filter(|b| !b.is_empty()));
+    let description = description.or_else(|| tpl.map(|t| t.body.clone()).filter(|b| !b.is_empty()));
     let urgency = urgency
         .or_else(|| tpl.and_then(|t| t.frontmatter.urgency))
         .unwrap_or(3);
@@ -4925,11 +4922,10 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             let list = c.attachments_list(scope, &slug)?;
             if json {
                 json_println!(serde_json::json!({
-                        "attachments": list.iter()
-                            .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
-                            .collect::<Vec<_>>(),
-                    })
-                );
+                    "attachments": list.iter()
+                        .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
+                        .collect::<Vec<_>>(),
+                }));
             } else if list.is_empty() {
                 println!("{}", tf!("(첨부 없음)", "(no attachments)"));
             } else {
@@ -4945,7 +4941,11 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 첨부 추가 — 총 {} 개", "✓ attachment added — {} total", list.len())
+                    tf!(
+                        "✓ 첨부 추가 — 총 {} 개",
+                        "✓ attachment added — {} total",
+                        list.len()
+                    )
                 );
                 if let Some(a) = list.last() {
                     println!("  {}  ({})", a.name, a.path);
@@ -4969,7 +4969,11 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 첨부 제거 — 남은 {} 개", "✓ attachment removed — {} remaining", list.len())
+                    tf!(
+                        "✓ 첨부 제거 — 남은 {} 개",
+                        "✓ attachment removed — {} remaining",
+                        list.len()
+                    )
                 );
             }
         }
@@ -5000,11 +5004,10 @@ fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
             let list = c.book_attachments_list(&book_id)?;
             if json {
                 json_println!(serde_json::json!({
-                        "attachments": list.iter()
-                            .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
-                            .collect::<Vec<_>>(),
-                    })
-                );
+                    "attachments": list.iter()
+                        .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
+                        .collect::<Vec<_>>(),
+                }));
             } else if list.is_empty() {
                 println!("{}", tf!("(첨부 없음)", "(no attachments)"));
             } else {
@@ -5013,21 +5016,32 @@ fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
                 }
             }
         }
-        AttachCmd::Add { slug: book_id, file, name } => {
+        AttachCmd::Add {
+            slug: book_id,
+            file,
+            name,
+        } => {
             let list = c.book_attachments_add(&book_id, &file, name)?;
             if json {
                 json_println!(serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 첨부 추가 — 총 {} 개", "✓ attachment added — {} total", list.len())
+                    tf!(
+                        "✓ 첨부 추가 — 총 {} 개",
+                        "✓ attachment added — {} total",
+                        list.len()
+                    )
                 );
                 if let Some(a) = list.last() {
                     println!("  {}  ({})", a.name, a.path);
                 }
             }
         }
-        AttachCmd::Rm { slug: book_id, path } => {
+        AttachCmd::Rm {
+            slug: book_id,
+            path,
+        } => {
             let before = c.book_attachments_list(&book_id)?;
             if !before.iter().any(|a| a.path == path) {
                 return Err(anyhow!(tf!(
@@ -5041,7 +5055,11 @@ fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 첨부 제거 — 남은 {} 개", "✓ attachment removed — {} remaining", list.len())
+                    tf!(
+                        "✓ 첨부 제거 — 남은 {} 개",
+                        "✓ attachment removed — {} remaining",
+                        list.len()
+                    )
                 );
             }
         }
@@ -5110,420 +5128,456 @@ fn reactions_summary(reactions: &[String]) -> String {
 
 fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool) -> Result<()> {
     match sub {
-                CommentCmd::List {
-                    slug, author, since, until, top_only, reply_to, grep,
-                    discussion, unresolved, reverse, limit, tree, summary,
-                } => {
-                    let mut entries = c.comments_list_scoped(scope, &slug)?;
-                    // DEV-250: 미존재 slug 가 "(댓글 없음)" 으로 침묵 통과하면
-                    // 오타를 들고 계속 진행하게 됨(특히 agent) — 빈 결과일 때만
-                    // 실존 확인(정상 경로 비용 0).
-                    if entries.is_empty() {
-                        ensure_scope_target_exists(c, scope, &slug)?;
-                    }
-                    // DEV-110/262: 필터 — 모두 AND. 전역 `comments` 와 옵션셋 통일.
-                    if let Some(a) = &author {
-                        entries.retain(|e| e.author.eq_ignore_ascii_case(a));
-                    }
-                    if let Some(s) = &since {
-                        // ISO 문자열 prefix 비교 — entry ts 는 RFC 3339 (+09:00 류
-                        // 단일 TZ 운용 전제). date 만 입력 시 그 날 00:00 기준.
-                        let threshold = openguild_core::time::normalize_filter_ts(s);
-                        entries.retain(|e| e.ts.as_str() >= threshold.as_str());
-                    }
-                    if let Some(u) = &until {
-                        let threshold = openguild_core::time::normalize_filter_ts(u);
-                        entries.retain(|e| e.ts.as_str() <= threshold.as_str());
-                    }
-                    if discussion {
-                        entries.retain(|e| e.discussion);
-                    }
-                    if unresolved {
-                        entries.retain(|e| e.discussion && !e.resolved);
-                    }
-                    if top_only {
-                        entries.retain(|e| e.parent_id.is_none());
-                    }
-                    if let Some(p) = reply_to {
-                        entries.retain(|e| e.parent_id == Some(p));
-                    }
-                    if let Some(g) = &grep {
-                        let needle = g.to_lowercase();
-                        entries.retain(|e| e.body.to_lowercase().contains(&needle));
-                    }
-                    // DEV-221: 최신순 + 개수 제한 (필터 적용 후).
-                    if reverse {
-                        entries.reverse();
-                    }
-                    if let Some(n) = limit {
-                        entries.truncate(n);
-                    }
-                    if json {
-                        json_println!(serde_json::json!({
-                                "entries": entries.iter().map(|e| serde_json::json!({
-                                    "id": e.id,
-                                    "ts": e.ts,
-                                    "author": e.author,
-                                    "parent_id": e.parent_id,
-                                    "body_len": e.body.len(),
-                                    // DEV-250: 메타도 agent 가 파싱 가능하게.
-                                    "pinned": e.pinned,
-                                    "discussion": e.discussion,
-                                    "resolved": e.resolved,
-                                    "reactions": e.reactions,
-                                })).collect::<Vec<_>>(),
-                            })
-                        );
-                    } else if entries.is_empty() {
-                        println!("{}", tf!("(댓글 없음)", "(no comments)"));
+        CommentCmd::List {
+            slug,
+            author,
+            since,
+            until,
+            top_only,
+            reply_to,
+            grep,
+            discussion,
+            unresolved,
+            reverse,
+            limit,
+            tree,
+            summary,
+        } => {
+            let mut entries = c.comments_list_scoped(scope, &slug)?;
+            // DEV-250: 미존재 slug 가 "(댓글 없음)" 으로 침묵 통과하면
+            // 오타를 들고 계속 진행하게 됨(특히 agent) — 빈 결과일 때만
+            // 실존 확인(정상 경로 비용 0).
+            if entries.is_empty() {
+                ensure_scope_target_exists(c, scope, &slug)?;
+            }
+            // DEV-110/262: 필터 — 모두 AND. 전역 `comments` 와 옵션셋 통일.
+            if let Some(a) = &author {
+                entries.retain(|e| e.author.eq_ignore_ascii_case(a));
+            }
+            if let Some(s) = &since {
+                // ISO 문자열 prefix 비교 — entry ts 는 RFC 3339 (+09:00 류
+                // 단일 TZ 운용 전제). date 만 입력 시 그 날 00:00 기준.
+                let threshold = openguild_core::time::normalize_filter_ts(s);
+                entries.retain(|e| e.ts.as_str() >= threshold.as_str());
+            }
+            if let Some(u) = &until {
+                let threshold = openguild_core::time::normalize_filter_ts(u);
+                entries.retain(|e| e.ts.as_str() <= threshold.as_str());
+            }
+            if discussion {
+                entries.retain(|e| e.discussion);
+            }
+            if unresolved {
+                entries.retain(|e| e.discussion && !e.resolved);
+            }
+            if top_only {
+                entries.retain(|e| e.parent_id.is_none());
+            }
+            if let Some(p) = reply_to {
+                entries.retain(|e| e.parent_id == Some(p));
+            }
+            if let Some(g) = &grep {
+                let needle = g.to_lowercase();
+                entries.retain(|e| e.body.to_lowercase().contains(&needle));
+            }
+            // DEV-221: 최신순 + 개수 제한 (필터 적용 후).
+            if reverse {
+                entries.reverse();
+            }
+            if let Some(n) = limit {
+                entries.truncate(n);
+            }
+            if json {
+                json_println!(serde_json::json!({
+                    "entries": entries.iter().map(|e| serde_json::json!({
+                        "id": e.id,
+                        "ts": e.ts,
+                        "author": e.author,
+                        "parent_id": e.parent_id,
+                        "body_len": e.body.len(),
+                        // DEV-250: 메타도 agent 가 파싱 가능하게.
+                        "pinned": e.pinned,
+                        "discussion": e.discussion,
+                        "resolved": e.resolved,
+                        "reactions": e.reactions,
+                    })).collect::<Vec<_>>(),
+                }));
+            } else if entries.is_empty() {
+                println!("{}", tf!("(댓글 없음)", "(no comments)"));
+            } else {
+                // 헤더 렌더 — flat/tree 공용. DEV-250: 📌/토론 배지 추가.
+                // DEV-262: 기본은 본문 전체 출력(전역 `comments` 와 통일),
+                // --summary 시에만 첫 줄 60자 요약.
+                let render = |e: &openguild_core::repo::comments::CommentEntry, prefix: &str| {
+                    let reply = e.parent_id.map(|p| format!(" ↩ #{p}")).unwrap_or_default();
+                    let author = if e.author.is_empty() {
+                        tf!("(이름 없음)", "(no name)")
                     } else {
-                        // 헤더 렌더 — flat/tree 공용. DEV-250: 📌/토론 배지 추가.
-                        // DEV-262: 기본은 본문 전체 출력(전역 `comments` 와 통일),
-                        // --summary 시에만 첫 줄 60자 요약.
-                        let render = |e: &openguild_core::repo::comments::CommentEntry,
-                                      prefix: &str| {
-                            let reply = e
-                                .parent_id
-                                .map(|p| format!(" ↩ #{p}"))
-                                .unwrap_or_default();
-                            let author = if e.author.is_empty() {
-                                tf!("(이름 없음)", "(no name)")
-                            } else {
-                                e.author.clone()
-                            };
-                            let ts = if e.ts.is_empty() {
-                                tf!("(시각 미상)", "(unknown time)")
-                            } else {
-                                e.ts.clone()
-                            };
-                            let badges = comment_badges(e.pinned, e.discussion, e.resolved);
-                            // DEV-199: 반응 집계 표시 — 👍2 ✅1 형태.
-                            let reacts = reactions_summary(&e.reactions);
-                            println!(
-                                "{prefix}#{}  {}  {}{}{}",
-                                e.id, ts, author, reply, badges
-                            );
-                            if summary {
-                                let s: String =
-                                    e.body.lines().next().unwrap_or("").chars().take(60).collect();
-                                println!("{prefix}  {s}{reacts}");
-                            } else {
-                                for line in e.body.lines() {
-                                    println!("{prefix}  {line}");
-                                }
-                                if !reacts.is_empty() {
-                                    println!("{prefix}  {}", reacts.trim_start());
-                                }
-                            }
-                        };
-                        if tree {
-                            // DEV-250: parent_id 들여쓰기 트리 (대화 흐름 순).
-                            // 필터로 부모가 결과에서 빠진 답글은 root 로 표시.
-                            use std::collections::{HashMap, HashSet};
-                            let ids: HashSet<u64> = entries.iter().map(|e| e.id).collect();
-                            let mut children: HashMap<u64, Vec<&_>> = HashMap::new();
-                            let mut roots: Vec<&_> = Vec::new();
-                            for e in &entries {
-                                match e.parent_id {
-                                    Some(p) if ids.contains(&p) => {
-                                        children.entry(p).or_default().push(e)
-                                    }
-                                    _ => roots.push(e),
-                                }
-                            }
-                            fn walk<'a>(
-                                e: &'a openguild_core::repo::comments::CommentEntry,
-                                depth: usize,
-                                children: &HashMap<u64, Vec<&'a openguild_core::repo::comments::CommentEntry>>,
-                                render: &impl Fn(&openguild_core::repo::comments::CommentEntry, &str),
-                            ) {
-                                let prefix = if depth == 0 {
-                                    String::new()
-                                } else {
-                                    format!("{}└─ ", "   ".repeat(depth - 1))
-                                };
-                                render(e, &prefix);
-                                for kid in children.get(&e.id).into_iter().flatten() {
-                                    walk(kid, depth + 1, children, render);
-                                }
-                            }
-                            for r in roots {
-                                walk(r, 0, &children, &render);
-                            }
-                        } else {
-                            for e in &entries {
-                                render(e, "");
-                            }
-                        }
-                    }
-                }
-                CommentCmd::Show { slug, id, depth, with_parents, all } => {
-                    let entries = c.comments_list_scoped(scope, &slug)?;
-                    // DEV-250: 미존재 slug 침묵 통과 방지 (list 와 동일).
-                    if entries.is_empty() {
-                        ensure_scope_target_exists(c, scope, &slug)?;
-                    }
-                    // DEV-262: --id 없을 때 전체 출력은 과함 — 전역 `comments` 와
-                    // 동일하게 기본 최근 20개만, --all 로 전체 해제.
-                    const DEFAULT_SHOW_LIMIT: usize = 20;
-                    let selected: Vec<_> = match id {
-                        Some(target) => select_thread(entries, target, depth, with_parents)
-                            .ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "{}",
-                                    tf!(
-                                        "entry #{target} 없음 ({} {slug})",
-                                        "entry #{target} not found ({} {slug})",
-                                        scope.noun()
-                                    )
-                                )
-                            })?,
-                        None if all || entries.len() <= DEFAULT_SHOW_LIMIT => entries,
-                        None => {
-                            let start = entries.len() - DEFAULT_SHOW_LIMIT;
-                            entries.into_iter().skip(start).collect()
-                        }
+                        e.author.clone()
                     };
-                    if json {
-                        json_println!(serde_json::json!({
-                                "entries": selected.iter().map(|e| serde_json::json!({
-                                    "id": e.id,
-                                    "ts": e.ts,
-                                    "author": e.author,
-                                    "parent_id": e.parent_id,
-                                    "body": e.body,
-                                    // DEV-250: 메타도 agent 가 파싱 가능하게.
-                                    "pinned": e.pinned,
-                                    "discussion": e.discussion,
-                                    "resolved": e.resolved,
-                                    "reactions": e.reactions,
-                                })).collect::<Vec<_>>(),
-                            })
-                        );
-                    } else if selected.is_empty() {
-                        println!("{}", tf!("(댓글 없음)", "(no comments)"));
+                    let ts = if e.ts.is_empty() {
+                        tf!("(시각 미상)", "(unknown time)")
                     } else {
-                        for (i, e) in selected.iter().enumerate() {
-                            if i > 0 {
-                                println!("\n---\n");
-                            }
-                            let reply = e
-                                .parent_id
-                                .map(|p| format!(" (↩ #{p})"))
-                                .unwrap_or_default();
-                            let author = if e.author.is_empty() {
-                                tf!("(이름 없음)", "(no name)")
-                            } else {
-                                e.author.clone()
-                            };
-                            // DEV-250: 📌/토론 배지 + 반응 집계를 헤더에.
-                            let badges = comment_badges(e.pinned, e.discussion, e.resolved);
-                            let reacts = reactions_summary(&e.reactions);
-                            println!("#{}  {}  {}{}{}{}", e.id, e.ts, author, reply, badges, reacts);
-                            println!();
-                            print!("{}", e.body);
-                            if !e.body.ends_with('\n') {
-                                println!();
-                            }
+                        e.ts.clone()
+                    };
+                    let badges = comment_badges(e.pinned, e.discussion, e.resolved);
+                    // DEV-199: 반응 집계 표시 — 👍2 ✅1 형태.
+                    let reacts = reactions_summary(&e.reactions);
+                    println!("{prefix}#{}  {}  {}{}{}", e.id, ts, author, reply, badges);
+                    if summary {
+                        let s: String = e
+                            .body
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .chars()
+                            .take(60)
+                            .collect();
+                        println!("{prefix}  {s}{reacts}");
+                    } else {
+                        for line in e.body.lines() {
+                            println!("{prefix}  {line}");
+                        }
+                        if !reacts.is_empty() {
+                            println!("{prefix}  {}", reacts.trim_start());
                         }
                     }
-                }
-                CommentCmd::Add {
-                    slug,
-                    author,
-                    parent_id,
-                    file,
-                    discussion,
-                } => {
-                    // DEV-361: 본문을 읽기 전에 scope 를 먼저 막는다 — stdin 을
-                    // 소비한 뒤 실패하면 사용자가 입력을 잃는다.
-                    if discussion && scope != CommentScope::Quest {
-                        anyhow::bail!(tf!(
-                            "--discussion 은 quest 댓글 전용입니다.",
-                            "--discussion is only available for quest comments."
-                        ));
+                };
+                if tree {
+                    // DEV-250: parent_id 들여쓰기 트리 (대화 흐름 순).
+                    // 필터로 부모가 결과에서 빠진 답글은 root 로 표시.
+                    use std::collections::{HashMap, HashSet};
+                    let ids: HashSet<u64> = entries.iter().map(|e| e.id).collect();
+                    let mut children: HashMap<u64, Vec<&_>> = HashMap::new();
+                    let mut roots: Vec<&_> = Vec::new();
+                    for e in &entries {
+                        match e.parent_id {
+                            Some(p) if ids.contains(&p) => children.entry(p).or_default().push(e),
+                            _ => roots.push(e),
+                        }
                     }
-                    let body = read_content(file.as_deref())?;
-                    // DEV-366: 생성 요청에 discussion 을 실어 **한 번에** 만든다.
-                    let mut entry = c.comments_add_scoped(
-                        scope,
-                        &slug,
-                        author.unwrap_or_default(),
-                        body,
-                        parent_id,
-                        discussion,
-                    )?;
-                    // 구버전 서버는 `discussion` 필드를 모르고 무시한다 — 그러면
-                    // 평댓글이 돌아온다. 응답을 믿고, 어긋날 때만 토글로 보정한다.
-                    // (예전의 2단계로 되돌아가는 셈이지만 구버전 상대로만 그렇다.)
-                    if discussion && !entry.discussion {
-                        entry = c.comments_toggle_discussion(&slug, entry.id)?;
-                    }
-                    if json {
-                        json_println!(serde_json::json!({
-                                "ok": true,
-                                "id": entry.id,
-                                "ts": entry.ts,
-                                "parent_id": entry.parent_id,
-                                // DEV-361: --discussion 결과를 호출측이 확인할 수 있게 함께 낸다.
-                                "discussion": entry.discussion,
-                            })
-                        );
-                    } else {
-                        let reply = entry
-                            .parent_id
-                            .map(|p| format!(" ↩ #{p}"))
-                            .unwrap_or_default();
-                        let kind = if entry.discussion {
-                            tf!(" · 토론", " · discussion")
-                        } else {
+                    fn walk<'a>(
+                        e: &'a openguild_core::repo::comments::CommentEntry,
+                        depth: usize,
+                        children: &HashMap<
+                            u64,
+                            Vec<&'a openguild_core::repo::comments::CommentEntry>,
+                        >,
+                        render: &impl Fn(&openguild_core::repo::comments::CommentEntry, &str),
+                    ) {
+                        let prefix = if depth == 0 {
                             String::new()
+                        } else {
+                            format!("{}└─ ", "   ".repeat(depth - 1))
                         };
-                        println!(
+                        render(e, &prefix);
+                        for kid in children.get(&e.id).into_iter().flatten() {
+                            walk(kid, depth + 1, children, render);
+                        }
+                    }
+                    for r in roots {
+                        walk(r, 0, &children, &render);
+                    }
+                } else {
+                    for e in &entries {
+                        render(e, "");
+                    }
+                }
+            }
+        }
+        CommentCmd::Show {
+            slug,
+            id,
+            depth,
+            with_parents,
+            all,
+        } => {
+            let entries = c.comments_list_scoped(scope, &slug)?;
+            // DEV-250: 미존재 slug 침묵 통과 방지 (list 와 동일).
+            if entries.is_empty() {
+                ensure_scope_target_exists(c, scope, &slug)?;
+            }
+            // DEV-262: --id 없을 때 전체 출력은 과함 — 전역 `comments` 와
+            // 동일하게 기본 최근 20개만, --all 로 전체 해제.
+            const DEFAULT_SHOW_LIMIT: usize = 20;
+            let selected: Vec<_> = match id {
+                Some(target) => {
+                    select_thread(entries, target, depth, with_parents).ok_or_else(|| {
+                        anyhow::anyhow!(
                             "{}",
                             tf!(
-                                "✓ 댓글 추가: #{} ({}{}{})",
-                                "✓ comment added: #{} ({}{}{})",
-                                entry.id,
-                                entry.ts,
-                                reply,
-                                kind
-                            )
-                        );
-                    }
-                }
-                CommentCmd::Edit { slug, id, file } => {
-                    let body = read_content(file.as_deref())?;
-                    let entry = c.comments_edit_scoped(scope, &slug, id, body)?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "id": entry.id })
-                        );
-                    } else {
-                        println!(
-                            "{}",
-                            tf!("✓ 댓글 #{} 본문 갱신됨", "✓ comment #{} body updated", entry.id)
-                        );
-                    }
-                }
-                CommentCmd::Rm { slug, id, force } => {
-                    if !force
-                        && !confirm_delete(
-                            &tf!(
-                                "댓글 #{id} ({} {slug}) 을 삭제할까요? (y/N) ",
-                                "Delete comment #{id} ({} {slug})? (y/N) ",
+                                "entry #{target} 없음 ({} {slug})",
+                                "entry #{target} not found ({} {slug})",
                                 scope.noun()
-                            ),
-                            "--force",
-                        )?
-                    {
-                        println!("{}", tf!("(취소)", "(cancelled)"));
-                        return Ok(());
-                    }
-                    c.comments_delete_scoped(scope, &slug, id)?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "id": id })
-                        );
-                    } else {
-                        println!("{}", tf!("✓ 댓글 #{id} 삭제됨", "✓ comment #{id} deleted"));
-                    }
-                }
-                CommentCmd::React { slug, id, emoji, author } => {
-                    let entry = c.comments_react_scoped(scope, &slug, id, &emoji, &author)?;
-                    // 토글 결과 요약 — 현재 entry 의 반응 집계 표시.
-                    use openguild_core::repo::comments::split_reaction;
-                    let now_on = entry.reactions.iter().any(|r| {
-                        let (e, authors) = split_reaction(r);
-                        e == emoji && authors.iter().any(|a| a == &author)
-                    });
-                    let agg = entry
-                        .reactions
-                        .iter()
-                        .map(|r| {
-                            let (e, authors) = split_reaction(r);
-                            format!("{e}{}", authors.len().max(1))
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    if json {
-                        json_println!(serde_json::json!({
-                                "ok": true,
-                                "id": entry.id,
-                                "emoji": emoji,
-                                "on": now_on,
-                                "reactions": entry.reactions,
-                            })
-                        );
-                    } else {
-                        let action = if now_on {
-                            tf!("추가", "added")
-                        } else {
-                            tf!("제거", "removed")
-                        };
-                        let agg_label = if agg.is_empty() { tf!("없음", "none") } else { agg };
-                        println!(
-                            "{}",
-                            tf!(
-                                "✓ #{} {emoji} {} (현재: {})",
-                                "✓ #{} {emoji} {} (now: {})",
-                                entry.id,
-                                action,
-                                agg_label
                             )
-                        );
-                    }
+                        )
+                    })?
                 }
-                CommentCmd::Discussion { slug, id } => {
-                    if scope != CommentScope::Quest {
-                        anyhow::bail!(tf!(
-                            "토론(discussion) 토글은 quest 댓글 전용입니다.",
-                            "discussion toggle is only available for quest comments."
-                        ));
+                None if all || entries.len() <= DEFAULT_SHOW_LIMIT => entries,
+                None => {
+                    let start = entries.len() - DEFAULT_SHOW_LIMIT;
+                    entries.into_iter().skip(start).collect()
+                }
+            };
+            if json {
+                json_println!(serde_json::json!({
+                    "entries": selected.iter().map(|e| serde_json::json!({
+                        "id": e.id,
+                        "ts": e.ts,
+                        "author": e.author,
+                        "parent_id": e.parent_id,
+                        "body": e.body,
+                        // DEV-250: 메타도 agent 가 파싱 가능하게.
+                        "pinned": e.pinned,
+                        "discussion": e.discussion,
+                        "resolved": e.resolved,
+                        "reactions": e.reactions,
+                    })).collect::<Vec<_>>(),
+                }));
+            } else if selected.is_empty() {
+                println!("{}", tf!("(댓글 없음)", "(no comments)"));
+            } else {
+                for (i, e) in selected.iter().enumerate() {
+                    if i > 0 {
+                        println!("\n---\n");
                     }
-                    let e = c.comments_toggle_discussion(&slug, id)?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
-                        );
+                    let reply = e
+                        .parent_id
+                        .map(|p| format!(" (↩ #{p})"))
+                        .unwrap_or_default();
+                    let author = if e.author.is_empty() {
+                        tf!("(이름 없음)", "(no name)")
                     } else {
-                        let state = if e.discussion {
-                            tf!("표시", "marked")
-                        } else {
-                            tf!("해제", "unmarked")
-                        };
-                        println!("{}", tf!("✓ 댓글 #{id} 토론 {}", "✓ comment #{id} discussion {}", state));
+                        e.author.clone()
+                    };
+                    // DEV-250: 📌/토론 배지 + 반응 집계를 헤더에.
+                    let badges = comment_badges(e.pinned, e.discussion, e.resolved);
+                    let reacts = reactions_summary(&e.reactions);
+                    println!(
+                        "#{}  {}  {}{}{}{}",
+                        e.id, e.ts, author, reply, badges, reacts
+                    );
+                    println!();
+                    print!("{}", e.body);
+                    if !e.body.ends_with('\n') {
+                        println!();
                     }
                 }
-                CommentCmd::Resolved { slug, id } => {
-                    if scope != CommentScope::Quest {
-                        anyhow::bail!(tf!(
-                            "resolved 토글은 quest 댓글 전용입니다.",
-                            "resolved toggle is only available for quest comments."
-                        ));
-                    }
-                    let e = c.comments_toggle_resolved(&slug, id)?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
-                    } else {
-                        let state = if e.resolved {
-                            tf!("해결됨", "resolved")
-                        } else {
-                            tf!("미해결", "unresolved")
-                        };
-                        println!("{}", tf!("✓ 댓글 #{id} {}", "✓ comment #{id} {}", state));
-                    }
-                }
-                CommentCmd::Pinned { slug, id } => {
-                    let e = c.comments_toggle_pinned_scoped(scope, &slug, id)?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "id": id, "pinned": e.pinned }));
-                    } else {
-                        let state = if e.pinned {
-                            tf!("고정됨", "pinned")
-                        } else {
-                            tf!("고정 해제", "unpinned")
-                        };
-                        println!("{}", tf!("✓ 댓글 #{id} {}", "✓ comment #{id} {}", state));
-                    }
-                }
+            }
+        }
+        CommentCmd::Add {
+            slug,
+            author,
+            parent_id,
+            file,
+            discussion,
+        } => {
+            // DEV-361: 본문을 읽기 전에 scope 를 먼저 막는다 — stdin 을
+            // 소비한 뒤 실패하면 사용자가 입력을 잃는다.
+            if discussion && scope != CommentScope::Quest {
+                anyhow::bail!(tf!(
+                    "--discussion 은 quest 댓글 전용입니다.",
+                    "--discussion is only available for quest comments."
+                ));
+            }
+            let body = read_content(file.as_deref())?;
+            // DEV-366: 생성 요청에 discussion 을 실어 **한 번에** 만든다.
+            let mut entry = c.comments_add_scoped(
+                scope,
+                &slug,
+                author.unwrap_or_default(),
+                body,
+                parent_id,
+                discussion,
+            )?;
+            // 구버전 서버는 `discussion` 필드를 모르고 무시한다 — 그러면
+            // 평댓글이 돌아온다. 응답을 믿고, 어긋날 때만 토글로 보정한다.
+            // (예전의 2단계로 되돌아가는 셈이지만 구버전 상대로만 그렇다.)
+            if discussion && !entry.discussion {
+                entry = c.comments_toggle_discussion(&slug, entry.id)?;
+            }
+            if json {
+                json_println!(serde_json::json!({
+                    "ok": true,
+                    "id": entry.id,
+                    "ts": entry.ts,
+                    "parent_id": entry.parent_id,
+                    // DEV-361: --discussion 결과를 호출측이 확인할 수 있게 함께 낸다.
+                    "discussion": entry.discussion,
+                }));
+            } else {
+                let reply = entry
+                    .parent_id
+                    .map(|p| format!(" ↩ #{p}"))
+                    .unwrap_or_default();
+                let kind = if entry.discussion {
+                    tf!(" · 토론", " · discussion")
+                } else {
+                    String::new()
+                };
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 댓글 추가: #{} ({}{}{})",
+                        "✓ comment added: #{} ({}{}{})",
+                        entry.id,
+                        entry.ts,
+                        reply,
+                        kind
+                    )
+                );
+            }
+        }
+        CommentCmd::Edit { slug, id, file } => {
+            let body = read_content(file.as_deref())?;
+            let entry = c.comments_edit_scoped(scope, &slug, id, body)?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "id": entry.id }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 댓글 #{} 본문 갱신됨",
+                        "✓ comment #{} body updated",
+                        entry.id
+                    )
+                );
+            }
+        }
+        CommentCmd::Rm { slug, id, force } => {
+            if !force
+                && !confirm_delete(
+                    &tf!(
+                        "댓글 #{id} ({} {slug}) 을 삭제할까요? (y/N) ",
+                        "Delete comment #{id} ({} {slug})? (y/N) ",
+                        scope.noun()
+                    ),
+                    "--force",
+                )?
+            {
+                println!("{}", tf!("(취소)", "(cancelled)"));
+                return Ok(());
+            }
+            c.comments_delete_scoped(scope, &slug, id)?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "id": id }));
+            } else {
+                println!("{}", tf!("✓ 댓글 #{id} 삭제됨", "✓ comment #{id} deleted"));
+            }
+        }
+        CommentCmd::React {
+            slug,
+            id,
+            emoji,
+            author,
+        } => {
+            let entry = c.comments_react_scoped(scope, &slug, id, &emoji, &author)?;
+            // 토글 결과 요약 — 현재 entry 의 반응 집계 표시.
+            use openguild_core::repo::comments::split_reaction;
+            let now_on = entry.reactions.iter().any(|r| {
+                let (e, authors) = split_reaction(r);
+                e == emoji && authors.iter().any(|a| a == &author)
+            });
+            let agg = entry
+                .reactions
+                .iter()
+                .map(|r| {
+                    let (e, authors) = split_reaction(r);
+                    format!("{e}{}", authors.len().max(1))
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if json {
+                json_println!(serde_json::json!({
+                    "ok": true,
+                    "id": entry.id,
+                    "emoji": emoji,
+                    "on": now_on,
+                    "reactions": entry.reactions,
+                }));
+            } else {
+                let action = if now_on {
+                    tf!("추가", "added")
+                } else {
+                    tf!("제거", "removed")
+                };
+                let agg_label = if agg.is_empty() {
+                    tf!("없음", "none")
+                } else {
+                    agg
+                };
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ #{} {emoji} {} (현재: {})",
+                        "✓ #{} {emoji} {} (now: {})",
+                        entry.id,
+                        action,
+                        agg_label
+                    )
+                );
+            }
+        }
+        CommentCmd::Discussion { slug, id } => {
+            if scope != CommentScope::Quest {
+                anyhow::bail!(tf!(
+                    "토론(discussion) 토글은 quest 댓글 전용입니다.",
+                    "discussion toggle is only available for quest comments."
+                ));
+            }
+            let e = c.comments_toggle_discussion(&slug, id)?;
+            if json {
+                json_println!(
+                    serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
+                );
+            } else {
+                let state = if e.discussion {
+                    tf!("표시", "marked")
+                } else {
+                    tf!("해제", "unmarked")
+                };
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 댓글 #{id} 토론 {}",
+                        "✓ comment #{id} discussion {}",
+                        state
+                    )
+                );
+            }
+        }
+        CommentCmd::Resolved { slug, id } => {
+            if scope != CommentScope::Quest {
+                anyhow::bail!(tf!(
+                    "resolved 토글은 quest 댓글 전용입니다.",
+                    "resolved toggle is only available for quest comments."
+                ));
+            }
+            let e = c.comments_toggle_resolved(&slug, id)?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
+            } else {
+                let state = if e.resolved {
+                    tf!("해결됨", "resolved")
+                } else {
+                    tf!("미해결", "unresolved")
+                };
+                println!("{}", tf!("✓ 댓글 #{id} {}", "✓ comment #{id} {}", state));
+            }
+        }
+        CommentCmd::Pinned { slug, id } => {
+            let e = c.comments_toggle_pinned_scoped(scope, &slug, id)?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "id": id, "pinned": e.pinned }));
+            } else {
+                let state = if e.pinned {
+                    tf!("고정됨", "pinned")
+                } else {
+                    tf!("고정 해제", "unpinned")
+                };
+                println!("{}", tf!("✓ 댓글 #{id} {}", "✓ comment #{id} {}", state));
+            }
+        }
     }
     Ok(())
 }
@@ -5531,53 +5585,65 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
 /// quest / campaign 메모 명령 공용 핸들러 (DEV-100).
 fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> Result<()> {
     match sub {
-                MemoCmd::Show { slug } => {
-                    let content = c.memo_get_scoped(scope, &slug)?;
-                    if json {
-                        json_println!(serde_json::json!({ "slug": slug, "content": content })
-                        );
-                    } else if let Some(s) = content {
-                        if s.is_empty() {
-                            println!("{}", tf!("(메모 비어있음)", "(memo is empty)"));
-                        } else {
-                            print!("{s}");
-                            if !s.ends_with('\n') {
-                                println!();
-                            }
-                        }
-                    } else {
-                        println!("{}", tf!("(메모 없음)", "(no memo)"));
+        MemoCmd::Show { slug } => {
+            let content = c.memo_get_scoped(scope, &slug)?;
+            if json {
+                json_println!(serde_json::json!({ "slug": slug, "content": content }));
+            } else if let Some(s) = content {
+                if s.is_empty() {
+                    println!("{}", tf!("(메모 비어있음)", "(memo is empty)"));
+                } else {
+                    print!("{s}");
+                    if !s.ends_with('\n') {
+                        println!();
                     }
                 }
-                MemoCmd::Set { slug, file } => {
-                    let content = read_content(file.as_deref())?;
-                    c.memo_set_scoped(scope, &slug, content)?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "slug": slug }));
-                    } else {
-                        println!(
-                            "{}",
-                            tf!("✓ 메모 저장됨 ({} {slug})", "✓ memo saved ({} {slug})", scope.noun())
-                        );
-                    }
-                }
-                MemoCmd::Clear { slug } => {
-                    c.memo_set_scoped(scope, &slug, String::new())?;
-                    if json {
-                        json_println!(serde_json::json!({ "ok": true, "slug": slug }));
-                    } else {
-                        println!(
-                            "{}",
-                            tf!("✓ 메모 비움 ({} {slug})", "✓ memo cleared ({} {slug})", scope.noun())
-                        );
-                    }
-                }
+            } else {
+                println!("{}", tf!("(메모 없음)", "(no memo)"));
+            }
+        }
+        MemoCmd::Set { slug, file } => {
+            let content = read_content(file.as_deref())?;
+            c.memo_set_scoped(scope, &slug, content)?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "slug": slug }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 메모 저장됨 ({} {slug})",
+                        "✓ memo saved ({} {slug})",
+                        scope.noun()
+                    )
+                );
+            }
+        }
+        MemoCmd::Clear { slug } => {
+            c.memo_set_scoped(scope, &slug, String::new())?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "slug": slug }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 메모 비움 ({} {slug})",
+                        "✓ memo cleared ({} {slug})",
+                        scope.noun()
+                    )
+                );
+            }
+        }
     }
     Ok(())
 }
 
 /// DEV-449: 형광펜 명령 공용 핸들러 — 퀘스트 · 캠페인 · 규칙 · 도서관.
-fn run_highlight_cmd(c: &Backend, scope: HighlightScope, sub: HighlightCmd, json: bool) -> Result<()> {
+fn run_highlight_cmd(
+    c: &Backend,
+    scope: HighlightScope,
+    sub: HighlightCmd,
+    json: bool,
+) -> Result<()> {
     match sub {
         HighlightCmd::List { id } => {
             let target = c.highlight_target(scope, &id)?;
@@ -5588,14 +5654,24 @@ fn run_highlight_cmd(c: &Backend, scope: HighlightScope, sub: HighlightCmd, json
                 println!("{}", tf!("(형광펜 없음)", "(no highlights)"));
             } else {
                 for h in &list {
-                    println!("{}  {}  {}", highlight_part_label(&h.part), h.created_at, h.id);
+                    println!(
+                        "{}  {}  {}",
+                        highlight_part_label(&h.part),
+                        h.created_at,
+                        h.id
+                    );
                     for line in h.exact.lines() {
                         println!("  {line}");
                     }
                 }
             }
         }
-        HighlightCmd::Add { id, text, part, nth } => {
+        HighlightCmd::Add {
+            id,
+            text,
+            part,
+            nth,
+        } => {
             let target = c.highlight_target(scope, &id)?;
             let source = c.highlight_source(scope, &target, &part)?;
             let q = openguild_core::highlight_text::quote(&source, &text, nth)?;
@@ -5610,7 +5686,11 @@ fn run_highlight_cmd(c: &Backend, scope: HighlightScope, sub: HighlightCmd, json
             if json {
                 json_println!(h);
             } else {
-                let what = if fresh { tf!("✓ 칠함", "✓ highlighted") } else { tf!("이미 칠해져 있음", "already highlighted") };
+                let what = if fresh {
+                    tf!("✓ 칠함", "✓ highlighted")
+                } else {
+                    tf!("이미 칠해져 있음", "already highlighted")
+                };
                 println!("{what}  {}  {}", highlight_part_label(&h.part), h.id);
                 for line in h.exact.lines() {
                     println!("  {line}");
@@ -5628,7 +5708,13 @@ fn run_highlight_cmd(c: &Backend, scope: HighlightScope, sub: HighlightCmd, json
             if json {
                 json_println!(serde_json::json!({ "ok": true, "removed": highlight_id }));
             } else {
-                println!("{}", tf!("✓ 형광펜 지움 ({highlight_id})", "✓ highlight removed ({highlight_id})"));
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 형광펜 지움 ({highlight_id})",
+                        "✓ highlight removed ({highlight_id})"
+                    )
+                );
             }
         }
     }
@@ -5718,7 +5804,10 @@ fn confirm_delete_from(
             "nothing was deleted: no answer to the confirmation — pass {flag} when there is no terminal"
         )));
     }
-    Ok(matches!(buf.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+    Ok(matches!(
+        buf.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 fn change_status_with_noop_notice(
@@ -5802,10 +5891,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             (_, Some(e)) if !e.is_empty() => format!(" [~ {e}]"),
             _ => String::new(),
         };
-        println!(
-            "{}  [{}] {}{}",
-            r.campaign_slug, r.status, r.title, period
-        );
+        println!("{}  [{}] {}{}", r.campaign_slug, r.status, r.title, period);
     }
 
     fn print_detail(d: &CampaignDetail, json: bool) {
@@ -5817,10 +5903,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         if !d.linked_quests.is_empty() {
             println!("  linked quests:");
             for q in &d.linked_quests {
-                println!(
-                    "    - {} [{}] {}",
-                    q.quest_id, q.status_name_en, q.title
-                );
+                println!("    - {} [{}] {}", q.quest_id, q.status_name_en, q.title);
             }
         }
         if !d.checklists.is_empty() {
@@ -5835,12 +5918,12 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
 
     match sub {
         // DEV-100: 댓글 / 메모 — quest 와 공용 핸들러 (campaign scope).
-        CampaignCmd::Comment { sub } => {
-            run_comment_cmd(c, CommentScope::Campaign, sub, json)?
-        }
+        CampaignCmd::Comment { sub } => run_comment_cmd(c, CommentScope::Campaign, sub, json)?,
         CampaignCmd::Attach { sub } => run_attach_cmd(c, CommentScope::Campaign, sub, json)?,
         CampaignCmd::Memo { sub } => run_memo_cmd(c, CommentScope::Campaign, sub, json)?,
-        CampaignCmd::Highlight { sub } => run_highlight_cmd(c, HighlightScope::Campaign, sub, json)?,
+        CampaignCmd::Highlight { sub } => {
+            run_highlight_cmd(c, HighlightScope::Campaign, sub, json)?
+        }
         CampaignCmd::New {
             title,
             started_at,
@@ -5887,7 +5970,11 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             )?;
             print_row(&row, json);
         }
-        CampaignCmd::List { status, table, query } => {
+        CampaignCmd::List {
+            status,
+            table,
+            query,
+        } => {
             // 잘못된 --status 값은 silent fail 방지 — active | done 만 허용.
             if let Some(s) = &status
                 && s != "active"
@@ -5898,7 +5985,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                 ));
             }
             let rows = c.campaign_list(status, query.as_deref())?;
-                        ensure_table_json_exclusive(table, json)?;
+            ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&rows));
             } else if table {
@@ -5942,7 +6029,8 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                 for h in &history {
                     let old = h.old_value.as_deref().unwrap_or("∅");
                     let new = h.new_value.as_deref().unwrap_or("∅");
-                    let rel = openguild_core::time::format_relative(&h.ts).unwrap_or_else(|| "—".into());
+                    let rel =
+                        openguild_core::time::format_relative(&h.ts).unwrap_or_else(|| "—".into());
                     // DEV-463: 체크리스트 · '모두 완료' 순간은 이름표와 값 하나.
                     let label = match h.op.as_str() {
                         "checklist_add" => Some(tf!("체크리스트 추가", "checklist item added")),
@@ -5989,10 +6077,9 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             c.campaign_link(&campaign_slug, &quest_slug)?;
             if json {
                 json_println!(serde_json::json!({
-                        "ok": true,
-                        "linked": { "campaign": campaign_slug, "quest": quest_slug }
-                    })
-                );
+                    "ok": true,
+                    "linked": { "campaign": campaign_slug, "quest": quest_slug }
+                }));
             } else {
                 println!("✓ linked: {campaign_slug} ← {quest_slug}");
             }
@@ -6004,10 +6091,9 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             c.campaign_unlink(&campaign_slug, &quest_slug)?;
             if json {
                 json_println!(serde_json::json!({
-                        "ok": true,
-                        "unlinked": { "campaign": campaign_slug, "quest": quest_slug }
-                    })
-                );
+                    "ok": true,
+                    "unlinked": { "campaign": campaign_slug, "quest": quest_slug }
+                }));
             } else {
                 println!("✓ unlinked: {campaign_slug} ↛ {quest_slug}");
             }
@@ -6049,7 +6135,8 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 c.campaign_checklist_set(&campaign_slug, index, true)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "checked": index, "campaign": campaign_slug })
+                    json_println!(
+                        serde_json::json!({ "ok": true, "checked": index, "campaign": campaign_slug })
                     );
                 } else {
                     println!("✓ [{index}] {campaign_slug} checked");
@@ -6061,7 +6148,8 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 c.campaign_checklist_set(&campaign_slug, index, false)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "unchecked": index, "campaign": campaign_slug })
+                    json_println!(
+                        serde_json::json!({ "ok": true, "unchecked": index, "campaign": campaign_slug })
                     );
                 } else {
                     println!("✓ [{index}] {campaign_slug} unchecked");
@@ -6073,7 +6161,8 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 c.campaign_checklist_rm(&campaign_slug, index)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "removed": index, "campaign": campaign_slug })
+                    json_println!(
+                        serde_json::json!({ "ok": true, "removed": index, "campaign": campaign_slug })
                     );
                 } else {
                     println!("✓ [{index}] {campaign_slug} removed");
@@ -6196,7 +6285,10 @@ fn print_quest_table(quests: &[Quest]) {
             vec![
                 (q.quest_id.clone(), Some(q.type_color.clone())),
                 (q.status_name_en.clone(), Some(q.status_color.clone())),
-                (q.urgency.to_string(), Some(urgency_color(q.urgency).to_string())),
+                (
+                    q.urgency.to_string(),
+                    Some(urgency_color(q.urgency).to_string()),
+                ),
                 (q.title.clone(), None),
             ]
         })
@@ -6289,7 +6381,11 @@ fn print_quest_summary(d: &QuestDetail, json: bool) {
 /// 시험할 수 있다(첨부가 목록으로 새어 나오던 것이 이 퀘스트의 되돌아온 이유다).
 fn quest_summary_lines(d: &QuestDetail) -> Vec<String> {
     let q = &d.quest;
-    let mut out = vec![format!("{}  {}", colorize(&q.quest_id, &q.type_color), q.title)];
+    let mut out = vec![format!(
+        "{}  {}",
+        colorize(&q.quest_id, &q.type_color),
+        q.title
+    )];
     // BUG-295 후속(admin): 첨부가 붙으면서 라벨 폭이 제일 긴 `attachments` 에 맞춰야
     // 콜론이 한 줄로 선다. 라벨은 한 곳에서 만든다.
     let row = |label: &str, value: String| format!("  {label:<11} : {value}");
@@ -6512,9 +6608,7 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
             // DEV-042 의 slug 매핑은 QuestStatus 메타에 있음. 여기선 name_en →
             // slug 동일 규칙 (LOWER + space→_) 으로 간이 도출. 호출자가 정확한
             // slug 필요하면 statuses endpoint 별도 호출 권장.
-            q.status_name_en
-                .to_lowercase()
-                .replace([' ', '-'], "_")
+            q.status_name_en.to_lowercase().replace([' ', '-'], "_")
         }
         "urgency" => q.urgency.to_string(),
         "description" | "body" => q.description.clone().unwrap_or_default(),
@@ -6563,19 +6657,18 @@ fn run_reindex_cmd(c: &Backend, json: bool) -> Result<()> {
     let report = c.reindex()?;
     if json {
         json_println!(serde_json::json!({
-                "ok": true,
-                "types": report.types_loaded,
-                "statuses": report.statuses_loaded,
-                "quests": report.quests_loaded,
-                "dependencies": report.dependencies_loaded,
-                "campaigns": report.campaigns_loaded,
-                "comments": report.comments_loaded,
-                "memos": report.memos_loaded,
-                "tags": report.tags_loaded,
-                "positions": report.positions_restored,
-                "skipped": report.skipped.len(),
-            })
-        );
+            "ok": true,
+            "types": report.types_loaded,
+            "statuses": report.statuses_loaded,
+            "quests": report.quests_loaded,
+            "dependencies": report.dependencies_loaded,
+            "campaigns": report.campaigns_loaded,
+            "comments": report.comments_loaded,
+            "memos": report.memos_loaded,
+            "tags": report.tags_loaded,
+            "positions": report.positions_restored,
+            "skipped": report.skipped.len(),
+        }));
     } else {
         println!("{}", tf!("✓ index.db 재구축 완료", "✓ index.db rebuilt"));
         for line in report.summary_lines() {
@@ -6607,21 +6700,41 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
             c.reindex()?;
         }
         json_println!(serde_json::json!({
-                "clean": report.is_clean(),
-                "resynced": resync && !report.is_clean(),
-                "report": report,
-            })
-        );
+            "clean": report.is_clean(),
+            "resynced": resync && !report.is_clean(),
+            "report": report,
+        }));
     } else if report.is_clean() {
-        println!("{}", tf!("✓ index.db 가 파일과 일치 (drift 없음)", "✓ index.db matches files (no drift)"));
+        println!(
+            "{}",
+            tf!(
+                "✓ index.db 가 파일과 일치 (drift 없음)",
+                "✓ index.db matches files (no drift)"
+            )
+        );
     } else {
         println!("{}", tf!("⚠ drift 발견:", "⚠ drift found:"));
         let sections = [
-            (tf!("파일은 있는데 index 에 없음", "file exists but missing from index"), &report.missing_in_index),
-            (tf!("index 에 있는데 파일이 없음", "in index but file missing"), &report.stale_in_index),
-            (tf!("파일 mtime > index.db mtime", "file mtime > index.db mtime"), &report.fresh_files),
             (
-                tf!("sibling(.comments/.memo) 가 더 새것", "sibling (.comments/.memo) is newer"),
+                tf!(
+                    "파일은 있는데 index 에 없음",
+                    "file exists but missing from index"
+                ),
+                &report.missing_in_index,
+            ),
+            (
+                tf!("index 에 있는데 파일이 없음", "in index but file missing"),
+                &report.stale_in_index,
+            ),
+            (
+                tf!("파일 mtime > index.db mtime", "file mtime > index.db mtime"),
+                &report.fresh_files,
+            ),
+            (
+                tf!(
+                    "sibling(.comments/.memo) 가 더 새것",
+                    "sibling (.comments/.memo) is newer"
+                ),
                 &report.fresh_siblings,
             ),
         ];
@@ -6640,7 +6753,13 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
             c.reindex()?;
             println!("{}", tf!("✓ resync 완료", "✓ resync complete"));
         } else {
-            println!("{}", tf!("(--resync 로 자동 reindex 가능)", "(use --resync to auto-reindex)"));
+            println!(
+                "{}",
+                tf!(
+                    "(--resync 로 자동 reindex 가능)",
+                    "(use --resync to auto-reindex)"
+                )
+            );
         }
     }
     Ok(())
@@ -6683,13 +6802,12 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
     let report = c.check_counters(fix)?;
     if json {
         json_println!(serde_json::json!({
-                "ok": true,
-                "types_checked": report.file_report.types_checked,
-                "file_issues": report.file_report.issues.len(),
-                "sql_drift": report.sql_drift.len(),
-                "fixed": fix,
-            })
-        );
+            "ok": true,
+            "types_checked": report.file_report.types_checked,
+            "file_issues": report.file_report.issues.len(),
+            "sql_drift": report.sql_drift.len(),
+            "fixed": fix,
+        }));
     } else {
         println!("{}", tf!("✓ counter 검증 완료", "✓ counter check complete"));
         println!(
@@ -6738,7 +6856,13 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
                     )
                 );
             } else {
-                println!("{}", tf!("    (--fix 로 자동 보정 가능)", "    (use --fix to auto-correct)"));
+                println!(
+                    "{}",
+                    tf!(
+                        "    (--fix 로 자동 보정 가능)",
+                        "    (use --fix to auto-correct)"
+                    )
+                );
             }
         }
         for drift in &report.sql_drift {
@@ -6756,7 +6880,13 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
                     )
                 );
             } else {
-                println!("{}", tf!("    (--fix 로 자동 보정 가능)", "    (use --fix to auto-correct)"));
+                println!(
+                    "{}",
+                    tf!(
+                        "    (--fix 로 자동 보정 가능)",
+                        "    (use --fix to auto-correct)"
+                    )
+                );
             }
         }
     }
@@ -6767,12 +6897,11 @@ fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
     let r = c.vacuum()?;
     if json {
         json_println!(serde_json::json!({
-                "ok": true,
-                "before_bytes": r.before_bytes,
-                "after_bytes": r.after_bytes,
-                "saved_bytes": r.saved(),
-            })
-        );
+            "ok": true,
+            "before_bytes": r.before_bytes,
+            "after_bytes": r.after_bytes,
+            "saved_bytes": r.saved(),
+        }));
     } else {
         println!("{}", tf!("✓ VACUUM 완료", "✓ VACUUM complete"));
         println!("  before : {} bytes", r.before_bytes);
@@ -6784,7 +6913,13 @@ fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
                 (r.saved() as f64 / r.before_bytes as f64) * 100.0
             );
         } else {
-            println!("{}", tf!("  saved  : 0 bytes (이미 dense)", "  saved  : 0 bytes (already dense)"));
+            println!(
+                "{}",
+                tf!(
+                    "  saved  : 0 bytes (이미 dense)",
+                    "  saved  : 0 bytes (already dense)"
+                )
+            );
         }
     }
     Ok(())
@@ -6809,16 +6944,19 @@ fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
         Some(t) => {
             if json {
                 json_println!(serde_json::json!({
-                        "exists": true,
-                        "total": t.total,
-                        "rows": t.rows.iter().map(|o| serde_json::json!({
-                            "id": o.id, "ts": o.ts, "op": o.op,
-                            "args": o.args, "result": o.result,
-                        })).collect::<Vec<_>>(),
-                    })
-                );
+                    "exists": true,
+                    "total": t.total,
+                    "rows": t.rows.iter().map(|o| serde_json::json!({
+                        "id": o.id, "ts": o.ts, "op": o.op,
+                        "args": o.args, "result": o.result,
+                    })).collect::<Vec<_>>(),
+                }));
             } else {
-                println!("journal.db: {} row(s) total — showing last {}", t.total, t.rows.len());
+                println!(
+                    "journal.db: {} row(s) total — showing last {}",
+                    t.total,
+                    t.rows.len()
+                );
                 println!();
                 let trunc = |s: &str| -> String {
                     if s.chars().count() > 100 {
@@ -6919,7 +7057,10 @@ fn install_plugins_for_cli(c: &Backend, json: bool) {
             eprintln!(
                 "  - {} ({})",
                 p.def.name,
-                openguild_core::plugins::summary::marks_line(p, openguild_core::plugins::Scope::Cli)
+                openguild_core::plugins::summary::marks_line(
+                    p,
+                    openguild_core::plugins::Scope::Cli
+                )
             );
         }
         eprintln!(
@@ -6998,7 +7139,10 @@ fn print_tests(
     )],
     json: bool,
 ) -> Result<()> {
-    let bad = |r: &std::result::Result<Vec<openguild_core::plugins::testing::TestResult>, String>| match r {
+    let bad = |r: &std::result::Result<
+        Vec<openguild_core::plugins::testing::TestResult>,
+        String,
+    >| match r {
         Err(_) => true,
         Ok(t) => t.iter().any(|t| t.failure.is_some()),
     };
@@ -7070,7 +7214,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             }));
         } else {
             for n in names {
-                let pre = if openguild_core::events::names::emits_pre(n) { "  (pre)" } else { "" };
+                let pre = if openguild_core::events::names::emits_pre(n) {
+                    "  (pre)"
+                } else {
+                    ""
+                };
                 let with = with_of(n);
                 if with.is_empty() {
                     println!("{n}{pre}");
@@ -7137,7 +7285,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             );
         }
         for e in st["errors"].as_array().cloned().unwrap_or_default() {
-            println!("  ✗ {} — {}", e[0].as_str().unwrap_or(""), e[1].as_str().unwrap_or(""));
+            println!(
+                "  ✗ {} — {}",
+                e[0].as_str().unwrap_or(""),
+                e[1].as_str().unwrap_or("")
+            );
         }
         return Ok(());
     }
@@ -7218,7 +7370,9 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                         .map(|s| s.plugins.len())
                         .unwrap_or(0);
                     if json {
-                        json_println!(serde_json::json!({ "ok": true, "source": chosen, "plugins": found }));
+                        json_println!(
+                            serde_json::json!({ "ok": true, "source": chosen, "plugins": found })
+                        );
                     } else {
                         println!(
                             "{}",
@@ -7305,7 +7459,9 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             for s in &list {
                 for p in &s.plugins {
                     any = true;
-                    let in_use = used.iter().any(|u| u.source == s.name && u.folder == p.folder);
+                    let in_use = used
+                        .iter()
+                        .any(|u| u.source == s.name && u.folder == p.folder);
                     println!("{} {}@{}", if in_use { "✓" } else { "·" }, p.name, s.name);
                 }
             }
@@ -7384,7 +7540,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                             "소스에 없는 플러그인입니다: {} (`openguild plugin available` 로 확인)",
                             "not in any source: {} (see `openguild plugin available`)",
                             target
-                        )))
+                        )));
                     }
                     1 => hits[0].clone(),
                     _ => {
@@ -7393,7 +7549,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                             "several sources offer that name: {} — say `{}@source`",
                             target,
                             target
-                        )))
+                        )));
                     }
                 }
             };
@@ -7496,8 +7652,9 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 if let Some(d) = &p.def.description {
                     println!("    {d}");
                 }
-                for (i, line) in
-                    openguild_core::plugins::summary::handler_lines(p, Scope::Cli).iter().enumerate()
+                for (i, line) in openguild_core::plugins::summary::handler_lines(p, Scope::Cli)
+                    .iter()
+                    .enumerate()
                 {
                     println!("    {}. {line}", i + 1);
                 }
@@ -7541,7 +7698,10 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     pad(&r.scope, w_scope),
                     r.marks,
                     // DEV-399: 길드 밖에서 온 것은 어디서 왔는지 보여야 한다.
-                    p.source.as_deref().map(|s| format!("  ({s})")).unwrap_or_default()
+                    p.source
+                        .as_deref()
+                        .map(|s| format!("  ({s})"))
+                        .unwrap_or_default()
                 );
                 // REQ-020: 설명은 다음 줄에 들여쓴다.
                 describe(p);
@@ -7550,7 +7710,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 println!("✗ {name}  {why}");
             }
         }
-        PluginCmd::Allow { name: None, all: _, yes } => {
+        PluginCmd::Allow {
+            name: None,
+            all: _,
+            yes,
+        } => {
             let every: Vec<_> = loaded
                 .active
                 .iter()
@@ -7561,7 +7725,10 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 // 여럿을 한 번에 볼 때 필요한 것은 "가장 센 것" 이다 — 막을 수 있나, 길드에
                 // 무엇을 시키나, 어디로 나가나.
                 for p in &every {
-                    println!("{}", openguild_core::plugins::summary::one_liner(p, Scope::Cli));
+                    println!(
+                        "{}",
+                        openguild_core::plugins::summary::one_liner(p, Scope::Cli)
+                    );
                 }
                 println!(
                     "\n{}",
@@ -7578,10 +7745,17 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             if json {
                 json_println!(serde_json::json!({ "ok": true, "allowed": names }));
             } else {
-                println!("{}", tf!("✓ 전체 허용: {}", "✓ allowed all: {}", names.join(", ")));
+                println!(
+                    "{}",
+                    tf!("✓ 전체 허용: {}", "✓ allowed all: {}", names.join(", "))
+                );
             }
         }
-        PluginCmd::Allow { name: Some(name), all: _, yes } => {
+        PluginCmd::Allow {
+            name: Some(name),
+            all: _,
+            yes,
+        } => {
             let all: Vec<_> = loaded
                 .active
                 .iter()
@@ -7640,7 +7814,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             Backend::map_err(consent::revoke_all(root, &refs))?;
             if json {
                 // 이름 하나일 때는 예전 모양(문자열) 그대로 — 파싱하는 스크립트를 안 깬다.
-                let revoked = if single { serde_json::json!(names[0]) } else { serde_json::json!(names) };
+                let revoked = if single {
+                    serde_json::json!(names[0])
+                } else {
+                    serde_json::json!(names)
+                };
                 json_println!(serde_json::json!({ "ok": true, "revoked": revoked }));
             } else {
                 println!("{}", tf!("✓ 철회: {}", "✓ revoked: {}", names.join(", ")));
@@ -7754,9 +7932,12 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 .find(|p| p.def.name == name)
                 .and_then(|p| p.def.effective_inputs().into_iter().find(|i| i.key == key));
             let value = match declared.as_ref().map(|i| i.input_type) {
-                Some(openguild_core::plugins::InputType::Checkbox) => serde_json::Value::Bool(
-                    matches!(raw.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
-                ),
+                Some(openguild_core::plugins::InputType::Checkbox) => {
+                    serde_json::Value::Bool(matches!(
+                        raw.to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    ))
+                }
                 Some(openguild_core::plugins::InputType::Number) => raw
                     .parse::<f64>()
                     .ok()
@@ -7767,13 +7948,20 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             };
             if let Some(i) = declared.as_ref()
                 && i.input_type == openguild_core::plugins::InputType::Select
-                && !i.options.iter().any(|o| Some(o.value.as_str()) == value.as_str())
+                && !i
+                    .options
+                    .iter()
+                    .any(|o| Some(o.value.as_str()) == value.as_str())
             {
                 return Err(anyhow!(tf!(
                     "`{}` 은 선택형입니다 — 가능한 값: {}",
                     "`{}` is a select — allowed values: {}",
                     key,
-                    i.options.iter().map(|o| o.value.as_str()).collect::<Vec<_>>().join(", ")
+                    i.options
+                        .iter()
+                        .map(|o| o.value.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )));
             }
             Backend::map_err(openguild_core::plugins::values::set(
@@ -7838,11 +8026,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             } else {
                 println!(
                     "{}",
-                    tf!(
-                        "✓ 자동 허용 켬: {}",
-                        "✓ auto-allow on: {}",
-                        root.display()
-                    )
+                    tf!("✓ 자동 허용 켬: {}", "✓ auto-allow on: {}", root.display())
                 );
             }
         }
@@ -7929,7 +8113,10 @@ fn run() -> Result<()> {
     if !cli.json
         && !matches!(
             cli.command,
-            Command::Reindex | Command::Index { sub: IndexCmd::Rebuild }
+            Command::Reindex
+                | Command::Index {
+                    sub: IndexCmd::Rebuild
+                }
         )
     {
         c.warn_problem_files();
@@ -7959,7 +8146,12 @@ fn run() -> Result<()> {
         Command::Plugin { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
-        Command::Restore { to, at, file, force } => match file {
+        Command::Restore {
+            to,
+            at,
+            file,
+            force,
+        } => match file {
             Some(f) => handle_restore_file(&c, cli.json, &f, force)?,
             None => handle_restore(&c, cli.json, to, at)?,
         },
@@ -8015,8 +8207,18 @@ fn run() -> Result<()> {
             }
         }
         Command::Comments {
-            author, since, until, grep, discussion, unresolved,
-            top_only, reply_to, reverse, tree, limit, summary,
+            author,
+            since,
+            until,
+            grep,
+            discussion,
+            unresolved,
+            top_only,
+            reply_to,
+            reverse,
+            tree,
+            limit,
+            summary,
         } => {
             let mut rows = c.comments_search(
                 author.as_deref(),
@@ -8044,7 +8246,11 @@ fn run() -> Result<()> {
             } else {
                 let no_name = tf!("(이름 없음)", "(no name)");
                 let render = |r: &GlobalComment, prefix: &str| {
-                    let author = if r.author.is_empty() { &no_name } else { &r.author };
+                    let author = if r.author.is_empty() {
+                        &no_name
+                    } else {
+                        &r.author
+                    };
                     // DEV-250: 📌/토론 배지 + 반응 집계 — comment list/show 와 동일 규칙.
                     let badge = comment_badges(r.pinned, r.discussion, r.resolved);
                     let reactions: Vec<String> = if r.reactions.is_empty() {
@@ -8063,7 +8269,14 @@ fn run() -> Result<()> {
                     // 첫 줄 60자만. 요약만 보고 뒷줄을 놓쳐 답글을 잘못 단 사고
                     // (2026-07-05) 이후 기본을 전체로 바꿈.
                     if summary {
-                        let s: String = r.body.lines().next().unwrap_or("").chars().take(60).collect();
+                        let s: String = r
+                            .body
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .chars()
+                            .take(60)
+                            .collect();
                         println!("{prefix}  {s}");
                     } else {
                         for line in r.body.lines() {
@@ -8080,10 +8293,13 @@ fn run() -> Result<()> {
                     let mut slug_order: Vec<&str> = Vec::new();
                     let mut by_slug: HashMap<&str, Vec<&GlobalComment>> = HashMap::new();
                     for r in &rows {
-                        by_slug.entry(r.slug.as_str()).or_insert_with(|| {
-                            slug_order.push(r.slug.as_str());
-                            Vec::new()
-                        }).push(r);
+                        by_slug
+                            .entry(r.slug.as_str())
+                            .or_insert_with(|| {
+                                slug_order.push(r.slug.as_str());
+                                Vec::new()
+                            })
+                            .push(r);
                     }
                     fn walk<'a>(
                         r: &'a GlobalComment,
@@ -8109,7 +8325,9 @@ fn run() -> Result<()> {
                         let mut roots: Vec<&GlobalComment> = Vec::new();
                         for r in entries {
                             match r.parent_id {
-                                Some(p) if ids.contains(&p) => children.entry(p).or_default().push(r),
+                                Some(p) if ids.contains(&p) => {
+                                    children.entry(p).or_default().push(r)
+                                }
                                 _ => roots.push(r),
                             }
                         }
@@ -8139,17 +8357,20 @@ fn run() -> Result<()> {
 
 /// 현재 디렉토리를 길드로 초기화. `<name>.guild` 마커 파일 생성.
 fn init_guild(name_arg: Option<String>, json: bool) -> Result<()> {
-    let cwd = std::env::current_dir()
-        .with_context(|| tf!("현재 디렉토리를 확인할 수 없음", "could not determine current directory"))?;
+    let cwd = std::env::current_dir().with_context(|| {
+        tf!(
+            "현재 디렉토리를 확인할 수 없음",
+            "could not determine current directory"
+        )
+    })?;
     let (guild_path, name) = init_guild_at(&cwd, name_arg)?;
 
     if json {
         json_println!(serde_json::json!({
-                "ok": true,
-                "guild_path": guild_path.to_string_lossy(),
-                "name": name,
-            })
-        );
+            "ok": true,
+            "guild_path": guild_path.to_string_lossy(),
+            "name": name,
+        }));
     } else {
         // 서버 / gui 안내는 출력 X — cli 의 책임 범위 밖.
         println!("✓ guild created: {}", guild_path.display());
@@ -8194,7 +8415,13 @@ fn init_guild_at(
                 cwd.display()
             ))
         })?)
-        .with_context(|| tf!("기존 마커 파싱 실패: {}", "failed to parse existing marker: {}", path.display()))?;
+        .with_context(|| {
+            tf!(
+                "기존 마커 파싱 실패: {}",
+                "failed to parse existing marker: {}",
+                path.display()
+            )
+        })?;
         if let Some(arg) = &name_arg
             && arg != &parsed.name
         {
@@ -8229,15 +8456,24 @@ fn init_guild_at(
         // DEV-064: 마커 포맷은 core 공용 헬퍼 — schema_version 포함.
         let content = openguild_core::guild_file::marker_content(&name, &today);
         std::fs::write(&guild_path, content).with_context(|| {
-            tf!("길드 파일 작성 실패: {}", "failed to write guild file: {}", guild_path.display())
+            tf!(
+                "길드 파일 작성 실패: {}",
+                "failed to write guild file: {}",
+                guild_path.display()
+            )
         })?;
         (guild_path, name)
     };
 
     // .guild/ 디렉토리 + 기본 시드 (types/statuses) + .gitignore.
     // idempotent — 이미 있는 파일은 건드리지 않음.
-    openguild_core::repo::seed_guild_dir(cwd)
-        .with_context(|| tf!(".guild/ 시드 실패: {}", ".guild/ seed failed: {}", cwd.display()))?;
+    openguild_core::repo::seed_guild_dir(cwd).with_context(|| {
+        tf!(
+            ".guild/ 시드 실패: {}",
+            ".guild/ seed failed: {}",
+            cwd.display()
+        )
+    })?;
 
     // BUG-102: 시드 직후 index.db 를 파일 기준으로 재구축. 이걸 안 하면 첫
     // Store::open 의 migration(0001)이 넣는 *구식 기본 statuses(5개)* 가 DB 에
@@ -8318,7 +8554,7 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
     match sub {
         TypesCmd::List { table } => {
             let types = c.quest_types()?;
-                        ensure_table_json_exclusive(table, json)?;
+            ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&types));
             } else if table {
@@ -8332,7 +8568,12 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                         ]
                     })
                     .collect();
-                render_table(&["PREFIX", "COLOR", "DESCRIPTION"], &[false, false], &rows, "types");
+                render_table(
+                    &["PREFIX", "COLOR", "DESCRIPTION"],
+                    &[false, false],
+                    &rows,
+                    "types",
+                );
             } else {
                 for t in &types {
                     // DEV-046: prefix 에 type.color.
@@ -8344,7 +8585,11 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 }
             }
         }
-        TypesCmd::Add { prefix, color, description } => {
+        TypesCmd::Add {
+            prefix,
+            color,
+            description,
+        } => {
             let prefix_uc = prefix.trim().to_uppercase();
             let row = c.create_type(prefix_uc, color, description)?;
             if json {
@@ -8384,12 +8629,7 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 .map(|s| s.trim().to_uppercase())
                 .filter(|s| !s.is_empty() && s != &old_prefix);
             let renamed = new_prefix_uc.is_some();
-            let row = c.update_type(
-                old_prefix.clone(),
-                new_prefix_uc,
-                color,
-                desc_arg,
-            )?;
+            let row = c.update_type(old_prefix.clone(), new_prefix_uc, color, desc_arg)?;
             if json {
                 println!("{}", json_str(&row));
             } else {
@@ -8408,7 +8648,11 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 } else {
                     println!(
                         "{}",
-                        tf!("{p} 갱신됨 — {}", "{p} updated — {}", row.description.as_deref().unwrap_or(""))
+                        tf!(
+                            "{p} 갱신됨 — {}",
+                            "{p} updated — {}",
+                            row.description.as_deref().unwrap_or("")
+                        )
                     );
                 }
             }
@@ -8439,7 +8683,11 @@ fn doc_headings(body: &str) -> Vec<(usize, String, usize)> {
         let trimmed = raw.trim_start();
         // 코드펜스 토글 — ``` 또는 ~~~ 로 시작하는 줄.
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            let marker = if trimmed.starts_with("```") { "```" } else { "~~~" };
+            let marker = if trimmed.starts_with("```") {
+                "```"
+            } else {
+                "~~~"
+            };
             if !in_fence {
                 in_fence = true;
                 fence_marker = marker;
@@ -8466,20 +8714,37 @@ fn doc_headings(body: &str) -> Vec<(usize, String, usize)> {
     out
 }
 
-fn handle_docs(json: bool, name: Option<String>, full: bool, section: Option<String>) -> Result<()> {
+fn handle_docs(
+    json: bool,
+    name: Option<String>,
+    full: bool,
+    section: Option<String>,
+) -> Result<()> {
     const DOCS: &[(&str, &str, &str)] = &[
-        ("usage", "사용자 매뉴얼 (USAGE.md)", include_str!("../../docs/USAGE.md")),
-        ("readme", "프로젝트 소개 (README.md)", include_str!("../../README.md")),
-        ("changelog", "변경 이력 (CHANGELOG.md)", include_str!("../../CHANGELOG.md")),
+        (
+            "usage",
+            "사용자 매뉴얼 (USAGE.md)",
+            include_str!("../../docs/USAGE.md"),
+        ),
+        (
+            "readme",
+            "프로젝트 소개 (README.md)",
+            include_str!("../../README.md"),
+        ),
+        (
+            "changelog",
+            "변경 이력 (CHANGELOG.md)",
+            include_str!("../../CHANGELOG.md"),
+        ),
     ];
     let Some(n) = name else {
         // 이름 미지정 — 문서 목록.
         if json {
-            json_println!(serde_json::json!(DOCS
-                    .iter()
+            json_println!(serde_json::json!(
+                DOCS.iter()
                     .map(|(k, d, _)| serde_json::json!({ "name": k, "description": d }))
-                    .collect::<Vec<_>>())
-            );
+                    .collect::<Vec<_>>()
+            ));
         } else {
             for (k, d, _) in DOCS {
                 println!("{k:<10} {d}");
@@ -8499,7 +8764,10 @@ fn handle_docs(json: bool, name: Option<String>, full: bool, section: Option<Str
         bail!(tf!(
             "알 수 없는 문서 '{n}' — 사용 가능: {}",
             "unknown doc '{n}' — available: {}",
-            DOCS.iter().map(|(k, _, _)| *k).collect::<Vec<_>>().join(" | ")
+            DOCS.iter()
+                .map(|(k, _, _)| *k)
+                .collect::<Vec<_>>()
+                .join(" | ")
         ));
     };
 
@@ -8532,7 +8800,13 @@ fn handle_docs(json: bool, name: Option<String>, full: bool, section: Option<Str
             })).collect::<Vec<_>>(),
         }));
     } else if headings.is_empty() {
-        println!("{}", tf!("(제목 없음 — --full 로 전체 출력)", "(no headings — use --full for the whole body)"));
+        println!(
+            "{}",
+            tf!(
+                "(제목 없음 — --full 로 전체 출력)",
+                "(no headings — use --full for the whole body)"
+            )
+        );
     } else {
         for (idx, (level, text, _)) in headings.iter().enumerate() {
             // 목차 번호 + 레벨 들여쓰기.
@@ -8636,10 +8910,14 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
             let saved = locale::load_saved()?;
             let effective = locale::current();
             if json {
-                json_println!(serde_json::json!({ "saved": saved.as_str(), "effective": effective.as_str() })
+                json_println!(
+                    serde_json::json!({ "saved": saved.as_str(), "effective": effective.as_str() })
                 );
             } else if saved == effective {
-                println!("{}", tf!("현재 언어: {}", "Current language: {}", saved.as_str()));
+                println!(
+                    "{}",
+                    tf!("현재 언어: {}", "Current language: {}", saved.as_str())
+                );
             } else {
                 // OPENGUILD_LOCALE env 가 저장값을 덮어쓴 상태 — 둘 다 보여줌.
                 println!(
@@ -8664,16 +8942,17 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
             // DEV-254: 저장 직후 프로세스 locale 플래그도 갱신 — 안 하면 아래
             // 확인 메시지의 tf! 가 시작 시점의 (이전) 언어로 나온다(사용자 보고:
             // "전환 완료 안내가 이전 언어로 표시됨").
-            LOCALE.store(
-                parsed == Locale::En,
-                std::sync::atomic::Ordering::Relaxed,
-            );
+            LOCALE.store(parsed == Locale::En, std::sync::atomic::Ordering::Relaxed);
             if json {
                 json_println!(serde_json::json!({ "ok": true, "locale": parsed.as_str() }));
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 언어를 '{}' 로 저장했습니다.", "✓ Language saved as '{}'.", parsed.as_str())
+                    tf!(
+                        "✓ 언어를 '{}' 로 저장했습니다.",
+                        "✓ Language saved as '{}'.",
+                        parsed.as_str()
+                    )
                 );
             }
         }
@@ -8700,7 +8979,10 @@ fn handle_guild(json: bool, sub: GuildCmd) -> Result<()> {
                     .collect();
                 json_println!(arr);
             } else if list.is_empty() {
-                println!("{}", tf!("(최근 접속한 길드 없음)", "(no recently opened guilds)"));
+                println!(
+                    "{}",
+                    tf!("(최근 접속한 길드 없음)", "(no recently opened guilds)")
+                );
             } else {
                 for r in &list {
                     println!("{}  {}", r.name, r.path);
@@ -8721,14 +9003,15 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
             if json {
                 let defined: std::collections::HashSet<&str> =
                     defs.iter().map(|d| d.slug.as_str()).collect();
-                let undefined: Vec<&String> =
-                    used_tags.iter().filter(|t| !defined.contains(t.as_str())).collect();
+                let undefined: Vec<&String> = used_tags
+                    .iter()
+                    .filter(|t| !defined.contains(t.as_str()))
+                    .collect();
                 json_println!(serde_json::json!({
-                        "defs": defs,
-                        "used": if used { Some(&used_tags) } else { None },
-                        "undefined_in_use": if used { Some(undefined) } else { None },
-                    })
-                );
+                    "defs": defs,
+                    "used": if used { Some(&used_tags) } else { None },
+                    "undefined_in_use": if used { Some(undefined) } else { None },
+                }));
             } else {
                 if table {
                     // 사용자 피드백: tag list 에 --table 누락 — 다른 목록 명령과
@@ -8739,44 +9022,74 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
                             vec![
                                 (
                                     d.slug.clone(),
-                                    if d.color.is_empty() { None } else { Some(d.color.clone()) },
+                                    if d.color.is_empty() {
+                                        None
+                                    } else {
+                                        Some(d.color.clone())
+                                    },
                                 ),
                                 (d.color.clone(), None),
                                 (d.description.clone(), None),
                             ]
                         })
                         .collect();
-                    render_table(&["SLUG", "COLOR", "DESCRIPTION"], &[false, false], &rows, "tags");
+                    render_table(
+                        &["SLUG", "COLOR", "DESCRIPTION"],
+                        &[false, false],
+                        &rows,
+                        "tags",
+                    );
                 } else {
                     if defs.is_empty() {
                         println!("{}", tf!("(정의된 태그 없음)", "(no defined tags)"));
                     }
                     for d in &defs {
                         let slug = colorize(&format!("{:<20}", d.slug), &d.color);
-                        let color = if d.color.is_empty() { tf!("(색 없음)", "(no color)") } else { d.color.clone() };
+                        let color = if d.color.is_empty() {
+                            tf!("(색 없음)", "(no color)")
+                        } else {
+                            d.color.clone()
+                        };
                         println!("{slug} {:<8} {}", color, d.description);
                     }
                 }
                 if used {
                     let defined: std::collections::HashSet<&str> =
                         defs.iter().map(|d| d.slug.as_str()).collect();
-                    let undefined: Vec<&String> =
-                        used_tags.iter().filter(|t| !defined.contains(t.as_str())).collect();
-                    println!("{}", tf!("-- 사용 중 태그 {}개", "-- {} tag(s) in use", used_tags.len()));
+                    let undefined: Vec<&String> = used_tags
+                        .iter()
+                        .filter(|t| !defined.contains(t.as_str()))
+                        .collect();
+                    println!(
+                        "{}",
+                        tf!(
+                            "-- 사용 중 태그 {}개",
+                            "-- {} tag(s) in use",
+                            used_tags.len()
+                        )
+                    );
                     if !undefined.is_empty() {
                         println!(
                             "{}",
                             tf!(
                                 "-- 정의 없이 사용 중: {}",
                                 "-- in use without a definition: {}",
-                                undefined.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                                undefined
+                                    .iter()
+                                    .map(|s| s.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
                             )
                         );
                     }
                 }
             }
         }
-        TagDefCmd::Add { slug, color, description } => {
+        TagDefCmd::Add {
+            slug,
+            color,
+            description,
+        } => {
             if c.tag_defs()?.iter().any(|d| d.slug == slug) {
                 bail!(tf!(
                     "태그 정의 '{slug}' 가 이미 있습니다 — 수정은 `tag update`",
@@ -8793,11 +9106,19 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 태그 정의 추가: {}", "✓ tag def added: {}", colorize(&d.slug, &d.color))
+                    tf!(
+                        "✓ 태그 정의 추가: {}",
+                        "✓ tag def added: {}",
+                        colorize(&d.slug, &d.color)
+                    )
                 );
             }
         }
-        TagDefCmd::Update { slug, color, description } => {
+        TagDefCmd::Update {
+            slug,
+            color,
+            description,
+        } => {
             let defs = c.tag_defs()?;
             let Some(existing) = defs.iter().find(|d| d.slug == slug) else {
                 bail!(tf!(
@@ -8822,7 +9143,11 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 태그 정의 갱신: {}", "✓ tag def updated: {}", colorize(&d.slug, &d.color))
+                    tf!(
+                        "✓ 태그 정의 갱신: {}",
+                        "✓ tag def updated: {}",
+                        colorize(&d.slug, &d.color)
+                    )
                 );
             }
         }
@@ -8849,7 +9174,7 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
     match sub {
         StatusesCmd::List { table } => {
             let statuses = c.quest_statuses()?;
-                        ensure_table_json_exclusive(table, json)?;
+            ensure_table_json_exclusive(table, json)?;
             if json {
                 // BUG-018: agent / script 용 — slug 포함된 raw row.
                 println!("{}", json_str(&statuses));
@@ -8890,12 +9215,7 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
             name_ko,
             sort_order,
         } => {
-            let row = c.create_status(
-                name_en,
-                name_ko.unwrap_or_default(),
-                color,
-                sort_order,
-            )?;
+            let row = c.create_status(name_en, name_ko.unwrap_or_default(), color, sort_order)?;
             if json {
                 println!("{}", json_str(&row));
             } else {
@@ -8906,7 +9226,11 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
                         "{n} (slug={}) 추가됨 — {}",
                         "{n} (slug={}) added — {}",
                         row.slug,
-                        if row.name_ko.is_empty() { "-" } else { &row.name_ko }
+                        if row.name_ko.is_empty() {
+                            "-"
+                        } else {
+                            &row.name_ko
+                        }
                     )
                 );
             }
@@ -8972,7 +9296,9 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
                 .quest_statuses()
                 .ok()
                 .and_then(|v| {
-                    v.into_iter().find(|s| s.slug == resolved_slug).map(|s| s.name_en)
+                    v.into_iter()
+                        .find(|s| s.slug == resolved_slug)
+                        .map(|s| s.name_en)
                 })
                 .unwrap_or_else(|| resolved_slug.clone());
             c.delete_status(resolved_slug)?;
@@ -8993,16 +9319,15 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
             let templates = c.templates_list()?;
             if json {
                 json_println!(serde_json::json!({
-                        "templates": templates.iter().map(|t| serde_json::json!({
-                            "name": t.name,
-                            "title": t.frontmatter.title,
-                            "type": t.frontmatter.type_prefix,
-                            "urgency": t.frontmatter.urgency,
-                            "tags": t.frontmatter.tags,
-                            "body_len": t.body.len(),
-                        })).collect::<Vec<_>>(),
-                    })
-                );
+                    "templates": templates.iter().map(|t| serde_json::json!({
+                        "name": t.name,
+                        "title": t.frontmatter.title,
+                        "type": t.frontmatter.type_prefix,
+                        "urgency": t.frontmatter.urgency,
+                        "tags": t.frontmatter.tags,
+                        "body_len": t.body.len(),
+                    })).collect::<Vec<_>>(),
+                }));
             } else if templates.is_empty() {
                 println!(
                     "{}",
@@ -9037,17 +9362,20 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
             let t = c.template_load(&name)?;
             if json {
                 json_println!(serde_json::json!({
-                        "name": t.name,
-                        "title": t.frontmatter.title,
-                        "type": t.frontmatter.type_prefix,
-                        "urgency": t.frontmatter.urgency,
-                        "tags": t.frontmatter.tags,
-                        "body": t.body,
-                    })
-                );
+                    "name": t.name,
+                    "title": t.frontmatter.title,
+                    "type": t.frontmatter.type_prefix,
+                    "urgency": t.frontmatter.urgency,
+                    "tags": t.frontmatter.tags,
+                    "body": t.body,
+                }));
             } else {
                 let no_title = tf!("(제목 없음)", "(no title)");
-                println!("# {} — {}", t.name, t.frontmatter.title.as_deref().unwrap_or(&no_title));
+                println!(
+                    "# {} — {}",
+                    t.name,
+                    t.frontmatter.title.as_deref().unwrap_or(&no_title)
+                );
                 println!("{}", t.body);
             }
         }
@@ -9080,12 +9408,17 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
             };
             let path = c.template_save(&tpl, force)?;
             if json {
-                json_println!(serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
+                json_println!(
+                    serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
                 );
             } else {
                 println!(
                     "{}",
-                    tf!("✓ 템플릿 '{name}' 저장 — {}", "✓ template '{name}' saved — {}", path.display())
+                    tf!(
+                        "✓ 템플릿 '{name}' 저장 — {}",
+                        "✓ template '{name}' saved — {}",
+                        path.display()
+                    )
                 );
             }
         }
@@ -9131,12 +9464,18 @@ fn run_doc_tag_cmd(
             }
         }
         TagCmd::Add { slug, tags } => {
-            let edit = openguild_core::ops::TagEdit { add: flat(&tags), remove: vec![] };
+            let edit = openguild_core::ops::TagEdit {
+                add: flat(&tags),
+                remove: vec![],
+            };
             let after = edit_fn(&slug, edit)?;
             report(&slug, &after, &tf!("(없음)", "(none)"));
         }
         TagCmd::Rm { slug, tags } => {
-            let edit = openguild_core::ops::TagEdit { add: vec![], remove: flat(&tags) };
+            let edit = openguild_core::ops::TagEdit {
+                add: vec![],
+                remove: flat(&tags),
+            };
             let after = edit_fn(&slug, edit)?;
             report(&slug, &after, &tf!("(없음)", "(none)"));
         }
@@ -9161,19 +9500,18 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                 |slug| c.rule_tag_list(slug),
                 |slug, tags| c.rule_tag_set(slug, tags),
                 |slug, edit| c.rule_tag_edit(slug, edit),
-            )
+            );
         }
         RulesCmd::List { table } => {
             let entries = c.rules_list()?;
-                        ensure_table_json_exclusive(table, json)?;
+            ensure_table_json_exclusive(table, json)?;
             if json {
                 json_println!(serde_json::json!({
-                        "entries": entries.iter().map(|e| serde_json::json!({
-                            "slug": e.slug,
-                            "len": e.content.len(),
-                        })).collect::<Vec<_>>(),
-                    })
-                );
+                    "entries": entries.iter().map(|e| serde_json::json!({
+                        "slug": e.slug,
+                        "len": e.content.len(),
+                    })).collect::<Vec<_>>(),
+                }));
             } else if table {
                 // 사용자 피드백: rule list 에 --table 누락 — 다른 목록 명령과 동일 렌더.
                 // TAGS 는 한글 가능 → 마지막 컬럼(render_table 규칙).
@@ -9188,29 +9526,28 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                         ]
                     })
                     .collect();
-                render_table(&["SLUG", "LINES", "SIZE", "TAGS"], &[false, true, true], &rows, "rules");
+                render_table(
+                    &["SLUG", "LINES", "SIZE", "TAGS"],
+                    &[false, true, true],
+                    &rows,
+                    "rules",
+                );
             } else if entries.is_empty() {
                 println!("{}", tf!("(규칙 없음)", "(no rules)"));
             } else {
                 println!("Slug                  Lines  Size");
                 for e in &entries {
                     let lines = e.content.lines().count();
-                    println!(
-                        "{:<22}{:>5}  {} bytes",
-                        e.slug,
-                        lines,
-                        e.content.len()
-                    );
+                    println!("{:<22}{:>5}  {} bytes", e.slug, lines, e.content.len());
                 }
             }
         }
         RulesCmd::Show { slug } => {
-            let content = c
-                .rules_get(&slug)?
-                .ok_or_else(|| anyhow::anyhow!(tf!("규칙 '{slug}' 없음", "rule '{slug}' not found")))?;
+            let content = c.rules_get(&slug)?.ok_or_else(|| {
+                anyhow::anyhow!(tf!("규칙 '{slug}' 없음", "rule '{slug}' not found"))
+            })?;
             if json {
-                json_println!(serde_json::json!({ "slug": slug, "content": content })
-                );
+                json_println!(serde_json::json!({ "slug": slug, "content": content }));
             } else {
                 print!("{content}");
                 if !content.ends_with('\n') {
@@ -9223,7 +9560,11 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             let history = c.rule_history(&slug)?;
             print_sidecar_history(&history, json);
         }
-        RulesCmd::Set { slug, file, base_version } => {
+        RulesCmd::Set {
+            slug,
+            file,
+            base_version,
+        } => {
             let content = read_content(file.as_deref())?;
             c.rules_set(&slug, content, base_version)?;
             if json {
@@ -9242,13 +9583,19 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             if json {
                 json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
-                println!("{}", tf!("✓ 규칙 '{slug}' 생성됨", "✓ rule '{slug}' created"));
+                println!(
+                    "{}",
+                    tf!("✓ 규칙 '{slug}' 생성됨", "✓ rule '{slug}' created")
+                );
             }
         }
         RulesCmd::Delete { slug, force } => {
             if !force
                 && !confirm_delete(
-                    &tf!("규칙 '{slug}' 을 삭제할까요? (y/N) ", "delete rule '{slug}'? (y/N) "),
+                    &tf!(
+                        "규칙 '{slug}' 을 삭제할까요? (y/N) ",
+                        "delete rule '{slug}'? (y/N) "
+                    ),
                     "--force",
                 )?
             {
@@ -9259,18 +9606,26 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             if json {
                 json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
-                println!("{}", tf!("✓ 규칙 '{slug}' 삭제됨", "✓ rule '{slug}' deleted"));
+                println!(
+                    "{}",
+                    tf!("✓ 규칙 '{slug}' 삭제됨", "✓ rule '{slug}' deleted")
+                );
             }
         }
         RulesCmd::Rename { slug, new_slug } => {
             c.rules_rename(&slug, &new_slug)?;
             if json {
                 json_println!(serde_json::json!({
-                        "ok": true, "from": slug, "to": new_slug,
-                    })
-                );
+                    "ok": true, "from": slug, "to": new_slug,
+                }));
             } else {
-                println!("{}", tf!("✓ '{slug}' → '{new_slug}' 이름 변경", "✓ renamed '{slug}' → '{new_slug}'"));
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ '{slug}' → '{new_slug}' 이름 변경",
+                        "✓ renamed '{slug}' → '{new_slug}'"
+                    )
+                );
             }
         }
     }
@@ -9280,9 +9635,14 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
-        LibraryCmd::List { table, folder, tag, query } => {
+        LibraryCmd::List {
+            table,
+            folder,
+            tag,
+            query,
+        } => {
             let books = c.library_list(folder.as_deref(), &tag, query.as_deref())?;
-                        ensure_table_json_exclusive(table, json)?;
+            ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&books));
             } else if table {
@@ -9293,14 +9653,18 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                         vec![
                             (b.book_id.clone(), None),
                             (b.updated_at.clone(), None),
-                            (format!("{}{}{}",
-                                if b.path.is_empty() { "" } else { "[" },
-                                b.path,
-                                if b.path.is_empty() { "" } else { "] " },
-                            // rhai 가 `Add<_> for String` 을 하나 더 들고
-                            // 오면서 `String + &String` 의 추론이 모호해졌다
-                            // ([[DEV-376]]). `&str` 로 못 박는다.
-                            ) + b.title.as_str(), None),
+                            (
+                                format!(
+                                    "{}{}{}",
+                                    if b.path.is_empty() { "" } else { "[" },
+                                    b.path,
+                                    if b.path.is_empty() { "" } else { "] " },
+                                    // rhai 가 `Add<_> for String` 을 하나 더 들고
+                                    // 오면서 `String + &String` 의 추론이 모호해졌다
+                                    // ([[DEV-376]]). `&str` 로 못 박는다.
+                                ) + b.title.as_str(),
+                                None,
+                            ),
                         ]
                     })
                     .collect();
@@ -9325,7 +9689,11 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             } else {
                 println!("{}  {}", b.book_id, b.title);
                 let top_level = tf!("(최상위)", "(top level)");
-                let loc = if b.path.is_empty() { &top_level } else { &b.path };
+                let loc = if b.path.is_empty() {
+                    &top_level
+                } else {
+                    &b.path
+                };
                 println!("{}", tf!("  경로: {loc}", "  path: {loc}"));
                 println!("  created: {}  updated: {}", b.created_at, b.updated_at);
                 if b.version > 0 {
@@ -9343,7 +9711,8 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             let l = match c {
                 Backend::Local(l) => l,
                 Backend::Http(h) => {
-                    let written = remote_library_export(h, &dest, folder.as_deref(), id.as_deref())?;
+                    let written =
+                        remote_library_export(h, &dest, folder.as_deref(), id.as_deref())?;
                     if json {
                         let items: Vec<_> = written
                             .iter()
@@ -9364,15 +9733,19 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 (None, Some(f)) => openguild_core::ops::library_export::Pick::Folder(f.clone()),
                 (None, None) => openguild_core::ops::library_export::Pick::Folder(String::new()),
             };
-            let out = Backend::map_err(l.rt.block_on(openguild_core::ops::library_export::export(
-                &l.store,
-                &pick,
-                std::path::Path::new(&dest),
-            )))?;
+            let out =
+                Backend::map_err(l.rt.block_on(openguild_core::ops::library_export::export(
+                    &l.store,
+                    &pick,
+                    std::path::Path::new(&dest),
+                )))?;
             if json {
                 json_println!(serde_json::json!({ "ok": true, "exported": out }));
             } else if out.is_empty() {
-                println!("{}", tf!("(내보낼 문서가 없습니다)", "(no documents to export)"));
+                println!(
+                    "{}",
+                    tf!("(내보낼 문서가 없습니다)", "(no documents to export)")
+                );
             } else {
                 for e in &out {
                     let att = if e.attachments > 0 {
@@ -9382,10 +9755,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                     };
                     println!("{}  {}{att}", e.book_id, e.rel);
                 }
-                println!(
-                    "{}",
-                    tf!("-- {} 개 문서", "-- {} documents", out.len())
-                );
+                println!("{}", tf!("-- {} 개 문서", "-- {} documents", out.len()));
             }
         }
         LibraryCmd::Highlight { sub } => run_highlight_cmd(c, HighlightScope::Library, sub, json)?,
@@ -9393,7 +9763,11 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             let history = c.library_history(&id)?;
             print_sidecar_history(&history, json);
         }
-        LibraryCmd::New { title, file, folder } => {
+        LibraryCmd::New {
+            title,
+            file,
+            folder,
+        } => {
             let body = match file {
                 Some(p) => std::fs::read_to_string(&p).with_context(|| {
                     tf!("파일 읽기 실패: {}", "failed to read file: {}", p.display())
@@ -9404,10 +9778,19 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             if json {
                 println!("{}", json_str(&b));
             } else {
-                println!("{}", tf!("✓ {} 생성됨 — {}", "✓ {} created — {}", b.book_id, b.title));
+                println!(
+                    "{}",
+                    tf!("✓ {} 생성됨 — {}", "✓ {} created — {}", b.book_id, b.title)
+                );
             }
         }
-        LibraryCmd::Update { id, title, file, folder, base_version } => {
+        LibraryCmd::Update {
+            id,
+            title,
+            file,
+            folder,
+            base_version,
+        } => {
             if title.is_none() && file.is_none() && folder.is_none() {
                 bail!(tf!(
                     "변경할 필드가 없습니다 — --title / --file / --path 지정",
@@ -9420,17 +9803,29 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 })?),
                 None => None,
             };
-            let b = c.library_update(&id, title.as_deref(), body.as_deref(), folder.as_deref(), base_version)?;
+            let b = c.library_update(
+                &id,
+                title.as_deref(),
+                body.as_deref(),
+                folder.as_deref(),
+                base_version,
+            )?;
             if json {
                 println!("{}", json_str(&b));
             } else {
-                println!("{}", tf!("✓ {} 수정됨 — {}", "✓ {} updated — {}", b.book_id, b.title));
+                println!(
+                    "{}",
+                    tf!("✓ {} 수정됨 — {}", "✓ {} updated — {}", b.book_id, b.title)
+                );
             }
         }
         LibraryCmd::Delete { id, yes } => {
             if !yes
                 && !confirm_delete(
-                    &tf!("도서관 문서 '{id}' 을 삭제할까요? (y/N) ", "delete library doc '{id}'? (y/N) "),
+                    &tf!(
+                        "도서관 문서 '{id}' 을 삭제할까요? (y/N) ",
+                        "delete library doc '{id}'? (y/N) "
+                    ),
                     "--yes",
                 )?
             {
@@ -9468,13 +9863,19 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 if json {
                     println!("{}", json_str(&f));
                 } else {
-                    println!("{}", tf!("✓ 폴더 '{}' 생성됨", "✓ folder '{}' created", f.path));
+                    println!(
+                        "{}",
+                        tf!("✓ 폴더 '{}' 생성됨", "✓ folder '{}' created", f.path)
+                    );
                 }
             }
             LibraryFolderCmd::Delete { path, yes } => {
                 if !yes
                     && !confirm_delete(
-                        &tf!("폴더 '{path}' 을 삭제할까요? (y/N) ", "delete folder '{path}'? (y/N) "),
+                        &tf!(
+                            "폴더 '{path}' 을 삭제할까요? (y/N) ",
+                            "delete folder '{path}'? (y/N) "
+                        ),
                         "--yes",
                     )?
                 {
@@ -9483,14 +9884,22 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 }
                 let removed = c.library_folder_delete(&path)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "path": path, "removed": removed }));
+                    json_println!(
+                        serde_json::json!({ "ok": true, "path": path, "removed": removed })
+                    );
                 } else if removed {
-                    println!("{}", tf!("✓ 폴더 '{path}' 삭제됨", "✓ folder '{path}' deleted"));
+                    println!(
+                        "{}",
+                        tf!("✓ 폴더 '{path}' 삭제됨", "✓ folder '{path}' deleted")
+                    );
                 } else {
                     // BUG-300: 오류는 아니지만 아무 일도 안 일어났다 — 그대로 말한다.
                     println!(
                         "{}",
-                        tf!("· 폴더 '{path}' 은 이미 없습니다", "· folder '{path}' was already gone")
+                        tf!(
+                            "· 폴더 '{path}' 은 이미 없습니다",
+                            "· folder '{path}' was already gone"
+                        )
                     );
                 }
             }
@@ -9647,12 +10056,11 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
             let info = c.create_backup()?;
             if json {
                 json_println!(serde_json::json!({
-                        "ok": true,
-                        "timestamp": info.timestamp,
-                        "size_bytes": info.size_bytes,
-                        "path": info.path.to_string_lossy(),
-                    })
-                );
+                    "ok": true,
+                    "timestamp": info.timestamp,
+                    "size_bytes": info.size_bytes,
+                    "path": info.path.to_string_lossy(),
+                }));
             } else {
                 println!(
                     "{}",
@@ -9681,7 +10089,10 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
                     .collect();
                 println!("{}", json_str(&arr));
             } else if list.is_empty() {
-                println!("{}", tf!("(사용 가능한 백업 없음)", "(no backups available)"));
+                println!(
+                    "{}",
+                    tf!("(사용 가능한 백업 없음)", "(no backups available)")
+                );
                 println!();
                 println!(
                     "{}",
@@ -9691,7 +10102,10 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
                     )
                 );
             } else {
-                println!("{}", tf!("백업 목록 (오래된 순):", "backup list (oldest first):"));
+                println!(
+                    "{}",
+                    tf!("백업 목록 (오래된 순):", "backup list (oldest first):")
+                );
                 for s in &list {
                     println!(
                         "  {} — {} bytes",
@@ -9706,7 +10120,10 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
             if json {
                 json_println!(serde_json::json!({ "ok": true, "deleted": timestamp }));
             } else {
-                println!("{}", tf!("✓ 백업 삭제: {timestamp}", "✓ backup deleted: {timestamp}"));
+                println!(
+                    "{}",
+                    tf!("✓ 백업 삭제: {timestamp}", "✓ backup deleted: {timestamp}")
+                );
             }
         }
     }
@@ -9724,9 +10141,11 @@ fn handle_restore_file(c: &Backend, json: bool, file: &std::path::Path, force: b
         ));
     };
     let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
-    let info = l
-        .rt
-        .block_on(openguild_core::snapshot::inspect_backup_file(&l.store.paths, &file))?;
+    let info =
+        l.rt.block_on(openguild_core::snapshot::inspect_backup_file(
+            &l.store.paths,
+            &file,
+        ))?;
     if !info.same_guild && !force {
         bail!(tf!(
             "다른 길드의 백업으로 보입니다(백업 안: {}) — 그래도 복원하려면 --force",
@@ -9734,9 +10153,10 @@ fn handle_restore_file(c: &Backend, json: bool, file: &std::path::Path, force: b
             info.guilds.join(", ")
         ));
     }
-    let info = l
-        .rt
-        .block_on(openguild_core::snapshot::restore_backup_file(&l.store, &file, force))?;
+    let info =
+        l.rt.block_on(openguild_core::snapshot::restore_backup_file(
+            &l.store, &file, force,
+        ))?;
     if json {
         json_println!(serde_json::json!({ "ok": true, "restored_from": info }));
     } else {
@@ -9771,13 +10191,12 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
         let report = c.restore_to_point(&ts)?;
         if json {
             json_println!(serde_json::json!({
-                    "ok": true,
-                    "latest": is_latest,
-                    "replayed_to": report.target_ts,
-                    "applied": report.applied,
-                    "pre_backup": report.pre_backup,
-                })
-            );
+                "ok": true,
+                "latest": is_latest,
+                "replayed_to": report.target_ts,
+                "applied": report.applied,
+                "pre_backup": report.pre_backup,
+            }));
         } else if is_latest {
             // 최신 복구 = 무손실(상태 동일) — 폐기 경고 없음.
             println!(
@@ -9818,7 +10237,10 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
                 );
                 println!(
                     "{}",
-                    tf!("되돌리려면: openguild restore --to {pb}", "to revert: openguild restore --to {pb}")
+                    tf!(
+                        "되돌리려면: openguild restore --to {pb}",
+                        "to revert: openguild restore --to {pb}"
+                    )
                 );
             } else {
                 println!(
@@ -9841,10 +10263,9 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
         let info = c.restore_backup(to)?;
         if json {
             json_println!(serde_json::json!({
-                    "ok": true,
-                    "restored_to": info.timestamp,
-                })
-            );
+                "ok": true,
+                "restored_to": info.timestamp,
+            }));
         } else {
             println!(
                 "{}",
@@ -9862,7 +10283,10 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
                     "the file source of truth and index.db cache were restored to the snapshot."
                 )
             );
-            println!("{}", tf!("journal 은 보존됩니다.", "the journal is preserved."));
+            println!(
+                "{}",
+                tf!("journal 은 보존됩니다.", "the journal is preserved.")
+            );
         }
     }
     Ok(())
@@ -9873,14 +10297,13 @@ fn handle_migrate_to_files(c: &Backend, json: bool) -> Result<()> {
     let report = c.migrate_to_files()?;
     if json {
         json_println!(serde_json::json!({
-                "ok": true,
-                "legacy_db": report.legacy_db_path.display().to_string(),
-                "quests_written": report.quests_written,
-                "deleted_quests_included": report.deleted_quests_included,
-                "types_updated": report.types_updated,
-                "index_db_copied": report.index_db_copied,
-            })
-        );
+            "ok": true,
+            "legacy_db": report.legacy_db_path.display().to_string(),
+            "quests_written": report.quests_written,
+            "deleted_quests_included": report.deleted_quests_included,
+            "types_updated": report.types_updated,
+            "index_db_copied": report.index_db_copied,
+        }));
     } else {
         println!("{}", tf!("✓ 마이그레이션 완료", "✓ migration complete"));
         println!("  legacy DB     : {}", report.legacy_db_path.display());
@@ -9910,7 +10333,10 @@ fn handle_migrate_to_files(c: &Backend, json: bool) -> Result<()> {
             if report.index_db_copied {
                 tf!("복사됨", "copied")
             } else {
-                tf!("이미 존재 — 건드리지 않음", "already exists — left untouched")
+                tf!(
+                    "이미 존재 — 건드리지 않음",
+                    "already exists — left untouched"
+                )
             }
         );
     }
@@ -9930,20 +10356,19 @@ fn handle_info(c: &Backend, json: bool, brief: bool) -> Result<()> {
     let schema = i.summary.schema_version.as_deref();
     if json {
         json_println!(serde_json::json!({
-                "guild": i.guild.name,
-                "version": i.guild.version,
-                "created_at": i.guild.created_at,
-                "path": i.path.display().to_string(),
-                "db_size_bytes": i.summary.db_size_bytes,
-                "schema": schema,
-                "quests_alive": i.summary.quests_alive,
-                "quests_deleted": i.summary.quests_deleted,
-                "snapshots": i.snapshots.len(),
-                "snapshots_bytes": snap_total,
-                "latest_snapshot": i.snapshots.last().map(|s| s.timestamp.clone()),
-                "journal_ops": i.journal_total,
-            })
-        );
+            "guild": i.guild.name,
+            "version": i.guild.version,
+            "created_at": i.guild.created_at,
+            "path": i.path.display().to_string(),
+            "db_size_bytes": i.summary.db_size_bytes,
+            "schema": schema,
+            "quests_alive": i.summary.quests_alive,
+            "quests_deleted": i.summary.quests_deleted,
+            "snapshots": i.snapshots.len(),
+            "snapshots_bytes": snap_total,
+            "latest_snapshot": i.snapshots.last().map(|s| s.timestamp.clone()),
+            "journal_ops": i.journal_total,
+        }));
     } else if brief {
         println!(
             "guild={} quests={}/{} schema={} snapshots={} journal={}",
@@ -10060,7 +10485,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 print_quest_list(&quests, json);
             }
         }
-        QuestCmd::Search { query, title_only, limit, id_only, count } => {
+        QuestCmd::Search {
+            query,
+            title_only,
+            limit,
+            id_only,
+            count,
+        } => {
             // DEV-045: list --search 의 발견성을 위한 alias.
             // 동일 백엔드 호출. 사용자 친화적인 단일 인자만 받아 ListQuery 로 변환.
             //
@@ -10078,9 +10509,15 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 println!("{}", quests.len());
             } else if id_only {
                 if json {
-                    println!("{}", json_str(
-                        &quests.iter().map(|q| q.quest_id.clone()).collect::<Vec<_>>()
-                    ));
+                    println!(
+                        "{}",
+                        json_str(
+                            &quests
+                                .iter()
+                                .map(|q| q.quest_id.clone())
+                                .collect::<Vec<_>>()
+                        )
+                    );
                 } else {
                     for q in &quests {
                         println!("{}", q.quest_id);
@@ -10170,8 +10607,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 for h in &history {
                     let old = display(h.old_value.as_deref());
                     let new = display(h.new_value.as_deref());
-                    let rel = openguild_core::time::format_relative(&h.ts)
-                        .unwrap_or_else(|| "—".into());
+                    let rel =
+                        openguild_core::time::format_relative(&h.ts).unwrap_or_else(|| "—".into());
                     if h.op == "change_status" {
                         println!("{}  {:<10} {} → {}", h.ts, rel, old, new);
                     } else {
@@ -10234,7 +10671,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             if !tpl_tags.is_empty()
                 && let Err(e) = c.tag_set(&q.quest_id, tpl_tags)
             {
-                eprintln!("[openguild] {}", tf!("warn: 템플릿 tags 적용 실패 — {e:#}", "warn: failed to apply template tags — {e:#}"));
+                eprintln!(
+                    "[openguild] {}",
+                    tf!(
+                        "warn: 템플릿 tags 적용 실패 — {e:#}",
+                        "warn: failed to apply template tags — {e:#}"
+                    )
+                );
             }
             // 선행 관계 연결. 여기서 실패하면 **에러로 알린다** — 조용히 넘어가면
             // "걸었다고 생각했는데 안 걸린" 상태가 되어 원래 문제로 되돌아간다.
@@ -10247,10 +10690,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             // 한 줄 덧붙인다(JSON 은 스키마를 바꾸지 않는다 — 파싱하는 쪽이 깨진다).
             if !json && !prereq_ids.is_empty() {
                 let names: Vec<&str> = prereq_ids.iter().map(|(s, _)| s.as_str()).collect();
-                println!(
-                    "{}",
-                    tf!("  선행 + {}", "  prereq + {}", names.join(", "))
-                );
+                println!("{}", tf!("  선행 + {}", "  prereq + {}", names.join(", ")));
             }
             // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
             print_quest_full(&q, json);
@@ -10294,11 +10734,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                         );
                     }
                     json_println!(serde_json::json!({
-                            "dry_run": true,
-                            "slug": slug,
-                            "changes": diff,
-                        })
-                    );
+                        "dry_run": true,
+                        "slug": slug,
+                        "changes": diff,
+                    }));
                 } else {
                     println!("[dry-run] update {slug}");
                     if let Some(t) = &title {
@@ -10312,7 +10751,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                         // DEV-046: urgency 색 적용 (양쪽).
                         println!(
                             "  urgency:     {} → {}",
-                            colorize(&detail.quest.urgency.to_string(), urgency_color(detail.quest.urgency)),
+                            colorize(
+                                &detail.quest.urgency.to_string(),
+                                urgency_color(detail.quest.urgency)
+                            ),
                             colorize(&u.to_string(), urgency_color(u))
                         );
                     }
@@ -10357,8 +10799,11 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 .iter()
                 .filter(|s| !cascade_set.contains(s.quest_id.as_str()))
                 .collect();
-            let actual_subs: std::collections::HashSet<&str> =
-                detail.sub_quests.iter().map(|s| s.quest_id.as_str()).collect();
+            let actual_subs: std::collections::HashSet<&str> = detail
+                .sub_quests
+                .iter()
+                .map(|s| s.quest_id.as_str())
+                .collect();
             let invalid_cascade: Vec<&String> = cascade
                 .iter()
                 .filter(|c| !actual_subs.contains(c.as_str()))
@@ -10368,14 +10813,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             if dry_run {
                 if json {
                     json_println!(serde_json::json!({
-                            "dry_run": true,
-                            "would_delete": detail.quest.quest_id,
-                            "cascade_delete": cascade_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
-                            "detach_children": detached_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
-                            "unaffected_prerequisites": detail.prerequisites.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
-                            "invalid_cascade": invalid_cascade,
-                        })
-                    );
+                        "dry_run": true,
+                        "would_delete": detail.quest.quest_id,
+                        "cascade_delete": cascade_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
+                        "detach_children": detached_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
+                        "unaffected_prerequisites": detail.prerequisites.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
+                        "invalid_cascade": invalid_cascade,
+                    }));
                 } else {
                     println!(
                         "[dry-run] would delete {} ({})",
@@ -10438,12 +10882,11 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             c.delete_quest(id, &cascade_ids)?;
             if json {
                 json_println!(serde_json::json!({
-                        "ok": true,
-                        "deleted": slug,
-                        "cascade_deleted": cascade_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
-                        "detached": detached_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
-                    })
-                );
+                    "ok": true,
+                    "deleted": slug,
+                    "cascade_deleted": cascade_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
+                    "detached": detached_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
+                }));
             } else {
                 println!("deleted {slug}");
                 if !cascade_subs.is_empty() {
@@ -10482,15 +10925,12 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
         QuestCmd::Restore { slug } => {
             // alive 목록엔 없으니 deleted 목록에서 slug → id 매칭
             let deleted = c.list_deleted_quests()?;
-            let q = deleted
-                .iter()
-                .find(|q| q.quest_id == slug)
-                .ok_or_else(|| {
-                    anyhow!(tf!(
-                        "'{slug}' is not in the deleted list (또는 이미 alive)",
-                        "'{slug}' is not in the deleted list (or is already alive)"
-                    ))
-                })?;
+            let q = deleted.iter().find(|q| q.quest_id == slug).ok_or_else(|| {
+                anyhow!(tf!(
+                    "'{slug}' is not in the deleted list (또는 이미 alive)",
+                    "'{slug}' is not in the deleted list (or is already alive)"
+                ))
+            })?;
             let restored = c.restore_quest(q.id)?;
             print_quest(&restored, json);
         }
@@ -10536,7 +10976,11 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
         }
         QuestCmd::Retype { slug, type_prefix } => {
             let detail = c.quest_by_slug(&slug)?;
-            if detail.quest.type_prefix.eq_ignore_ascii_case(type_prefix.trim()) {
+            if detail
+                .quest
+                .type_prefix
+                .eq_ignore_ascii_case(type_prefix.trim())
+            {
                 if json {
                     println!("{}", json_str(&detail.quest));
                 } else {
@@ -10592,7 +11036,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                         return Err(anyhow!(tf!(
                             "부모 슬러그를 지정하거나 --detach 를 사용하세요",
                             "specify a parent slug or use --detach"
-                        )))
+                        )));
                     }
                 }
             };
@@ -10669,23 +11113,33 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             TagCmd::List { slug } => {
                 let tags = c.tag_list(&slug)?;
                 if json {
-                    json_println!(serde_json::json!({ "slug": slug, "tags": tags })
-                    );
+                    json_println!(serde_json::json!({ "slug": slug, "tags": tags }));
                 } else if tags.is_empty() {
                     println!("{}", tf!("(태그 없음)", "(no tags)"));
                 } else {
                     println!("{}", tags.join(" "));
                 }
             }
-            TagCmd::Add { slug, tags: new_tags } => {
+            TagCmd::Add {
+                slug,
+                tags: new_tags,
+            } => {
                 // 공백 split — 공백 구분 한 인자도 지원.
                 let add = new_tags
                     .iter()
                     .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
                     .collect();
-                let existing = c.tag_edit(&slug, openguild_core::ops::TagEdit { add, remove: vec![] })?;
+                let existing = c.tag_edit(
+                    &slug,
+                    openguild_core::ops::TagEdit {
+                        add,
+                        remove: vec![],
+                    },
+                )?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": existing }));
+                    json_println!(
+                        serde_json::json!({ "ok": true, "slug": slug, "tags": existing })
+                    );
                 } else {
                     println!("✓ {slug} tags: {}", existing.join(" "));
                 }
@@ -10695,7 +11149,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                     .iter()
                     .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
                     .collect();
-                let after = c.tag_edit(&slug, openguild_core::ops::TagEdit { add: vec![], remove })?;
+                let after = c.tag_edit(
+                    &slug,
+                    openguild_core::ops::TagEdit {
+                        add: vec![],
+                        remove,
+                    },
+                )?;
                 if json {
                     json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
                 } else if after.is_empty() {
@@ -10704,7 +11164,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                     println!("✓ {slug} tags: {}", after.join(" "));
                 }
             }
-            TagCmd::Set { slug, tags: new_tags } => {
+            TagCmd::Set {
+                slug,
+                tags: new_tags,
+            } => {
                 // 공백 구분 인자도 split.
                 let flat: Vec<String> = new_tags
                     .iter()
@@ -10726,8 +11189,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 let pid = c.id_of(&prereq)?;
                 c.add_prerequisite(id, pid)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "added": prereq, "to": slug })
-                    );
+                    json_println!(serde_json::json!({ "ok": true, "added": prereq, "to": slug }));
                 } else {
                     println!("{slug} prereq + {prereq}");
                 }
@@ -10737,7 +11199,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 let pid = c.id_of(&prereq)?;
                 c.remove_prerequisite(id, pid)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "removed": prereq, "from": slug })
+                    json_println!(
+                        serde_json::json!({ "ok": true, "removed": prereq, "from": slug })
                     );
                 } else {
                     println!("{slug} prereq - {prereq}");
@@ -10829,7 +11292,11 @@ mod tests {
         let w = super::max_width(["긴명령", "시험플러그인", "되부르기"].into_iter());
         assert_eq!(w, 12, "가장 넓은 것은 시험플러그인 6자 = 12칸");
         for name in ["긴명령", "시험플러그인", "되부르기"] {
-            assert_eq!(super::pad_to_width(name, w).width(), w, "{name} 이 {w}칸으로 안 맞음");
+            assert_eq!(
+                super::pad_to_width(name, w).width(),
+                w,
+                "{name} 이 {w}칸으로 안 맞음"
+            );
         }
     }
 
@@ -10846,17 +11313,36 @@ mod tests {
     // DEV-451: 캠페인 · 도서관 목록도 -q — `-` 로 시작하는 쿼리를 옵션으로 읽지 않는다.
     #[test]
     fn campaign_and_library_lists_take_a_query() {
-        let cli = Cli::try_parse_from(["openguild", "campaign", "list", "-q", "-status:done end:overdue"]).unwrap();
+        let cli = Cli::try_parse_from([
+            "openguild",
+            "campaign",
+            "list",
+            "-q",
+            "-status:done end:overdue",
+        ])
+        .unwrap();
         match cli.command {
-            Command::Campaign { sub: CampaignCmd::List { query, .. } } => {
+            Command::Campaign {
+                sub: CampaignCmd::List { query, .. },
+            } => {
                 assert_eq!(query.as_deref(), Some("-status:done end:overdue"))
             }
             _ => panic!(),
         }
-        let cli =
-            Cli::try_parse_from(["openguild", "library", "list", "--folder", "설계", "--query", "-tag:초안"]).unwrap();
+        let cli = Cli::try_parse_from([
+            "openguild",
+            "library",
+            "list",
+            "--folder",
+            "설계",
+            "--query",
+            "-tag:초안",
+        ])
+        .unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::List { query, folder, .. } } => {
+            Command::Library {
+                sub: LibraryCmd::List { query, folder, .. },
+            } => {
                 assert_eq!(query.as_deref(), Some("-tag:초안"));
                 assert_eq!(folder.as_deref(), Some("설계"));
             }
@@ -10870,7 +11356,12 @@ mod tests {
         use unicode_width::UnicodeWidthStr;
         let cell = |t: &str| (t.to_string(), None);
         let rows = vec![
-            vec![cell("DEV-1"), cell("테스트 중"), cell("2"), cell("제목 하나")],
+            vec![
+                cell("DEV-1"),
+                cell("테스트 중"),
+                cell("2"),
+                cell("제목 하나"),
+            ],
             vec![cell("BUG-12"), cell("Open"), cell("10"), cell("두 번째")],
             vec![cell("REQ-3"), cell("진행 중"), cell("3"), cell("셋")],
         ];
@@ -10885,7 +11376,10 @@ mod tests {
             })
             .collect();
         let shown = lines.join("\n");
-        assert!(starts.windows(2).all(|w| w[0] == w[1]), "마지막 컬럼 시작 칸 {starts:?}\n{shown}");
+        assert!(
+            starts.windows(2).all(|w| w[0] == w[1]),
+            "마지막 컬럼 시작 칸 {starts:?}\n{shown}"
+        );
         // 숫자는 오른쪽 맞춤 — 2 와 10 의 끝이 같다.
         assert!(lines[2].contains("테스트 중    2  제목"), "{}", lines[2]);
         assert!(lines[3].contains("Open        10  두"), "{}", lines[3]);
@@ -11035,7 +11529,12 @@ mod tests {
                 .unwrap_or_default()
         };
         let mut wrong = Vec::new();
-        for rel in ["core/Cargo.toml", "cli/Cargo.toml", "server/Cargo.toml", "gui/Cargo.toml"] {
+        for rel in [
+            "core/Cargo.toml",
+            "cli/Cargo.toml",
+            "server/Cargo.toml",
+            "gui/Cargo.toml",
+        ] {
             let got = toml_version(rel);
             if got != want {
                 wrong.push(format!("{rel} = {got}"));
@@ -11047,7 +11546,10 @@ mod tests {
                 wrong.push(format!("{rel} = {got}"));
             }
         }
-        assert!(wrong.is_empty(), "크레이트 버전 {want} 과 다른 파일: {wrong:?}");
+        assert!(
+            wrong.is_empty(),
+            "크레이트 버전 {want} 과 다른 파일: {wrong:?}"
+        );
     }
 
     // ── DEV-333: 도서관/규칙 태그 명령 ──
@@ -11057,9 +11559,7 @@ mod tests {
     // set 의 전체 교체(인자 0개 = 전체 삭제).
 
     /// 태그를 들고 있는 가짜 저장소 — run_doc_tag_cmd 의 list/set 을 대신한다.
-    fn tag_fixture(
-        init: &[&str],
-    ) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+    fn tag_fixture(init: &[&str]) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
         std::rc::Rc::new(std::cell::RefCell::new(
             init.iter().map(|s| s.to_string()).collect(),
         ))
@@ -11124,7 +11624,7 @@ mod tests {
         let q = serde_json::from_value(serde_json::json!({
             "id": 1, "quest_id": "DEV-001", "quest_type_id": 1, "type_prefix": "DEV",
             "type_color": "#000", "number": 1, "title": title, "description": "본문
-둘째 줄",
+        둘째 줄",
             "status_id": 1, "status_slug": "open", "status_name_en": "Open",
             "status_name_ko": "게시됨", "status_color": "#000", "urgency": 2,
             "parent_quest_id": null, "created_at": "t", "updated_at": "t"
@@ -11149,9 +11649,20 @@ mod tests {
         // 구현돼 있는데 help 에 없었다(admin 이 "parent 말고 없냐" 고 물은 이유).
         let d = qd("제목");
         for f in [
-            "id", "title", "status", "status_ko", "status_slug", "urgency",
-            "description", "type", "parent", "sub_quests", "prerequisites",
-            "successors", "created_at", "updated_at",
+            "id",
+            "title",
+            "status",
+            "status_ko",
+            "status_slug",
+            "urgency",
+            "description",
+            "type",
+            "parent",
+            "sub_quests",
+            "prerequisites",
+            "successors",
+            "created_at",
+            "updated_at",
         ] {
             quest_field_value(&d, f).unwrap_or_else(|e| panic!("{f} 실패: {e}"));
         }
@@ -11287,37 +11798,38 @@ mod tests {
         let cli = Cli::try_parse_from(["openguild", "quest", "list"]).unwrap();
         match cli.command {
             Command::Quest {
-                sub: QuestCmd::List {
-                    type_prefix,
-                    status,
-                    urgency,
-                    tag: _,
-                    query: _,
-                    created_after,
-                    created_before,
-                    updated_after,
-                    updated_before,
-                    commented_after: _,
-                    commented_before: _,
-                    child_of,
-                    no_parent,
-                    has_prereq,
-                    no_prereq,
-                    has_sub,
-                    no_sub,
-                    search,
-                    title_only,
-                    search_comments,
-                    search_attachments,
-                    sort,
-                    reverse,
-                    limit,
-                    offset,
-                    id_only,
-                    count,
-                    tree,
-                    table,
-                },
+                sub:
+                    QuestCmd::List {
+                        type_prefix,
+                        status,
+                        urgency,
+                        tag: _,
+                        query: _,
+                        created_after,
+                        created_before,
+                        updated_after,
+                        updated_before,
+                        commented_after: _,
+                        commented_before: _,
+                        child_of,
+                        no_parent,
+                        has_prereq,
+                        no_prereq,
+                        has_sub,
+                        no_sub,
+                        search,
+                        title_only,
+                        search_comments,
+                        search_attachments,
+                        sort,
+                        reverse,
+                        limit,
+                        offset,
+                        id_only,
+                        count,
+                        tree,
+                        table,
+                    },
             } => {
                 assert!(!table);
                 assert!(type_prefix.is_empty());
@@ -11355,11 +11867,11 @@ mod tests {
 
     #[test]
     fn cli_parse_list_type_single() {
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "list", "--type", "DEV",
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["openguild", "quest", "list", "--type", "DEV"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::List { type_prefix, .. },
+            } => {
                 assert_eq!(type_prefix, vec!["DEV"]);
             }
             _ => panic!(),
@@ -11370,10 +11882,19 @@ mod tests {
     fn cli_parse_list_type_multi_repeated() {
         // --type DEV --type BUG (repeated)
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "list", "--type", "DEV", "--type", "BUG",
-        ]).unwrap();
+            "openguild",
+            "quest",
+            "list",
+            "--type",
+            "DEV",
+            "--type",
+            "BUG",
+        ])
+        .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::List { type_prefix, .. },
+            } => {
                 assert_eq!(type_prefix, vec!["DEV", "BUG"]);
             }
             _ => panic!(),
@@ -11383,11 +11904,11 @@ mod tests {
     #[test]
     fn cli_parse_list_type_multi_csv() {
         // --type DEV,BUG (comma-delimited)
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "list", "--type", "DEV,BUG",
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["openguild", "quest", "list", "--type", "DEV,BUG"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::List { type_prefix, .. },
+            } => {
                 assert_eq!(type_prefix, vec!["DEV", "BUG"]);
             }
             _ => panic!(),
@@ -11397,11 +11918,12 @@ mod tests {
     #[test]
     fn cli_parse_list_type_multi_whitespace() {
         // --type DEV BUG (공백 구분, num_args(1..)).
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "list", "--type", "DEV", "BUG",
-        ]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "list", "--type", "DEV", "BUG"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::List { type_prefix, .. },
+            } => {
                 assert_eq!(type_prefix, vec!["DEV", "BUG"]);
             }
             _ => panic!(),
@@ -11410,11 +11932,12 @@ mod tests {
 
     #[test]
     fn cli_parse_list_sort_multi_csv() {
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "list", "--sort", "urgency,id",
-        ]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "list", "--sort", "urgency,id"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::List { sort, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::List { sort, .. },
+            } => {
                 assert_eq!(sort, vec!["urgency", "id"]);
             }
             _ => panic!(),
@@ -11423,11 +11946,12 @@ mod tests {
 
     #[test]
     fn cli_parse_list_sort_multi_whitespace() {
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "list", "--sort", "urgency", "id",
-        ]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "list", "--sort", "urgency", "id"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::List { sort, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::List { sort, .. },
+            } => {
                 assert_eq!(sort, vec!["urgency", "id"]);
             }
             _ => panic!(),
@@ -11437,27 +11961,60 @@ mod tests {
     #[test]
     fn cli_parse_list_all_new_options() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "list",
-            "--type", "BUG",
-            "--status", "in_progress",
-            "--urgency", "2",
-            "--child-of", "DEV-001",
-            "--sort", "urgency",
+            "openguild",
+            "quest",
+            "list",
+            "--type",
+            "BUG",
+            "--status",
+            "in_progress",
+            "--urgency",
+            "2",
+            "--child-of",
+            "DEV-001",
+            "--sort",
+            "urgency",
             "--reverse",
-            "--limit", "5",
-            "--offset", "10",
-        ]).unwrap();
+            "--limit",
+            "5",
+            "--offset",
+            "10",
+        ])
+        .unwrap();
         match cli.command {
             Command::Quest {
-                sub: QuestCmd::List {
-                    type_prefix, status, urgency, tag: _, query: _,
-                    created_after, created_before, updated_after, updated_before,
-                    commented_after: _, commented_before: _,
-                    child_of, no_parent,
-                    has_prereq, no_prereq, has_sub, no_sub,
-                    search, title_only, search_comments, search_attachments,
-                    sort, reverse, limit, offset, id_only, count, tree, table,
-                },
+                sub:
+                    QuestCmd::List {
+                        type_prefix,
+                        status,
+                        urgency,
+                        tag: _,
+                        query: _,
+                        created_after,
+                        created_before,
+                        updated_after,
+                        updated_before,
+                        commented_after: _,
+                        commented_before: _,
+                        child_of,
+                        no_parent,
+                        has_prereq,
+                        no_prereq,
+                        has_sub,
+                        no_sub,
+                        search,
+                        title_only,
+                        search_comments,
+                        search_attachments,
+                        sort,
+                        reverse,
+                        limit,
+                        offset,
+                        id_only,
+                        count,
+                        tree,
+                        table,
+                    },
             } => {
                 assert!(!tree);
                 assert!(!table);
@@ -11493,16 +12050,19 @@ mod tests {
     fn cli_parse_list_child_of_and_no_parent_conflict() {
         // clap 가 conflicts_with 로 자동 에러.
         let res = Cli::try_parse_from([
-            "openguild", "quest", "list", "--child-of", "DEV-001", "--no-parent",
+            "openguild",
+            "quest",
+            "list",
+            "--child-of",
+            "DEV-001",
+            "--no-parent",
         ]);
         assert!(res.is_err());
     }
 
     #[test]
     fn cli_parse_list_id_only_and_count_conflict() {
-        let res = Cli::try_parse_from([
-            "openguild", "quest", "list", "--id-only", "--count",
-        ]);
+        let res = Cli::try_parse_from(["openguild", "quest", "list", "--id-only", "--count"]);
         assert!(res.is_err());
     }
 
@@ -11581,7 +12141,10 @@ mod tests {
 
     #[test]
     fn querystring_no_parent_flag() {
-        let q = ListQuery { no_parent: true, ..Default::default() };
+        let q = ListQuery {
+            no_parent: true,
+            ..Default::default()
+        };
         assert_eq!(list_query_to_querystring(&q), "no_parent=true");
     }
 
@@ -11613,8 +12176,14 @@ mod tests {
     /// DEV-446: 쿼리도 원격으로 실린다 — 빠지면 원격 모드만 거르지 않고 전부 낸다.
     #[test]
     fn querystring_carries_the_query() {
-        let q = ListQuery { q: Some("status:open -tag:wip".into()), ..Default::default() };
-        assert_eq!(list_query_to_querystring(&q), "q=status%3Aopen%20-tag%3Awip");
+        let q = ListQuery {
+            q: Some("status:open -tag:wip".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            list_query_to_querystring(&q),
+            "q=status%3Aopen%20-tag%3Awip"
+        );
     }
 
     #[test]
@@ -11634,7 +12203,10 @@ mod tests {
 
     #[test]
     fn vec_to_csv_joins() {
-        assert_eq!(vec_to_csv(vec!["DEV".into(), "BUG".into()]), Some("DEV,BUG".into()));
+        assert_eq!(
+            vec_to_csv(vec!["DEV".into(), "BUG".into()]),
+            Some("DEV,BUG".into())
+        );
     }
 
     #[test]
@@ -11675,9 +12247,16 @@ mod tests {
 
     #[test]
     fn cli_parse_quest_new_minimal() {
-        let cli =
-            Cli::try_parse_from(["openguild", "quest", "new", "--type", "DEV", "--title", "test"])
-                .unwrap();
+        let cli = Cli::try_parse_from([
+            "openguild",
+            "quest",
+            "new",
+            "--type",
+            "DEV",
+            "--title",
+            "test",
+        ])
+        .unwrap();
         match cli.command {
             Command::Quest {
                 sub:
@@ -11711,13 +12290,21 @@ mod tests {
     #[test]
     fn cli_parse_quest_new_full() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "new",
-            "--type", "BUG",
-            "--title", "fix",
-            "--description", "details",
-            "--urgency", "1",
-            "--parent", "DEV-007",
-            "--template", "bug-report",
+            "openguild",
+            "quest",
+            "new",
+            "--type",
+            "BUG",
+            "--title",
+            "fix",
+            "--description",
+            "details",
+            "--urgency",
+            "1",
+            "--parent",
+            "DEV-007",
+            "--template",
+            "bug-report",
         ])
         .unwrap();
         match cli.command {
@@ -11780,8 +12367,7 @@ mod tests {
         assert!(merge_new_quest_inputs(None, Some("t".into()), None, None, None).is_err());
         assert!(merge_new_quest_inputs(Some("DEV".into()), None, None, None, None).is_err());
         let (_, _, desc, u, tags) =
-            merge_new_quest_inputs(Some("DEV".into()), Some("t".into()), None, None, None)
-                .unwrap();
+            merge_new_quest_inputs(Some("DEV".into()), Some("t".into()), None, None, None).unwrap();
         assert!(desc.is_none());
         assert_eq!(u, 3);
         assert!(tags.is_empty());
@@ -11857,15 +12443,27 @@ mod tests {
             .comments_search(None, None, None, None, false, false)
             .unwrap();
         assert_eq!(all.len(), 4);
-        assert_eq!(all[0].ts, "2026-01-01T00:00:00+09:00", "오래된순 정렬 (DEV-262)");
-        assert!(all.iter().any(|c| c.scope == "campaign" && c.slug == "C-001"));
+        assert_eq!(
+            all[0].ts, "2026-01-01T00:00:00+09:00",
+            "오래된순 정렬 (DEV-262)"
+        );
+        assert!(
+            all.iter()
+                .any(|c| c.scope == "campaign" && c.slug == "C-001")
+        );
         // BUG-110: 답글(entry 3)은 parent_id 가 실려야, 답글 아닌 것들은 None.
         assert_eq!(
-            all.iter().find(|c| c.entry_id == 3 && c.scope == "quest").unwrap().parent_id,
+            all.iter()
+                .find(|c| c.entry_id == 3 && c.scope == "quest")
+                .unwrap()
+                .parent_id,
             Some(1)
         );
         assert_eq!(
-            all.iter().find(|c| c.entry_id == 1 && c.scope == "quest").unwrap().parent_id,
+            all.iter()
+                .find(|c| c.entry_id == 1 && c.scope == "quest")
+                .unwrap()
+                .parent_id,
             None
         );
 
@@ -11909,7 +12507,9 @@ mod tests {
         assert_eq!(got.as_deref(), Some("첫 줄\n\n## 섹션\n본문"));
         // 미지정 시 inline passthrough.
         assert_eq!(
-            resolve_description_input(Some("x".into()), None).unwrap().as_deref(),
+            resolve_description_input(Some("x".into()), None)
+                .unwrap()
+                .as_deref(),
             Some("x")
         );
         // 없는 파일은 에러.
@@ -11917,11 +12517,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         // clap: --description 과 --description-file 동시 지정 거부.
-        assert!(Cli::try_parse_from([
-            "openguild", "quest", "new", "--type", "DEV", "--title", "t",
-            "--description", "a", "--description-file", "b.md",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "quest",
+                "new",
+                "--type",
+                "DEV",
+                "--title",
+                "t",
+                "--description",
+                "a",
+                "--description-file",
+                "b.md",
+            ])
+            .is_err()
+        );
     }
 
     /// DEV-210: `--at latest` 키워드 해석 — 대소문자 무시, 일반 ISO 는 passthrough.
@@ -11942,15 +12553,39 @@ mod tests {
     #[test]
     fn cli_parse_comment_list_filters() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "comment", "list", "DEV-001",
-            "--author", "claude",
-            "--since", "2026-06-01",
+            "openguild",
+            "quest",
+            "comment",
+            "list",
+            "DEV-001",
+            "--author",
+            "claude",
+            "--since",
+            "2026-06-01",
             "--top-only",
-            "--grep", "needle",
+            "--grep",
+            "needle",
         ])
         .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit, tree, .. } } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Comment {
+                        sub:
+                            CommentCmd::List {
+                                slug,
+                                author,
+                                since,
+                                top_only,
+                                reply_to,
+                                grep,
+                                reverse,
+                                limit,
+                                tree,
+                                ..
+                            },
+                    },
+            } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(author.as_deref(), Some("claude"));
                 assert_eq!(since.as_deref(), Some("2026-06-01"));
@@ -11965,11 +12600,19 @@ mod tests {
         }
 
         // --top-only 와 --reply-to 동시 지정은 clap 이 거부.
-        assert!(Cli::try_parse_from([
-            "openguild", "quest", "comment", "list", "DEV-001",
-            "--top-only", "--reply-to", "3",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "quest",
+                "comment",
+                "list",
+                "DEV-001",
+                "--top-only",
+                "--reply-to",
+                "3",
+            ])
+            .is_err()
+        );
     }
 
     /// DEV-262: quest comment list 에 전역 `comments` 옵션(until/discussion/
@@ -11977,12 +12620,31 @@ mod tests {
     #[test]
     fn cli_parse_comment_list_dev262_added_filters() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "comment", "list", "DEV-001",
-            "--until", "2026-07-01", "--discussion", "--summary",
+            "openguild",
+            "quest",
+            "comment",
+            "list",
+            "DEV-001",
+            "--until",
+            "2026-07-01",
+            "--discussion",
+            "--summary",
         ])
         .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { until, discussion, unresolved, summary, .. } } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Comment {
+                        sub:
+                            CommentCmd::List {
+                                until,
+                                discussion,
+                                unresolved,
+                                summary,
+                                ..
+                            },
+                    },
+            } => {
                 assert_eq!(until.as_deref(), Some("2026-07-01"));
                 assert!(discussion);
                 assert!(!unresolved);
@@ -11993,45 +12655,69 @@ mod tests {
 
         // --unresolved 와 --discussion 동시 지정은 상호배타(기존 --discussion
         // 규약과 동일하게 --unresolved 가 --discussion 을 이미 내포).
-        assert!(Cli::try_parse_from([
-            "openguild", "quest", "comment", "list", "DEV-001",
-            "--discussion", "--unresolved",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "quest",
+                "comment",
+                "list",
+                "DEV-001",
+                "--discussion",
+                "--unresolved",
+            ])
+            .is_err()
+        );
     }
 
     /// DEV-262: comment show --id 없이 실행 시 기본 최근 20개 제한 — --all 로 해제.
     /// --all 과 --id 는 상호배타(전체 스레드 보기와 단일 entry 보기는 별개 모드).
     #[test]
     fn cli_parse_comment_show_all_flag() {
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "comment", "show", "DEV-001", "--all",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "comment", "show", "DEV-001", "--all"])
+                .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::Show { all, id, .. } } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Comment {
+                        sub: CommentCmd::Show { all, id, .. },
+                    },
+            } => {
                 assert!(all);
                 assert!(id.is_none());
             }
             _ => panic!("expected comment show"),
         }
 
-        assert!(Cli::try_parse_from([
-            "openguild", "quest", "comment", "show", "DEV-001", "--id", "1", "--all",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "quest",
+                "comment",
+                "show",
+                "DEV-001",
+                "--id",
+                "1",
+                "--all",
+            ])
+            .is_err()
+        );
     }
 
     /// DEV-262: 전역 `comments` 에 quest comment list 옵션(top-only/reply-to/
     /// reverse/tree) 추가된 것 파싱 확인.
     #[test]
     fn cli_parse_global_comments_dev262_added_options() {
-        let cli = Cli::try_parse_from([
-            "openguild", "comments", "--top-only", "--reverse",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "comments", "--top-only", "--reverse"]).unwrap();
         match cli.command {
-            Command::Comments { top_only, reply_to, reverse, tree, .. } => {
+            Command::Comments {
+                top_only,
+                reply_to,
+                reverse,
+                tree,
+                ..
+            } => {
                 assert!(top_only);
                 assert!(reply_to.is_none());
                 assert!(reverse);
@@ -12042,25 +12728,25 @@ mod tests {
 
         // --top-only 와 --reply-to 상호배타, --tree 와 --reverse 상호배타
         // (quest comment list 와 동일 규칙).
-        assert!(Cli::try_parse_from([
-            "openguild", "comments", "--top-only", "--reply-to", "3",
-        ])
-        .is_err());
-        assert!(Cli::try_parse_from([
-            "openguild", "comments", "--tree", "--reverse",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from(["openguild", "comments", "--top-only", "--reply-to", "3",])
+                .is_err()
+        );
+        assert!(Cli::try_parse_from(["openguild", "comments", "--tree", "--reverse",]).is_err());
     }
 
     /// DEV-234: pin 토글 — quest / campaign 양쪽 subcommand 트리에서 파싱.
     #[test]
     fn cli_parse_comment_pinned() {
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "comment", "pinned", "DEV-001", "3",
-        ])
-        .unwrap();
+        let cli = Cli::try_parse_from(["openguild", "quest", "comment", "pinned", "DEV-001", "3"])
+            .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::Pinned { slug, id } } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Comment {
+                        sub: CommentCmd::Pinned { slug, id },
+                    },
+            } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(id, 3);
             }
@@ -12099,7 +12785,10 @@ mod tests {
     #[test]
     fn cli_parse_docs() {
         // 목록.
-        match Cli::try_parse_from(["openguild", "docs", "list"]).unwrap().command {
+        match Cli::try_parse_from(["openguild", "docs", "list"])
+            .unwrap()
+            .command
+        {
             Command::Docs { sub: DocsCmd::List } => {}
             _ => panic!("expected docs list"),
         }
@@ -12109,7 +12798,12 @@ mod tests {
             .command
         {
             Command::Docs {
-                sub: DocsCmd::Show { name, full, section },
+                sub:
+                    DocsCmd::Show {
+                        name,
+                        full,
+                        section,
+                    },
             } => {
                 assert_eq!(name, "usage");
                 assert!(!full);
@@ -12141,7 +12835,13 @@ mod tests {
         // 상호배타 유지.
         assert!(
             Cli::try_parse_from([
-                "openguild", "docs", "show", "usage", "--full", "--section", "x"
+                "openguild",
+                "docs",
+                "show",
+                "usage",
+                "--full",
+                "--section",
+                "x"
             ])
             .is_err()
         );
@@ -12169,11 +12869,25 @@ mod tests {
         // sub 없이 bare 호출은 에러 (cli-command-naming 규칙).
         assert!(Cli::try_parse_from(["openguild", "tag"]).is_err());
         let cli = Cli::try_parse_from([
-            "openguild", "tag", "add", "infra", "--color", "#ff8800", "--description", "인프라",
+            "openguild",
+            "tag",
+            "add",
+            "infra",
+            "--color",
+            "#ff8800",
+            "--description",
+            "인프라",
         ])
         .unwrap();
         match cli.command {
-            Command::Tag { sub: TagDefCmd::Add { slug, color, description } } => {
+            Command::Tag {
+                sub:
+                    TagDefCmd::Add {
+                        slug,
+                        color,
+                        description,
+                    },
+            } => {
                 assert_eq!(slug, "infra");
                 assert_eq!(color.as_deref(), Some("#ff8800"));
                 assert_eq!(description.as_deref(), Some("인프라"));
@@ -12182,7 +12896,9 @@ mod tests {
         }
         let l = Cli::try_parse_from(["openguild", "tag", "list", "--used"]).unwrap();
         match l.command {
-            Command::Tag { sub: TagDefCmd::List { used, table } } => {
+            Command::Tag {
+                sub: TagDefCmd::List { used, table },
+            } => {
                 assert!(used);
                 assert!(!table);
             }
@@ -12191,7 +12907,9 @@ mod tests {
         // 사용자 피드백: rule/tag list 에도 --table.
         let lt = Cli::try_parse_from(["openguild", "tag", "list", "--table"]).unwrap();
         match lt.command {
-            Command::Tag { sub: TagDefCmd::List { used, table } } => {
+            Command::Tag {
+                sub: TagDefCmd::List { used, table },
+            } => {
                 assert!(!used);
                 assert!(table);
             }
@@ -12199,7 +12917,9 @@ mod tests {
         }
         let rl = Cli::try_parse_from(["openguild", "rule", "list", "--table"]).unwrap();
         match rl.command {
-            Command::Rules { sub: RulesCmd::List { table } } => assert!(table),
+            Command::Rules {
+                sub: RulesCmd::List { table },
+            } => assert!(table),
             _ => panic!("expected rule list --table"),
         }
     }
@@ -12208,16 +12928,28 @@ mod tests {
     #[test]
     fn cli_parse_comment_tree_and_depth_all() {
         // --tree 는 --reverse 와 상호배타.
-        assert!(Cli::try_parse_from([
-            "openguild", "quest", "comment", "list", "DEV-001", "--tree", "--reverse",
-        ])
-        .is_err());
-        let ok = Cli::try_parse_from([
-            "openguild", "quest", "comment", "list", "DEV-001", "--tree",
-        ])
-        .unwrap();
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "quest",
+                "comment",
+                "list",
+                "DEV-001",
+                "--tree",
+                "--reverse",
+            ])
+            .is_err()
+        );
+        let ok =
+            Cli::try_parse_from(["openguild", "quest", "comment", "list", "DEV-001", "--tree"])
+                .unwrap();
         match ok.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { tree, .. } } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Comment {
+                        sub: CommentCmd::List { tree, .. },
+                    },
+            } => {
                 assert!(tree);
             }
             _ => panic!("expected comment list"),
@@ -12225,32 +12957,73 @@ mod tests {
 
         // --depth: 숫자 / all / 그 외 거부.
         let d = Cli::try_parse_from([
-            "openguild", "quest", "comment", "show", "DEV-001", "--id", "1", "--depth", "all",
+            "openguild",
+            "quest",
+            "comment",
+            "show",
+            "DEV-001",
+            "--id",
+            "1",
+            "--depth",
+            "all",
         ])
         .unwrap();
         match d.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::Show { depth, .. } } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Comment {
+                        sub: CommentCmd::Show { depth, .. },
+                    },
+            } => {
                 assert_eq!(depth, usize::MAX, "'all' = 무제한");
             }
             _ => panic!("expected comment show"),
         }
-        assert!(Cli::try_parse_from([
-            "openguild", "quest", "comment", "show", "DEV-001", "--id", "1", "--depth", "deep",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "quest",
+                "comment",
+                "show",
+                "DEV-001",
+                "--id",
+                "1",
+                "--depth",
+                "deep",
+            ])
+            .is_err()
+        );
     }
 
     /// admin 요청: comment show 의 부모/자식 출력 범위 옵션.
     #[test]
     fn cli_parse_comment_show_depth_and_with_parents() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "comment", "show", "DEV-001",
-            "--id", "3", "--depth", "2", "--with-parents",
+            "openguild",
+            "quest",
+            "comment",
+            "show",
+            "DEV-001",
+            "--id",
+            "3",
+            "--depth",
+            "2",
+            "--with-parents",
         ])
         .unwrap();
         match cli.command {
             Command::Quest {
-                sub: QuestCmd::Comment { sub: CommentCmd::Show { slug, id, depth, with_parents, .. } },
+                sub:
+                    QuestCmd::Comment {
+                        sub:
+                            CommentCmd::Show {
+                                slug,
+                                id,
+                                depth,
+                                with_parents,
+                                ..
+                            },
+                    },
             } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(id, Some(3));
@@ -12265,7 +13038,16 @@ mod tests {
             Cli::try_parse_from(["openguild", "quest", "comment", "show", "DEV-001"]).unwrap();
         match cli2.command {
             Command::Quest {
-                sub: QuestCmd::Comment { sub: CommentCmd::Show { id, depth, with_parents, .. } },
+                sub:
+                    QuestCmd::Comment {
+                        sub:
+                            CommentCmd::Show {
+                                id,
+                                depth,
+                                with_parents,
+                                ..
+                            },
+                    },
             } => {
                 assert_eq!(id, None);
                 assert_eq!(depth, 0);
@@ -12321,7 +13103,10 @@ mod tests {
 
         // 둘 다 → 조상 + 대상 + 답글.
         let both = select_thread(entries.clone(), 3, 1, true).unwrap();
-        assert_eq!(both.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
+        assert_eq!(
+            both.iter().map(|e| e.id).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
 
         // 없는 id → None.
         assert!(select_thread(entries, 99, 0, false).is_none());
@@ -12360,7 +13145,8 @@ mod tests {
 
     #[test]
     fn cli_parse_quest_delete_dry_run() {
-        let cli = Cli::try_parse_from(["openguild", "quest", "delete", "DEV-001", "--dry-run"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "delete", "DEV-001", "--dry-run"]).unwrap();
         match cli.command {
             Command::Quest {
                 sub: QuestCmd::Delete { dry_run, yes, .. },
@@ -12416,12 +13202,21 @@ mod tests {
     #[test]
     fn cli_parse_new_prereq_multi() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "new", "--type", "REQ", "--title", "t",
-            "--prereq", "DEV-001,DEV-002",
+            "openguild",
+            "quest",
+            "new",
+            "--type",
+            "REQ",
+            "--title",
+            "t",
+            "--prereq",
+            "DEV-001,DEV-002",
         ])
         .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::New { prereq, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::New { prereq, .. },
+            } => {
                 assert_eq!(prereq, vec!["DEV-001".to_string(), "DEV-002".to_string()]);
             }
             _ => panic!("quest new 로 파싱되어야 함"),
@@ -12435,7 +13230,9 @@ mod tests {
             Cli::try_parse_from(["openguild", "quest", "new", "--type", "REQ", "--title", "t"])
                 .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::New { prereq, .. } } => assert!(prereq.is_empty()),
+            Command::Quest {
+                sub: QuestCmd::New { prereq, .. },
+            } => assert!(prereq.is_empty()),
             _ => panic!("quest new 로 파싱되어야 함"),
         }
     }
@@ -12444,13 +13241,15 @@ mod tests {
     /// `new --prereq` 는 생성 시점용이고, 나중에 알게 된 관계는 이쪽으로 건다.
     #[test]
     fn cli_parse_prereq_subcommand() {
-        let cli = Cli::try_parse_from([
-            "openguild", "quest", "prereq", "add", "DEV-001", "DEV-002",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "prereq", "add", "DEV-001", "DEV-002"])
+                .unwrap();
         match cli.command {
             Command::Quest {
-                sub: QuestCmd::Prereq { sub: PrereqCmd::Add { slug, prereq } },
+                sub:
+                    QuestCmd::Prereq {
+                        sub: PrereqCmd::Add { slug, prereq },
+                    },
             } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(prereq, "DEV-002");
@@ -12578,7 +13377,10 @@ mod tests {
     #[test]
     fn field_title_returns_title() {
         let d = sample_detail();
-        assert_eq!(quest_field_value(&d, "title").unwrap(), "CI/CD + 배포 인프라");
+        assert_eq!(
+            quest_field_value(&d, "title").unwrap(),
+            "CI/CD + 배포 인프라"
+        );
     }
 
     #[test]
@@ -12605,7 +13407,10 @@ mod tests {
     #[test]
     fn field_description_multiline() {
         let d = sample_detail();
-        assert_eq!(quest_field_value(&d, "description").unwrap(), "multi-line\nbody");
+        assert_eq!(
+            quest_field_value(&d, "description").unwrap(),
+            "multi-line\nbody"
+        );
         assert_eq!(quest_field_value(&d, "body").unwrap(), "multi-line\nbody");
     }
 
@@ -12638,10 +13443,22 @@ mod tests {
     #[test]
     fn field_timestamps() {
         let d = sample_detail();
-        assert_eq!(quest_field_value(&d, "created_at").unwrap(), "2026-05-15T16:12:48+09:00");
-        assert_eq!(quest_field_value(&d, "created").unwrap(), "2026-05-15T16:12:48+09:00");
-        assert_eq!(quest_field_value(&d, "updated_at").unwrap(), "2026-05-22T01:09:30+09:00");
-        assert_eq!(quest_field_value(&d, "updated").unwrap(), "2026-05-22T01:09:30+09:00");
+        assert_eq!(
+            quest_field_value(&d, "created_at").unwrap(),
+            "2026-05-15T16:12:48+09:00"
+        );
+        assert_eq!(
+            quest_field_value(&d, "created").unwrap(),
+            "2026-05-15T16:12:48+09:00"
+        );
+        assert_eq!(
+            quest_field_value(&d, "updated_at").unwrap(),
+            "2026-05-22T01:09:30+09:00"
+        );
+        assert_eq!(
+            quest_field_value(&d, "updated").unwrap(),
+            "2026-05-22T01:09:30+09:00"
+        );
     }
 
     #[test]
@@ -12657,7 +13474,16 @@ mod tests {
     fn search_parses_query_arg() {
         let cli = Cli::try_parse_from(["openguild", "quest", "search", "foo bar"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Search { query, title_only, limit, id_only, count } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Search {
+                        query,
+                        title_only,
+                        limit,
+                        id_only,
+                        count,
+                    },
+            } => {
                 assert_eq!(query, "foo bar");
                 assert!(!title_only);
                 assert!(limit.is_none());
@@ -12670,9 +13496,12 @@ mod tests {
 
     #[test]
     fn search_with_title_only_flag() {
-        let cli = Cli::try_parse_from(["openguild", "quest", "search", "x", "--title-only"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "search", "x", "--title-only"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Search { title_only, .. } } => {
+            Command::Quest {
+                sub: QuestCmd::Search { title_only, .. },
+            } => {
                 assert!(title_only);
             }
             _ => panic!("expected QuestCmd::Search"),
@@ -12682,10 +13511,26 @@ mod tests {
     #[test]
     fn search_with_limit_and_id_only() {
         let cli = Cli::try_parse_from([
-            "openguild", "quest", "search", "DEV", "--limit", "5", "--id-only",
-        ]).unwrap();
+            "openguild",
+            "quest",
+            "search",
+            "DEV",
+            "--limit",
+            "5",
+            "--id-only",
+        ])
+        .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Search { query, limit, id_only, count, .. } } => {
+            Command::Quest {
+                sub:
+                    QuestCmd::Search {
+                        query,
+                        limit,
+                        id_only,
+                        count,
+                        ..
+                    },
+            } => {
                 assert_eq!(query, "DEV");
                 assert_eq!(limit, Some(5));
                 assert!(id_only);
@@ -12697,9 +13542,7 @@ mod tests {
 
     #[test]
     fn search_id_only_and_count_mutually_exclusive() {
-        let r = Cli::try_parse_from([
-            "openguild", "quest", "search", "x", "--id-only", "--count",
-        ]);
+        let r = Cli::try_parse_from(["openguild", "quest", "search", "x", "--id-only", "--count"]);
         assert!(r.is_err(), "id-only + count 동시 사용은 에러여야 함");
     }
 
@@ -12709,7 +13552,9 @@ mod tests {
     fn status_with_only_slug_parses_status_arg_as_none() {
         let cli = Cli::try_parse_from(["openguild", "quest", "status", "DEV-001"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Status { slug, status } } => {
+            Command::Quest {
+                sub: QuestCmd::Status { slug, status },
+            } => {
                 assert_eq!(slug, "DEV-001");
                 assert!(status.is_none(), "status 인자 미지정 시 None 이어야 함");
             }
@@ -12719,9 +13564,12 @@ mod tests {
 
     #[test]
     fn status_with_slug_and_status_arg_keeps_status_some() {
-        let cli = Cli::try_parse_from(["openguild", "quest", "status", "DEV-001", "testing"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "status", "DEV-001", "testing"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Status { slug, status } } => {
+            Command::Quest {
+                sub: QuestCmd::Status { slug, status },
+            } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(status.as_deref(), Some("testing"));
             }
@@ -12731,9 +13579,12 @@ mod tests {
 
     #[test]
     fn move_requires_slug_and_status() {
-        let cli = Cli::try_parse_from(["openguild", "quest", "move", "DEV-001", "testing"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "move", "DEV-001", "testing"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Move { slug, status } } => {
+            Command::Quest {
+                sub: QuestCmd::Move { slug, status },
+            } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(status, "testing");
             }
@@ -12745,9 +13596,16 @@ mod tests {
     fn only_a_closed_stdout_is_swallowed() {
         let p = |s: &str| super::is_closed_stdout_panic(&s.to_string());
         assert!(p("failed printing to stdout: Broken pipe (os error 32)"));
-        assert!(p("failed printing to stdout: 파이프를 닫는 중입니다. (os error 232)"));
-        assert!(!p("failed printing to stderr: Broken pipe (os error 32)"), "stdout 만");
-        assert!(!p("failed printing to stdout: No space left on device (os error 28)"));
+        assert!(p(
+            "failed printing to stdout: 파이프를 닫는 중입니다. (os error 232)"
+        ));
+        assert!(
+            !p("failed printing to stderr: Broken pipe (os error 32)"),
+            "stdout 만"
+        );
+        assert!(!p(
+            "failed printing to stdout: No space left on device (os error 28)"
+        ));
         assert!(!p("index out of bounds"));
     }
 
@@ -12768,7 +13626,9 @@ mod tests {
     fn retype_takes_slug_and_prefix() {
         let cli = Cli::try_parse_from(["openguild", "quest", "retype", "DEV-001", "bug"]).unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Retype { slug, type_prefix } } => {
+            Command::Quest {
+                sub: QuestCmd::Retype { slug, type_prefix },
+            } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(type_prefix, "bug");
             }
@@ -12869,10 +13729,11 @@ scope = ["gui"]
         init_guild_at(&dir, Some("attach-show".into())).unwrap();
         let c = local_backend(&dir);
 
-        let Backend::Local(l) = &c else { unreachable!() };
-        let q = l
-            .rt
-            .block_on(openguild_core::ops::quests::create_quest(
+        let Backend::Local(l) = &c else {
+            unreachable!()
+        };
+        let q =
+            l.rt.block_on(openguild_core::ops::quests::create_quest(
                 &l.store,
                 openguild_core::models::CreateQuestRequest {
                     quest_type_id: 1,
@@ -12888,14 +13749,13 @@ scope = ["gui"]
         let inside = dir.join(".guild/attachments");
         std::fs::create_dir_all(&inside).unwrap();
         std::fs::write(inside.join("spec.md"), "본문").unwrap();
-        l.rt
-            .block_on(openguild_core::ops::attachments::add_quest_attachment(
-                &l.store,
-                &q.quest_id,
-                "attachments/spec.md",
-                "스펙.md",
-            ))
-            .unwrap();
+        l.rt.block_on(openguild_core::ops::attachments::add_quest_attachment(
+            &l.store,
+            &q.quest_id,
+            "attachments/spec.md",
+            "스펙.md",
+        ))
+        .unwrap();
 
         let d = c.quest_by_slug(&q.quest_id).unwrap();
         assert_eq!(d.attachments.len(), 1, "첨부를 안 채웠다");
@@ -12913,10 +13773,11 @@ scope = ["gui"]
         init_guild_at(&dir, Some("hl-list".into())).unwrap();
         let c = local_backend(&dir);
 
-        let Backend::Local(l) = &c else { unreachable!() };
-        let q = l
-            .rt
-            .block_on(openguild_core::ops::quests::create_quest(
+        let Backend::Local(l) = &c else {
+            unreachable!()
+        };
+        let q =
+            l.rt.block_on(openguild_core::ops::quests::create_quest(
                 &l.store,
                 openguild_core::models::CreateQuestRequest {
                     quest_type_id: 1,
@@ -12928,9 +13789,13 @@ scope = ["gui"]
                 },
             ))
             .unwrap();
-        let book = l
-            .rt
-            .block_on(openguild_core::ops::library::create_book(&l.store, "칠한 문서", "본문", ""))
+        let book =
+            l.rt.block_on(openguild_core::ops::library::create_book(
+                &l.store,
+                "칠한 문서",
+                "본문",
+                "",
+            ))
             .unwrap();
         let paint = |target: String, part: &str, exact: &str| {
             l.rt.block_on(openguild_core::ops::highlights::add_highlight(
@@ -12945,20 +13810,34 @@ scope = ["gui"]
             ))
             .unwrap();
         };
-        paint(format!("quest:{}", q.quest_id), "comment:3", "댓글에 칠한 글");
-        paint(format!("library:{}", book.book_id()), "body", "문서에 칠한 글");
+        paint(
+            format!("quest:{}", q.quest_id),
+            "comment:3",
+            "댓글에 칠한 글",
+        );
+        paint(
+            format!("library:{}", book.book_id()),
+            "body",
+            "문서에 칠한 글",
+        );
 
         let lower = q.quest_id.to_lowercase();
         let target = c.highlight_target(HighlightScope::Quest, &lower).unwrap();
         assert_eq!(target, format!("quest:{}", q.quest_id));
         let got = c.highlight_list(&target).unwrap();
         assert_eq!(got.len(), 1);
-        assert_eq!((got[0].part.as_str(), got[0].exact.as_str()), ("comment:3", "댓글에 칠한 글"));
+        assert_eq!(
+            (got[0].part.as_str(), got[0].exact.as_str()),
+            ("comment:3", "댓글에 칠한 글")
+        );
 
         let short = format!("BOOK-{}", book.number);
         let target = c.highlight_target(HighlightScope::Library, &short).unwrap();
         assert_eq!(target, format!("library:{}", book.book_id()));
-        assert_eq!(c.highlight_list(&target).unwrap()[0].exact, "문서에 칠한 글");
+        assert_eq!(
+            c.highlight_list(&target).unwrap()[0].exact,
+            "문서에 칠한 글"
+        );
 
         for (scope, id) in [
             (HighlightScope::Quest, "DEV-999"),
@@ -12966,7 +13845,10 @@ scope = ["gui"]
             (HighlightScope::Rule, "no-such-rule"),
             (HighlightScope::Library, "BOOK-999"),
         ] {
-            assert!(c.highlight_target(scope, id).is_err(), "없는 대상 {id} 를 오류로 안 봤다");
+            assert!(
+                c.highlight_target(scope, id).is_err(),
+                "없는 대상 {id} 를 오류로 안 봤다"
+            );
         }
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -12980,10 +13862,11 @@ scope = ["gui"]
         init_guild_at(&dir, Some("hl-add".into())).unwrap();
         let c = local_backend(&dir);
 
-        let Backend::Local(l) = &c else { unreachable!() };
-        let q = l
-            .rt
-            .block_on(openguild_core::ops::quests::create_quest(
+        let Backend::Local(l) = &c else {
+            unreachable!()
+        };
+        let q =
+            l.rt.block_on(openguild_core::ops::quests::create_quest(
                 &l.store,
                 openguild_core::models::CreateQuestRequest {
                     quest_type_id: 1,
@@ -12999,29 +13882,46 @@ scope = ["gui"]
             run_highlight_cmd(
                 &c,
                 HighlightScope::Quest,
-                HighlightCmd::Add { id: q.quest_id.clone(), text: text.into(), part: "body".into(), nth: None },
+                HighlightCmd::Add {
+                    id: q.quest_id.clone(),
+                    text: text.into(),
+                    part: "body".into(),
+                    nth: None,
+                },
                 false,
             )
         };
-        assert!(add("**굵은** 글").is_err(), "화면에 없는 원문 기호째를 받았다");
+        assert!(
+            add("**굵은** 글").is_err(),
+            "화면에 없는 원문 기호째를 받았다"
+        );
         add("굵은 글과 DEV-1 링크").unwrap();
         add("굵은 글과 DEV-1 링크").unwrap();
 
         let target = format!("quest:{}", q.quest_id);
         let got = c.highlight_list(&target).unwrap();
         assert_eq!(got.len(), 1, "같은 자리를 또 칠해 늘었다");
-        assert_eq!((got[0].part.as_str(), got[0].exact.as_str()), ("body", "굵은 글과 DEV-1 링크"));
+        assert_eq!(
+            (got[0].part.as_str(), got[0].exact.as_str()),
+            ("body", "굵은 글과 DEV-1 링크")
+        );
 
         let remove = |hl: &str| {
             run_highlight_cmd(
                 &c,
                 HighlightScope::Quest,
-                HighlightCmd::Remove { id: q.quest_id.clone(), highlight_id: hl.into() },
+                HighlightCmd::Remove {
+                    id: q.quest_id.clone(),
+                    highlight_id: hl.into(),
+                },
                 false,
             )
         };
         remove(&got[0].id).unwrap();
-        assert!(remove(&got[0].id).is_err(), "없는 형광펜을 지웠는데 오류가 아니다");
+        assert!(
+            remove(&got[0].id).is_err(),
+            "없는 형광펜을 지웠는데 오류가 아니다"
+        );
         assert!(c.highlight_list(&target).unwrap().is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -13043,11 +13943,16 @@ scope = ["gui"]
         };
         let summary = quest_summary_lines(&att(3)).join("\n");
         assert!(summary.contains("attachments : 3"), "{summary}");
-        assert!(!summary.contains("x0.md"), "요약에 목록이 들어갔다:\n{summary}");
+        assert!(
+            !summary.contains("x0.md"),
+            "요약에 목록이 들어갔다:\n{summary}"
+        );
         // 라벨은 한 줄로 선다 — 콜론 자리가 같아야 눈이 안 흔들린다.
         for label in ["status", "urgency", "attachments"] {
             assert!(
-                summary.lines().any(|l| l.starts_with(&format!("  {label:<11} : "))),
+                summary
+                    .lines()
+                    .any(|l| l.starts_with(&format!("  {label:<11} : "))),
                 "`{label}` 줄의 콜론이 안 맞는다:\n{summary}"
             );
         }
@@ -13223,19 +14128,49 @@ scope = ["gui"]
         let c = local_backend(&dir);
         let active = || openguild_core::plugins::load_all(&dir).active.len();
 
-        handle_plugin(&c, false, PluginCmd::Allow { name: None, all: true, yes: false }).unwrap();
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Allow {
+                name: None,
+                all: true,
+                yes: false,
+            },
+        )
+        .unwrap();
         assert_eq!(active(), 0, "--yes 없이 전체 허용돼 버렸다");
-        handle_plugin(&c, false, PluginCmd::Allow { name: None, all: true, yes: true }).unwrap();
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Allow {
+                name: None,
+                all: true,
+                yes: true,
+            },
+        )
+        .unwrap();
         assert_eq!(active(), 1);
 
         // 자동 허용 중에도 전체 해제가 먹는다.
         handle_plugin(&c, false, PluginCmd::Trust { yes: true }).unwrap();
-        handle_plugin(&c, false, PluginCmd::Revoke { name: None, all: true }).unwrap();
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Revoke {
+                name: None,
+                all: true,
+            },
+        )
+        .unwrap();
         assert_eq!(active(), 0, "자동 허용이 전체 해제를 덮었다");
         handle_plugin(
             &c,
             false,
-            PluginCmd::Allow { name: Some("ai-notify".into()), all: false, yes: true },
+            PluginCmd::Allow {
+                name: Some("ai-notify".into()),
+                all: false,
+                yes: true,
+            },
         )
         .unwrap();
         assert_eq!(active(), 1);
@@ -13315,7 +14250,10 @@ scope = ["gui"]
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-cli-{label}-{ns}-{}", { static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }));
+        let p = std::env::temp_dir().join(format!("og-cli-{label}-{ns}-{}", {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        }));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
@@ -13410,10 +14348,7 @@ scope = ["gui"]
         let guild_files: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path().is_file()
-                    && e.file_name().to_string_lossy().ends_with(".guild")
-            })
+            .filter(|e| e.path().is_file() && e.file_name().to_string_lossy().ends_with(".guild"))
             .collect();
         assert_eq!(guild_files.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
@@ -13507,8 +14442,7 @@ scope = ["gui"]
     #[test]
     fn help_output_has_no_rule_slug_leaks() {
         use clap::CommandFactory;
-        let rules_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.guild/rules");
+        let rules_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.guild/rules");
         let Ok(rd) = std::fs::read_dir(&rules_dir) else {
             return; // dogfood 길드 없음 — skip.
         };
@@ -13549,11 +14483,7 @@ scope = ["gui"]
         }
     }
 
-    fn check_help_recursive(
-        cmd: &clap::Command,
-        path: &str,
-        violations: &mut Vec<String>,
-    ) {
+    fn check_help_recursive(cmd: &clap::Command, path: &str, violations: &mut Vec<String>) {
         let mut owned = cmd.clone();
         let help = owned.render_long_help().to_string();
         if let Some(found) = find_quest_id(&help) {
@@ -13575,7 +14505,9 @@ scope = ["gui"]
         let mut i = 0;
         while i < bytes.len() {
             // dash 위치 찾기.
-            let Some(dash_rel) = s[i..].find('-') else { break };
+            let Some(dash_rel) = s[i..].find('-') else {
+                break;
+            };
             let dash = i + dash_rel;
             // dash 앞 — ASCII 대문자 2~5자.
             let prefix_end = dash;
@@ -13648,14 +14580,18 @@ scope = ["gui"]
             let mut offset = 0usize;
             loop {
                 let rest = &body[offset..];
-                let Some(found) = find_quest_id(rest) else { break };
+                let Some(found) = find_quest_id(rest) else {
+                    break;
+                };
                 assert!(
                     DOC_ID_ALLOWLIST.contains(&found),
                     "{name} 에 허용되지 않은 quest id '{found}' 발견 — 이 repo 고유 \
                      서사(historical citation)인지 확인해 제거하거나, 정말 범용 \
                      예시면 DOC_ID_ALLOWLIST 에 추가하세요.",
                 );
-                let idx = rest.find(found).expect("find_quest_id 가 찾은 문자열은 반드시 존재");
+                let idx = rest
+                    .find(found)
+                    .expect("find_quest_id 가 찾은 문자열은 반드시 존재");
                 offset += idx + found.len();
             }
         }
@@ -13693,13 +14629,29 @@ scope = ["gui"]
     /// 동작해야(기존 스크립트 호환) — sub 는 다른 그룹처럼 필수.
     #[test]
     fn cli_singular_type_status_parse_same_as_plural_alias() {
-        for args in [["openguild", "type", "list"], ["openguild", "types", "list"]] {
+        for args in [
+            ["openguild", "type", "list"],
+            ["openguild", "types", "list"],
+        ] {
             let cli = Cli::try_parse_from(args).unwrap();
-            assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List { .. } }));
+            assert!(matches!(
+                cli.command,
+                Command::Types {
+                    sub: TypesCmd::List { .. }
+                }
+            ));
         }
-        for args in [["openguild", "status", "list"], ["openguild", "statuses", "list"]] {
+        for args in [
+            ["openguild", "status", "list"],
+            ["openguild", "statuses", "list"],
+        ] {
             let cli = Cli::try_parse_from(args).unwrap();
-            assert!(matches!(cli.command, Command::Statuses { sub: StatusesCmd::List { .. } }));
+            assert!(matches!(
+                cli.command,
+                Command::Statuses {
+                    sub: StatusesCmd::List { .. }
+                }
+            ));
         }
     }
 
@@ -13722,13 +14674,23 @@ scope = ["gui"]
     /// 의 --title/--file 조합, delete --yes.
     #[test]
     fn cli_library_subcommands_parse() {
-        assert!(Cli::try_parse_from(["openguild", "library"]).is_err(), "sub 필수");
+        assert!(
+            Cli::try_parse_from(["openguild", "library"]).is_err(),
+            "sub 필수"
+        );
         let cli = Cli::try_parse_from(["openguild", "library", "list"]).unwrap();
-        assert!(matches!(cli.command, Command::Library { sub: LibraryCmd::List { .. } }));
+        assert!(matches!(
+            cli.command,
+            Command::Library {
+                sub: LibraryCmd::List { .. }
+            }
+        ));
 
         let cli = Cli::try_parse_from(["openguild", "library", "show", "BOOK-001"]).unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Show { id } } => assert_eq!(id, "BOOK-001"),
+            Command::Library {
+                sub: LibraryCmd::Show { id },
+            } => assert_eq!(id, "BOOK-001"),
             _ => panic!(),
         }
 
@@ -13736,9 +14698,19 @@ scope = ["gui"]
         // `--folder` 로 바꾼 이유가 발견 가능성이지, 남의 스크립트를 깨는 게
         // 아니다. alias 는 조용히 사라지기 쉬워서 둘 다 못 박는다.
         for flag in ["--folder", "--path"] {
-            let args = ["openguild", "library", "new", "--title", "제목", flag, "아키텍처"];
+            let args = [
+                "openguild",
+                "library",
+                "new",
+                "--title",
+                "제목",
+                flag,
+                "아키텍처",
+            ];
             match Cli::try_parse_from(args).unwrap().command {
-                Command::Library { sub: LibraryCmd::New { folder, .. } } => {
+                Command::Library {
+                    sub: LibraryCmd::New { folder, .. },
+                } => {
                     assert_eq!(folder.as_deref(), Some("아키텍처"), "{flag}");
                 }
                 _ => panic!("{flag}"),
@@ -13749,7 +14721,9 @@ scope = ["gui"]
         for flag in ["--folder", "--path"] {
             let args = ["openguild", "library", "update", "BOOK-002", flag, "운영"];
             match Cli::try_parse_from(args).unwrap().command {
-                Command::Library { sub: LibraryCmd::Update { folder, .. } } => {
+                Command::Library {
+                    sub: LibraryCmd::Update { folder, .. },
+                } => {
                     assert_eq!(folder.as_deref(), Some("운영"), "{flag}");
                 }
                 _ => panic!("{flag}"),
@@ -13759,18 +14733,34 @@ scope = ["gui"]
         // BUG-281: 폴더에 넣을 수 있으면 그 폴더로 찾을 수도 있어야 한다.
         let args = ["openguild", "library", "list", "--folder", "아키텍처"];
         match Cli::try_parse_from(args).unwrap().command {
-            Command::Library { sub: LibraryCmd::List { folder, .. } } => {
+            Command::Library {
+                sub: LibraryCmd::List { folder, .. },
+            } => {
                 assert_eq!(folder.as_deref(), Some("아키텍처"));
             }
             _ => panic!(),
         }
 
         let cli = Cli::try_parse_from([
-            "openguild", "library", "update", "BOOK-002", "--title", "t2",
+            "openguild",
+            "library",
+            "update",
+            "BOOK-002",
+            "--title",
+            "t2",
         ])
         .unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Update { id, title, file, folder, .. } } => {
+            Command::Library {
+                sub:
+                    LibraryCmd::Update {
+                        id,
+                        title,
+                        file,
+                        folder,
+                        ..
+                    },
+            } => {
                 assert_eq!(id, "BOOK-002");
                 assert_eq!(title.as_deref(), Some("t2"));
                 assert!(file.is_none());
@@ -13782,39 +14772,54 @@ scope = ["gui"]
         let cli =
             Cli::try_parse_from(["openguild", "library", "delete", "BOOK-003", "--yes"]).unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Delete { id, yes } } => {
+            Command::Library {
+                sub: LibraryCmd::Delete { id, yes },
+            } => {
                 assert_eq!(id, "BOOK-003");
                 assert!(yes);
             }
             _ => panic!(),
         }
 
-        let cli = Cli::try_parse_from(["openguild", "library", "folder", "new", "아키텍처"])
-            .unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "library", "folder", "new", "아키텍처"]).unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Folder { sub: LibraryFolderCmd::New { path } } } => {
+            Command::Library {
+                sub:
+                    LibraryCmd::Folder {
+                        sub: LibraryFolderCmd::New { path },
+                    },
+            } => {
                 assert_eq!(path, "아키텍처");
             }
             _ => panic!(),
         }
-        assert!(
-            matches!(
-                Cli::try_parse_from(["openguild", "library", "folder", "list"])
-                    .unwrap()
-                    .command,
-                Command::Library {
-                    sub: LibraryCmd::Folder { sub: LibraryFolderCmd::List }
+        assert!(matches!(
+            Cli::try_parse_from(["openguild", "library", "folder", "list"])
+                .unwrap()
+                .command,
+            Command::Library {
+                sub: LibraryCmd::Folder {
+                    sub: LibraryFolderCmd::List
                 }
-            )
-        );
+            }
+        ));
 
         let cli = Cli::try_parse_from([
-            "openguild", "library", "folder", "delete", "아키텍처/서브", "--yes",
+            "openguild",
+            "library",
+            "folder",
+            "delete",
+            "아키텍처/서브",
+            "--yes",
         ])
         .unwrap();
         match cli.command {
             Command::Library {
-                sub: LibraryCmd::Folder { sub: LibraryFolderCmd::Delete { path, yes } },
+                sub:
+                    LibraryCmd::Folder {
+                        sub: LibraryFolderCmd::Delete { path, yes },
+                    },
             } => {
                 assert_eq!(path, "아키텍처/서브");
                 assert!(yes);
@@ -13826,11 +14831,21 @@ scope = ["gui"]
     /// DEV-397: `library folder move <from> <to>` — 둘 다 위치 인자(새 전체 경로).
     #[test]
     fn cli_library_folder_move_parses() {
-        let cli = Cli::try_parse_from(["openguild", "library", "folder", "move", "설계", "보관/설계"])
-            .unwrap();
+        let cli = Cli::try_parse_from([
+            "openguild",
+            "library",
+            "folder",
+            "move",
+            "설계",
+            "보관/설계",
+        ])
+        .unwrap();
         match cli.command {
             Command::Library {
-                sub: LibraryCmd::Folder { sub: LibraryFolderCmd::Move { from, to } },
+                sub:
+                    LibraryCmd::Folder {
+                        sub: LibraryFolderCmd::Move { from, to },
+                    },
             } => {
                 assert_eq!((from.as_str(), to.as_str()), ("설계", "보관/설계"));
             }
@@ -13843,27 +14858,55 @@ scope = ["gui"]
     #[test]
     fn cli_plugin_source_commands_parse() {
         for argv in [
-            vec!["openguild", "plugin", "source", "add", "/tmp/x", "--name", "mine"],
+            vec![
+                "openguild",
+                "plugin",
+                "source",
+                "add",
+                "/tmp/x",
+                "--name",
+                "mine",
+            ],
             vec!["openguild", "plugin", "source", "list"],
             vec!["openguild", "plugin", "source", "remove", "mine"],
             vec!["openguild", "plugin", "available"],
             vec!["openguild", "plugin", "add", "hello@mine"],
             vec!["openguild", "plugin", "remove", "hello"],
             vec!["openguild", "plugin", "reload"],
-            vec!["openguild", "plugin", "reload", "--remote", "http://127.0.0.1:3000"],
+            vec![
+                "openguild",
+                "plugin",
+                "reload",
+                "--remote",
+                "http://127.0.0.1:3000",
+            ],
         ] {
             assert!(Cli::try_parse_from(argv.clone()).is_ok(), "{argv:?}");
         }
-        assert!(Cli::try_parse_from(["openguild", "plugin", "source"]).is_err(), "sub 필수");
-        assert!(Cli::try_parse_from(["openguild", "plugin", "add"]).is_err(), "대상 필수");
+        assert!(
+            Cli::try_parse_from(["openguild", "plugin", "source"]).is_err(),
+            "sub 필수"
+        );
+        assert!(
+            Cli::try_parse_from(["openguild", "plugin", "add"]).is_err(),
+            "대상 필수"
+        );
     }
 
     /// DEV-319: `guild` 는 하위 명령 필수(다른 명사 그룹과 동일 컨벤션).
     #[test]
     fn cli_guild_list_parses() {
-        assert!(Cli::try_parse_from(["openguild", "guild"]).is_err(), "sub 필수");
+        assert!(
+            Cli::try_parse_from(["openguild", "guild"]).is_err(),
+            "sub 필수"
+        );
         let cli = Cli::try_parse_from(["openguild", "guild", "list"]).unwrap();
-        assert!(matches!(cli.command, Command::Guild { sub: GuildCmd::List }));
+        assert!(matches!(
+            cli.command,
+            Command::Guild {
+                sub: GuildCmd::List
+            }
+        ));
     }
 
     /// DEV-187: 새 버전 확인은 최상위 `update` — 길드 점검 묶음(`check`)에 두지 않는다.
@@ -13879,37 +14922,68 @@ scope = ["gui"]
     /// 작업 기록 명령 파싱 — show 의 date/from-to 상호배타, note sub 필수.
     #[test]
     fn cli_worklog_subcommands_parse() {
-        assert!(Cli::try_parse_from(["openguild", "worklog"]).is_err(), "sub 필수");
+        assert!(
+            Cli::try_parse_from(["openguild", "worklog"]).is_err(),
+            "sub 필수"
+        );
         let cli = Cli::try_parse_from(["openguild", "worklog", "show"]).unwrap();
         assert!(matches!(
             cli.command,
-            Command::Worklog { sub: WorklogCmd::Show { date: None, from: None, to: None } }
+            Command::Worklog {
+                sub: WorklogCmd::Show {
+                    date: None,
+                    from: None,
+                    to: None
+                }
+            }
         ));
 
         let cli =
             Cli::try_parse_from(["openguild", "worklog", "show", "--date", "2026-07-05"]).unwrap();
         match cli.command {
-            Command::Worklog { sub: WorklogCmd::Show { date, .. } } => {
+            Command::Worklog {
+                sub: WorklogCmd::Show { date, .. },
+            } => {
                 assert_eq!(date.as_deref(), Some("2026-07-05"));
             }
             _ => panic!(),
         }
         // --date 와 --from 동시 지정 거부, --from 은 --to 필수.
-        assert!(Cli::try_parse_from([
-            "openguild", "worklog", "show", "--date", "2026-07-05", "--from", "2026-07-01",
-            "--to", "2026-07-05",
-        ])
-        .is_err());
+        assert!(
+            Cli::try_parse_from([
+                "openguild",
+                "worklog",
+                "show",
+                "--date",
+                "2026-07-05",
+                "--from",
+                "2026-07-01",
+                "--to",
+                "2026-07-05",
+            ])
+            .is_err()
+        );
         assert!(
             Cli::try_parse_from(["openguild", "worklog", "show", "--from", "2026-07-01"]).is_err()
         );
 
         let cli = Cli::try_parse_from([
-            "openguild", "worklog", "note", "set", "2026-07-05", "--file", "n.md",
+            "openguild",
+            "worklog",
+            "note",
+            "set",
+            "2026-07-05",
+            "--file",
+            "n.md",
         ])
         .unwrap();
         match cli.command {
-            Command::Worklog { sub: WorklogCmd::Note { sub: WorklogNoteCmd::Set { date, file } } } => {
+            Command::Worklog {
+                sub:
+                    WorklogCmd::Note {
+                        sub: WorklogNoteCmd::Set { date, file },
+                    },
+            } => {
                 assert_eq!(date, "2026-07-05");
                 assert!(file.is_some());
             }
@@ -13919,7 +14993,11 @@ scope = ["gui"]
             Cli::try_parse_from(["openguild", "worklog", "note", "clear", "2026-07-05"]).unwrap();
         assert!(matches!(
             cli.command,
-            Command::Worklog { sub: WorklogCmd::Note { sub: WorklogNoteCmd::Clear { .. } } }
+            Command::Worklog {
+                sub: WorklogCmd::Note {
+                    sub: WorklogNoteCmd::Clear { .. }
+                }
+            }
         ));
     }
 
@@ -13940,11 +15018,16 @@ scope = ["gui"]
             .find(|c| c.get_name() == "new")
             .expect("new 가 canonical 이어야 (help 에 new 로 표시)");
         let aliases: Vec<&str> = new_sub.get_all_aliases().collect();
-        assert!(aliases.is_empty(), "create alias 는 완전히 제거됐어야: {aliases:?}");
+        assert!(
+            aliases.is_empty(),
+            "create alias 는 완전히 제거됐어야: {aliases:?}"
+        );
 
         let cli = Cli::try_parse_from(["openguild", "rule", "new", "t1", "--empty"]).unwrap();
         match cli.command {
-            Command::Rules { sub: RulesCmd::Create { slug, empty, .. } } => {
+            Command::Rules {
+                sub: RulesCmd::Create { slug, empty, .. },
+            } => {
                 assert_eq!(slug, "t1");
                 assert!(empty);
             }
@@ -14001,12 +15084,22 @@ scope = ["gui"]
         let rewritten =
             rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "types".into()]);
         let cli = Cli::try_parse_from(rewritten).unwrap();
-        assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List { .. } }));
+        assert!(matches!(
+            cli.command,
+            Command::Types {
+                sub: TypesCmd::List { .. }
+            }
+        ));
 
         let rewritten2 =
             rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "statuses".into()]);
         let cli2 = Cli::try_parse_from(rewritten2).unwrap();
-        assert!(matches!(cli2.command, Command::Statuses { sub: StatusesCmd::List { .. } }));
+        assert!(matches!(
+            cli2.command,
+            Command::Statuses {
+                sub: StatusesCmd::List { .. }
+            }
+        ));
 
         assert!(Cli::try_parse_from(["openguild", "type"]).is_err());
     }
@@ -14014,12 +15107,24 @@ scope = ["gui"]
     #[test]
     fn cli_types_add() {
         let cli = Cli::try_parse_from([
-            "openguild", "types", "add", "FOO", "--color", "#abcdef", "--description", "x",
+            "openguild",
+            "types",
+            "add",
+            "FOO",
+            "--color",
+            "#abcdef",
+            "--description",
+            "x",
         ])
         .unwrap();
         match cli.command {
             Command::Types {
-                sub: TypesCmd::Add { prefix, color, description },
+                sub:
+                    TypesCmd::Add {
+                        prefix,
+                        color,
+                        description,
+                    },
             } => {
                 assert_eq!(prefix, "FOO");
                 assert_eq!(color, "#abcdef");
@@ -14031,14 +15136,9 @@ scope = ["gui"]
 
     #[test]
     fn cli_types_update_with_clear() {
-        let cli = Cli::try_parse_from([
-            "openguild",
-            "types",
-            "update",
-            "DEV",
-            "--clear-description",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["openguild", "types", "update", "DEV", "--clear-description"])
+                .unwrap();
         match cli.command {
             Command::Types {
                 sub:
@@ -14067,7 +15167,9 @@ scope = ["gui"]
             .unwrap();
         match cli.command {
             Command::Types {
-                sub: TypesCmd::Update { prefix, new_prefix, .. },
+                sub: TypesCmd::Update {
+                    prefix, new_prefix, ..
+                },
             } => {
                 assert_eq!(prefix, "DEV");
                 assert_eq!(new_prefix.as_deref(), Some("CORE"));
@@ -14093,7 +15195,13 @@ scope = ["gui"]
         .unwrap();
         match cli.command {
             Command::Statuses {
-                sub: StatusesCmd::Add { name_en, color, name_ko, sort_order },
+                sub:
+                    StatusesCmd::Add {
+                        name_en,
+                        color,
+                        name_ko,
+                        sort_order,
+                    },
             } => {
                 assert_eq!(name_en, "Blocked");
                 assert_eq!(color, "#ff0000");
@@ -14142,7 +15250,12 @@ scope = ["gui"]
     #[test]
     fn cli_statuses_update_with_slug_triggers_rename() {
         let cli = Cli::try_parse_from([
-            "openguild", "statuses", "update", "open", "--slug", "backlog",
+            "openguild",
+            "statuses",
+            "update",
+            "open",
+            "--slug",
+            "backlog",
         ])
         .unwrap();
         match cli.command {
@@ -14165,7 +15278,10 @@ mod remote_export_tests {
 
     #[test]
     fn zip_names_stay_inside_the_destination() {
-        assert_eq!(safe_zip_rel("설계/결정/기록.md"), Some(PathBuf::from("설계").join("결정").join("기록.md")));
+        assert_eq!(
+            safe_zip_rel("설계/결정/기록.md"),
+            Some(PathBuf::from("설계").join("결정").join("기록.md"))
+        );
         assert_eq!(safe_zip_rel("./a.md"), Some(PathBuf::from("a.md")));
         // 밖을 가리키는 것은 버린다.
         assert_eq!(safe_zip_rel("../밖.md"), None);

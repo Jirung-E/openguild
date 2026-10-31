@@ -8,22 +8,21 @@
 //! snapshot 백업 합류는 후속 quest. entry 포맷 / reactions (DEV-108) 은
 //! quest 와 동일 (`repo::comments` 공용).
 
-use crate::lock::DocKey;
 use crate::events::{names as ev, payload};
+use crate::lock::DocKey;
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
 use crate::repo::comments::{self as repo, CommentEntry};
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 
 // ─── DEV-134: DB 캐시 sync (DEV-102 미러) — snapshot 백업 합류 ───
 
 async fn lookup_campaign_id(store: &Store, slug: &str) -> AppResult<Option<i64>> {
-    let id: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
-            .bind(slug)
-            .fetch_optional(&store.index_pool)
-            .await?;
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+        .bind(slug)
+        .fetch_optional(&store.index_pool)
+        .await?;
     Ok(id)
 }
 
@@ -167,7 +166,9 @@ pub async fn add_entry(
     upsert_entry_db(store, slug, &entry).await?;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
     // 색인은 파생물이라 reindex 로 복구된다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
+    let _ =
+        crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug)
+            .await;
     // DEV-388: 캠페인 댓글도 `comment.*` 로 낸다(admin 확정 — 이름을 늘리지
     // 않는다). 대신 어디에 달렸는지는 `target` 이 가른다.
     store.emit_post(
@@ -238,7 +239,9 @@ pub async fn update_entry_with(
     upsert_entry_db(store, slug, &updated).await?;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
     // 색인은 파생물이라 reindex 로 복구된다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
+    let _ =
+        crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug)
+            .await;
     store.emit_post(
         ev::COMMENT_UPDATED,
         || json!({ "target": payload::target("campaign", slug), "comment": payload::comment(&updated) }),
@@ -270,7 +273,9 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     let before = entries.len();
     entries.retain(|e| e.id != id);
     if entries.len() == before {
-        return Err(AppError::NotFound(format!("comment {id} not found for {slug}")));
+        return Err(AppError::NotFound(format!(
+            "comment {id} not found for {slug}"
+        )));
     }
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
@@ -279,7 +284,9 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     delete_entry_db(store, slug, id).await?;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
     // 색인은 파생물이라 reindex 로 복구된다).
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
+    let _ =
+        crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug)
+            .await;
     store.emit_post(ev::COMMENT_DELETED, || {
         let comment = match &doomed {
             Some(e) => payload::comment(e),
@@ -303,20 +310,23 @@ pub async fn toggle_reaction(
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
-        return Err(AppError::BadRequest(
-            crate::tf!(
-                "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음",
-                "emoji must not be empty or contain , \" : |"
-            ),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음",
+            "emoji must not be empty or contain , \" : |"
+        )));
     }
     let author = author.trim();
     if author.contains(bad) {
-        return Err(AppError::BadRequest(
-            crate::tf!("author 는 , \" : | 를 포함할 수 없음", "author must not contain , \" : |"),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "author 는 , \" : | 를 포함할 수 없음",
+            "author must not contain , \" : |"
+        )));
     }
-    let author = if author.is_empty() { "(익명)" } else { author };
+    let author = if author.is_empty() {
+        "(익명)"
+    } else {
+        author
+    };
     let _ = journal::append(
         &store.journal_pool,
         "toggle_campaign_comment_reaction",
@@ -441,7 +451,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-camp-cmt-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-camp-cmt-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -464,7 +475,9 @@ mod tests {
         let list = list_entries(&store, "C-001").unwrap();
         assert_eq!(list.len(), 2);
 
-        let u = update_entry(&store, "C-001", 1, "edited".into()).await.unwrap();
+        let u = update_entry(&store, "C-001", 1, "edited".into())
+            .await
+            .unwrap();
         assert_eq!(u.body, "edited");
         assert_eq!(u.author, "alice", "author 보존");
 
@@ -497,7 +510,9 @@ mod tests {
             .unwrap();
         assert_eq!(n, 1, "add 후 캐시 1 row");
 
-        update_entry(&store, "C-001", e.id, "edited".into()).await.unwrap();
+        update_entry(&store, "C-001", e.id, "edited".into())
+            .await
+            .unwrap();
         let body: String =
             sqlx::query_scalar("SELECT body FROM campaign_comments WHERE entry_id = 1")
                 .fetch_one(&store.index_pool)
@@ -525,15 +540,26 @@ mod tests {
     #[tokio::test]
     async fn reaction_toggle_and_memo() {
         let (dir, store) = setup("react").await;
-        add_entry(&store, "C-001", "a".into(), "x".into(), None).await.unwrap();
-        let r1 = toggle_reaction(&store, "C-001", 1, "👍", "alice").await.unwrap();
+        add_entry(&store, "C-001", "a".into(), "x".into(), None)
+            .await
+            .unwrap();
+        let r1 = toggle_reaction(&store, "C-001", 1, "👍", "alice")
+            .await
+            .unwrap();
         assert_eq!(r1.reactions, vec!["👍:alice"]);
-        let r2 = toggle_reaction(&store, "C-001", 1, "👍", "alice").await.unwrap();
+        let r2 = toggle_reaction(&store, "C-001", 1, "👍", "alice")
+            .await
+            .unwrap();
         assert!(r2.reactions.is_empty());
 
         assert!(get_memo(&store, "C-001").unwrap().is_none());
-        set_memo(&store, "C-001", "private note".into()).await.unwrap();
-        assert_eq!(get_memo(&store, "C-001").unwrap().as_deref(), Some("private note"));
+        set_memo(&store, "C-001", "private note".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            get_memo(&store, "C-001").unwrap().as_deref(),
+            Some("private note")
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -541,8 +567,16 @@ mod tests {
     #[tokio::test]
     async fn add_rejects_missing_parent_and_empty_body() {
         let (dir, store) = setup("valid").await;
-        assert!(add_entry(&store, "C-001", "a".into(), "  ".into(), None).await.is_err());
-        assert!(add_entry(&store, "C-001", "a".into(), "x".into(), Some(99)).await.is_err());
+        assert!(
+            add_entry(&store, "C-001", "a".into(), "  ".into(), None)
+                .await
+                .is_err()
+        );
+        assert!(
+            add_entry(&store, "C-001", "a".into(), "x".into(), Some(99))
+                .await
+                .is_err()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

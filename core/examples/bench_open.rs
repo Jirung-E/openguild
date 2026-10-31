@@ -44,7 +44,11 @@ fn main() {
         }
         println!(
             "  full_reindex : {}",
-            if full.is_some() { "돌았음" } else { "생략" }
+            if full.is_some() {
+                "돌았음"
+            } else {
+                "생략"
+            }
         );
         println!("total        : {} ms", open_ms + sync_ms);
     });

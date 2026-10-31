@@ -33,7 +33,6 @@ import { locale, t } from '$lib/stores/locale';
  */
 export const MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 
-
 function tooLargeMessage(file: File): string {
 	const mb = (n: number) => Math.round((n / (1024 * 1024)) * 10) / 10;
 	const loc = get(locale);
@@ -336,9 +335,7 @@ export async function pickAndUploadAttachments(handlers: {
 	 * 넘긴다. 여러 개를 올리는 중 하나만 빼려면 전부 취소하고 다시 고르는 수밖에
 	 * 없었다(admin 보고).
 	 */
-	onCancelHandle?: (
-		h: { cancelAll: () => void; cancelOne: (id: number) => void } | null
-	) => void;
+	onCancelHandle?: (h: { cancelAll: () => void; cancelOne: (id: number) => void } | null) => void;
 }): Promise<void> {
 	const { onOne, onError, onQueue, onCancelHandle } = handlers;
 	const picked = await pickUploads();

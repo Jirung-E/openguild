@@ -439,7 +439,8 @@
 		     읽기 전용 표시. -->
 		<section class="picker remote-picker">
 			<div class="remote-input-row">
-				<input class="input"
+				<input
+					class="input"
 					type="text"
 					placeholder={t('welcome.remotePlaceholder', $locale)}
 					bind:value={remoteInput}
@@ -450,12 +451,19 @@
 						? t('welcome.checking', $locale)
 						: t('welcome.checkConn', $locale)}
 				</button>
-				<button class="btn btn-accent btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
+				<button
+					class="btn btn-accent btn-pick"
+					onclick={connectRemote}
+					disabled={!remoteInput.trim()}
+				>
 					{t('welcome.connect', $locale)}
 				</button>
 			</div>
 			{#if remoteCheckState === 'ok'}
-				<p class="remote-check ok"><Icon name="check" size="1em" /> {t('welcome.connOk', $locale)}</p>
+				<p class="remote-check ok">
+					<Icon name="check" size="1em" />
+					{t('welcome.connOk', $locale)}
+				</p>
 			{:else if remoteCheckState === 'fail'}
 				<p class="remote-check err">
 					{t('welcome.connFail', $locale)}{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}
@@ -481,7 +489,13 @@
 			</p>
 			<label class="uninit-name">
 				<span>{t('welcome.guildName', $locale)}</span>
-				<input class="input" type="text" bind:value={initName} placeholder="guild" disabled={initRunning} />
+				<input
+					class="input"
+					type="text"
+					bind:value={initName}
+					placeholder="guild"
+					disabled={initRunning}
+				/>
 			</label>
 			{#if initErr}
 				<p class="err">{initErr}</p>
@@ -536,7 +550,10 @@
 							</div>
 							<div class="path">{entry.path}</div>
 							{#if entry.missing}
-								<div class="missing-label"><Icon name="warn" size="1em" /> {t('welcome.pathNotFound', $locale)}</div>
+								<div class="missing-label">
+									<Icon name="warn" size="1em" />
+									{t('welcome.pathNotFound', $locale)}
+								</div>
 							{/if}
 							{#if opening === entry.path}
 								<div class="opening">{t('welcome.guildOpening', $locale)}</div>
@@ -596,12 +613,22 @@
 {#if confirmOpen}
 	<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 스타일 모달. -->
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: cancelClear }}>
+		<div
+			class="modal-box modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: cancelClear }}
+		>
 			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
 			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn btn-danger" onclick={doClear}>{t('welcome.clearConfirm', $locale)}</button>
-				<button class="btn" data-autofocus onclick={cancelClear}>{t('common.cancel', $locale)}</button>
+				<button class="btn btn-danger" onclick={doClear}
+					>{t('welcome.clearConfirm', $locale)}</button
+				>
+				<button class="btn" data-autofocus onclick={cancelClear}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -610,7 +637,13 @@
 {#if confirmRemove}
 	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: cancelRemove }}>
+		<div
+			class="modal-box modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{ onEscape: cancelRemove }}
+		>
 			<h3 class="modal-title">{t('welcome.removeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmRemove.name}</strong>{t('welcome.removeSuffix', $locale)}
@@ -625,7 +658,9 @@
 			</p>
 			<div class="modal-actions">
 				<button class="btn btn-danger" onclick={doRemove}>{t('welcome.remove', $locale)}</button>
-				<button class="btn" data-autofocus onclick={cancelRemove}>{t('common.cancel', $locale)}</button>
+				<button class="btn" data-autofocus onclick={cancelRemove}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>

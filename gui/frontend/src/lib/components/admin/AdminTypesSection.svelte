@@ -213,7 +213,8 @@
 									<input type="color" bind:value={editColor} disabled={busy} />
 								</td>
 								<td>
-									<input class="input"
+									<input
+										class="input"
 										type="text"
 										bind:value={editDesc}
 										placeholder={t('adminTypes.descPlaceholder', $locale)}
@@ -263,12 +264,23 @@
 
 {#if creating}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => { if (!busy) creating = false; } }}>
+		<div
+			class="modal-box modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{
+				onEscape: () => {
+					if (!busy) creating = false;
+				}
+			}}
+		>
 			<h3 class="modal-title">{t('adminTypes.newTypeTitle', $locale)}</h3>
 			<div class="form">
 				<label>
 					<span>prefix</span>
-					<input class="input"
+					<input
+						class="input"
 						type="text"
 						bind:value={newPrefix}
 						placeholder={t('adminTypes.prefixPlaceholder', $locale)}
@@ -283,7 +295,8 @@
 				</label>
 				<label>
 					<span>{t('adminTypes.colDesc', $locale)}</span>
-					<input class="input"
+					<input
+						class="input"
 						type="text"
 						bind:value={newDesc}
 						placeholder={t('adminTypes.descShortPlaceholder', $locale)}
@@ -305,7 +318,17 @@
 
 {#if confirmDelete}
 	<div class="ov" role="presentation" use:modalScrollLock>
-		<div class="modal-box modal" role="dialog" aria-modal="true" tabindex="-1" use:modalFocus={{ onEscape: () => { if (!busy) confirmDelete = null; } }}>
+		<div
+			class="modal-box modal"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			use:modalFocus={{
+				onEscape: () => {
+					if (!busy) confirmDelete = null;
+				}
+			}}
+		>
 			<h3 class="modal-title">{t('adminTypes.deleteTypeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />

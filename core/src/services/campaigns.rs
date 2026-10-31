@@ -95,7 +95,10 @@ pub async fn fetch_by_id(pool: &SqlitePool, id: i64) -> AppResult<CampaignRow> {
 }
 
 /// DEV-226: campaign 의 변경 이력 (최신 → 과거 순). quest 의 list_history 와 동일 패턴.
-pub async fn list_history(pool: &SqlitePool, campaign_id: i64) -> AppResult<Vec<CampaignHistoryEntry>> {
+pub async fn list_history(
+    pool: &SqlitePool,
+    campaign_id: i64,
+) -> AppResult<Vec<CampaignHistoryEntry>> {
     let rows = sqlx::query_as::<_, CampaignHistoryEntry>(
         "SELECT id, campaign_id, campaign_slug, ts, op, old_value, new_value, actor
          FROM campaign_history WHERE campaign_id = ? ORDER BY ts DESC, id DESC",
@@ -135,10 +138,9 @@ pub async fn create(pool: &SqlitePool, body: CreateCampaignRequest) -> AppResult
     sqlx::query("UPDATE campaign_counters SET last_number = last_number + 1 WHERE id = 1")
         .execute(&mut *tx)
         .await?;
-    let next: (i64,) =
-        sqlx::query_as("SELECT last_number FROM campaign_counters WHERE id = 1")
-            .fetch_one(&mut *tx)
-            .await?;
+    let next: (i64,) = sqlx::query_as("SELECT last_number FROM campaign_counters WHERE id = 1")
+        .fetch_one(&mut *tx)
+        .await?;
     let slug = format!("C-{:03}", next.0);
 
     let inserted: (i64,) = sqlx::query_as(
@@ -182,7 +184,9 @@ pub async fn update(
     if let Some(t) = body.title {
         let t = t.trim();
         if t.is_empty() {
-            return Err(AppError::BadRequest("campaign title cannot be empty".into()));
+            return Err(AppError::BadRequest(
+                "campaign title cannot be empty".into(),
+            ));
         }
         sqlx::query("UPDATE campaigns SET title = ? WHERE id = ?")
             .bind(t)
@@ -292,10 +296,7 @@ pub async fn add_checklist(
     fetch_checklist(pool, id.0).await
 }
 
-pub async fn fetch_checklist(
-    pool: &SqlitePool,
-    id: i64,
-) -> AppResult<CampaignChecklistItem> {
+pub async fn fetch_checklist(pool: &SqlitePool, id: i64) -> AppResult<CampaignChecklistItem> {
     let item = sqlx::query_as::<_, CampaignChecklistItem>(
         "SELECT id, campaign_id, text, checked != 0 AS checked, order_idx
            FROM campaign_checklists WHERE id = ?",
@@ -315,7 +316,9 @@ pub async fn update_checklist(
     if let Some(t) = body.text {
         let t = t.trim();
         if t.is_empty() {
-            return Err(AppError::BadRequest("checklist text cannot be empty".into()));
+            return Err(AppError::BadRequest(
+                "checklist text cannot be empty".into(),
+            ));
         }
         sqlx::query("UPDATE campaign_checklists SET text = ? WHERE id = ?")
             .bind(t)
@@ -417,13 +420,11 @@ pub async fn list_linked_quests(
 }
 
 pub async fn link_quest(pool: &SqlitePool, campaign_id: i64, quest_id: i64) -> AppResult<()> {
-    sqlx::query(
-        "INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
-    )
-    .bind(campaign_id)
-    .bind(quest_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)")
+        .bind(campaign_id)
+        .bind(quest_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -438,10 +439,7 @@ pub async fn unlink_quest(pool: &SqlitePool, campaign_id: i64, quest_id: i64) ->
 
 /// 특정 quest 에 연결된 모든 캠페인 (alive only). Quest Detail 의 Campaign
 /// 섹션 표시용. 최근 연결 순서 보장은 안 함 — display_order / created_at.
-pub async fn list_for_quest(
-    pool: &SqlitePool,
-    quest_id: i64,
-) -> AppResult<Vec<CampaignRow>> {
+pub async fn list_for_quest(pool: &SqlitePool, quest_id: i64) -> AppResult<Vec<CampaignRow>> {
     let sql = format!(
         "{CAMPAIGN_SELECT}
           JOIN campaign_quests cq ON c.id = cq.campaign_id

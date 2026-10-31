@@ -65,13 +65,15 @@ pub fn sync_bundled_docs(src_dir: &Path) -> Result<usize> {
         if !src.is_file() || src.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        let Some(name) = src.file_name() else { continue };
+        let Some(name) = src.file_name() else {
+            continue;
+        };
         let dst = dst_dir.join(name);
         let src_mtime = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
         let dst_mtime = std::fs::metadata(&dst).and_then(|m| m.modified()).ok();
         let stale = match (src_mtime, dst_mtime) {
-            (_, None) => true,                       // 아직 없음 — 첫 복사.
-            (Some(s), Some(d)) => s > d,             // 업데이트 반영.
+            (_, None) => true,           // 아직 없음 — 첫 복사.
+            (Some(s), Some(d)) => s > d, // 업데이트 반영.
             (None, Some(_)) => false,
         };
         if stale {
@@ -126,15 +128,16 @@ fn plugin_version(root: &Path) -> Option<String> {
 /// 을 비교해 원본이 더 새 것일 때만 덮어쓴다(`sync_bundled_docs` 와 동일 정책,
 /// 디렉토리에 대해 재귀 적용).
 fn copy_dir(src: &Path, dst: &Path, force: bool) -> Result<usize> {
-    std::fs::create_dir_all(dst)
-        .with_context(|| format!("create dir: {}", dst.display()))?;
+    std::fs::create_dir_all(dst).with_context(|| format!("create dir: {}", dst.display()))?;
     let mut copied = 0usize;
     for entry in std::fs::read_dir(src)
         .with_context(|| format!("read dir: {}", src.display()))?
         .flatten()
     {
         let src_path = entry.path();
-        let Some(name) = src_path.file_name() else { continue };
+        let Some(name) = src_path.file_name() else {
+            continue;
+        };
         let dst_path = dst.join(name);
         if src_path.is_dir() {
             copied += copy_dir(&src_path, &dst_path, force)?;
@@ -215,7 +218,10 @@ mod tests {
         unsafe { std::env::remove_var("OPENGUILD_HOME") };
 
         let got = openguild_home().unwrap();
-        let real = directories::UserDirs::new().unwrap().home_dir().join(".openguild");
+        let real = directories::UserDirs::new()
+            .unwrap()
+            .home_dir()
+            .join(".openguild");
         assert_ne!(got, real, "시험이 실제 ~/.openguild 를 받았다");
         assert!(got.starts_with(std::env::temp_dir()), "{}", got.display());
 
@@ -247,9 +253,13 @@ mod tests {
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
         let copied = sync_bundled_skill_marketplace(&src).unwrap();
         assert_eq!(copied, 2, "marketplace.json + SKILL.md");
-        assert!(home.join("skill-marketplace/.claude-plugin/marketplace.json").is_file());
         assert!(
-            home.join("skill-marketplace/openguild-plugin/skills/openguild/SKILL.md").is_file()
+            home.join("skill-marketplace/.claude-plugin/marketplace.json")
+                .is_file()
+        );
+        assert!(
+            home.join("skill-marketplace/openguild-plugin/skills/openguild/SKILL.md")
+                .is_file()
         );
 
         let again = sync_bundled_skill_marketplace(&src).unwrap();

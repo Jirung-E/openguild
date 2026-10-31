@@ -7,22 +7,22 @@
 //! (CLI / GUI 가 slug 기반으로 호출).
 
 use axum::{
+    Json,
     body::Body,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
+use openguild_core::Store;
 use openguild_core::models::{
-    AddChecklistRequest, CampaignChecklistItem, CampaignDetail, CampaignHistoryEntry,
-    CampaignRow, CampaignSummary, CreateCampaignRequest, LinkQuestRequest,
-    UpdateCampaignRequest, UpdateChecklistRequest,
+    AddChecklistRequest, CampaignChecklistItem, CampaignDetail, CampaignHistoryEntry, CampaignRow,
+    CampaignSummary, CreateCampaignRequest, LinkQuestRequest, UpdateCampaignRequest,
+    UpdateChecklistRequest,
 };
 use openguild_core::ops::campaigns as ops;
 use openguild_core::services::campaigns as svc;
-use openguild_core::Store;
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -63,8 +63,7 @@ pub async fn get_campaign(
 ) -> AppResult<Json<CampaignDetail>> {
     let mut detail = ops::fetch_detail(&store, &slug).await?;
     // DEV-152: 첨부 목록(sidecar) — GUI Tauri 커맨드와 동일하게 여기서 채움.
-    detail.attachments =
-        openguild_core::ops::attachments::list_campaign_attachments(&store, &slug);
+    detail.attachments = openguild_core::ops::attachments::list_campaign_attachments(&store, &slug);
     Ok(Json(detail))
 }
 
@@ -136,10 +135,9 @@ pub async fn set_checklist(
 ) -> AppResult<StatusCode> {
     let row = svc::fetch_by_slug(&store.index_pool, &slug).await?;
     let Some(checked) = body.checked else {
-        return Err(AppError::BadRequest(
-            "PATCH checklist 본문에 `checked: bool` 필요".into(),
-        )
-        .into());
+        return Err(
+            AppError::BadRequest("PATCH checklist 본문에 `checked: bool` 필요".into()).into(),
+        );
     };
     ops::set_checklist_checked_by_index(&store, row.id, index, checked).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -194,7 +192,9 @@ pub async fn list_for_quest(
     State(store): State<Store>,
     Path(quest_id): Path<i64>,
 ) -> AppResult<Json<Vec<CampaignRow>>> {
-    Ok(Json(svc::list_for_quest(&store.index_pool, quest_id).await?))
+    Ok(Json(
+        svc::list_for_quest(&store.index_pool, quest_id).await?,
+    ))
 }
 
 /// DEV-087: 배너 이미지 bytes 서빙 — HTTP / 브라우저 모드 표시용.
@@ -217,9 +217,9 @@ pub async fn get_banner_image(
     // 전환 등 — BOOK-001 맥락에서 흔하다) 클라이언트가 원인을 알 수 없었다.
     // admin.rs 의 `get_guild_file` 은 처음부터 이렇게 하고 있었다.
     let bytes = std::fs::read(&path).map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => openguild_core::error::AppError::NotFound(format!(
-            "배너 파일 없음: {rel}"
-        )),
+        std::io::ErrorKind::NotFound => {
+            openguild_core::error::AppError::NotFound(format!("배너 파일 없음: {rel}"))
+        }
         _ => openguild_core::error::AppError::Internal(anyhow::anyhow!(
             "배너 파일 읽기 실패 {}: {e}",
             path.display()
@@ -235,7 +235,6 @@ pub async fn get_banner_image(
     };
     Ok(([(axum::http::header::CONTENT_TYPE, mime)], bytes).into_response())
 }
-
 
 /// BUG-255: 배너 **설정** — 원격/브라우저 모드용 bytes 경로.
 ///

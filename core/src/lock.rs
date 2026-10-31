@@ -65,7 +65,10 @@ pub struct DocKey {
 
 impl DocKey {
     pub fn new(kind: &'static str, id: impl Into<String>) -> Self {
-        Self { kind, id: id.into() }
+        Self {
+            kind,
+            id: id.into(),
+        }
     }
     pub fn quest(slug: &str) -> Self {
         Self::new("quest", slug)
@@ -224,7 +227,10 @@ pub(crate) async fn acquire(
                      처음부터 다시 잡아야 합니다(엇갈려 멈추는 것을 막으려는 규칙)"
                 );
             }
-            Some(Holder { set: locks.0.holders.clone(), id })
+            Some(Holder {
+                set: locks.0.holders.clone(),
+                id,
+            })
         }
         None => None,
     };
@@ -273,8 +279,11 @@ fn ensure_locks_dir(dir: &Path) -> Result<()> {
         .with_context(|| format!("잠금 디렉토리 생성 실패: {}", dir.display()))?;
     let ignore = dir.join(".gitignore");
     if !ignore.exists() {
-        std::fs::write(&ignore, "# openguild document locks - local, never tracked\n*\n")
-            .with_context(|| format!("{} 를 못 썼습니다", ignore.display()))?;
+        std::fs::write(
+            &ignore,
+            "# openguild document locks - local, never tracked\n*\n",
+        )
+        .with_context(|| format!("{} 를 못 썼습니다", ignore.display()))?;
     }
     Ok(())
 }
@@ -301,7 +310,11 @@ fn lock_file(path: &Path, wait: Duration, shared: bool) -> Result<Option<File>> 
     let deadline = Instant::now() + wait;
     let mut pause = Duration::from_millis(2);
     loop {
-        let r = if shared { file.try_lock_shared() } else { file.try_lock() };
+        let r = if shared {
+            file.try_lock_shared()
+        } else {
+            file.try_lock()
+        };
         match r {
             Ok(()) => return Ok(Some(file)),
             Err(TryLockError::WouldBlock) => {}
@@ -353,7 +366,11 @@ mod tests {
         let err = lock_file(&path, Duration::from_millis(100), false).unwrap_err();
         assert!(err.to_string().contains("기다리다 포기"), "{err:#}");
         drop(held);
-        assert!(lock_file(&path, Duration::from_millis(100), false).unwrap().is_some());
+        assert!(
+            lock_file(&path, Duration::from_millis(100), false)
+                .unwrap()
+                .is_some()
+        );
     }
 
     /// 잠금을 쥔 채 **죽은 프로세스**가 다음 쓰기를 영원히 막지 않는다. 진짜 다른
@@ -368,7 +385,10 @@ mod tests {
         }
         let path = fresh_tmp("killed").join(".lock");
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "lock::tests::a_killed_holder_does_not_block_forever"])
+            .args([
+                "--exact",
+                "lock::tests::a_killed_holder_does_not_block_forever",
+            ])
             .env("OG_LOCK_HOLDER", &path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -388,7 +408,9 @@ mod tests {
         child.kill().unwrap();
         child.wait().unwrap();
         assert!(
-            lock_file(&path, Duration::from_secs(5), false).unwrap().is_some(),
+            lock_file(&path, Duration::from_secs(5), false)
+                .unwrap()
+                .is_some(),
             "죽은 프로세스의 잠금이 안 풀렸다"
         );
     }
@@ -406,7 +428,11 @@ mod tests {
         // 예전 PID 파일 방식이 남긴 내용이 있어도 잠금과는 무관하다.
         let path = fresh_tmp("legacy").join(".lock");
         std::fs::write(&path, "pid = 1\nacquired_at = \"x\"\n").unwrap();
-        assert!(lock_file(&path, Duration::from_millis(100), false).unwrap().is_some());
+        assert!(
+            lock_file(&path, Duration::from_millis(100), false)
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -418,7 +444,9 @@ mod tests {
         for _ in 0..8 {
             let (locks, inside, dir) = (locks.clone(), inside.clone(), dir.clone());
             jobs.push(tokio::spawn(async move {
-                let _g = acquire(&locks, &dir, GuildMode::Exclusive, &[]).await.unwrap();
+                let _g = acquire(&locks, &dir, GuildMode::Exclusive, &[])
+                    .await
+                    .unwrap();
                 let n = inside.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 assert_eq!(n, 0, "잠금 안에 둘이 들어왔다");
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -440,15 +468,23 @@ mod tests {
         let a = lock_file(&path, WAIT, true).unwrap().expect("잠금 지원");
         let b = lock_file(&path, short, true).unwrap();
         assert!(b.is_some(), "공유끼리 막혔다");
-        assert!(lock_file(&path, short, false).is_err(), "공유가 쥔 동안 독점이 들어왔다");
+        assert!(
+            lock_file(&path, short, false).is_err(),
+            "공유가 쥔 동안 독점이 들어왔다"
+        );
         drop((a, b));
         let x = lock_file(&path, WAIT, false).unwrap();
-        assert!(lock_file(&path, short, true).is_err(), "독점이 쥔 동안 공유가 들어왔다");
+        assert!(
+            lock_file(&path, short, true).is_err(),
+            "독점이 쥔 동안 공유가 들어왔다"
+        );
         drop(x);
     }
 
     async fn within<T>(ms: u64, f: impl std::future::Future<Output = T>) -> Option<T> {
-        tokio::time::timeout(Duration::from_millis(ms), f).await.ok()
+        tokio::time::timeout(Duration::from_millis(ms), f)
+            .await
+            .ok()
     }
 
     /// 다른 문서끼리는 동시에, 같은 문서는 줄 선다.
@@ -456,23 +492,40 @@ mod tests {
     async fn different_documents_do_not_wait_but_the_same_one_does() {
         let dir = fresh_tmp("docs");
         let locks = Locks::default();
-        let a = acquire(&locks, &dir, GuildMode::Shared, &[DocKey::quest("DEV-1")]).await.unwrap();
+        let a = acquire(&locks, &dir, GuildMode::Shared, &[DocKey::quest("DEV-1")])
+            .await
+            .unwrap();
         // 다른 문서 — 곧바로 된다(다른 작업에서).
         let (l2, d2) = (locks.clone(), dir.clone());
         let other = tokio::spawn(async move {
-            within(1000, acquire(&l2, &d2, GuildMode::Shared, &[DocKey::quest("DEV-2")])).await.map(|r| r.is_ok())
+            within(
+                1000,
+                acquire(&l2, &d2, GuildMode::Shared, &[DocKey::quest("DEV-2")]),
+            )
+            .await
+            .map(|r| r.is_ok())
         });
         assert_eq!(other.await.unwrap(), Some(true), "다른 문서인데 기다렸다");
         // 같은 문서 — 쥔 동안은 못 들어온다.
         let (l3, d3) = (locks.clone(), dir.clone());
         let same = tokio::spawn(async move {
-            within(200, acquire(&l3, &d3, GuildMode::Shared, &[DocKey::quest("DEV-1")])).await.is_some()
+            within(
+                200,
+                acquire(&l3, &d3, GuildMode::Shared, &[DocKey::quest("DEV-1")]),
+            )
+            .await
+            .is_some()
         });
         assert!(!same.await.unwrap(), "같은 문서인데 동시에 들어왔다");
         drop(a);
         let (l4, d4) = (locks.clone(), dir.clone());
         let after = tokio::spawn(async move {
-            within(1000, acquire(&l4, &d4, GuildMode::Shared, &[DocKey::quest("DEV-1")])).await.map(|r| r.is_ok())
+            within(
+                1000,
+                acquire(&l4, &d4, GuildMode::Shared, &[DocKey::quest("DEV-1")]),
+            )
+            .await
+            .map(|r| r.is_ok())
         });
         assert_eq!(after.await.unwrap(), Some(true), "풀었는데 못 들어왔다");
     }
@@ -482,15 +535,28 @@ mod tests {
     async fn an_exclusive_lock_waits_for_and_blocks_shared_ones() {
         let dir = fresh_tmp("excl");
         let locks = Locks::default();
-        let s = acquire(&locks, &dir, GuildMode::Shared, &[DocKey::quest("DEV-1")]).await.unwrap();
-        let (l, d) = (locks.clone(), dir.clone());
-        let blocked = tokio::spawn(async move { within(200, acquire(&l, &d, GuildMode::Exclusive, &[])).await.is_some() });
-        assert!(!blocked.await.unwrap(), "공유가 쥔 동안 독점이 들어왔다");
-        drop(s);
-        let x = acquire(&locks, &dir, GuildMode::Exclusive, &[]).await.unwrap();
+        let s = acquire(&locks, &dir, GuildMode::Shared, &[DocKey::quest("DEV-1")])
+            .await
+            .unwrap();
         let (l, d) = (locks.clone(), dir.clone());
         let blocked = tokio::spawn(async move {
-            within(200, acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-9")])).await.is_some()
+            within(200, acquire(&l, &d, GuildMode::Exclusive, &[]))
+                .await
+                .is_some()
+        });
+        assert!(!blocked.await.unwrap(), "공유가 쥔 동안 독점이 들어왔다");
+        drop(s);
+        let x = acquire(&locks, &dir, GuildMode::Exclusive, &[])
+            .await
+            .unwrap();
+        let (l, d) = (locks.clone(), dir.clone());
+        let blocked = tokio::spawn(async move {
+            within(
+                200,
+                acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-9")]),
+            )
+            .await
+            .is_some()
         });
         assert!(!blocked.await.unwrap(), "독점이 쥔 동안 공유가 들어왔다");
         drop(x);
@@ -505,9 +571,15 @@ mod tests {
         let mut jobs = Vec::new();
         for i in 0..40 {
             let (locks, dir) = (locks.clone(), dir.clone());
-            let docs = if i % 2 == 0 { vec![a.clone(), b.clone()] } else { vec![b.clone(), a.clone()] };
+            let docs = if i % 2 == 0 {
+                vec![a.clone(), b.clone()]
+            } else {
+                vec![b.clone(), a.clone()]
+            };
             jobs.push(tokio::spawn(async move {
-                let _g = acquire(&locks, &dir, GuildMode::Shared, &docs).await.unwrap();
+                let _g = acquire(&locks, &dir, GuildMode::Shared, &docs)
+                    .await
+                    .unwrap();
                 tokio::task::yield_now().await;
             }));
         }
@@ -516,7 +588,10 @@ mod tests {
                 j.await.unwrap();
             }
         };
-        assert!(within(10_000, all).await.is_some(), "엇갈린 순서에서 멈췄다");
+        assert!(
+            within(10_000, all).await.is_some(),
+            "엇갈린 순서에서 멈췄다"
+        );
     }
 
     /// 쥔 채 또 잠그면 오류 — "하나 잡고 나중에 하나 더" 가 엇갈림의 유일한 길이다.
@@ -526,20 +601,33 @@ mod tests {
         let locks = Locks::default();
         let (l, d) = (locks.clone(), dir.clone());
         let r = tokio::spawn(async move {
-            let _g = acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-1")]).await.unwrap();
-            within(1000, acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-2")]))
+            let _g = acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-1")])
                 .await
-                .map(|r| r.map(|_| ()).map_err(|e| e.to_string()))
+                .unwrap();
+            within(
+                1000,
+                acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-2")]),
+            )
+            .await
+            .map(|r| r.map(|_| ()).map_err(|e| e.to_string()))
         })
         .await
         .unwrap();
-        let err = r.expect("오류 대신 멈췄다").expect_err("쥔 채 또 잠갔는데 통과했다");
+        let err = r
+            .expect("오류 대신 멈췄다")
+            .expect_err("쥔 채 또 잠갔는데 통과했다");
         assert!(err.contains("또 잠그려"), "{err}");
         // 풀고 나면 같은 작업이 다시 잡을 수 있다.
         let (l, d) = (locks.clone(), dir.clone());
         let again = tokio::spawn(async move {
-            drop(acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-1")]).await.unwrap());
-            acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-2")]).await.is_ok()
+            drop(
+                acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-1")])
+                    .await
+                    .unwrap(),
+            );
+            acquire(&l, &d, GuildMode::Shared, &[DocKey::quest("DEV-2")])
+                .await
+                .is_ok()
         });
         assert!(again.await.unwrap());
     }
@@ -549,7 +637,16 @@ mod tests {
     async fn the_locks_folder_ignores_itself() {
         let dir = fresh_tmp("ignore");
         let locks = Locks::default();
-        drop(acquire(&locks, &dir, GuildMode::Shared, &[DocKey::new("rule", "커밋 규칙/v2")]).await.unwrap());
+        drop(
+            acquire(
+                &locks,
+                &dir,
+                GuildMode::Shared,
+                &[DocKey::new("rule", "커밋 규칙/v2")],
+            )
+            .await
+            .unwrap(),
+        );
         let ig = std::fs::read_to_string(dir.join(LOCKS_DIR).join(".gitignore")).unwrap();
         assert!(ig.lines().any(|l| l.trim() == "*"), "{ig}");
         // 파일 이름에 못 쓰는 글자는 바뀌고, 잠금 파일은 풀어도 남는다(지우면 inode 가 갈린다).
@@ -557,6 +654,11 @@ mod tests {
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
-        assert!(names.iter().any(|n| n.starts_with("rule~") && !n.contains('/')), "{names:?}");
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with("rule~") && !n.contains('/')),
+            "{names:?}"
+        );
     }
 }

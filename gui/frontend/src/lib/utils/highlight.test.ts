@@ -92,7 +92,11 @@ describe('highlightSegments', () => {
 			['아무 일치 없음', 'zzz'],
 			['수달', '수달']
 		] as const) {
-			expect(highlightSegments(text, q).map((s) => s.text).join('')).toBe(text);
+			expect(
+				highlightSegments(text, q)
+					.map((s) => s.text)
+					.join('')
+			).toBe(text);
 		}
 	});
 });

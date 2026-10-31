@@ -232,11 +232,23 @@ describe('TauriTransport', () => {
 		const edit = { add: ['a'], remove: ['b'] };
 		await new TauriTransport().call({ method: 'POST', path: '/api/quests/7/tags', body: edit });
 		expect(mockInvoke).toHaveBeenCalledWith('edit_quest_tags', { id: 7, edit });
-		await new TauriTransport().call({ method: 'POST', path: '/api/library/BOOK-003/tags', body: edit });
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/library/BOOK-003/tags',
+			body: edit
+		});
 		expect(mockInvoke).toHaveBeenCalledWith('edit_book_tags', { bookId: 'BOOK-003', edit });
-		await new TauriTransport().call({ method: 'POST', path: '/api/rules/general/tags', body: edit });
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/rules/general/tags',
+			body: edit
+		});
 		expect(mockInvoke).toHaveBeenCalledWith('edit_rule_tags', { slug: 'general', edit });
-		await new TauriTransport().call({ method: 'PATCH', path: '/api/quests/7/tags', body: { tags: ['x'] } });
+		await new TauriTransport().call({
+			method: 'PATCH',
+			path: '/api/quests/7/tags',
+			body: { tags: ['x'] }
+		});
 		expect(mockInvoke).toHaveBeenCalledWith('set_quest_tags', { id: 7, tags: ['x'] });
 	});
 
@@ -526,9 +538,10 @@ describe('TauriTransport', () => {
 			cmd: 'update_book',
 			args: { bookId: 'BOOK-001', title: '새 제목', body: null, path: null, baseBody: null }
 		});
-		expect(
-			__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })
-		).toEqual({ cmd: 'delete_book', args: { bookId: 'BOOK-001' } });
+		expect(__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })).toEqual({
+			cmd: 'delete_book',
+			args: { bookId: 'BOOK-001' }
+		});
 	});
 
 	it('routeToInvoke — 도서관 폴더 매핑 (DEV-239)', () => {
@@ -572,9 +585,10 @@ describe('TauriTransport', () => {
 			args: { bookId: 'BOOK-001', path: 'attachments/a.zip' }
 		});
 		// sub-path 가 있는데 get_book(bookId 만 매칭하는 일반 블록)으로 새지 않는지.
-		expect(
-			__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })
-		).toEqual({ cmd: 'get_book', args: { bookId: 'BOOK-001' } });
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })).toEqual({
+			cmd: 'get_book',
+			args: { bookId: 'BOOK-001' }
+		});
 	});
 
 	it('routeToInvoke — 작업 기록 매핑 (DEV-167)', () => {
@@ -739,16 +753,11 @@ describe('LIST_QUERY_BOOLS 가 ListQuery 의 bool 필드와 일치 (BUG-211 / BU
 		const { dirname, resolve } = await import('node:path');
 		const here = dirname(fileURLToPath(import.meta.url));
 		// gui/frontend/src/lib/api → 저장소 루트
-		const rust = readFileSync(
-			resolve(here, '../../../../../core/src/models/quest.rs'),
-			'utf8'
-		);
+		const rust = readFileSync(resolve(here, '../../../../../core/src/models/quest.rs'), 'utf8');
 		const start = rust.indexOf('pub struct ListQuery');
 		expect(start).toBeGreaterThan(-1);
 		const body = rust.slice(start, rust.indexOf('\n}', start));
-		const rustBools = new Set(
-			[...body.matchAll(/pub\s+(\w+)\s*:\s*bool\s*,/g)].map((m) => m[1])
-		);
+		const rustBools = new Set([...body.matchAll(/pub\s+(\w+)\s*:\s*bool\s*,/g)].map((m) => m[1]));
 		expect(rustBools.size).toBeGreaterThan(0);
 		expect([...__test_only.LIST_QUERY_BOOLS].sort()).toEqual([...rustBools].sort());
 	});

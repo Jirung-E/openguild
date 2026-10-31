@@ -27,9 +27,8 @@
 //! `- [x]` GFM task list 패턴이 모두 체크리스트로 동기화됨. 사용자가
 //! 일반 메모로 `- [ ]` 적은 것도 들어가는 trade-off 의식적 선택.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CampaignFrontmatter {
@@ -80,8 +79,8 @@ pub struct ChecklistLine {
 impl CampaignFile {
     pub fn parse(text: &str) -> Result<Self> {
         let (fm_text, body) = split_frontmatter(text)?;
-        let frontmatter: CampaignFrontmatter = toml::from_str(fm_text)
-            .context("failed to parse campaign frontmatter (TOML)")?;
+        let frontmatter: CampaignFrontmatter =
+            toml::from_str(fm_text).context("failed to parse campaign frontmatter (TOML)")?;
         Ok(Self {
             frontmatter,
             body: body.trim().to_string(),
@@ -115,7 +114,12 @@ impl CampaignFile {
 
     pub fn write<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
         // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
-        super::version::write(path.as_ref(), &self.serialize()?, super::version::Place::Frontmatter).map(|_| ())
+        super::version::write(
+            path.as_ref(),
+            &self.serialize()?,
+            super::version::Place::Frontmatter,
+        )
+        .map(|_| ())
     }
 
     /// 본문에서 GFM task list 항목들을 출현 순서대로 추출.
@@ -273,7 +277,11 @@ updated_at = "2026-05-25T15:00:00Z"
         // B3: 본문 어디든 task list 패턴이 체크리스트로 인식됨.
         let body = "## 메모\n- [ ] 메모로 적은 것\n\n## 체크리스트\n- [x] 진짜 체크\n";
         let items = extract_checklist_items(body);
-        assert_eq!(items.len(), 2, "본문 어디든 task list 모두 추출 (B3 trade-off)");
+        assert_eq!(
+            items.len(),
+            2,
+            "본문 어디든 task list 모두 추출 (B3 trade-off)"
+        );
         assert_eq!(items[0].text, "메모로 적은 것");
         assert_eq!(items[1].text, "진짜 체크");
     }

@@ -132,7 +132,9 @@ fn action_target(a: &Action) -> String {
         Action::Post { url, .. } => url.clone(),
         Action::Run { .. } => {
             let (command, args) = a.run_command().expect("run 동작이다");
-            format!("{command} {}", args.join(" ")).trim_end().to_string()
+            format!("{command} {}", args.join(" "))
+                .trim_end()
+                .to_string()
         }
     }
 }
@@ -206,7 +208,10 @@ pub struct PluginStatus {
 /// Actions 가 `GITHUB_REF_TYPE=tag` · `GITHUB_REF_NAME=<태그>` 를 준다 — 그 둘을 **빌드할 때**
 /// 읽는다. 태그로 만든 빌드는 그 태그를(깔린 것과 같은 형식의 예제), 나머지는 `develop` 을.
 pub fn examples_url() -> String {
-    examples_url_for(option_env!("GITHUB_REF_TYPE"), option_env!("GITHUB_REF_NAME"))
+    examples_url_for(
+        option_env!("GITHUB_REF_TYPE"),
+        option_env!("GITHUB_REF_NAME"),
+    )
 }
 
 /// [`examples_url`] 의 규칙 — 빌드 환경을 인자로 받아 시험할 수 있게 뺐다.
@@ -483,7 +488,12 @@ mod examples_url_tests {
             examples_url_for(Some("tag"), Some("v0.6.0-beta")),
             "https://github.com/Jirung-E/openguild/tree/v0.6.0-beta/examples/plugins"
         );
-        for (t, n) in [(Some("branch"), Some("develop")), (Some("branch"), Some("master")), (None, None), (Some("tag"), Some(""))] {
+        for (t, n) in [
+            (Some("branch"), Some("develop")),
+            (Some("branch"), Some("master")),
+            (None, None),
+            (Some("tag"), Some("")),
+        ] {
             assert_eq!(
                 examples_url_for(t, n),
                 "https://github.com/Jirung-E/openguild/tree/develop/examples/plugins",

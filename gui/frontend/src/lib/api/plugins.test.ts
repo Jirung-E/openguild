@@ -154,11 +154,12 @@ describe('플러그인 조회/관리의 경계', () => {
 			no_guild: false,
 			problems: []
 		};
-		const fetchMock = vi.fn(async () =>
-			new Response(JSON.stringify(body), {
-				status: 200,
-				headers: { 'content-type': 'application/json' }
-			})
+		const fetchMock = vi.fn(
+			async () =>
+				new Response(JSON.stringify(body), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
 		);
 		vi.stubGlobal('fetch', fetchMock);
 		await expect(pluginApi.status()).resolves.toEqual(body);

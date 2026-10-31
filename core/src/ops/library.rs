@@ -6,14 +6,14 @@
 
 use serde_json::json;
 
-use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{names as ev, payload};
-use crate::repo::history as hist;
+use crate::lock::DocKey;
 use crate::ops::doc_history::{self, DocKind};
+use crate::repo::history as hist;
 use crate::repo::library as repo;
-use crate::repo::library::{book_slug, BookFile, BookFrontmatter, FolderEntry};
-use crate::store::{journal, Store};
+use crate::repo::library::{BookFile, BookFrontmatter, FolderEntry, book_slug};
+use crate::store::{Store, journal};
 
 /// library_docs 캐시 행 (조회 API 가 반환하는 형태).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -141,8 +141,11 @@ pub async fn list_books_query(
             crate::query::Bind::Int(n) => query.bind(n),
         };
     }
-    let ids: std::collections::HashSet<i64> =
-        query.fetch_all(&store.index_pool).await?.into_iter().collect();
+    let ids: std::collections::HashSet<i64> = query
+        .fetch_all(&store.index_pool)
+        .await?
+        .into_iter()
+        .collect();
     Ok(rows.into_iter().filter(|r| ids.contains(&r.id)).collect())
 }
 
@@ -186,7 +189,9 @@ fn like_escape(s: &str) -> String {
 /// 반영은 이 sync 지점이 담당(file-truth-db-cache 규칙 §4).
 pub async fn get_book(store: &Store, book_id: &str) -> AppResult<Option<LibraryDocRow>> {
     let Some(number) = repo::parse_book_slug(book_id) else {
-        return Err(AppError::BadRequest(format!("invalid book id: {book_id:?}")));
+        return Err(AppError::BadRequest(format!(
+            "invalid book id: {book_id:?}"
+        )));
     };
     let path = store.paths.book_path(book_id);
     if let Ok(bf) = BookFile::read(&path)
@@ -359,7 +364,8 @@ pub async fn create_book(
     body: &str,
     path: &str,
 ) -> AppResult<LibraryDocRow> {
-    let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let path =
+        repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     // BUG-302: 폴더 안에 만들면 그 폴더(와 위 폴더들)를 목록에 적는다 — 목록도 함께 잠근다.
     let mut keys = vec![DocKey::new("counter", "book")];
     if !path.is_empty() {
@@ -441,7 +447,15 @@ pub async fn update_book(
     body: Option<&str>,
     path: Option<&str>,
 ) -> AppResult<LibraryDocRow> {
-    update_book_with(store, book_id, title, body, path, super::EditBase::default()).await
+    update_book_with(
+        store,
+        book_id,
+        title,
+        body,
+        path,
+        super::EditBase::default(),
+    )
+    .await
 }
 
 /// DEV-435: [`update_book`] + 편집을 시작할 때 본 것 — 그사이 바뀐 본문과 합치거나, 같은 줄이면 거부한다.
@@ -455,7 +469,9 @@ pub async fn update_book_with(
 ) -> AppResult<LibraryDocRow> {
     // BUG-302: 다른 폴더로 옮기면 그 폴더(와 위 폴더들)를 목록에 적는다 — 목록도 함께 잠근다.
     let moving_into = match path {
-        Some(p) => repo::normalize_folder_path(p).map_err(|e| AppError::BadRequest(e.to_string()))?,
+        Some(p) => {
+            repo::normalize_folder_path(p).map_err(|e| AppError::BadRequest(e.to_string()))?
+        }
         None => String::new(),
     };
     let mut keys = vec![DocKey::book(book_id)];
@@ -474,7 +490,12 @@ pub async fn update_book_with(
         book_id,
     )?;
     let merged = match body {
-        Some(b) => Some(super::resolve_edit(&existing.body, base.text.as_deref(), b.to_string(), book_id)?),
+        Some(b) => Some(super::resolve_edit(
+            &existing.body,
+            base.text.as_deref(),
+            b.to_string(),
+            book_id,
+        )?),
         None => None,
     };
     let body = merged.as_deref();
@@ -483,14 +504,18 @@ pub async fn update_book_with(
     }
     let new_title = match title {
         Some(t) if t.trim().is_empty() => {
-            return Err(AppError::BadRequest("title is empty".into()))
+            return Err(AppError::BadRequest("title is empty".into()));
         }
         Some(t) => t.trim().to_string(),
         None => existing.title.clone(),
     };
-    let new_body = body.map(|b| b.trim().to_string()).unwrap_or_else(|| existing.body.clone());
+    let new_body = body
+        .map(|b| b.trim().to_string())
+        .unwrap_or_else(|| existing.body.clone());
     let new_path = match path {
-        Some(p) => repo::normalize_folder_path(p).map_err(|e| AppError::BadRequest(e.to_string()))?,
+        Some(p) => {
+            repo::normalize_folder_path(p).map_err(|e| AppError::BadRequest(e.to_string()))?
+        }
         None => existing.path.clone(),
     };
 
@@ -629,12 +654,17 @@ pub async fn list_folders(store: &Store) -> AppResult<Vec<LibraryFolderRow>> {
     let parents: Vec<(String, String, String)> = rows
         .iter()
         .filter_map(|r| {
-            r.path
-                .rsplit_once('/')
-                .map(|(parent, _)| (parent.to_string(), r.created_at.clone(), r.updated_at.clone()))
+            r.path.rsplit_once('/').map(|(parent, _)| {
+                (
+                    parent.to_string(),
+                    r.created_at.clone(),
+                    r.updated_at.clone(),
+                )
+            })
         })
         .collect();
-    let mut known: std::collections::HashSet<String> = rows.iter().map(|r| r.path.clone()).collect();
+    let mut known: std::collections::HashSet<String> =
+        rows.iter().map(|r| r.path.clone()).collect();
     for (path, created, updated) in docs.into_iter().chain(parents) {
         let mut acc = String::new();
         for seg in path.split('/') {
@@ -674,10 +704,12 @@ async fn register_folders(store: &Store, path: &str) -> AppResult<()> {
     }
     let mut missing = Vec::new();
     for p in chain {
-        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_folders WHERE path = ? AND deleted_at IS NULL")
-            .bind(&p)
-            .fetch_one(&store.index_pool)
-            .await?;
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM library_folders WHERE path = ? AND deleted_at IS NULL",
+        )
+        .bind(&p)
+        .fetch_one(&store.index_pool)
+        .await?;
         if n == 0 {
             missing.push(p);
         }
@@ -711,15 +743,21 @@ async fn register_folders(store: &Store, path: &str) -> AppResult<()> {
         .bind(&now)
         .execute(&store.index_pool)
         .await?;
-        store.emit_post(ev::FOLDER_CREATED, || json!({ "folder": payload::folder(p) }));
+        store.emit_post(
+            ev::FOLDER_CREATED,
+            || json!({ "folder": payload::folder(p) }),
+        );
     }
     Ok(())
 }
 
 /// 새 폴더 생성 — 순수 컨테이너(본문 없음). 이미 존재하면 에러.
 pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolderRow> {
-    let _g = store.lock_docs(&[DocKey::single("library-folders")]).await?;
-    let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let _g = store
+        .lock_docs(&[DocKey::single("library-folders")])
+        .await?;
+    let path =
+        repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
             "루트는 폴더로 만들 수 없습니다",
@@ -779,11 +817,11 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
              updated_at = excluded.updated_at,
              deleted_at = NULL",
     )
-        .bind(&path)
-        .bind(&now)
-        .bind(&now)
-        .execute(&store.index_pool)
-        .await?;
+    .bind(&path)
+    .bind(&now)
+    .bind(&now)
+    .execute(&store.index_pool)
+    .await?;
 
     let row = sqlx::query_as::<_, LibraryFolderRow>(
         "SELECT id, path, created_at, updated_at FROM library_folders WHERE path = ? AND deleted_at IS NULL",
@@ -807,7 +845,8 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
 /// 경로를 같이 고쳐야 한다. 그래서 한 잠금 안에서 한꺼번에 한다.
 pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<LibraryFolderRow>> {
     let _g = store.lock_guild().await?;
-    let from = repo::normalize_folder_path(from).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let from =
+        repo::normalize_folder_path(from).map_err(|e| AppError::BadRequest(e.to_string()))?;
     let to = repo::normalize_folder_path(to).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if from.is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
@@ -1047,7 +1086,10 @@ mod tests {
     /// 폴더 목록을 비운다 — BUG-302 전에 문서만 폴더 경로를 적던 길드를 흉내 낸다.
     async fn forget_folders(store: &Store) {
         repo::write_folders(&store.paths, &repo::FoldersFile::default()).unwrap();
-        sqlx::query("DELETE FROM library_folders").execute(&store.index_pool).await.unwrap();
+        sqlx::query("DELETE FROM library_folders")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
     }
 
     /// 목록에 `paths` 만 적는다(조상 없이) — `forget_folders` 다음에 쓴다.
@@ -1066,13 +1108,15 @@ mod tests {
         };
         repo::write_folders(&store.paths, &f).unwrap();
         for p in paths {
-            sqlx::query("INSERT INTO library_folders (path, created_at, updated_at) VALUES (?, ?, ?)")
-                .bind(p)
-                .bind(&now)
-                .bind(&now)
-                .execute(&store.index_pool)
-                .await
-                .unwrap();
+            sqlx::query(
+                "INSERT INTO library_folders (path, created_at, updated_at) VALUES (?, ?, ?)",
+            )
+            .bind(p)
+            .bind(&now)
+            .bind(&now)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
         }
     }
 
@@ -1086,11 +1130,12 @@ mod tests {
             .map(|e| e.path)
             .collect();
         file.sort();
-        let db: Vec<String> =
-            sqlx::query_scalar("SELECT path FROM library_folders WHERE deleted_at IS NULL ORDER BY path")
-                .fetch_all(&store.index_pool)
-                .await
-                .unwrap();
+        let db: Vec<String> = sqlx::query_scalar(
+            "SELECT path FROM library_folders WHERE deleted_at IS NULL ORDER BY path",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
         assert_eq!(file, db, "folders.toml 과 캐시가 어긋났다");
         db
     }
@@ -1102,16 +1147,31 @@ mod tests {
         let dir = fresh_tmp("register");
         let store = setup(&dir).await;
 
-        let b = create_book(&store, "문서", "", "설계/결정").await.unwrap().book_id();
+        let b = create_book(&store, "문서", "", "설계/결정")
+            .await
+            .unwrap()
+            .book_id();
         assert_eq!(registered(&store).await, vec!["설계", "설계/결정"]);
 
-        update_book(&store, &b, None, None, Some("운영/장애")).await.unwrap();
-        assert_eq!(registered(&store).await, vec!["설계", "설계/결정", "운영", "운영/장애"]);
+        update_book(&store, &b, None, None, Some("운영/장애"))
+            .await
+            .unwrap();
+        assert_eq!(
+            registered(&store).await,
+            vec!["설계", "설계/결정", "운영", "운영/장애"]
+        );
 
         create_folder(&store, "기록/2026").await.unwrap();
         assert_eq!(
             registered(&store).await,
-            vec!["기록", "기록/2026", "설계", "설계/결정", "운영", "운영/장애"]
+            vec![
+                "기록",
+                "기록/2026",
+                "설계",
+                "설계/결정",
+                "운영",
+                "운영/장애"
+            ]
         );
 
         // 이미 있는 폴더에 또 만들어도 겹쳐 적지 않는다.
@@ -1131,7 +1191,12 @@ mod tests {
         forget_folders(&store).await;
         create_folder(&store, "옛").await.unwrap();
 
-        let listed: Vec<String> = list_folders(&store).await.unwrap().into_iter().map(|f| f.path).collect();
+        let listed: Vec<String> = list_folders(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
         assert_eq!(listed, vec!["옛", "옛/하위"]);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1180,7 +1245,10 @@ mod tests {
         let dir = fresh_tmp("del-derived");
         let store = setup(&dir).await;
         // 레지스트리를 거치지 않고 만들어진 폴더 — 문서가 그 경로를 적고 있을 뿐이다(BUG-302 전의 길드).
-        let b = create_book(&store, "문서", "", "등록안된/하위").await.unwrap().book_id();
+        let b = create_book(&store, "문서", "", "등록안된/하위")
+            .await
+            .unwrap()
+            .book_id();
         forget_folders(&store).await;
 
         // 문서가 있는 동안에는 지워지지 않는다 — 그 규칙은 그대로다.
@@ -1189,10 +1257,16 @@ mod tests {
 
         // 문서를 옮기면 그냥 끝난다 — 지울 기록이 없을 뿐, 오류가 아니다.
         update_book(&store, &b, None, None, Some("")).await.unwrap();
-        assert!(!delete_folder(&store, "등록안된/하위").await.unwrap(), "지울 기록이 없으면 false");
+        assert!(
+            !delete_folder(&store, "등록안된/하위").await.unwrap(),
+            "지울 기록이 없으면 false"
+        );
 
         // 아예 없던 폴더도 마찬가지 — 사용자가 원한 상태가 이미 참이다.
-        assert!(!delete_folder(&store, "아예없는폴더").await.unwrap(), "없던 폴더도 오류가 아니다");
+        assert!(
+            !delete_folder(&store, "아예없는폴더").await.unwrap(),
+            "없던 폴더도 오류가 아니다"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1202,17 +1276,29 @@ mod tests {
     async fn library_list_filters_by_tag() {
         let dir = fresh_tmp("tag-filter");
         let store = setup(&dir).await;
-        let a = create_book(&store, "설계 문서", "", "").await.unwrap().book_id();
-        let b = create_book(&store, "그냥 문서", "", "").await.unwrap().book_id();
-        set_book_tags(&store, &a, vec!["설계".into(), "결정".into()]).await.unwrap();
-        set_book_tags(&store, &b, vec!["설계".into()]).await.unwrap();
+        let a = create_book(&store, "설계 문서", "", "")
+            .await
+            .unwrap()
+            .book_id();
+        let b = create_book(&store, "그냥 문서", "", "")
+            .await
+            .unwrap()
+            .book_id();
+        set_book_tags(&store, &a, vec!["설계".into(), "결정".into()])
+            .await
+            .unwrap();
+        set_book_tags(&store, &b, vec!["설계".into()])
+            .await
+            .unwrap();
 
         let ids = |rows: Vec<LibraryDocRow>| {
             let mut v: Vec<String> = rows.into_iter().map(|r| r.book_id()).collect();
             v.sort();
             v
         };
-        let one = list_books_filtered(&store, None, &["설계".into()]).await.unwrap();
+        let one = list_books_filtered(&store, None, &["설계".into()])
+            .await
+            .unwrap();
         let mut both = vec![a.clone(), b.clone()];
         both.sort();
         assert_eq!(ids(one), both);
@@ -1222,7 +1308,9 @@ mod tests {
             .unwrap();
         assert_eq!(ids(two), vec![a]);
 
-        let none = list_books_filtered(&store, None, &["없는태그".into()]).await.unwrap();
+        let none = list_books_filtered(&store, None, &["없는태그".into()])
+            .await
+            .unwrap();
         assert!(none.is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1240,7 +1328,9 @@ mod tests {
         create_folder(&store, "설계/결정").await.unwrap();
         create_folder(&store, "보관").await.unwrap();
         let a = create_book(&store, "루트 문서", "", "설계").await.unwrap();
-        let b = create_book(&store, "하위 문서", "", "설계/결정").await.unwrap();
+        let b = create_book(&store, "하위 문서", "", "설계/결정")
+            .await
+            .unwrap();
 
         move_folder(&store, "설계", "보관/설계").await.unwrap();
 
@@ -1252,7 +1342,10 @@ mod tests {
             .collect();
         assert!(paths.contains(&"보관/설계".to_string()), "{paths:?}");
         assert!(paths.contains(&"보관/설계/결정".to_string()), "{paths:?}");
-        assert!(!paths.iter().any(|p| p.starts_with("설계")), "옛 경로가 남았다: {paths:?}");
+        assert!(
+            !paths.iter().any(|p| p.starts_with("설계")),
+            "옛 경로가 남았다: {paths:?}"
+        );
 
         let book = |id: &str| -> String {
             crate::repo::library::BookFile::read(store.paths.book_path(id))
@@ -1314,7 +1407,9 @@ mod tests {
         // BUG-302 부터는 만들 때 조상까지 적으므로, 그 전 길드를 흉내 내 목록을 직접 꾸민다.
         create_folder(&store, "설계/초안").await.unwrap();
         create_folder(&store, "기타").await.unwrap();
-        let memo = create_book(&store, "회의록", "", "회의/2026").await.unwrap();
+        let memo = create_book(&store, "회의록", "", "회의/2026")
+            .await
+            .unwrap();
         forget_folders(&store).await;
         register_only(&store, &["설계/초안", "기타"]).await; // `설계` · `회의/2026` 은 등록 없음
 
@@ -1325,10 +1420,11 @@ mod tests {
         // 등록 안 된 조상 자체를 옮기기 — 등록된 하위가 따라간다.
         move_folder(&store, "설계", "회의록/설계").await.unwrap();
 
-        let book_path = crate::repo::library::BookFile::read(store.paths.book_path(&memo.book_id()))
-            .unwrap()
-            .frontmatter
-            .path;
+        let book_path =
+            crate::repo::library::BookFile::read(store.paths.book_path(&memo.book_id()))
+                .unwrap()
+                .frontmatter
+                .path;
         assert_eq!(book_path, "회의록/2026");
         let mut paths: Vec<String> = list_folders(&store)
             .await
@@ -1338,13 +1434,29 @@ mod tests {
             .collect();
         paths.sort();
         // BUG-302: 목록은 문서 경로의 폴더도 합쳐 낸다 — 트리와 같다.
-        assert_eq!(paths, vec!["회의록", "회의록/2026", "회의록/설계", "회의록/설계/기타", "회의록/설계/초안"]);
-        assert_eq!(registered(&store).await, vec!["회의록/설계/기타", "회의록/설계/초안"]);
+        assert_eq!(
+            paths,
+            vec![
+                "회의록",
+                "회의록/2026",
+                "회의록/설계",
+                "회의록/설계/기타",
+                "회의록/설계/초안"
+            ]
+        );
+        assert_eq!(
+            registered(&store).await,
+            vec!["회의록/설계/기타", "회의록/설계/초안"]
+        );
 
         // 보이는 폴더와 겹치는 이름은 거절 — 문서 경로로만 있는 것과도.
-        let e = move_folder(&store, "회의록/설계/기타", "회의록/2026").await.unwrap_err();
+        let e = move_folder(&store, "회의록/설계/기타", "회의록/2026")
+            .await
+            .unwrap_err();
         assert!(matches!(e, AppError::BadRequest(_)), "{e}");
-        let e = move_folder(&store, "회의록/설계/기타", "회의록/설계").await.unwrap_err();
+        let e = move_folder(&store, "회의록/설계/기타", "회의록/설계")
+            .await
+            .unwrap_err();
         assert!(matches!(e, AppError::BadRequest(_)), "{e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1393,7 +1505,10 @@ mod tests {
         let store = setup(&dir).await;
 
         let err = history(&store, "BOOK-999").unwrap_err();
-        assert!(matches!(err, AppError::NotFound(_)), "NotFound 여야: {err:?}");
+        assert!(
+            matches!(err, AppError::NotFound(_)),
+            "NotFound 여야: {err:?}"
+        );
 
         // 대조군: 실제로 있는 문서는 이력이 없어도 Ok(빈 목록).
         create_book(&store, "있는 문서", "", "").await.unwrap();
@@ -1406,7 +1521,9 @@ mod tests {
         let dir = fresh_tmp("crud");
         let store = setup(&dir).await;
 
-        let b = create_book(&store, "설계 결정", "본문입니다", "").await.unwrap();
+        let b = create_book(&store, "설계 결정", "본문입니다", "")
+            .await
+            .unwrap();
         assert_eq!(b.book_id(), "BOOK-001");
         assert_eq!(b.title, "설계 결정");
         assert_eq!(b.body, "본문입니다");
@@ -1419,12 +1536,17 @@ mod tests {
         let b2 = create_book(&store, "second", "", "").await.unwrap();
         assert_eq!(b2.book_id(), "BOOK-002", "카운터 단조 증가");
 
-        let up = update_book(&store, "BOOK-001", Some("바뀐 제목"), None, None).await.unwrap();
+        let up = update_book(&store, "BOOK-001", Some("바뀐 제목"), None, None)
+            .await
+            .unwrap();
         assert_eq!(up.title, "바뀐 제목");
         assert_eq!(up.body, "본문입니다", "body 미지정 시 보존");
 
         delete_book(&store, "BOOK-001").await.unwrap();
-        assert!(get_book(&store, "BOOK-001").await.unwrap().is_none(), "soft delete 후 조회 제외");
+        assert!(
+            get_book(&store, "BOOK-001").await.unwrap().is_none(),
+            "soft delete 후 조회 제외"
+        );
         let f = BookFile::read(store.paths.book_path("BOOK-001")).unwrap();
         assert!(f.frontmatter.deleted, "파일엔 deleted flag 로 남음");
 
@@ -1447,7 +1569,9 @@ mod tests {
         let dir = fresh_tmp("lazyref");
         let store = setup(&dir).await;
 
-        let b = create_book(&store, "설계 결정", "원래 본문", "").await.unwrap();
+        let b = create_book(&store, "설계 결정", "원래 본문", "")
+            .await
+            .unwrap();
         let book_id = b.book_id();
 
         // 외부 편집 시뮬레이션 — ops 를 거치지 않고 파일만 직접 수정
@@ -1459,7 +1583,10 @@ mod tests {
         f.write(&path).unwrap();
 
         let got = get_book(&store, &book_id).await.unwrap().unwrap();
-        assert_eq!(got.body, "외부에서 바뀐 본문", "상세 조회는 파일 최신 내용 반환");
+        assert_eq!(
+            got.body, "외부에서 바뀐 본문",
+            "상세 조회는 파일 최신 내용 반환"
+        );
         assert_eq!(got.title, "외부에서 바뀐 제목");
 
         // 캐시(list 경로)에도 반영됐는지 — get 이 sync 지점.
@@ -1475,9 +1602,14 @@ mod tests {
         let dir = fresh_tmp("valid");
         let store = setup(&dir).await;
         assert!(create_book(&store, "  ", "b", "").await.is_err());
-        assert!(get_book(&store, "DEV-001").await.is_err(), "book id 형식 아님");
         assert!(
-            update_book(&store, "BOOK-999", Some("t"), None, None).await.is_err(),
+            get_book(&store, "DEV-001").await.is_err(),
+            "book id 형식 아님"
+        );
+        assert!(
+            update_book(&store, "BOOK-999", Some("t"), None, None)
+                .await
+                .is_err(),
             "미존재 NotFound"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -1488,7 +1620,9 @@ mod tests {
         let dir = fresh_tmp("path");
         let store = setup(&dir).await;
 
-        let b = create_book(&store, "라우터 설계", "본문", "아키텍처").await.unwrap();
+        let b = create_book(&store, "라우터 설계", "본문", "아키텍처")
+            .await
+            .unwrap();
         assert_eq!(b.path, "아키텍처");
         let f = BookFile::read(store.paths.book_path(&b.book_id())).unwrap();
         assert_eq!(f.frontmatter.path, "아키텍처", "파일 진리원에도 path 기록");
@@ -1511,23 +1645,35 @@ mod tests {
 
         let f = create_folder(&store, "아키텍처").await.unwrap();
         assert_eq!(f.path, "아키텍처");
-        assert!(create_folder(&store, "아키텍처").await.is_err(), "중복 생성 거부");
+        assert!(
+            create_folder(&store, "아키텍처").await.is_err(),
+            "중복 생성 거부"
+        );
         assert!(create_folder(&store, "").await.is_err(), "루트는 폴더 불가");
 
         let folders = list_folders(&store).await.unwrap();
-        assert_eq!(folders.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), vec!["아키텍처"]);
+        assert_eq!(
+            folders.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+            vec!["아키텍처"]
+        );
 
         // 빈 폴더는 삭제 가능.
         delete_folder(&store, "아키텍처").await.unwrap();
         assert!(list_folders(&store).await.unwrap().is_empty());
         // BUG-299: 두 번 지워도 오류가 아니다 — 원한 상태가 이미 참이다. 다만 "지웠다" 고
         // 하지는 않는다(false).
-        assert!(!delete_folder(&store, "아키텍처").await.unwrap(), "두 번째 삭제는 한 일이 없다");
+        assert!(
+            !delete_folder(&store, "아키텍처").await.unwrap(),
+            "두 번째 삭제는 한 일이 없다"
+        );
 
         // 문서가 있으면 삭제 거부.
         create_folder(&store, "운영").await.unwrap();
         create_book(&store, "가이드", "", "운영").await.unwrap();
-        assert!(delete_folder(&store, "운영").await.is_err(), "문서 있는 폴더는 삭제 거부");
+        assert!(
+            delete_folder(&store, "운영").await.is_err(),
+            "문서 있는 폴더는 삭제 거부"
+        );
     }
 
     #[tokio::test]
@@ -1556,7 +1702,9 @@ mod tests {
     async fn listing_filters_by_folder_in_sql() {
         let dir = fresh_tmp("folder-filter");
         let store = setup(&dir).await;
-        create_book(&store, "결정", "", "아키텍처/결정").await.unwrap();
+        create_book(&store, "결정", "", "아키텍처/결정")
+            .await
+            .unwrap();
         create_book(&store, "설계", "", "아키텍처").await.unwrap();
         create_book(&store, "최상위", "", "").await.unwrap();
         create_book(&store, "운영", "", "운영").await.unwrap();
@@ -1580,7 +1728,13 @@ mod tests {
         );
         assert_eq!(list_books_in(&store, None).await.unwrap().len(), 4);
         // 끝의 `/` 는 있어도 없어도 같다.
-        assert_eq!(list_books_in(&store, Some("아키텍처/")).await.unwrap().len(), 2);
+        assert_eq!(
+            list_books_in(&store, Some("아키텍처/"))
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1593,19 +1747,36 @@ mod tests {
         // **하위 폴더에 둬야 LIKE 가지가 실제로 쓰인다.** 처음엔 `100%` 바로
         // 아래에만 뒀는데, 그건 `path = ?1` 이 먼저 잡아서 ESCAPE 를 빼도
         // 시험이 통과했다 — 주장하는 것을 안 보고 있었다.
-        create_book(&store, "퍼센트하위", "", "100%/안").await.unwrap();
-        create_book(&store, "함정하위", "", "100X/안").await.unwrap();
+        create_book(&store, "퍼센트하위", "", "100%/안")
+            .await
+            .unwrap();
+        create_book(&store, "함정하위", "", "100X/안")
+            .await
+            .unwrap();
         create_book(&store, "밑줄하위", "", "a_b/안").await.unwrap();
-        create_book(&store, "밑줄함정하위", "", "axb/안").await.unwrap();
+        create_book(&store, "밑줄함정하위", "", "axb/안")
+            .await
+            .unwrap();
 
         let one = |rows: Vec<LibraryDocRow>| {
-            assert_eq!(rows.len(), 1, "{:?}", rows.iter().map(|r| &r.title).collect::<Vec<_>>());
+            assert_eq!(
+                rows.len(),
+                1,
+                "{:?}",
+                rows.iter().map(|r| &r.title).collect::<Vec<_>>()
+            );
             rows[0].title.clone()
         };
         // `%` 를 와일드카드로 두면 `100X/안` 까지 딸려 온다.
-        assert_eq!(one(list_books_in(&store, Some("100%")).await.unwrap()), "퍼센트하위");
+        assert_eq!(
+            one(list_books_in(&store, Some("100%")).await.unwrap()),
+            "퍼센트하위"
+        );
         // `_` 는 한 글자 와일드카드 — `axb/안` 이 딸려 온다.
-        assert_eq!(one(list_books_in(&store, Some("a_b")).await.unwrap()), "밑줄하위");
+        assert_eq!(
+            one(list_books_in(&store, Some("a_b")).await.unwrap()),
+            "밑줄하위"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1614,17 +1785,31 @@ mod tests {
     async fn library_query_filters_the_list() {
         let dir = fresh_tmp("query");
         let store = setup(&dir).await;
-        let top = create_book(&store, "최상위 문서", "잠금 이야기", "").await.unwrap();
-        let design = create_book(&store, "설계 개요", "본문", "설계").await.unwrap();
-        let lock = create_book(&store, "잠금 설계", "본문", "설계/잠금").await.unwrap();
-        let old = create_book(&store, "옛 문서", "본문", "보관").await.unwrap();
-        set_book_tags(&store, &design.book_id(), vec!["결정".into()]).await.unwrap();
-        set_book_tags(&store, &lock.book_id(), vec!["결정".into(), "초안".into()]).await.unwrap();
-        sqlx::query("UPDATE library_docs SET updated_at = '2020-05-01T10:00:00+09:00' WHERE id = ?")
-            .bind(old.id)
-            .execute(&store.index_pool)
+        let top = create_book(&store, "최상위 문서", "잠금 이야기", "")
             .await
             .unwrap();
+        let design = create_book(&store, "설계 개요", "본문", "설계")
+            .await
+            .unwrap();
+        let lock = create_book(&store, "잠금 설계", "본문", "설계/잠금")
+            .await
+            .unwrap();
+        let old = create_book(&store, "옛 문서", "본문", "보관")
+            .await
+            .unwrap();
+        set_book_tags(&store, &design.book_id(), vec!["결정".into()])
+            .await
+            .unwrap();
+        set_book_tags(&store, &lock.book_id(), vec!["결정".into(), "초안".into()])
+            .await
+            .unwrap();
+        sqlx::query(
+            "UPDATE library_docs SET updated_at = '2020-05-01T10:00:00+09:00' WHERE id = ?",
+        )
+        .bind(old.id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
 
         let ids = |folder: Option<&'static str>, tags: Vec<String>, q: &str| {
             let store = store.clone();
@@ -1640,10 +1825,24 @@ mod tests {
                 v
             }
         };
-        let (t, d, l, o) = (top.book_id(), design.book_id(), lock.book_id(), old.book_id());
-        assert_eq!(ids(None, vec![], "tag:결정").await, vec![d.clone(), l.clone()]);
-        assert_eq!(ids(None, vec![], "tag:결정 -tag:초안").await, vec![d.clone()]);
-        assert_eq!(ids(None, vec![], "folder:설계").await, vec![d.clone(), l.clone()]);
+        let (t, d, l, o) = (
+            top.book_id(),
+            design.book_id(),
+            lock.book_id(),
+            old.book_id(),
+        );
+        assert_eq!(
+            ids(None, vec![], "tag:결정").await,
+            vec![d.clone(), l.clone()]
+        );
+        assert_eq!(
+            ids(None, vec![], "tag:결정 -tag:초안").await,
+            vec![d.clone()]
+        );
+        assert_eq!(
+            ids(None, vec![], "folder:설계").await,
+            vec![d.clone(), l.clone()]
+        );
         assert_eq!(ids(None, vec![], "folder:none").await, vec![t.clone()]);
         assert_eq!(
             ids(None, vec![], "folder:[보관, 설계/잠금]").await,
@@ -1662,14 +1861,22 @@ mod tests {
         );
         assert_eq!(ids(None, vec![], "title:잠금").await, vec![l.clone()]);
         assert_eq!(ids(None, vec![], "body:잠금").await, vec![t.clone()]);
-        assert_eq!(ids(None, vec![], "updated:<2021-01-01").await, vec![o.clone()]);
+        assert_eq!(
+            ids(None, vec![], "updated:<2021-01-01").await,
+            vec![o.clone()]
+        );
         assert_eq!(ids(None, vec![], "잠금").await, vec![t.clone(), l.clone()]);
         assert_eq!(ids(None, vec![], &t.to_lowercase()).await, vec![t.clone()]);
         // 옵션과는 그리고.
-        assert_eq!(ids(Some("설계"), vec!["초안".into()], "잠금").await, vec![l.clone()]);
+        assert_eq!(
+            ids(Some("설계"), vec!["초안".into()], "잠금").await,
+            vec![l.clone()]
+        );
         assert_eq!(ids(None, vec![], "").await.len(), 4);
         for bad in ["status:open", "updated:yesterday", "folder:"] {
-            let e = list_books_query(&store, None, &[], Some(bad)).await.unwrap_err();
+            let e = list_books_query(&store, None, &[], Some(bad))
+                .await
+                .unwrap_err();
             assert!(matches!(e, AppError::BadRequest(_)), "{bad}: {e:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);

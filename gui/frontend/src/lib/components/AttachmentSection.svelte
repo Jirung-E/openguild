@@ -61,11 +61,7 @@
 
 	$effect(() => {
 		for (const a of list) {
-			if (
-				(isImage(a.path) || isVideo(a.path)) &&
-				!urls[a.path] &&
-				!resolvingUrls.has(a.path)
-			) {
+			if ((isImage(a.path) || isVideo(a.path)) && !urls[a.path] && !resolvingUrls.has(a.path)) {
 				resolvingUrls.add(a.path);
 				void resolve(a.path);
 			}

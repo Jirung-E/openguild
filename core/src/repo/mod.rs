@@ -22,17 +22,17 @@ pub mod seed;
 pub mod status_def;
 pub mod tag_def;
 pub mod template;
-pub mod version;
 pub mod type_def;
+pub mod version;
 
 pub use auto::{QuestRef, QuestRelations};
-pub use campaign::{extract_checklist_items, CampaignFile, CampaignFrontmatter, ChecklistLine};
-pub use quest::{QuestFile, QuestFrontmatter, AUTO_BEGIN, AUTO_END};
-pub use seed::{default_statuses, default_types, seed_guild_dir, SeedReport};
+pub use campaign::{CampaignFile, CampaignFrontmatter, ChecklistLine, extract_checklist_items};
+pub use quest::{AUTO_BEGIN, AUTO_END, QuestFile, QuestFrontmatter};
+pub use seed::{SeedReport, default_statuses, default_types, seed_guild_dir};
 pub use status_def::StatusFile;
 pub use tag_def::TagFile;
 pub use template::{
-    list_templates, save_template, validate_template_name, TemplateFile, TemplateFrontmatter,
+    TemplateFile, TemplateFrontmatter, list_templates, save_template, validate_template_name,
 };
 pub use type_def::{Counter, TypeFile};
 
@@ -233,12 +233,14 @@ impl GuildPaths {
 
     /// DEV-156: Campaign 별 첨부 목록 sidecar.
     pub fn campaign_attachments_meta_path(&self, slug: &str) -> PathBuf {
-        self.campaigns_dir().join(format!("{slug}.attachments.json"))
+        self.campaigns_dir()
+            .join(format!("{slug}.attachments.json"))
     }
 
     /// DEV-237: 도서관 문서 별 첨부 목록 sidecar (`.guild/library/{BOOK-NNN}.attachments.json`).
     pub fn book_attachments_meta_path(&self, book_id: &str) -> PathBuf {
-        self.library_dir().join(format!("{book_id}.attachments.json"))
+        self.library_dir()
+            .join(format!("{book_id}.attachments.json"))
     }
 
     /// DEV-100: Campaign 별 공개 댓글 (`.guild/campaigns/{slug}.comments.md`).
@@ -289,10 +291,7 @@ mod tests {
     fn paths_compose_under_dot_guild() {
         let p = GuildPaths::new("/tmp/monitor");
         assert_eq!(p.dot_guild(), PathBuf::from("/tmp/monitor/.guild"));
-        assert_eq!(
-            p.quests_dir(),
-            PathBuf::from("/tmp/monitor/.guild/quests")
-        );
+        assert_eq!(p.quests_dir(), PathBuf::from("/tmp/monitor/.guild/quests"));
         assert_eq!(
             p.quest_path("DEV-001"),
             PathBuf::from("/tmp/monitor/.guild/quests/DEV-001.md")

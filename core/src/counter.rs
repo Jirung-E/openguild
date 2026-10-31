@@ -8,7 +8,7 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 
-use crate::repo::{fs as repo_fs, GuildPaths, QuestFile, TypeFile};
+use crate::repo::{GuildPaths, QuestFile, TypeFile, fs as repo_fs};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CounterIssue {
@@ -92,7 +92,7 @@ pub fn check_counters(paths: &GuildPaths, auto_fix: bool) -> Result<CheckReport>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::{seed_guild_dir, Counter, QuestFile, QuestFrontmatter, TypeFile};
+    use crate::repo::{Counter, QuestFile, QuestFrontmatter, TypeFile, seed_guild_dir};
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()

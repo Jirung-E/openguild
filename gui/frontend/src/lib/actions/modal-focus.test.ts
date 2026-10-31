@@ -23,7 +23,12 @@ function dialog(labels: string[]): HTMLElement {
 const active = () => document.activeElement?.textContent;
 
 function tab(shift = false): KeyboardEvent {
-	const e = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true });
+	const e = new KeyboardEvent('keydown', {
+		key: 'Tab',
+		shiftKey: shift,
+		bubbles: true,
+		cancelable: true
+	});
 	(document.activeElement ?? document.body).dispatchEvent(e);
 	return e;
 }
@@ -74,7 +79,9 @@ describe('BUG-272 modalFocus', () => {
 		const outer = vi.fn();
 		window.addEventListener('keydown', outer);
 		const a = modalFocus(d, { onEscape });
-		document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+		document.activeElement!.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
 		expect(onEscape).toHaveBeenCalledTimes(1);
 		expect(outer).not.toHaveBeenCalled();
 		window.removeEventListener('keydown', outer);

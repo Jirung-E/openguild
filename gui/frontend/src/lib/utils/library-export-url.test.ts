@@ -11,12 +11,16 @@ describe('DEV-441 libraryExportZipUrl', () => {
 	});
 
 	it('폴더 · 문서 하나', () => {
-		expect(parse(libraryExportZipUrl({ folder: '설계/결정' })).searchParams.get('folder')).toBe('설계/결정');
+		expect(parse(libraryExportZipUrl({ folder: '설계/결정' })).searchParams.get('folder')).toBe(
+			'설계/결정'
+		);
 		expect(parse(libraryExportZipUrl({ id: 'BOOK-003' })).searchParams.get('id')).toBe('BOOK-003');
 	});
 
 	it('고른 것 여럿은 pick 으로 — 화면의 열쇠 그대로, 폴더 · 문서보다 먼저', () => {
-		const u = parse(libraryExportZipUrl({ folder: '무시', picks: ['folder:설계 & 기록', 'BOOK-001'] }));
+		const u = parse(
+			libraryExportZipUrl({ folder: '무시', picks: ['folder:설계 & 기록', 'BOOK-001'] })
+		);
 		expect(u.searchParams.getAll('pick')).toEqual(['folder:설계 & 기록', 'BOOK-001']);
 		expect(u.searchParams.has('folder')).toBe(false);
 	});

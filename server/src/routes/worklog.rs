@@ -3,15 +3,15 @@
 //! core `ops::worklog` 의 얇은 어댑터. GUI(Tauri invoke)와 1:1.
 
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use serde::Deserialize;
 
 use crate::error::AppResult;
+use openguild_core::Store;
 use openguild_core::ops::worklog as ops;
 use openguild_core::ops::worklog::WorklogReport;
-use openguild_core::Store;
 
 #[derive(Debug, Deserialize)]
 pub struct RangeQuery {
@@ -83,7 +83,10 @@ pub async fn list_notes(
     Ok(Json(
         notes
             .into_iter()
-            .map(|(date, content)| NoteResponse { date, content: Some(content) })
+            .map(|(date, content)| NoteResponse {
+                date,
+                content: Some(content),
+            })
             .collect(),
     ))
 }

@@ -32,10 +32,7 @@ use std::path::PathBuf;
 /// 했는데, 사용자가 외부 편집 / 마이그레이션 / 옛 길드 등으로 file 의
 /// sort_order 와 파일명 prefix 가 어긋난 경우 (drift) 모든 mutation 이
 /// 'failed to read' 실패. 디렉토리에서 `*-<slug>.toml` 패턴으로 search.
-fn find_status_file_by_slug(
-    paths: &GuildPaths,
-    slug: &str,
-) -> AppResult<Option<PathBuf>> {
+fn find_status_file_by_slug(paths: &GuildPaths, slug: &str) -> AppResult<Option<PathBuf>> {
     let dir = paths.statuses_dir();
     let entries = match std::fs::read_dir(&dir) {
         Ok(e) => e,
@@ -266,12 +263,11 @@ async fn rename_type_locked(
     }
 
     // 중복 검사 — new 가 이미 다른 type 의 prefix 면 거부.
-    let exists: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM quest_types WHERE UPPER(prefix) = UPPER(?)",
-    )
-    .bind(&new_prefix)
-    .fetch_optional(&store.index_pool)
-    .await?;
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM quest_types WHERE UPPER(prefix) = UPPER(?)")
+            .bind(&new_prefix)
+            .fetch_optional(&store.index_pool)
+            .await?;
     if exists.is_some() {
         return Err(AppError::BadRequest(crate::tf!(
             "이미 존재하는 type prefix: {new_prefix}",
@@ -283,12 +279,11 @@ async fn rename_type_locked(
 
     // 영향받는 quest id 들 미리 수집 — auto-block 재생성 대상 결정용.
     // (그 type 의 모든 quest + 네 방향 관계로 연결된 quest)
-    let own_ids: Vec<i64> = sqlx::query_scalar(
-        "SELECT id FROM quests WHERE quest_type_id = ? AND deleted_at IS NULL",
-    )
-    .bind(old_row.id)
-    .fetch_all(&store.index_pool)
-    .await?;
+    let own_ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM quests WHERE quest_type_id = ? AND deleted_at IS NULL")
+            .bind(old_row.id)
+            .fetch_all(&store.index_pool)
+            .await?;
 
     // (own_ids 와 parent / sub / prerequisite / successor 로 연결된 다른 alive quest)
     let related_ids: Vec<i64> = if own_ids.is_empty() {
@@ -373,7 +368,12 @@ async fn rename_type_locked(
                 .unwrap_or_default();
         let renames: Vec<(String, String)> = numbers
             .into_iter()
-            .map(|n| (format!("{old_prefix}-{n:03}"), format!("{new_prefix}-{n:03}")))
+            .map(|n| {
+                (
+                    format!("{old_prefix}-{n:03}"),
+                    format!("{new_prefix}-{n:03}"),
+                )
+            })
             .collect();
         let _ = crate::repo::positions::rename_keys(&store.paths, &renames);
         // DEV-443: 형광펜도 퀘스트 slug 로 키를 잡는다.
@@ -389,8 +389,7 @@ async fn rename_type_locked(
     let old_type_path = store.paths.type_path(&old_prefix);
     let new_type_path = store.paths.type_path(&new_prefix);
     if old_type_path.exists() {
-        let mut tf =
-            TypeFile::read(&old_type_path).map_err(AppError::Internal)?;
+        let mut tf = TypeFile::read(&old_type_path).map_err(AppError::Internal)?;
         tf.prefix = new_prefix.clone();
         tf.write(&new_type_path).map_err(AppError::Internal)?;
         if old_type_path != new_type_path {
@@ -421,9 +420,7 @@ async fn rename_type_locked(
         }
         let quest = sql::fetch_by_id(&store.index_pool, *qid).await?;
         crate::ops::quests::write_quest_file(store, &quest, true).await?;
-        if old_quest_path != store.paths.quest_path(&quest.quest_id)
-            && old_quest_path.exists()
-        {
+        if old_quest_path != store.paths.quest_path(&quest.quest_id) && old_quest_path.exists() {
             let _ = std::fs::remove_file(&old_quest_path);
         }
     }
@@ -478,12 +475,10 @@ async fn rename_status_slug_locked(
     }
 
     // 중복 검사.
-    let exists: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM quest_statuses WHERE slug = ?",
-    )
-    .bind(&new_slug)
-    .fetch_optional(&store.index_pool)
-    .await?;
+    let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+        .bind(&new_slug)
+        .fetch_optional(&store.index_pool)
+        .await?;
     if exists.is_some() {
         return Err(AppError::BadRequest(crate::tf!(
             "이미 존재하는 status slug: {new_slug}",
@@ -494,12 +489,11 @@ async fn rename_status_slug_locked(
     let old_row = fetch_status_by_slug(&store.index_pool, &old_slug).await?;
 
     // 영향받는 quest id 들 미리 수집 (frontmatter rewrite 대상).
-    let affected_quest_ids: Vec<i64> = sqlx::query_scalar(
-        "SELECT id FROM quests WHERE status_id = ? AND deleted_at IS NULL",
-    )
-    .bind(old_row.id)
-    .fetch_all(&store.index_pool)
-    .await?;
+    let affected_quest_ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM quests WHERE status_id = ? AND deleted_at IS NULL")
+            .bind(old_row.id)
+            .fetch_all(&store.index_pool)
+            .await?;
 
     // ── DB UPDATE (transaction) ──
     let mut tx = crate::db::begin_write(&store.index_pool).await?;
@@ -586,9 +580,9 @@ fn validate_status_slug(slug: &str) -> AppResult<()> {
 /// 정의가 필요하므로 삭제 안전장치에서 반드시 포함한다.
 pub async fn count_quests_by_type(pool: &SqlitePool, type_id: i64) -> AppResult<i64> {
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE quest_type_id = ?")
-    .bind(type_id)
-    .fetch_one(pool)
-    .await?;
+        .bind(type_id)
+        .fetch_one(pool)
+        .await?;
     Ok(n)
 }
 
@@ -597,7 +591,12 @@ async fn fetch_type_by_prefix(pool: &SqlitePool, prefix: &str) -> AppResult<Ques
         .bind(prefix)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::NotFound(crate::tf!("type 없음: {prefix}", "type not found: {prefix}")))
+        .ok_or_else(|| {
+            AppError::NotFound(crate::tf!(
+                "type 없음: {prefix}",
+                "type not found: {prefix}"
+            ))
+        })
 }
 
 /// DEV-219: 캠페인(C-NNN)/도서관(BOOK-NNN) 이 이미 쓰는 prefix — quest type
@@ -613,7 +612,10 @@ fn validate_prefix(prefix: &str) -> AppResult<()> {
             "type prefix must be 1-6 characters"
         )));
     }
-    if !prefix.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+    if !prefix
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    {
         return Err(AppError::BadRequest(crate::tf!(
             "type prefix 는 대문자 또는 숫자만 (예: DEV, BUG, REQ)",
             "type prefix must be uppercase letters or digits only (e.g. DEV, BUG, REQ)"
@@ -634,7 +636,10 @@ fn validate_prefix(prefix: &str) -> AppResult<()> {
 /// 문자 거부. slugify 결과의 안정성과 파일명 / URL 친화성 둘 다 만족.
 fn validate_status_name_en(s: &str) -> AppResult<()> {
     if s.is_empty() {
-        return Err(AppError::BadRequest(crate::tf!("name_en 은 필수", "name_en is required")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "name_en 은 필수",
+            "name_en is required"
+        )));
     }
     if s.chars().count() > 32 {
         return Err(AppError::BadRequest(crate::tf!(
@@ -676,11 +681,7 @@ fn validate_status_name_ko(s: &str) -> AppResult<()> {
         )));
     }
     for c in s.chars() {
-        let ok = is_hangul(c)
-            || c.is_ascii_alphanumeric()
-            || c == ' '
-            || c == '-'
-            || c == '_';
+        let ok = is_hangul(c) || c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '_';
         if !ok {
             return Err(AppError::BadRequest(crate::tf!(
                 "name_ko 에 허용되지 않은 문자 '{c}'. \
@@ -713,7 +714,10 @@ fn validate_color(color: &str) -> AppResult<()> {
         )));
     }
     if !s[1..].chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(AppError::BadRequest(crate::tf!("color hex 가 잘못됨", "invalid color hex")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "color hex 가 잘못됨",
+            "invalid color hex"
+        )));
     }
     Ok(())
 }
@@ -747,11 +751,10 @@ pub async fn create_status(
     }
 
     // slug 중복?
-    let exists: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
-            .bind(&slug)
-            .fetch_optional(&store.index_pool)
-            .await?;
+    let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+        .bind(&slug)
+        .fetch_optional(&store.index_pool)
+        .await?;
     if exists.is_some() {
         return Err(AppError::BadRequest(crate::tf!(
             "이미 존재하는 status slug: {slug} (name_en 을 다르게)",
@@ -763,10 +766,9 @@ pub async fn create_status(
     let sort_order = match sort_order {
         Some(n) => n,
         None => {
-            let max: Option<i64> =
-                sqlx::query_scalar("SELECT MAX(sort_order) FROM quest_statuses")
-                    .fetch_one(&store.index_pool)
-                    .await?;
+            let max: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM quest_statuses")
+                .fetch_one(&store.index_pool)
+                .await?;
             max.unwrap_or(0) + 1
         }
     };
@@ -856,12 +858,11 @@ pub async fn update_status(
 
     let mut row = fetch_status_by_slug(&store.index_pool, &working_slug).await?;
     // BUG-018: 파일 경로는 디렉토리 search (DB sort_order 추정 X).
-    let old_path = find_status_file_by_slug(&store.paths, &working_slug)?
-        .ok_or_else(|| {
-            AppError::Internal(anyhow::anyhow!(
-                "status 파일 못 찾음: '{working_slug}'. reindex 권장."
-            ))
-        })?;
+    let old_path = find_status_file_by_slug(&store.paths, &working_slug)?.ok_or_else(|| {
+        AppError::Internal(anyhow::anyhow!(
+            "status 파일 못 찾음: '{working_slug}'. reindex 권장."
+        ))
+    })?;
     let mut file = StatusFile::read(&old_path).map_err(AppError::Internal)?;
     // file 의 sort_order 도 DB 와 sync (drift 보정).
     if file.sort_order != row.sort_order {
@@ -971,9 +972,9 @@ pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
 /// 정의가 필요하므로 삭제 안전장치에서 반드시 포함한다.
 pub async fn count_quests_by_status(pool: &SqlitePool, status_id: i64) -> AppResult<i64> {
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE status_id = ?")
-    .bind(status_id)
-    .fetch_one(pool)
-    .await?;
+        .bind(status_id)
+        .fetch_one(pool)
+        .await?;
     Ok(n)
 }
 
@@ -984,7 +985,12 @@ async fn fetch_status_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestS
         .await
         .context("fetch status")
         .map_err(AppError::Internal)?
-        .ok_or_else(|| AppError::NotFound(crate::tf!("status 없음: {slug}", "status not found: {slug}")))
+        .ok_or_else(|| {
+            AppError::NotFound(crate::tf!(
+                "status 없음: {slug}",
+                "status not found: {slug}"
+            ))
+        })
 }
 
 // ─────────────────────── DEV-068: Tag defs ───────────────────────
@@ -1011,9 +1017,15 @@ fn validate_tag_slug(slug: &str) -> AppResult<()> {
     }
     // 태그는 공백으로 나뉘므로 공백 든 태그는 애초에 못 붙인다.
     if slug.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return bad("공백·제어 문자는 쓸 수 없음", "no whitespace or control characters");
+        return bad(
+            "공백·제어 문자는 쓸 수 없음",
+            "no whitespace or control characters",
+        );
     }
-    if slug.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+    if slug
+        .chars()
+        .any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+    {
         return bad(
             "/ \\ : * ? \" < > | 는 쓸 수 없음",
             "/ \\ : * ? \" < > | are not allowed",
@@ -1021,11 +1033,14 @@ fn validate_tag_slug(slug: &str) -> AppResult<()> {
     }
     // `.`·`..`·숨김 파일, 그리고 Windows 는 끝의 점을 조용히 버린다.
     if slug.starts_with('.') || slug.ends_with('.') {
-        return bad("점으로 시작하거나 끝날 수 없음", "cannot start or end with a dot");
+        return bad(
+            "점으로 시작하거나 끝날 수 없음",
+            "cannot start or end with a dot",
+        );
     }
     const RESERVED: &[&str] = &[
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-        "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(slug)) {
         return bad("Windows 예약 이름", "reserved name on Windows");
@@ -1176,7 +1191,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("og-ops-meta-{label}-{ns}-{}", crate::test_seq()));
+        let p =
+            std::env::temp_dir().join(format!("og-ops-meta-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
@@ -1195,7 +1211,16 @@ mod tests {
     /// 예전 규칙(영문 소문자만)은 거의 모든 태그를 거절했다.
     #[test]
     fn tag_names_accept_what_can_be_attached() {
-        for ok in ["리팩터링", "백엔드", "api", "needs-review", "v1.2", "C++", "日本語", "a_b"] {
+        for ok in [
+            "리팩터링",
+            "백엔드",
+            "api",
+            "needs-review",
+            "v1.2",
+            "C++",
+            "日本語",
+            "a_b",
+        ] {
             assert!(validate_tag_slug(ok).is_ok(), "거절됨: {ok}");
         }
         assert!(validate_tag_slug(&"가".repeat(64)).is_ok());
@@ -1211,21 +1236,37 @@ mod tests {
         ] {
             assert!(validate_tag_slug(bad).is_err(), "통과됨: {bad:?}");
         }
-        assert!(validate_tag_slug(&"가".repeat(65)).is_err(), "65자가 통과됨");
+        assert!(
+            validate_tag_slug(&"가".repeat(65)).is_err(),
+            "65자가 통과됨"
+        );
     }
 
     #[tokio::test]
     async fn a_korean_tag_gets_a_definition_that_survives_reindex_and_deletes() {
         let (dir, store) = fresh_store("tag-korean").await;
-        upsert_tag_def(&store, "리팩터링".into(), "#e94f4f".into(), "구조 정리".into())
-            .await
-            .unwrap();
+        upsert_tag_def(
+            &store,
+            "리팩터링".into(),
+            "#e94f4f".into(),
+            "구조 정리".into(),
+        )
+        .await
+        .unwrap();
         assert!(store.paths.tag_path("리팩터링").exists());
 
         crate::reindex::reindex(&store).await.unwrap();
-        let defs = crate::services::meta::list_quest_tag_defs(&store.index_pool).await.unwrap();
-        let d = defs.iter().find(|d| d.slug == "리팩터링").expect("reindex 뒤에 사라졌다");
-        assert_eq!((d.color.as_str(), d.description.as_str()), ("#e94f4f", "구조 정리"));
+        let defs = crate::services::meta::list_quest_tag_defs(&store.index_pool)
+            .await
+            .unwrap();
+        let d = defs
+            .iter()
+            .find(|d| d.slug == "리팩터링")
+            .expect("reindex 뒤에 사라졌다");
+        assert_eq!(
+            (d.color.as_str(), d.description.as_str()),
+            ("#e94f4f", "구조 정리")
+        );
 
         delete_tag_def(&store, "리팩터링".into()).await.unwrap();
         assert!(!store.paths.tag_path("리팩터링").exists());
@@ -1237,13 +1278,17 @@ mod tests {
     #[tokio::test]
     async fn a_tag_differing_only_by_case_is_refused() {
         let (dir, store) = fresh_store("tag-case").await;
-        upsert_tag_def(&store, "api".into(), "#111111".into(), "".into()).await.unwrap();
+        upsert_tag_def(&store, "api".into(), "#111111".into(), "".into())
+            .await
+            .unwrap();
         let e = upsert_tag_def(&store, "API".into(), "#222222".into(), "".into())
             .await
             .unwrap_err();
         assert!(matches!(e, AppError::BadRequest(_)), "{e}");
         assert!(e.to_string().contains("api"), "{e}");
-        upsert_tag_def(&store, "api".into(), "#333333".into(), "갱신".into()).await.unwrap();
+        upsert_tag_def(&store, "api".into(), "#333333".into(), "갱신".into())
+            .await
+            .unwrap();
         let tf = crate::repo::TagFile::read(store.paths.tag_path("api")).unwrap();
         assert_eq!(tf.color, "#333333");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1274,13 +1319,12 @@ mod tests {
             .unwrap();
         assert_eq!(n, 1);
         // counter row 도 생성됐는지.
-        let c: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM quest_counters WHERE quest_type_id = ?",
-        )
-        .bind(t.id)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let c: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM quest_counters WHERE quest_type_id = ?")
+                .bind(t.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(c, 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1315,7 +1359,10 @@ mod tests {
             let err = create_type(&store, (*reserved).into(), "#000".into(), None)
                 .await
                 .unwrap_err();
-            assert!(matches!(err, AppError::BadRequest(_)), "reserved={reserved}");
+            assert!(
+                matches!(err, AppError::BadRequest(_)),
+                "reserved={reserved}"
+            );
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1342,7 +1389,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let row = fetch_type_by_prefix(&store.index_pool, "DEV").await.unwrap();
+        let row = fetch_type_by_prefix(&store.index_pool, "DEV")
+            .await
+            .unwrap();
         assert_eq!(row.color, "#123456");
         assert_eq!(row.description.as_deref(), Some("changed"));
         // 파일도.
@@ -1366,8 +1415,12 @@ mod tests {
     #[tokio::test]
     async fn count_quests_by_type_zero_after_seed() {
         let (dir, store) = fresh_store("type-count").await;
-        let row = fetch_type_by_prefix(&store.index_pool, "DEV").await.unwrap();
-        let n = count_quests_by_type(&store.index_pool, row.id).await.unwrap();
+        let row = fetch_type_by_prefix(&store.index_pool, "DEV")
+            .await
+            .unwrap();
+        let n = count_quests_by_type(&store.index_pool, row.id)
+            .await
+            .unwrap();
         assert_eq!(n, 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1375,7 +1428,9 @@ mod tests {
     #[tokio::test]
     async fn deleted_quest_still_blocks_type_and_status_delete() {
         let (dir, store) = fresh_store("meta-del-soft-deleted").await;
-        let dev = fetch_type_by_prefix(&store.index_pool, "DEV").await.unwrap();
+        let dev = fetch_type_by_prefix(&store.index_pool, "DEV")
+            .await
+            .unwrap();
         let quest = quest_ops::create_quest(
             &store,
             CreateQuestRequest {
@@ -1389,7 +1444,9 @@ mod tests {
         )
         .await
         .unwrap();
-        quest_ops::delete_quest(&store, quest.id, &[]).await.unwrap();
+        quest_ops::delete_quest(&store, quest.id, &[])
+            .await
+            .unwrap();
 
         let type_err = delete_type(&store, "DEV".into()).await.unwrap_err();
         assert!(matches!(type_err, AppError::BadRequest(_)));
@@ -1439,7 +1496,9 @@ mod tests {
     #[tokio::test]
     async fn update_status_renames_file_on_sort_order_change() {
         let (dir, store) = fresh_store("st-rename").await;
-        let row = fetch_status_by_slug(&store.index_pool, "open").await.unwrap();
+        let row = fetch_status_by_slug(&store.index_pool, "open")
+            .await
+            .unwrap();
         let old_path = store
             .paths
             .statuses_dir()
@@ -1484,7 +1543,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let row = fetch_status_by_slug(&store.index_pool, "open").await.unwrap();
+        let row = fetch_status_by_slug(&store.index_pool, "open")
+            .await
+            .unwrap();
         assert_eq!(row.slug, "open");
         assert_eq!(row.name_en, "Reopened");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1527,9 +1588,18 @@ mod tests {
         assert_eq!(updated.name_en, "Open");
         assert_eq!(updated.name_ko, "");
         // name_en 빈 값은 여전히 거부.
-        let err = update_status(&store, "open".into(), None, Some("".into()), None, None, None, None)
-            .await
-            .unwrap_err();
+        let err = update_status(
+            &store,
+            "open".into(),
+            None,
+            Some("".into()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1592,15 +1662,9 @@ mod tests {
         assert!(matches!(err, AppError::BadRequest(_)));
 
         // 합법 케이스 — 영문/숫자/공백/-/_ OK.
-        let ok = create_status(
-            &store,
-            "In Review".into(),
-            "".into(),
-            "#000".into(),
-            None,
-        )
-        .await
-        .unwrap();
+        let ok = create_status(&store, "In Review".into(), "".into(), "#000".into(), None)
+            .await
+            .unwrap();
         assert_eq!(ok.name_en, "In Review");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1613,21 +1677,29 @@ mod tests {
     async fn name_ko_rejects_disallowed_chars() {
         let (dir, store) = fresh_store("name-ko-bad").await;
         let cases = &[
-            "a/b", "a\\b", "x:y", "<tag>", "a*b", "a|b", "\"x\"", // 파일 위험
-            "a.b", "a,b", "a!b", "a?b", "a(b)", "a;b",            // 일반 punctuation
-            "가/나", "가.나", "리뷰 중 (대기)",                       // 한글 + 거부 문자 혼합
-            "a\nb", "a\tb",                                       // control
+            "a/b",
+            "a\\b",
+            "x:y",
+            "<tag>",
+            "a*b",
+            "a|b",
+            "\"x\"", // 파일 위험
+            "a.b",
+            "a,b",
+            "a!b",
+            "a?b",
+            "a(b)",
+            "a;b", // 일반 punctuation
+            "가/나",
+            "가.나",
+            "리뷰 중 (대기)", // 한글 + 거부 문자 혼합
+            "a\nb",
+            "a\tb", // control
         ];
         for bad in cases {
-            let err = create_status(
-                &store,
-                "Valid".into(),
-                (*bad).into(),
-                "#000".into(),
-                None,
-            )
-            .await
-            .unwrap_err();
+            let err = create_status(&store, "Valid".into(), (*bad).into(), "#000".into(), None)
+                .await
+                .unwrap_err();
             assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
         }
         // 길이 초과.
@@ -1659,12 +1731,11 @@ mod tests {
         let (dir, store) = fresh_store("st-del").await;
         // on_hold 는 seed 에 있고 quest 0개.
         delete_status(&store, "on_hold".into()).await.unwrap();
-        let row = sqlx::query_as::<_, QuestStatus>(
-            "SELECT * FROM quest_statuses WHERE slug = 'on_hold'",
-        )
-        .fetch_optional(&store.index_pool)
-        .await
-        .unwrap();
+        let row =
+            sqlx::query_as::<_, QuestStatus>("SELECT * FROM quest_statuses WHERE slug = 'on_hold'")
+                .fetch_optional(&store.index_pool)
+                .await
+                .unwrap();
         assert!(row.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1680,8 +1751,9 @@ mod tests {
 
         // open status 의 실제 파일을 `99-open.toml` 로 강제 rename — drift 시뮬레이션.
         // DB 의 sort_order 는 그대로 (1).
-        let row =
-            fetch_status_by_slug(&store.index_pool, "open").await.unwrap();
+        let row = fetch_status_by_slug(&store.index_pool, "open")
+            .await
+            .unwrap();
         let dir_path = store.paths.statuses_dir();
         let old_real_filename = StatusFile::filename(row.sort_order, "open");
         let drift_filename = "99-open.toml";
@@ -1708,14 +1780,12 @@ mod tests {
         assert_eq!(updated.color, "#888888");
 
         // rename 도 OK (drift 파일을 찾아서 새 slug 로 rename).
-        let renamed =
-            rename_status_slug(&store, "open".into(), "backlog".into())
-                .await
-                .expect("drift 상태에서도 rename 성공해야");
+        let renamed = rename_status_slug(&store, "open".into(), "backlog".into())
+            .await
+            .expect("drift 상태에서도 rename 성공해야");
         assert_eq!(renamed.slug, "backlog");
         // 새 파일 — drift 의 order (99) 유지 안 함; DB 의 sort_order (1) 가 truth.
-        let renamed_path =
-            dir_path.join(StatusFile::filename(row.sort_order, "backlog"));
+        let renamed_path = dir_path.join(StatusFile::filename(row.sort_order, "backlog"));
         assert!(renamed_path.exists(), "new file: {renamed_path:?}");
         assert!(
             !dir_path.join(drift_filename).exists(),
@@ -1723,7 +1793,9 @@ mod tests {
         );
 
         // delete 도 OK.
-        let row2 = fetch_status_by_slug(&store.index_pool, "on_hold").await.unwrap();
+        let row2 = fetch_status_by_slug(&store.index_pool, "on_hold")
+            .await
+            .unwrap();
         let on_hold_path = dir_path.join(StatusFile::filename(row2.sort_order, "on_hold"));
         std::fs::rename(&on_hold_path, dir_path.join("77-on_hold.toml")).unwrap();
         delete_status(&store, "on_hold".into())
@@ -1758,16 +1830,14 @@ mod tests {
     async fn rename_type_with_quests_cascades() {
         let (dir, store) = fresh_store("rename-type-cascade").await;
 
-        let dev_id: i64 =
-            sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
-        let open_id: i64 =
-            sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = 'open'")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
+        let dev_id: i64 = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let open_id: i64 = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = 'open'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
 
         // DEV-001, DEV-002 직접 INSERT (test 단순화).
         for n in 1..=2 {
@@ -1783,29 +1853,27 @@ mod tests {
             .await
             .unwrap();
         }
-        sqlx::query(
-            "UPDATE quest_counters SET last_number = 2 WHERE quest_type_id = ?",
-        )
-        .bind(dev_id)
-        .execute(&store.index_pool)
-        .await
-        .unwrap();
+        sqlx::query("UPDATE quest_counters SET last_number = 2 WHERE quest_type_id = ?")
+            .bind(dev_id)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
 
         // .md 파일도 만들어 두기 (write_quest_file 가 호출되어 cascade 되는지 확인).
         for n in 1..=2 {
-            let id: i64 = sqlx::query_scalar(
-                "SELECT id FROM quests WHERE quest_type_id = ? AND number = ?",
-            )
-            .bind(dev_id)
-            .bind(n)
-            .fetch_one(&store.index_pool)
-            .await
-            .unwrap();
-            let q =
-                crate::services::quests::fetch_by_id(&store.index_pool, id)
+            let id: i64 =
+                sqlx::query_scalar("SELECT id FROM quests WHERE quest_type_id = ? AND number = ?")
+                    .bind(dev_id)
+                    .bind(n)
+                    .fetch_one(&store.index_pool)
                     .await
                     .unwrap();
-            crate::ops::quests::write_quest_file(&store, &q, true).await.unwrap();
+            let q = crate::services::quests::fetch_by_id(&store.index_pool, id)
+                .await
+                .unwrap();
+            crate::ops::quests::write_quest_file(&store, &q, true)
+                .await
+                .unwrap();
         }
         assert!(dir.join(".guild/quests/DEV-001.md").exists());
         assert!(dir.join(".guild/quests/DEV-002.md").exists());
@@ -1881,16 +1949,14 @@ mod tests {
         let (dir, store) = fresh_store("rename-status").await;
 
         // 한 quest 추가 + history 한 줄.
-        let dev_id: i64 =
-            sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
-        let open_id: i64 =
-            sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = 'open'")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
+        let dev_id: i64 = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let open_id: i64 = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = 'open'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         sqlx::query(
             "INSERT INTO quests (quest_type_id, number, title, status_id, urgency, created_at, updated_at)
              VALUES (?, 1, 'q', ?, 3, datetime('now'), datetime('now'))",
@@ -1900,17 +1966,18 @@ mod tests {
         .execute(&store.index_pool)
         .await
         .unwrap();
-        let qid: i64 = sqlx::query_scalar(
-            "SELECT id FROM quests WHERE quest_type_id = ? AND number = 1",
-        )
-        .bind(dev_id)
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let qid: i64 =
+            sqlx::query_scalar("SELECT id FROM quests WHERE quest_type_id = ? AND number = 1")
+                .bind(dev_id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         let q = crate::services::quests::fetch_by_id(&store.index_pool, qid)
             .await
             .unwrap();
-        crate::ops::quests::write_quest_file(&store, &q, true).await.unwrap();
+        crate::ops::quests::write_quest_file(&store, &q, true)
+            .await
+            .unwrap();
 
         sqlx::query(
             "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
@@ -1938,12 +2005,11 @@ mod tests {
         assert!(content.contains("status = \"backlog\""));
 
         // history old_value 'open' → 'backlog'.
-        let old_value: String = sqlx::query_scalar(
-            "SELECT old_value FROM quest_history WHERE op = 'change_status'",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let old_value: String =
+            sqlx::query_scalar("SELECT old_value FROM quest_history WHERE op = 'change_status'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(old_value, "backlog");
 
         let _ = std::fs::remove_dir_all(&dir);

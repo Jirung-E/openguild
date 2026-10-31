@@ -5,13 +5,13 @@
 
 use serde_json::json;
 
-use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{names as ev, payload};
-use crate::repo::history as hist;
+use crate::lock::DocKey;
 use crate::ops::doc_history::{self, DocKind};
+use crate::repo::history as hist;
 use crate::repo::rules as repo;
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 
 pub use crate::repo::rules::RuleEntry;
 
@@ -69,9 +69,19 @@ pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<(
 }
 
 /// DEV-435: [`set_rule`] + 편집을 시작할 때 본 것 — 그사이 바뀐 본문과 합치거나, 같은 줄이면 거부한다.
-pub async fn set_rule_with(store: &Store, slug: &str, content: String, base: super::EditBase) -> AppResult<()> {
+pub async fn set_rule_with(
+    store: &Store,
+    slug: &str,
+    content: String,
+    base: super::EditBase,
+) -> AppResult<()> {
     let _g = store.lock_docs(&[DocKey::rule(slug)]).await?;
-    let current = || repo::read_rule(&store.paths, slug).ok().flatten().unwrap_or_default();
+    let current = || {
+        repo::read_rule(&store.paths, slug)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+    };
     super::check_base_version(
         &store.paths.rule_path(slug),
         crate::repo::version::Place::Frontmatter,
@@ -157,11 +167,7 @@ pub async fn delete_rule(store: &Store, slug: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn rename_rule(
-    store: &Store,
-    old_slug: &str,
-    new_slug: &str,
-) -> AppResult<()> {
+pub async fn rename_rule(store: &Store, old_slug: &str, new_slug: &str) -> AppResult<()> {
     let _g = store.lock_guild().await?;
     let _ = journal::append(
         &store.journal_pool,
@@ -209,7 +215,11 @@ pub async fn set_rule_tags(store: &Store, slug: &str, tags: Vec<String>) -> AppR
 }
 
 /// BUG-287: 태그를 붙이고 뗀다 — 잠금을 쥔 채 **지금** 파일의 목록에 적용한다.
-pub async fn edit_rule_tags(store: &Store, slug: &str, edit: super::TagEdit) -> AppResult<RuleEntry> {
+pub async fn edit_rule_tags(
+    store: &Store,
+    slug: &str,
+    edit: super::TagEdit,
+) -> AppResult<RuleEntry> {
     let _g = store.lock_docs(&[DocKey::rule(slug)]).await?;
     let current = repo::read_rule_entry(&store.paths, slug)
         .map_err(AppError::Internal)?
@@ -218,7 +228,11 @@ pub async fn edit_rule_tags(store: &Store, slug: &str, edit: super::TagEdit) -> 
     set_rule_tags_locked(store, slug, edit.apply(current)).await
 }
 
-async fn set_rule_tags_locked(store: &Store, slug: &str, tags: Vec<String>) -> AppResult<RuleEntry> {
+async fn set_rule_tags_locked(
+    store: &Store,
+    slug: &str,
+    tags: Vec<String>,
+) -> AppResult<RuleEntry> {
     let _ = journal::append(
         &store.journal_pool,
         "set_rule_tags",
@@ -283,7 +297,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("og-ruleops-{label}-{ns}-{}", crate::test_seq()));
+        let dir =
+            std::env::temp_dir().join(format!("og-ruleops-{label}-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
@@ -300,7 +315,10 @@ mod tests {
         let (_dir, store) = setup("hist-missing").await;
 
         let err = history(&store, "존재하지-않는-규칙").unwrap_err();
-        assert!(matches!(err, AppError::NotFound(_)), "NotFound 여야: {err:?}");
+        assert!(
+            matches!(err, AppError::NotFound(_)),
+            "NotFound 여야: {err:?}"
+        );
 
         // 대조군: 실제로 있는 규칙은 이력이 없어도 Ok.
         set_rule(&store, "코딩-규칙", "# 코딩 규칙\n".into())

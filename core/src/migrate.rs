@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use crate::db;
 use crate::repo::{
-    auto, GuildPaths, QuestFile, QuestFrontmatter, QuestRef, QuestRelations, TypeFile,
+    GuildPaths, QuestFile, QuestFrontmatter, QuestRef, QuestRelations, TypeFile, auto,
 };
 
 /// 진행 결과 보고.
@@ -78,15 +78,17 @@ pub async fn migrate_to_files<P: AsRef<Path>>(guild_root: P) -> Result<Migration
     .await
     .context("legacy quests SELECT 실패")?;
 
-    let deps: Vec<(i64, i64)> = sqlx::query_as("SELECT quest_id, prerequisite_id FROM quest_dependencies")
-        .fetch_all(&pool)
-        .await
-        .context("legacy quest_dependencies SELECT 실패")?;
+    let deps: Vec<(i64, i64)> =
+        sqlx::query_as("SELECT quest_id, prerequisite_id FROM quest_dependencies")
+            .fetch_all(&pool)
+            .await
+            .context("legacy quest_dependencies SELECT 실패")?;
 
-    let counters: Vec<(i64, i64)> = sqlx::query_as("SELECT quest_type_id, last_number FROM quest_counters")
-        .fetch_all(&pool)
-        .await
-        .context("legacy quest_counters SELECT 실패")?;
+    let counters: Vec<(i64, i64)> =
+        sqlx::query_as("SELECT quest_type_id, last_number FROM quest_counters")
+            .fetch_all(&pool)
+            .await
+            .context("legacy quest_counters SELECT 실패")?;
 
     let type_map: Vec<(i64, String)> = sqlx::query_as("SELECT id, prefix FROM quest_types")
         .fetch_all(&pool)
@@ -94,10 +96,7 @@ pub async fn migrate_to_files<P: AsRef<Path>>(guild_root: P) -> Result<Migration
         .context("legacy quest_types SELECT 실패")?;
 
     // 룩업 빌드
-    let id_to_slug: HashMap<i64, String> = quests
-        .iter()
-        .map(|q| (q.id, q.slug.clone()))
-        .collect();
+    let id_to_slug: HashMap<i64, String> = quests.iter().map(|q| (q.id, q.slug.clone())).collect();
     let mut prereqs_by_quest: HashMap<i64, Vec<i64>> = HashMap::new();
     let mut dependents_by_prereq: HashMap<i64, Vec<i64>> = HashMap::new();
     for (qid, pid) in &deps {

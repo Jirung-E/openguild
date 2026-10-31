@@ -58,7 +58,11 @@ pub struct NativeTitlebarStyle {
 fn read_button_config() -> (&'static str, Vec<String>) {
     let fallback = (
         "right",
-        vec!["minimize".to_string(), "maximize".to_string(), "close".to_string()],
+        vec![
+            "minimize".to_string(),
+            "maximize".to_string(),
+            "close".to_string(),
+        ],
     );
     let out = match std::process::Command::new("gsettings")
         .args(["get", "org.gnome.desktop.wm.preferences", "button-layout"])
@@ -114,7 +118,10 @@ fn build_style_on_gtk_thread() -> NativeTitlebarStyle {
     use gtk::prelude::*;
 
     let (side, order_raw) = read_button_config();
-    let order = order_raw.iter().map(|n| to_action_key(n).to_string()).collect();
+    let order = order_raw
+        .iter()
+        .map(|n| to_action_key(n).to_string())
+        .collect();
 
     // 아이콘: 심볼릭 SVG 파일 원문을 그대로 data URL 로 넘긴다(PNG 렌더
     // 아님). 프론트가 이를 CSS `mask-image` + `currentColor` 로 그려
@@ -154,10 +161,7 @@ fn build_style_on_gtk_thread() -> NativeTitlebarStyle {
         let offscreen = gtk::OffscreenWindow::new();
         let btn = gtk::Button::new();
         btn.style_context().add_class("titlebutton");
-        let img = gtk::Image::from_icon_name(
-            Some("window-close-symbolic"),
-            gtk::IconSize::Menu,
-        );
+        let img = gtk::Image::from_icon_name(Some("window-close-symbolic"), gtk::IconSize::Menu);
         btn.add(&img);
         offscreen.add(&btn);
         offscreen.show_all();

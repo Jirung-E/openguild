@@ -369,7 +369,10 @@ export function clusterSlots(
 			let cur = cursor.get(lane) ?? { row: 0, k: 0 };
 			if (cur.row < minRow) cur = { row: minRow, k: 0 };
 			slots.set(id, { lane, col: s + cur.k, row: cur.row });
-			cursor.set(lane, cur.k + 1 >= c ? { row: cur.row + 1, k: 0 } : { row: cur.row, k: cur.k + 1 });
+			cursor.set(
+				lane,
+				cur.k + 1 >= c ? { row: cur.row + 1, k: 0 } : { row: cur.row, k: cur.k + 1 }
+			);
 		}
 		return slots;
 	};

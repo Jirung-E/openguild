@@ -63,8 +63,8 @@ pub struct SourcePlugin {
 }
 
 pub fn path() -> AppResult<PathBuf> {
-    let home = crate::user_dirs::openguild_home()
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let home =
+        crate::user_dirs::openguild_home().map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     Ok(home.join("plugin-sources.json"))
 }
 
@@ -118,7 +118,10 @@ impl SourcesFile {
 }
 
 /// BUG-347: 길드 열쇠를 `key` 규칙으로 다시 붙인다. 옛 열쇠 둘이 같은 길드면 목록을 합친다(순서 유지, 겹치면 하나).
-fn rekey(used: BTreeMap<String, Vec<Used>>, key: impl Fn(&str) -> String) -> BTreeMap<String, Vec<Used>> {
+fn rekey(
+    used: BTreeMap<String, Vec<Used>>,
+    key: impl Fn(&str) -> String,
+) -> BTreeMap<String, Vec<Used>> {
     let mut out: BTreeMap<String, Vec<Used>> = BTreeMap::new();
     for (k, list) in used {
         let dst = out.entry(key(&k)).or_default();
@@ -154,8 +157,8 @@ fn update(f: impl FnOnce(&mut SourcesFile) -> AppResult<()>) -> AppResult<()> {
     // 옛 형태로 적힌 것은 고쳐 쓴다 — 비교(같은 경로면 같은 소스)도 뗀 형태끼리 해야 맞는다.
     file.normalize();
     f(&mut file)?;
-    let body = serde_json::to_string_pretty(&file)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let body =
+        serde_json::to_string_pretty(&file).map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let tmp = p.with_extension("json.tmp");
     std::fs::write(&tmp, body).map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     std::fs::rename(&tmp, &p).map_err(|e| {
@@ -284,7 +287,9 @@ pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResul
     // BUG-294: Windows 의 canonicalize 는 `\\?\C:\…` 를 돌려준다. 그대로 적어 두면 그 경로가
     // `${OPENGUILD_PLUGIN_DIR}` 로 훅에 넘어가는데, Windows PowerShell 5.1 등은 이 형태를 제대로
     // 못 다룬다. 길드 경로와 같은 규칙([`crate::recents::normalize_abs`])으로 떼어 낸다.
-    let dir = PathBuf::from(crate::recents::strip_verbatim_prefix(&canon.to_string_lossy()));
+    let dir = PathBuf::from(crate::recents::strip_verbatim_prefix(
+        &canon.to_string_lossy(),
+    ));
     let found = plugins_in(&dir).map_err(|e| {
         AppError::BadRequest(crate::tf!(
             "폴더를 읽지 못했습니다: {e}",
@@ -308,11 +313,7 @@ pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResul
         .unwrap_or_else(|| "source".to_string());
     let mut file = load();
     // 같은 경로가 이미 있으면 그 이름을 그대로 돌려준다 — 두 번 등록해도 하나다.
-    if let Some((existing, _)) = file
-        .sources
-        .iter()
-        .find(|(_, p)| PathBuf::from(p) == dir)
-    {
+    if let Some((existing, _)) = file.sources.iter().find(|(_, p)| PathBuf::from(p) == dir) {
         return Ok(existing.clone());
     }
     let mut chosen = base.clone();
@@ -596,7 +597,10 @@ mod tests {
     /// 규칙은 윈도우에서만 바뀌므로 여기서는 대소문자를 무시하는 규칙을 꽂아 맥에서도 본다.
     #[test]
     fn old_keys_are_moved_to_the_current_rule_and_merged() {
-        let u = |s: &str| Used { source: s.into(), folder: ".".into() };
+        let u = |s: &str| Used {
+            source: s.into(),
+            folder: ".".into(),
+        };
         let mut used = BTreeMap::new();
         used.insert(r"C:\Users\Me\Guild".to_string(), vec![u("a"), u("b")]);
         used.insert(r"c:\users\me\guild".to_string(), vec![u("b"), u("c")]);

@@ -126,7 +126,13 @@ export function groupRects(
 	const out: GroupRect[] = [];
 	for (const [key, b] of byKey) {
 		if (b.n < 2) continue;
-		out.push({ key, x: b.x1 - pad, y: b.y1 - pad, w: b.x2 - b.x1 + pad * 2, h: b.y2 - b.y1 + pad * 2 });
+		out.push({
+			key,
+			x: b.x1 - pad,
+			y: b.y1 - pad,
+			w: b.x2 - b.x1 + pad * 2,
+			h: b.y2 - b.y1 + pad * 2
+		});
 	}
 	return out.sort((a, b) => a.key - b.key);
 }

@@ -4,19 +4,17 @@
 //! 메모는 단일 텍스트 그대로.
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
+use openguild_core::Store;
 use openguild_core::ops::comments as ops;
 use openguild_core::repo::comments::CommentEntry;
-use openguild_core::services::comments::{
-    search_global, GlobalComment, GlobalCommentsFilter,
-};
-use openguild_core::Store;
+use openguild_core::services::comments::{GlobalComment, GlobalCommentsFilter, search_global};
 
 // ─── BUG-231: 길드 전체 댓글 검색 ───
 
@@ -127,9 +125,15 @@ pub async fn add_comment(
     Path(slug): Path<String>,
     Json(body): Json<AddCommentRequest>,
 ) -> AppResult<(StatusCode, Json<CommentEntry>)> {
-    let entry =
-        ops::add_comment_entry(&store, &slug, body.author, body.body, body.parent_id, body.discussion)
-            .await?;
+    let entry = ops::add_comment_entry(
+        &store,
+        &slug,
+        body.author,
+        body.body,
+        body.parent_id,
+        body.discussion,
+    )
+    .await?;
     // REQ-005: 다른 create 는 전부 201 인데 여기만 암묵적 200 이었다
     // (quests.rs:85 / campaigns.rs:51,120 / library.rs:94 / rules.rs:111).
     Ok((StatusCode::CREATED, Json(entry)))
@@ -140,7 +144,8 @@ pub async fn update_comment(
     Path((slug, id)): Path<(String, u64)>,
     Json(body): Json<UpdateCommentRequest>,
 ) -> AppResult<Json<CommentEntry>> {
-    let entry = ops::update_comment_entry_with(&store, &slug, id, body.body, body.base_body).await?;
+    let entry =
+        ops::update_comment_entry_with(&store, &slug, id, body.body, body.base_body).await?;
     Ok(Json(entry))
 }
 

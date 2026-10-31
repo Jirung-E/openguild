@@ -21,7 +21,11 @@ pub enum Segment {
     /// 합의된 글 — 안 바뀌었거나, 한쪽만 고쳤거나, 둘이 똑같이 고친 곳.
     Same { text: String },
     /// 같은 줄을 두 쪽이 다르게 고친 곳. `base` 는 시작할 때의 그 구간(끼워 넣기면 빈 글).
-    Conflict { base: String, current: String, mine: String },
+    Conflict {
+        base: String,
+        current: String,
+        mine: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,7 +51,11 @@ fn split_lines(s: &str) -> Vec<String> {
 /// 끝에 줄바꿈이 없는 마지막 줄이 "고친 줄" 로 잡히지 않게 — 비교는 줄바꿈을 붙여서 하고, 결과는 `mine` 의
 /// 끝 모양을 따른다.
 fn with_newline(s: &str) -> String {
-    if s.is_empty() || s.ends_with('\n') { s.to_string() } else { format!("{s}\n") }
+    if s.is_empty() || s.ends_with('\n') {
+        s.to_string()
+    } else {
+        format!("{s}\n")
+    }
 }
 
 fn changes(base: &[String], other: &[String]) -> Vec<Change> {
@@ -55,11 +63,27 @@ fn changes(base: &[String], other: &[String]) -> Vec<Change> {
     for op in capture_diff_slices(Algorithm::Myers, base, other) {
         let (start, end, ns, ne) = match op {
             DiffOp::Equal { .. } => continue,
-            DiffOp::Delete { old_index, old_len, new_index } => (old_index, old_index + old_len, new_index, new_index),
-            DiffOp::Insert { old_index, new_index, new_len } => (old_index, old_index, new_index, new_index + new_len),
-            DiffOp::Replace { old_index, old_len, new_index, new_len } => {
-                (old_index, old_index + old_len, new_index, new_index + new_len)
-            }
+            DiffOp::Delete {
+                old_index,
+                old_len,
+                new_index,
+            } => (old_index, old_index + old_len, new_index, new_index),
+            DiffOp::Insert {
+                old_index,
+                new_index,
+                new_len,
+            } => (old_index, old_index, new_index, new_index + new_len),
+            DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => (
+                old_index,
+                old_index + old_len,
+                new_index,
+                new_index + new_len,
+            ),
         };
         let lines = other[ns..ne].to_vec();
         // 지우기 바로 뒤의 끼워 넣기처럼 붙어 있는 것은 한 번의 바꾸기로 본다.
@@ -129,9 +153,17 @@ pub fn merge3(base: &str, current: &str, mine: &str) -> Merge {
             (None, Some(_)) => false,
             (Some(x), Some(y)) => key(x) <= key(y),
         };
-        let (mut s, mut e) = if first_a { (a[ia].start, a[ia].end) } else { (b[ib].start, b[ib].end) };
+        let (mut s, mut e) = if first_a {
+            (a[ia].start, a[ia].end)
+        } else {
+            (b[ib].start, b[ib].end)
+        };
         let (ja, jb) = (ia, ib);
-        if first_a { ia += 1 } else { ib += 1 }
+        if first_a {
+            ia += 1
+        } else {
+            ib += 1
+        }
         // 구간에 겹치는 것을 양쪽에서 계속 끌어들인다.
         loop {
             let grew_a = a.get(ia).is_some_and(|c| overlaps(c, s, e));
@@ -160,7 +192,11 @@ pub fn merge3(base: &str, current: &str, mine: &str) -> Merge {
         } else if cb.is_empty() || ta == tb {
             push_same(&mut segs, ta);
         } else {
-            segs.push(Segment::Conflict { base: base_l[s..e].concat(), current: ta, mine: tb });
+            segs.push(Segment::Conflict {
+                base: base_l[s..e].concat(),
+                current: ta,
+                mine: tb,
+            });
         }
         pos = e;
     }
@@ -178,7 +214,11 @@ pub fn merge3(base: &str, current: &str, mine: &str) -> Merge {
         if let Some(last) = segs.last_mut() {
             match last {
                 Segment::Same { text } => fix(text),
-                Segment::Conflict { current, mine, base } => {
+                Segment::Conflict {
+                    current,
+                    mine,
+                    base,
+                } => {
                     fix(current);
                     fix(mine);
                     fix(base);
@@ -216,7 +256,10 @@ mod tests {
         let cur = BASE.replace("하나", "하나 (남이 고침)");
         let mine = BASE.replace("열", "열 (내가 고침)");
         let got = clean(merge3(BASE, &cur, &mine));
-        assert!(got.contains("하나 (남이 고침)") && got.contains("열 (내가 고침)"), "{got}");
+        assert!(
+            got.contains("하나 (남이 고침)") && got.contains("열 (내가 고침)"),
+            "{got}"
+        );
     }
 
     #[test]
@@ -237,8 +280,13 @@ mod tests {
     fn different_edits_on_the_same_line_conflict_without_markers() {
         let cur = BASE.replace("다섯", "다섯 — 남");
         let mine = BASE.replace("다섯", "다섯 — 나");
-        let Merge::Conflict(segs) = merge3(BASE, &cur, &mine) else { panic!("충돌이어야 한다") };
-        let conflicts: Vec<&Segment> = segs.iter().filter(|s| matches!(s, Segment::Conflict { .. })).collect();
+        let Merge::Conflict(segs) = merge3(BASE, &cur, &mine) else {
+            panic!("충돌이어야 한다")
+        };
+        let conflicts: Vec<&Segment> = segs
+            .iter()
+            .filter(|s| matches!(s, Segment::Conflict { .. }))
+            .collect();
         assert_eq!(
             conflicts,
             vec![&Segment::Conflict {
@@ -288,7 +336,10 @@ mod tests {
         assert!(matches!(merge3(BASE, &cur, &mine), Merge::Conflict(_)));
         let mine = BASE.replace("하나", "1");
         let got = clean(merge3(BASE, &cur, &mine));
-        assert!(got.starts_with("1\n") && got.ends_with("남의 끝 줄\n"), "{got}");
+        assert!(
+            got.starts_with("1\n") && got.ends_with("남의 끝 줄\n"),
+            "{got}"
+        );
     }
 
     #[test]
@@ -303,6 +354,9 @@ mod tests {
     fn empty_base_with_one_side_writing_takes_it() {
         assert_eq!(clean(merge3("", "", "새 글\n")), "새 글\n");
         assert_eq!(clean(merge3("", "남의 글\n", "")), "남의 글\n");
-        assert!(matches!(merge3("", "남의 글\n", "내 글\n"), Merge::Conflict(_)));
+        assert!(matches!(
+            merge3("", "남의 글\n", "내 글\n"),
+            Merge::Conflict(_)
+        ));
     }
 }

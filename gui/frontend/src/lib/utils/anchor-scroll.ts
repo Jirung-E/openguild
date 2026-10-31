@@ -28,7 +28,8 @@ import { flushSync } from 'svelte';
 /** 모션 축소 선호 — 전환을 아예 걸지 않는다. */
 function reduceMotion(): boolean {
 	return (
-		typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+		typeof window !== 'undefined' &&
+		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 	);
 }
 

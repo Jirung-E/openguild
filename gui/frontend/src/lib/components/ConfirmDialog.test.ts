@@ -19,7 +19,9 @@ function outsideButton() {
 
 describe('BUG-272 확인 대화상자 포커스', () => {
 	it('위험한 동작은 취소에서, 아니면 확인에서 시작한다', () => {
-		render(ConfirmDialog, { props: { open: true, message: '지울까요?', confirmLabel: '삭제', danger: true } });
+		render(ConfirmDialog, {
+			props: { open: true, message: '지울까요?', confirmLabel: '삭제', danger: true }
+		});
 		expect(document.activeElement?.textContent?.trim()).toBe('취소');
 		cleanup();
 		render(ConfirmDialog, { props: { open: true, message: '할까요?', confirmLabel: '진행' } });

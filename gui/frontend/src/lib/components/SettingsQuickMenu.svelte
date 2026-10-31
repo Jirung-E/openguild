@@ -124,10 +124,8 @@
 		<span class="qm-label">{t('settings.language', $locale)}</span>
 		<div class="seg sm qm-seg" role="group" aria-label={t('settings.language', $locale)}>
 			{#each LOCALE_OPTIONS as o (o.value)}
-				<button
-					class="qm-seg-btn"
-					class:on={$locale === o.value}
-					onclick={() => setLocale(o.value)}>{o.label}</button
+				<button class="qm-seg-btn" class:on={$locale === o.value} onclick={() => setLocale(o.value)}
+					>{o.label}</button
 				>
 			{/each}
 		</div>

@@ -121,7 +121,10 @@ impl Store {
     /// DEV-431: 길드 **공유** + 이 문서들 **독점**. 서로 다른 문서를 고치는 변경끼리는 막지 않는다.
     ///
     /// 고칠 문서를 **한 번에** 넘긴다 — 순서는 여기서 정한다(이름 순). 쥔 채 또 잠그면 오류다.
-    pub async fn lock_docs(&self, docs: &[crate::lock::DocKey]) -> Result<crate::lock::MutationGuard> {
+    pub async fn lock_docs(
+        &self,
+        docs: &[crate::lock::DocKey],
+    ) -> Result<crate::lock::MutationGuard> {
         self.lock(crate::lock::GuildMode::Shared, docs).await
     }
 
@@ -213,7 +216,10 @@ impl Store {
         let (path, place) = if e.name.starts_with("comment.") {
             match sub.kind {
                 "quest" => (self.paths.comments_path(&sub.id), Place::CommentsHeader),
-                "campaign" => (self.paths.campaign_comments_path(&sub.id), Place::CommentsHeader),
+                "campaign" => (
+                    self.paths.campaign_comments_path(&sub.id),
+                    Place::CommentsHeader,
+                ),
                 _ => return None,
             }
         } else if e.name.starts_with("attachment.") {
@@ -312,7 +318,11 @@ impl Store {
         scope: crate::plugins::Scope,
         delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery>,
     ) -> crate::plugins::Loaded {
-        self.install_plugins_with(scope, delivery, std::sync::Arc::new(crate::plugins::guild::Stderr))
+        self.install_plugins_with(
+            scope,
+            delivery,
+            std::sync::Arc::new(crate::plugins::guild::Stderr),
+        )
     }
 
     /// DEV-406: 알림을 어디에 띄울지 컴포넌트가 정한다 — 앱은 알림창, CLI·서버는 기본(stderr).
@@ -324,12 +334,9 @@ impl Store {
     ) -> crate::plugins::Loaded {
         // DEV-406: 스크립트가 시키는 길드 일(백업·알림)은 코어가 실행한다 — 전달 구현은 그대로
         // 두고 감싼다.
-        let delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery> =
-            std::sync::Arc::new(crate::plugins::guild::WithGuild::new(
-                delivery,
-                self.clone(),
-                notifier,
-            ));
+        let delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery> = std::sync::Arc::new(
+            crate::plugins::guild::WithGuild::new(delivery, self.clone(), notifier),
+        );
         let loaded = crate::plugins::load_for(&self.paths.guild_root, scope);
         if loaded.active.is_empty() {
             self.events.clear_sink();
@@ -387,8 +394,9 @@ impl Store {
         }
 
         // 디렉토리 보장
-        std::fs::create_dir_all(paths.dot_guild())
-            .with_context(|| format!(".guild 디렉토리 생성 실패: {}", paths.dot_guild().display()))?;
+        std::fs::create_dir_all(paths.dot_guild()).with_context(|| {
+            format!(".guild 디렉토리 생성 실패: {}", paths.dot_guild().display())
+        })?;
         std::fs::create_dir_all(paths.backups_dir()).with_context(|| {
             format!(
                 "backups 디렉토리 생성 실패: {}",
@@ -654,11 +662,10 @@ pub mod journal {
 
     /// ts 순서대로 모든 op 가져오기 (replay 용).
     pub async fn list_all(pool: &SqlitePool) -> Result<Vec<OpRow>> {
-        let rows = sqlx::query_as::<_, OpRow>(
-            "SELECT id, ts, op, args, result FROM ops ORDER BY id ASC",
-        )
-        .fetch_all(pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, OpRow>("SELECT id, ts, op, args, result FROM ops ORDER BY id ASC")
+                .fetch_all(pool)
+                .await?;
         Ok(rows)
     }
 
@@ -673,7 +680,10 @@ pub mod journal {
     /// BUG-340: `id` 까지만 지운다 — 백업이 읽은 뒤에 들어온 op 는 남긴다. id 는 되돌리지 않는다
     /// (남은 op 가 있을 수 있고, AUTOINCREMENT 라 새 op 는 늘 더 큰 id 를 받는다).
     pub async fn truncate_through(pool: &SqlitePool, id: i64) -> Result<()> {
-        sqlx::query("DELETE FROM ops WHERE id <= ?").bind(id).execute(pool).await?;
+        sqlx::query("DELETE FROM ops WHERE id <= ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -740,7 +750,16 @@ pub mod journal {
         [
             31,
             if is_leap(y) { 29 } else { 28 },
-            31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
         ]
     }
 }
@@ -771,7 +790,10 @@ mod tests {
         let res = Store::open(&dir).await;
         assert!(res.is_err(), "더 새 schema 는 거부되어야");
         let msg = res.err().unwrap().to_string();
-        assert!(msg.contains("99") && msg.contains("업데이트"), "안내 메시지: {msg}");
+        assert!(
+            msg.contains("99") && msg.contains("업데이트"),
+            "안내 메시지: {msg}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -784,7 +806,10 @@ mod tests {
             "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
         )
         .unwrap();
-        assert!(Store::open(&dir).await.is_ok(), "구 길드(필드 없음)는 열려야");
+        assert!(
+            Store::open(&dir).await.is_ok(),
+            "구 길드(필드 없음)는 열려야"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -999,9 +1024,20 @@ mod tests {
 
             let store = Store::open(&dir).await.unwrap();
             let aside = store.index_recovered.clone().expect(label);
-            assert_eq!(aside, dir.join(".guild").join("backups").join("index.db.corrupt"));
-            assert_eq!(std::fs::read(&aside).unwrap(), bytes, "{label}: 옛 파일이 그대로 남는다");
-            assert_eq!(quest_count(&store).await, 1, "{label}: 파일에서 다시 채운다");
+            assert_eq!(
+                aside,
+                dir.join(".guild").join("backups").join("index.db.corrupt")
+            );
+            assert_eq!(
+                std::fs::read(&aside).unwrap(),
+                bytes,
+                "{label}: 옛 파일이 그대로 남는다"
+            );
+            assert_eq!(
+                quest_count(&store).await,
+                1,
+                "{label}: 파일에서 다시 채운다"
+            );
             store.index_pool.close().await;
             store.journal_pool.close().await;
             drop(store);
@@ -1034,6 +1070,8 @@ mod tests {
             .unwrap_err()
             .into();
         assert!(!is_corrupt_db(&err), "{err:#}");
-        assert!(!is_corrupt_db(&anyhow::anyhow!("database disk image is malformed")));
+        assert!(!is_corrupt_db(&anyhow::anyhow!(
+            "database disk image is malformed"
+        )));
     }
 }

@@ -57,9 +57,8 @@ const EXEMPT_FILES = new Set([
  * 표시를 지우면 곧바로 검사 대상이 되므로, 섬이 조용히 넓어지지 않는다.
  */
 function blankOptedOutRegions(css) {
-	return css.replace(
-		/\/\*\s*check-spacing:off[\s\S]*?check-spacing:on\s*\*\//g,
-		(m) => ' '.repeat(m.length)
+	return css.replace(/\/\*\s*check-spacing:off[\s\S]*?check-spacing:on\s*\*\//g, (m) =>
+		' '.repeat(m.length)
 	);
 }
 
@@ -78,8 +77,7 @@ const ALLOW = new Map([
 // 위치 지정으로 잡힌다(테두리 두께는 check:radius 의 몫이다).
 const SPACING =
 	/(?<![-\w])(padding|margin|gap|row-gap|column-gap)(-top|-right|-bottom|-left)?\s*:\s*([^;}]+)/g;
-const DIM =
-	/(?<![-\w])(width|height|min-width|min-height|max-width|max-height)\s*:\s*([^;}]+)/g;
+const DIM = /(?<![-\w])(width|height|min-width|min-height|max-width|max-height)\s*:\s*([^;}]+)/g;
 /** 위치 지정도 여백과 같은 역할을 한다 — 떠 있는 버튼의 top/right 등. */
 const POS = /(?<![-\w])(top|right|bottom|left|inset)\s*:\s*([^;}]+)/g;
 

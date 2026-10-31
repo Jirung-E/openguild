@@ -103,32 +103,31 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
     //    파일이 있으면 그대로 쓴다. **파일이 아직 없을 때만** 옛 db 의 위치를 가져와
     //    파일로 옮긴다 — 업그레이드한 사용자의 배치를 그 순간 날리지 않으려는 것이다.
     //    파일이 깨져 있으면 여기서 멈춘다(빈 상태로 갈음하면 곧 덮어써서 날아간다).
-    let position_backup: Vec<(String, f64, f64)> = match crate::repo::positions::read(paths)
-        .map_err(crate::error::AppError::Internal)?
-    {
-        Some(file) => file.into_iter().map(|(slug, p)| (slug, p.x, p.y)).collect(),
-        None => {
-            let legacy: Vec<(String, f64, f64)> = sqlx::query_as(
-                "SELECT t.prefix || '-' || printf('%03d', q.number) AS slug, p.x, p.y
+    let position_backup: Vec<(String, f64, f64)> =
+        match crate::repo::positions::read(paths).map_err(crate::error::AppError::Internal)? {
+            Some(file) => file.into_iter().map(|(slug, p)| (slug, p.x, p.y)).collect(),
+            None => {
+                let legacy: Vec<(String, f64, f64)> = sqlx::query_as(
+                    "SELECT t.prefix || '-' || printf('%03d', q.number) AS slug, p.x, p.y
                    FROM quest_positions p
                    JOIN quests q ON q.id = p.quest_id
                    JOIN quest_types t ON t.id = q.quest_type_id",
-            )
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
-            if !legacy.is_empty() {
-                let items: Vec<_> = legacy
-                    .iter()
-                    .map(|(s, x, y)| (s.clone(), crate::repo::positions::Pos { x: *x, y: *y }))
-                    .collect();
-                crate::repo::positions::upsert(paths, &items)
-                    .map_err(crate::error::AppError::Internal)?;
-                report.positions_migrated = legacy.len();
+                )
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+                if !legacy.is_empty() {
+                    let items: Vec<_> = legacy
+                        .iter()
+                        .map(|(s, x, y)| (s.clone(), crate::repo::positions::Pos { x: *x, y: *y }))
+                        .collect();
+                    crate::repo::positions::upsert(paths, &items)
+                        .map_err(crate::error::AppError::Internal)?;
+                    report.positions_migrated = legacy.len();
+                }
+                legacy
             }
-            legacy
-        }
-    };
+        };
 
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
     let mut tx = crate::db::begin_write(pool).await?;
@@ -517,8 +516,10 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                         ));
                         continue;
                     };
-                    let deleted_at: Option<String> =
-                        bf.frontmatter.deleted.then(|| bf.frontmatter.updated_at.clone());
+                    let deleted_at: Option<String> = bf
+                        .frontmatter
+                        .deleted
+                        .then(|| bf.frontmatter.updated_at.clone());
                     let book_row_id: i64 = sqlx::query_scalar(
                         "INSERT INTO library_docs (number, title, body, path, created_at, updated_at, deleted_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
@@ -538,11 +539,13 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                         if normalized.is_empty() {
                             continue;
                         }
-                        sqlx::query("INSERT OR IGNORE INTO library_tags (book_id, tag) VALUES (?, ?)")
-                            .bind(book_row_id)
-                            .bind(normalized)
-                            .execute(&mut *tx)
-                            .await?;
+                        sqlx::query(
+                            "INSERT OR IGNORE INTO library_tags (book_id, tag) VALUES (?, ?)",
+                        )
+                        .bind(book_row_id)
+                        .bind(normalized)
+                        .execute(&mut *tx)
+                        .await?;
                     }
                     report.library_loaded += 1;
                 }
@@ -1022,21 +1025,21 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
     {
         use crate::repo::history as hist;
         // 현재 존재하는 rule slug / BOOK id 집합 — dangling 사이드카는 skip.
-        let rule_slugs: std::collections::HashSet<String> =
-            crate::repo::rules::list_rules(paths)
-                .map(|v| v.into_iter().map(|r| r.slug).collect())
-                .unwrap_or_default();
-        let book_ids: std::collections::HashSet<String> = crate::repo::library::list_book_files(paths)
-            .map(|v| {
-                v.into_iter()
-                    .filter_map(|p| {
-                        p.file_stem()
-                            .and_then(|s| s.to_str())
-                            .map(|s| s.to_string())
-                    })
-                    .collect()
-            })
+        let rule_slugs: std::collections::HashSet<String> = crate::repo::rules::list_rules(paths)
+            .map(|v| v.into_iter().map(|r| r.slug).collect())
             .unwrap_or_default();
+        let book_ids: std::collections::HashSet<String> =
+            crate::repo::library::list_book_files(paths)
+                .map(|v| {
+                    v.into_iter()
+                        .filter_map(|p| {
+                            p.file_stem()
+                                .and_then(|s| s.to_str())
+                                .map(|s| s.to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
 
         for (slug, path) in hist::list_sidecars(paths) {
             let kind = if rule_slugs.contains(&slug) {
@@ -1101,10 +1104,11 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             docs.push((DocKind::Quest, id, body.unwrap_or_default()));
         }
 
-        let crows: Vec<(String, Option<String>)> =
-            sqlx::query_as("SELECT campaign_slug, description FROM campaigns WHERE deleted_at IS NULL")
-                .fetch_all(&mut *tx)
-                .await?;
+        let crows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT campaign_slug, description FROM campaigns WHERE deleted_at IS NULL",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
         for (id, body) in crows {
             docs.push((DocKind::Campaign, id, body.unwrap_or_default()));
         }
@@ -1164,8 +1168,12 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
 
         // (3) 토큰 해석 + 삽입. 접두가 있으면 그 네임스페이스에서만, 없으면
         //     프론트와 같은 우선순위(quest > campaign > book > rule)로 찾는다.
-        const BARE_ORDER: [DocKind; 4] =
-            [DocKind::Quest, DocKind::Campaign, DocKind::Book, DocKind::Rule];
+        const BARE_ORDER: [DocKind; 4] = [
+            DocKind::Quest,
+            DocKind::Campaign,
+            DocKind::Book,
+            DocKind::Rule,
+        ];
         let mut linked = 0usize;
         for (src_kind, src_id, body) in &docs {
             if body.is_empty() {
@@ -1175,7 +1183,10 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                 let key = link.id.to_uppercase();
                 let dst = match link.kind {
                     Some(k) => exist.contains(&(k, key.clone())).then_some(k),
-                    None => BARE_ORDER.iter().copied().find(|k| exist.contains(&(*k, key.clone()))),
+                    None => BARE_ORDER
+                        .iter()
+                        .copied()
+                        .find(|k| exist.contains(&(*k, key.clone()))),
                 };
                 let Some(dst_kind) = dst else { continue }; // 깨진 링크 — 제외.
                 // 자기 자신 참조는 backlink 로서 의미가 없다.
@@ -1249,10 +1260,9 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
     // 진리이므로 DB 를 그 값으로 맞춘다 — 이전처럼 DB 의 max(number) 로
     // 끌어올리지 않는다(그 값이 파일로 역류하던 경로를 없앴으므로 불필요).
     {
-        let rows: Vec<(i64, String)> =
-            sqlx::query_as("SELECT id, prefix FROM quest_types")
-                .fetch_all(&store.index_pool)
-                .await?;
+        let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, prefix FROM quest_types")
+            .fetch_all(&store.index_pool)
+            .await?;
         for (type_id, prefix) in rows {
             let Ok(tf) = TypeFile::read(paths.type_path(&prefix)) else {
                 continue;
@@ -1313,8 +1323,12 @@ mod tests {
         let store = setup_store(&dir).await;
         crate::reindex::reindex(&store).await.unwrap();
 
-        lib::create_book(&store, "첫 문서", "본문 A", "").await.unwrap();
-        lib::create_book(&store, "둘째", "본문 B", "").await.unwrap();
+        lib::create_book(&store, "첫 문서", "본문 A", "")
+            .await
+            .unwrap();
+        lib::create_book(&store, "둘째", "본문 B", "")
+            .await
+            .unwrap();
         lib::delete_book(&store, "BOOK-001").await.unwrap();
 
         // 캐시 손실 시나리오.
@@ -1330,12 +1344,11 @@ mod tests {
         assert_eq!(alive.len(), 1);
         assert_eq!(alive[0].book_id(), "BOOK-002");
         assert_eq!(alive[0].body, "본문 B");
-        let deleted_at: Option<String> = sqlx::query_scalar(
-            "SELECT deleted_at FROM library_docs WHERE number = 1",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let deleted_at: Option<String> =
+            sqlx::query_scalar("SELECT deleted_at FROM library_docs WHERE number = 1")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert!(deleted_at.is_some(), "soft-deleted 는 deleted_at 채워 복원");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1959,7 +1972,10 @@ mod tests {
         crate::reindex::reindex(&store).await.unwrap();
 
         let tf = TypeFile::read(&path).unwrap();
-        assert_eq!(tf.counter.last_number, 50, "낮추면 삭제된 ID 를 재발급하게 된다");
+        assert_eq!(
+            tf.counter.last_number, 50,
+            "낮추면 삭제된 ID 를 재발급하게 된다"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2514,29 +2530,48 @@ mod tests {
     #[tokio::test]
     async fn reindex_waits_for_a_change_and_restore_does_not_wait_for_itself() {
         use std::time::Duration;
-        let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("og-reindex-lock-{ns}-{}", crate::test_seq()));
         std::fs::create_dir_all(&dir).unwrap();
         crate::repo::seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
 
-        let held = store.lock_docs(&[crate::lock::DocKey::quest("DEV-001")]).await.unwrap();
+        let held = store
+            .lock_docs(&[crate::lock::DocKey::quest("DEV-001")])
+            .await
+            .unwrap();
         let bg = store.clone();
         let h = tokio::spawn(async move { crate::reindex::reindex(&bg).await });
         tokio::time::sleep(Duration::from_millis(300)).await;
-        assert!(!h.is_finished(), "문서를 고치는 동안 다시 색인하기가 끝났다");
+        assert!(
+            !h.is_finished(),
+            "문서를 고치는 동안 다시 색인하기가 끝났다"
+        );
         drop(held);
-        tokio::time::timeout(Duration::from_secs(10), h).await.unwrap().unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(10), h)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
 
         let snap = crate::snapshot::create_snapshot(&store).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(10), crate::snapshot::restore_snapshot(&store, &snap))
-            .await
-            .expect("복원이 제 잠금을 기다리며 멈췄다")
-            .unwrap();
-        tokio::time::timeout(Duration::from_secs(10), crate::incremental::sync_on_open(&store))
-            .await
-            .expect("여는 순간의 따라잡기가 멈췄다")
-            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            crate::snapshot::restore_snapshot(&store, &snap),
+        )
+        .await
+        .expect("복원이 제 잠금을 기다리며 멈췄다")
+        .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            crate::incremental::sync_on_open(&store),
+        )
+        .await
+        .expect("여는 순간의 따라잡기가 멈췄다")
+        .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -230,7 +230,9 @@ pub const CATALOG: &[Entry] = &[
     ),
     e(
         "restore_backup_file",
-        Status::Excluded("DEV-436: 길드 밖 백업 파일로 복원 — restore_snapshot 을 거친다(아래와 같은 이유)"),
+        Status::Excluded(
+            "DEV-436: 길드 밖 백업 파일로 복원 — restore_snapshot 을 거친다(아래와 같은 이유)",
+        ),
     ),
     e(
         "restore_snapshot",

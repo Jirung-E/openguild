@@ -75,10 +75,17 @@ pub fn stamp(text: &str, v: u64, place: Place) -> String {
         Place::Frontmatter => {
             let Some((lines, body)) = frontmatter_lines(text) else {
                 // frontmatter 가 없는 파일(규칙의 옛 모양)에는 새로 만든다.
-                return if v == 0 { text.to_string() } else { format!("+++\n{FRONT_KEY}{v}\n+++\n{text}") };
+                return if v == 0 {
+                    text.to_string()
+                } else {
+                    format!("+++\n{FRONT_KEY}{v}\n+++\n{text}")
+                };
             };
             let mut out = String::from("+++\n");
-            for l in lines.iter().filter(|l| !l.trim_end_matches('\r').starts_with(FRONT_KEY)) {
+            for l in lines
+                .iter()
+                .filter(|l| !l.trim_end_matches('\r').starts_with(FRONT_KEY))
+            {
                 out.push_str(l);
                 out.push('\n');
             }
@@ -91,7 +98,11 @@ pub fn stamp(text: &str, v: u64, place: Place) -> String {
         }
         Place::CommentsHeader => {
             let rest = strip(text, place);
-            if v == 0 { rest } else { format!("{HEADER_OPEN}{v}{HEADER_CLOSE}\n{rest}") }
+            if v == 0 {
+                rest
+            } else {
+                format!("{HEADER_OPEN}{v}{HEADER_CLOSE}\n{rest}")
+            }
         }
     }
 }
@@ -111,7 +122,9 @@ pub fn write(path: &Path, contents: &str, place: Place) -> Result<u64> {
 
 /// `+++\n` 부터 닫는 `+++` 앞까지의 줄들과, 닫는 줄 뒤의 나머지.
 fn frontmatter_lines(text: &str) -> Option<(Vec<&str>, &str)> {
-    let after = text.strip_prefix("+++\n").or_else(|| text.strip_prefix("+++\r\n"))?;
+    let after = text
+        .strip_prefix("+++\n")
+        .or_else(|| text.strip_prefix("+++\r\n"))?;
     let mut pos = 0;
     let mut lines = Vec::new();
     while pos < after.len() {
@@ -131,7 +144,11 @@ fn frontmatter_lines(text: &str) -> Option<(Vec<&str>, &str)> {
 fn header(text: &str) -> Option<(u64, &str)> {
     let first_end = text.find('\n').unwrap_or(text.len());
     let first = text[..first_end].trim_end_matches('\r');
-    let v = first.strip_prefix(HEADER_OPEN)?.strip_suffix(HEADER_CLOSE)?.parse().ok()?;
+    let v = first
+        .strip_prefix(HEADER_OPEN)?
+        .strip_suffix(HEADER_CLOSE)?
+        .parse()
+        .ok()?;
     Some((v, &text[(first_end + 1).min(text.len())..]))
 }
 
@@ -156,7 +173,10 @@ mod tests {
         let d = tmp("up");
         let p = d.join("DEV-001.md");
         assert_eq!(write(&p, DOC, Place::Frontmatter).unwrap(), 1);
-        assert_eq!(write(&p, &DOC.replace("본문", "고친 본문"), Place::Frontmatter).unwrap(), 2);
+        assert_eq!(
+            write(&p, &DOC.replace("본문", "고친 본문"), Place::Frontmatter).unwrap(),
+            2
+        );
         let text = std::fs::read_to_string(&p).unwrap();
         assert!(text.contains("version = 2\n+++\n"), "{text}");
         assert!(text.contains("고친 본문"));
@@ -171,7 +191,11 @@ mod tests {
         let before = std::fs::metadata(&p).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         assert_eq!(write(&p, DOC, Place::Frontmatter).unwrap(), 1);
-        assert_eq!(std::fs::metadata(&p).unwrap().modified().unwrap(), before, "같은 내용인데 다시 썼다");
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().modified().unwrap(),
+            before,
+            "같은 내용인데 다시 썼다"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -194,7 +218,16 @@ mod tests {
         let p = d.join("DEV-001.md");
         for _ in 0..3 {
             let n = read(&p, Place::Frontmatter);
-            write(&p, &stamp(&DOC.replace("본문", &format!("본문 {n}")), n, Place::Frontmatter), Place::Frontmatter).unwrap();
+            write(
+                &p,
+                &stamp(
+                    &DOC.replace("본문", &format!("본문 {n}")),
+                    n,
+                    Place::Frontmatter,
+                ),
+                Place::Frontmatter,
+            )
+            .unwrap();
         }
         let stale = stamp(DOC, 1, Place::Frontmatter);
         assert_eq!(write(&p, &stale, Place::Frontmatter).unwrap(), 4);
@@ -203,8 +236,14 @@ mod tests {
 
     #[test]
     fn a_file_without_frontmatter_gets_one() {
-        assert_eq!(stamp("규칙 본문\n", 3, Place::Frontmatter), "+++\nversion = 3\n+++\n규칙 본문\n");
-        assert_eq!(of("+++\nversion = 3\n+++\n규칙 본문\n", Place::Frontmatter), 3);
+        assert_eq!(
+            stamp("규칙 본문\n", 3, Place::Frontmatter),
+            "+++\nversion = 3\n+++\n규칙 본문\n"
+        );
+        assert_eq!(
+            of("+++\nversion = 3\n+++\n규칙 본문\n", Place::Frontmatter),
+            3
+        );
     }
 
     #[test]
@@ -216,6 +255,9 @@ mod tests {
         assert_eq!(strip(&s, Place::CommentsHeader), body);
         assert_eq!(of(body, Place::CommentsHeader), 0);
         // 댓글이 다 지워져도 머리 줄만 남는다 — 본문으로 읽히면 안 된다.
-        assert_eq!(strip(&stamp("", 2, Place::CommentsHeader), Place::CommentsHeader), "");
+        assert_eq!(
+            strip(&stamp("", 2, Place::CommentsHeader), Place::CommentsHeader),
+            ""
+        );
     }
 }

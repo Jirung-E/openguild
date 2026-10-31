@@ -5,11 +5,16 @@
 //! 둘 다 안 본다. 창 없이 tauri 의 mock 런타임으로 앱을 세워 그 구간을 밟는다.
 
 use openguild_core::Store;
-use serde_json::{json, Value};
-use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-use tauri::{ipc::CallbackFn, ipc::InvokeBody, webview::InvokeRequest, WebviewWindow};
+use serde_json::{Value, json};
+use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::{WebviewWindow, ipc::CallbackFn, ipc::InvokeBody, webview::InvokeRequest};
 
-fn app_with(store: Store) -> (tauri::App<tauri::test::MockRuntime>, WebviewWindow<tauri::test::MockRuntime>) {
+fn app_with(
+    store: Store,
+) -> (
+    tauri::App<tauri::test::MockRuntime>,
+    WebviewWindow<tauri::test::MockRuntime>,
+) {
     let app = mock_builder()
         .manage(store)
         .invoke_handler(tauri::generate_handler![
@@ -40,7 +45,11 @@ const APP_ORIGIN: &str = "http://tauri.localhost";
 #[cfg(not(windows))]
 const APP_ORIGIN: &str = "tauri://localhost";
 
-fn call(w: &WebviewWindow<tauri::test::MockRuntime>, cmd: &str, body: Value) -> Result<Value, Value> {
+fn call(
+    w: &WebviewWindow<tauri::test::MockRuntime>,
+    cmd: &str,
+    body: Value,
+) -> Result<Value, Value> {
     get_ipc_response(
         w,
         InvokeRequest {
@@ -128,28 +137,62 @@ fn plugin_source_commands_work_over_ipc() {
     assert_eq!(out["kind"], "registered", "{out}");
     assert_eq!(out["plugins"], 2);
     let many_src = out["source"].as_str().unwrap().to_string();
-    assert_eq!(names(&call(&w, "plugin_status", json!({})).unwrap()), vec!["solo"]);
+    assert_eq!(
+        names(&call(&w, "plugin_status", json!({})).unwrap()),
+        vec!["solo"]
+    );
 
     // 소스 목록 — 인자 이름이 프런트와 같은지(`source`, `folder`).
     let sources = call(&w, "plugin_sources", json!({})).unwrap();
     assert_eq!(sources.as_array().unwrap().len(), 2, "{sources}");
-    call(&w, "plugin_use", json!({ "source": many_src, "folder": "b" })).unwrap();
-    assert_eq!(names(&call(&w, "plugin_status", json!({})).unwrap()), vec!["beta", "solo"]);
-    call(&w, "plugin_stop_using", json!({ "source": many_src, "folder": "b" })).unwrap();
-    assert_eq!(names(&call(&w, "plugin_status", json!({})).unwrap()), vec!["solo"]);
-    let err = call(&w, "plugin_stop_using", json!({ "source": many_src, "folder": "b" })).unwrap_err();
+    call(
+        &w,
+        "plugin_use",
+        json!({ "source": many_src, "folder": "b" }),
+    )
+    .unwrap();
+    assert_eq!(
+        names(&call(&w, "plugin_status", json!({})).unwrap()),
+        vec!["beta", "solo"]
+    );
+    call(
+        &w,
+        "plugin_stop_using",
+        json!({ "source": many_src, "folder": "b" }),
+    )
+    .unwrap();
+    assert_eq!(
+        names(&call(&w, "plugin_status", json!({})).unwrap()),
+        vec!["solo"]
+    );
+    let err = call(
+        &w,
+        "plugin_stop_using",
+        json!({ "source": many_src, "folder": "b" }),
+    )
+    .unwrap_err();
     assert!(err.as_str().is_some_and(|m| !m.is_empty()), "{err}");
 
     // 다시 읽기 — 디스크에서 지운 정의는 다시 읽은 뒤 빠진다.
     std::fs::remove_file(src.join("one/plugin.toml")).unwrap();
-    assert!(events.events.has_sink(), "다시 읽기 전인데 벌써 빠졌다(자동 감지 없음)");
+    assert!(
+        events.events.has_sink(),
+        "다시 읽기 전인데 벌써 빠졌다(자동 감지 없음)"
+    );
     let st = call(&w, "plugin_reload", json!({})).unwrap();
     assert!(names(&st).is_empty(), "{st}");
     assert!(!events.events.has_sink(), "다시 읽었는데 옛 것이 남았다");
 
     // 소스 해제.
     call(&w, "plugin_source_remove", json!({ "name": many_src })).unwrap();
-    assert_eq!(call(&w, "plugin_sources", json!({})).unwrap().as_array().unwrap().len(), 1);
+    assert_eq!(
+        call(&w, "plugin_sources", json!({}))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     for d in [&home, &guild, &src] {
@@ -163,15 +206,27 @@ fn without_an_open_guild_nothing_is_recorded() {
     let _guard = crate::tests::env_lock();
     let src = tmp("nog-src");
     write_plugin(&src, "solo");
-    let store = tauri::async_runtime::block_on(Store::open_in_memory(crate::welcome_placeholder_path())).unwrap();
+    let store =
+        tauri::async_runtime::block_on(Store::open_in_memory(crate::welcome_placeholder_path()))
+            .unwrap();
     let (_app, w) = app_with(store);
     assert_eq!(call(&w, "plugin_sources", json!({})).unwrap(), json!([]));
     let path = src.display().to_string();
     assert!(call(&w, "plugin_add_folder", json!({ "path": path })).is_err());
     assert!(call(&w, "plugin_use", json!({ "source": "x", "folder": "y" })).is_err());
-    assert!(call(&w, "plugin_stop_using", json!({ "source": "x", "folder": "y" })).is_err());
+    assert!(
+        call(
+            &w,
+            "plugin_stop_using",
+            json!({ "source": "x", "folder": "y" })
+        )
+        .is_err()
+    );
     assert!(call(&w, "plugin_source_remove", json!({ "name": "x" })).is_err());
-    assert_eq!(call(&w, "plugin_reload", json!({})).unwrap()["no_guild"], true);
+    assert_eq!(
+        call(&w, "plugin_reload", json!({})).unwrap()["no_guild"],
+        true
+    );
     let _ = std::fs::remove_dir_all(&src);
 }
 
@@ -225,7 +280,11 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
         .parent()
         .unwrap()
         .join("target/debug/openguild");
-    assert!(og.exists(), "cargo build -p openguild-cli 먼저: {}", og.display());
+    assert!(
+        og.exists(),
+        "cargo build -p openguild-cli 먼저: {}",
+        og.display()
+    );
     for (k, v) in [
         ("WHAT", json!("all")),
         ("HOW", json!("command")),
@@ -241,7 +300,12 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
             )),
         ),
     ] {
-        call(&w, "plugin_set_value", json!({ "name": "discussion-to-ai", "key": k, "value": v })).unwrap();
+        call(
+            &w,
+            "plugin_set_value",
+            json!({ "name": "discussion-to-ai", "key": k, "value": v }),
+        )
+        .unwrap();
     }
 
     // 댓글을 달 자리.
@@ -259,9 +323,19 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
     .unwrap();
 
     // 앱의 흐름: 먼저 평댓글, 그 다음 토론 토글(BUG-333).
-    let c = call(&w, "add_comment", json!({ "slug": q.quest_id, "author": "admin", "body": "이거 왜 안 돼?" })).unwrap();
+    let c = call(
+        &w,
+        "add_comment",
+        json!({ "slug": q.quest_id, "author": "admin", "body": "이거 왜 안 돼?" }),
+    )
+    .unwrap();
     let id = c["id"].as_u64().unwrap();
-    call(&w, "toggle_comment_discussion", json!({ "slug": q.quest_id, "id": id })).unwrap();
+    call(
+        &w,
+        "toggle_comment_discussion",
+        json!({ "slug": q.quest_id, "id": id }),
+    )
+    .unwrap();
 
     // 전달은 다른 스레드다 — 앱은 드레인을 안 하므로 여기서 기다려 준다.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
@@ -270,13 +344,19 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
     }
     // 영수증(delivered.log)을 찾아 그대로 보여 준다 — 실패 이유가 거기 있다.
     fn dump(dir: &std::path::Path) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
                 dump(&p);
             } else if p.file_name().is_some_and(|n| n == "delivered.log") {
-                eprintln!("=== {} ===\n{}", p.display(), std::fs::read_to_string(&p).unwrap_or_default());
+                eprintln!(
+                    "=== {} ===\n{}",
+                    p.display(),
+                    std::fs::read_to_string(&p).unwrap_or_default()
+                );
             }
         }
     }
@@ -284,7 +364,10 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
     let problems = handle.plugin_problems();
     let got = std::fs::read_to_string(&saw).unwrap_or_default();
     eprintln!("=== 훅이 받은 것 ===\n{got}\n=== 문제 ===\n{problems:#?}");
-    assert!(got.contains("이거 왜 안 돼?"), "훅에 안 갔다. 문제: {problems:#?}");
+    assert!(
+        got.contains("이거 왜 안 돼?"),
+        "훅에 안 갔다. 문제: {problems:#?}"
+    );
     assert_eq!(got.matches("[openguild]").count(), 1, "두 번 갔다:\n{got}");
 
     // BUG-335 의 본론: 앱이 살아 있는 채로 훅의 자식이 길드에 **쓸 수 있는가**.
@@ -299,7 +382,9 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
     }
     eprintln!("=== 댓글 {} 개 ===\n{replies:#?}", replies.len());
     assert!(
-        replies.iter().any(|r| r.author == "ai" && r.parent_id == Some(id)),
+        replies
+            .iter()
+            .any(|r| r.author == "ai" && r.parent_id == Some(id)),
         "답글이 안 달렸다({} 개). 문제: {:#?}",
         replies.len(),
         handle.plugin_problems()

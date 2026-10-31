@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::repo::fs as repo_fs;
 use crate::repo::GuildPaths;
+use crate::repo::fs as repo_fs;
 use crate::store::Store;
 
 /// abs 경로 → `.guild/` 상대 rel_path (캐시 키). 실패 시 file_name fallback.
@@ -118,10 +118,9 @@ pub async fn sync_all(store: &Store) -> Result<(), sqlx::Error> {
         alive.insert(rel);
     }
     // 사라진 파일의 row 제거.
-    let existing: Vec<String> =
-        sqlx::query_scalar("SELECT rel_path FROM file_mtime_cache")
-            .fetch_all(&store.index_pool)
-            .await?;
+    let existing: Vec<String> = sqlx::query_scalar("SELECT rel_path FROM file_mtime_cache")
+        .fetch_all(&store.index_pool)
+        .await?;
     for rel in existing {
         if !alive.contains(&rel) {
             sqlx::query("DELETE FROM file_mtime_cache WHERE rel_path = ?")

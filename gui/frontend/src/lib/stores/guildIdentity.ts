@@ -20,7 +20,11 @@ export type GuildId = { kind: 'local'; path: string } | { kind: 'remote'; url: s
 export function sameGuild(a: GuildId | null | undefined, b: GuildId | null | undefined): boolean {
 	if (!a || !b) return false;
 	if (a.kind !== b.kind) return false;
-	return a.kind === 'local' && b.kind === 'local' ? a.path === b.path : a.kind === 'remote' && b.kind === 'remote' ? a.url === b.url : false;
+	return a.kind === 'local' && b.kind === 'local'
+		? a.path === b.path
+		: a.kind === 'remote' && b.kind === 'remote'
+			? a.url === b.url
+			: false;
 }
 
 /**

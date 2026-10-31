@@ -78,8 +78,8 @@ impl TemplateFile {
     /// 파일에 쓸 직렬화 — `parse()` 와 round-trip. frontmatter 가 전부 비면
     /// 본문만(plain markdown). 설정된 필드만 emit (skip_serializing_if).
     pub fn to_file_string(&self) -> Result<String> {
-        let fm = toml::to_string(&self.frontmatter)
-            .context("template frontmatter TOML 직렬화 실패")?;
+        let fm =
+            toml::to_string(&self.frontmatter).context("template frontmatter TOML 직렬화 실패")?;
         let mut out = String::new();
         if !fm.trim().is_empty() {
             out.push_str("+++\n");
@@ -168,8 +168,12 @@ pub fn save_template(
             path.display()
         );
     }
-    std::fs::create_dir_all(paths.templates_dir())
-        .with_context(|| format!("templates 디렉토리 생성 실패: {}", paths.templates_dir().display()))?;
+    std::fs::create_dir_all(paths.templates_dir()).with_context(|| {
+        format!(
+            "templates 디렉토리 생성 실패: {}",
+            paths.templates_dir().display()
+        )
+    })?;
     std::fs::write(&path, tpl.to_file_string()?)
         .with_context(|| format!("템플릿 쓰기 실패: {}", path.display()))?;
     Ok(path)
@@ -293,7 +297,11 @@ mod tests {
         let paths = super::super::GuildPaths::new(&dir);
         std::fs::create_dir_all(paths.templates_dir()).unwrap();
         std::fs::write(paths.template_path("b-two"), "body b").unwrap();
-        std::fs::write(paths.template_path("a-one"), "+++\nurgency = 1\n+++\nbody a").unwrap();
+        std::fs::write(
+            paths.template_path("a-one"),
+            "+++\nurgency = 1\n+++\nbody a",
+        )
+        .unwrap();
         // .md 아닌 파일은 무시.
         std::fs::write(paths.templates_dir().join("readme.txt"), "x").unwrap();
         let list = list_templates(&paths).unwrap();

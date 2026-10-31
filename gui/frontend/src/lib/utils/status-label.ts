@@ -6,10 +6,7 @@
 // name_ko 는 선택 입력이라 빈 문자열일 수 있음 — 그땐 언어와 무관하게 en.
 import type { Locale } from '$lib/stores/locale';
 
-export function statusLabel(
-	s: { name_en: string; name_ko?: string | null },
-	loc: Locale
-): string {
+export function statusLabel(s: { name_en: string; name_ko?: string | null }, loc: Locale): string {
 	if (loc === 'ko' && s.name_ko && s.name_ko.trim()) return s.name_ko;
 	return s.name_en;
 }

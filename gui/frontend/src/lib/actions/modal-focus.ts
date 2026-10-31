@@ -45,8 +45,7 @@ export function modalFocus(node: HTMLElement, options: ModalFocusOptions = {}) {
 	const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	stack.push(node);
 
-	const first =
-		node.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(node)[0] ?? node;
+	const first = node.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(node)[0] ?? node;
 	first.focus();
 
 	function onkeydown(e: KeyboardEvent) {
@@ -68,7 +67,8 @@ export function modalFocus(node: HTMLElement, options: ModalFocusOptions = {}) {
 		}
 		const at = list.indexOf(document.activeElement as HTMLElement);
 		const step = e.shiftKey ? -1 : 1;
-		const next = at < 0 ? (e.shiftKey ? list.length - 1 : 0) : (at + step + list.length) % list.length;
+		const next =
+			at < 0 ? (e.shiftKey ? list.length - 1 : 0) : (at + step + list.length) % list.length;
 		list[next].focus();
 	}
 

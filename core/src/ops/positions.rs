@@ -13,8 +13,8 @@
 //! 옛 위치를 보이지만 다음 적재·reindex 에서 파일대로 돌아온다. 반대(DB 먼저)면
 //! 화면은 새 위치인데 **다음 reindex 에서 사라진다** — 고치려던 바로 그 증상이다.
 
-use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
+use crate::lock::DocKey;
 use crate::models::{PositionItem, QuestPosition, UpdatePositionRequest};
 use crate::repo::positions::{self as file, Pos};
 use crate::services::quests as db;

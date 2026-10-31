@@ -372,7 +372,11 @@ mod tests {
         let r = check_dir(&dir, None);
         assert!(r.ok(), "{:?}", r.errors);
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
-        assert!(r.lines.iter().any(|l| l.contains("quest.created")), "{:?}", r.lines);
+        assert!(
+            r.lines.iter().any(|l| l.contains("quest.created")),
+            "{:?}",
+            r.lines
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -432,14 +436,20 @@ mod tests {
             "warn",
             m,
             &[
-                ("main.rhai", "fn h(e) { notify(\"안녕\") }\nfn never_called(e) { }"),
+                (
+                    "main.rhai",
+                    "fn h(e) { notify(\"안녕\") }\nfn never_called(e) { }",
+                ),
                 ("옆.rhai", "fn x() { }"),
             ],
         );
         let r = check_dir(&dir, None);
         assert!(r.ok(), "{:?}", r.errors);
         let w = r.warnings.join("\n");
-        assert!(w.contains("never_called"), "안 불리는 함수를 안 짚었다:\n{w}");
+        assert!(
+            w.contains("never_called"),
+            "안 불리는 함수를 안 짚었다:\n{w}"
+        );
         assert!(w.contains("notify"), "선언 안 한 권한을 안 짚었다:\n{w}");
         assert!(w.contains("backup"), "안 쓰는 권한을 안 짚었다:\n{w}");
         assert!(w.contains("옆.rhai"), "빠진 파일을 안 짚었다:\n{w}");
@@ -451,7 +461,11 @@ mod tests {
     #[test]
     fn calling_an_action_the_wrong_way_is_a_warning() {
         let m = "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.mine.run]\ncommand = \"sh\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n";
-        let dir = folder("swapped", m, &[("main.rhai", "fn h(e) { send(\"mine\", e) }")]);
+        let dir = folder(
+            "swapped",
+            m,
+            &[("main.rhai", "fn h(e) { send(\"mine\", e) }")],
+        );
         let r = check_dir(&dir, None);
         assert!(r.ok(), "{:?}", r.errors);
         let w = r.warnings.join("\n");

@@ -266,7 +266,9 @@
 				<span class="tooltip-dot" style:background={sc.status_color}></span>
 				<span class="tooltip-name">{questStatusLabel(sc, $locale)}</span>
 				<span class="tooltip-count"
-					>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / questTotal) * 100)}%)</span
+					>{sc.count}{t('common.countSuffix', $locale)} ({Math.round(
+						(sc.count / questTotal) * 100
+					)}%)</span
 				>
 			</div>
 		{/each}

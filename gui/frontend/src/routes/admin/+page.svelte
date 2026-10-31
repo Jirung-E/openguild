@@ -333,14 +333,18 @@
 				<div class="section-header">
 					<h2>{t('admin.backupsHeading', $locale)}</h2>
 					<div class="actions">
-						<button class="btn" onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
+						<button class="btn" onclick={onCreateSnapshot} disabled={busy}
+							>{t('admin.newBackup', $locale)}</button
+						>
 						{#if adminApi.canRestoreFromFile()}
 							<!-- DEV-436: 길드 밖에 둔 백업 파일(backup-archive 가 쌓아 둔 것 등)로 복원. -->
 							<button class="btn" onclick={onPickBackupFile} disabled={busy}
 								>{t('admin.restoreFromFile', $locale)}</button
 							>
 						{/if}
-						<button class="btn" onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
+						<button class="btn" onclick={refresh} disabled={busy}
+							>{t('admin.refresh', $locale)}</button
+						>
 					</div>
 				</div>
 
@@ -366,8 +370,10 @@
 									<td><code>{formatTimestamp(s.timestamp)}</code></td>
 									<td>{formatSize(s.size_bytes)}</td>
 									<td class="snap-actions">
-										<button class="btn btn-warning" onclick={() => onRestore(s.timestamp)} disabled={busy}
-											>{t('admin.restore', $locale)}</button
+										<button
+											class="btn btn-warning"
+											onclick={() => onRestore(s.timestamp)}
+											disabled={busy}>{t('admin.restore', $locale)}</button
 										>
 										<button
 											class="btn btn-danger"
@@ -388,7 +394,9 @@
 				<div class="section-header">
 					<h2>{t('admin.driftHeading', $locale)}</h2>
 					<div class="actions">
-						<button class="btn" onclick={onCheckDrift} disabled={busy}>{t('admin.check', $locale)}</button>
+						<button class="btn" onclick={onCheckDrift} disabled={busy}
+							>{t('admin.check', $locale)}</button
+						>
 						<button class="btn" onclick={onReindex} disabled={busy}>Reindex</button>
 					</div>
 				</div>
@@ -457,8 +465,12 @@
 				<div class="section-header">
 					<h2>{t('admin.maintHeading', $locale)}</h2>
 					<div class="actions">
-						<button class="btn" onclick={onVacuum} disabled={busy}>{t('admin.vacuum', $locale)}</button>
-						<button class="btn" onclick={onJournalTail} disabled={busy}>{t('admin.recentOps', $locale)}</button>
+						<button class="btn" onclick={onVacuum} disabled={busy}
+							>{t('admin.vacuum', $locale)}</button
+						>
+						<button class="btn" onclick={onJournalTail} disabled={busy}
+							>{t('admin.recentOps', $locale)}</button
+						>
 					</div>
 				</div>
 

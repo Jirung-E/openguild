@@ -41,7 +41,11 @@ pub fn matches(cond: &When, event: &Value, extra: &BTreeMap<String, Value>) -> b
 }
 
 /// 경로 하나를 찾는다. `with` 이름이 먼저다 — 같은 이름이면 읽어 온 데이터를 본다.
-fn lookup<'a>(path: &str, event: &'a Value, extra: &'a BTreeMap<String, Value>) -> Option<&'a Value> {
+fn lookup<'a>(
+    path: &str,
+    event: &'a Value,
+    extra: &'a BTreeMap<String, Value>,
+) -> Option<&'a Value> {
     let mut parts = path.split('.');
     let head = parts.next()?;
     let mut cur = match extra.get(head) {
@@ -88,11 +92,15 @@ pub fn validate(
     let roots = allowed_roots(patterns, phase);
     for (path, want) in cond {
         if path.trim().is_empty() {
-            return bad(crate::tf!("`when` 의 경로가 비어 있습니다", "a `when` path is empty"));
+            return bad(crate::tf!(
+                "`when` 의 경로가 비어 있습니다",
+                "a `when` path is empty"
+            ));
         }
         if !scalar_or_list(want) {
             return bad(crate::tf!(
-                "`when` 의 `{path}` 값은 글자·숫자·참거짓이거나 그 목록이어야 합니다", "`when` value for `{path}` must be text, a number, true/false, or a list of those"
+                "`when` 의 `{path}` 값은 글자·숫자·참거짓이거나 그 목록이어야 합니다",
+                "`when` value for `{path}` must be text, a number, true/false, or a list of those"
             ));
         }
         let head = path.split('.').next().unwrap_or(path);
@@ -106,7 +114,8 @@ pub fn validate(
         can.extend(roots.iter().copied());
         can.extend(crate::events::COMMON_FIELDS.iter().copied());
         return bad(crate::tf!(
-            "`when` 의 `{path}` — 이 줄의 이벤트에는 `{head}` 가 없습니다. 쓸 수 있는 것: {}", "`when` has `{path}` — this line's events have no `{head}`. Available: {}",
+            "`when` 의 `{path}` — 이 줄의 이벤트에는 `{head}` 가 없습니다. 쓸 수 있는 것: {}",
+            "`when` has `{path}` — this line's events have no `{head}`. Available: {}",
             can.join(", ")
         ));
     }

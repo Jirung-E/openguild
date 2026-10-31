@@ -62,7 +62,8 @@ function createPopup(text: string, anchor: HTMLElement) {
 	const r = anchor.getBoundingClientRect();
 	const pr = el.getBoundingClientRect();
 	const below = r.bottom + GAP;
-	const top = below + pr.height <= window.innerHeight ? below : Math.max(GAP, r.top - GAP - pr.height);
+	const top =
+		below + pr.height <= window.innerHeight ? below : Math.max(GAP, r.top - GAP - pr.height);
 	const left = Math.min(Math.max(GAP, r.left), Math.max(GAP, window.innerWidth - pr.width - GAP));
 	el.style.top = `${Math.round(top)}px`;
 	el.style.left = `${Math.round(left)}px`;

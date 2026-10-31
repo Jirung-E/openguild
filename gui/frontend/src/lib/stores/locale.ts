@@ -266,7 +266,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.ofCampaign': { ko: '캠페인', en: 'campaigns' },
 	'plugins.ofLibrary': { ko: '도서관', en: 'library' },
 	'plugins.env': { ko: '쓰는 환경변수', en: 'Environment variables' },
-	'plugins.envNote': { ko: '이름만 — 값은 이 화면에 오지 않습니다', en: 'names only — values never reach this screen' },
+	'plugins.envNote': {
+		ko: '이름만 — 값은 이 화면에 오지 않습니다',
+		en: 'names only — values never reach this screen'
+	},
 	'plugins.imports': { ko: '불러오는 파일', en: 'Also loads' },
 	'plugins.importsNote': {
 		ko: '이 파일들은 바뀌어도 다시 묻지 않습니다',
@@ -275,7 +278,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.running': { ko: '돌고 있음', en: 'Running' },
 	'plugins.otherScope': {
 		ko: '허용됨 (이 앱의 scope 아님 — 여기서는 안 돕니다)',
-		en: 'Allowed (not in this app\'s scope — it does not run here)'
+		en: "Allowed (not in this app's scope — it does not run here)"
 	},
 	'plugins.showScript': { ko: '스크립트 보기', en: 'Show script' },
 	'plugins.hideScript': { ko: '접기', en: 'Hide' },
@@ -340,7 +343,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '소스 {source} 를 등록했습니다(플러그인 {n}개) — 아래 소스 목록에서 쓸 것을 고르세요',
 		en: 'Registered source {source} ({n} plugins) — pick the ones to use in the source list below'
 	},
-	'plugins.fromGuild': { ko: '출처: 이 길드 (.guild/plugins)', en: 'From: this guild (.guild/plugins)' },
+	'plugins.fromGuild': {
+		ko: '출처: 이 길드 (.guild/plugins)',
+		en: 'From: this guild (.guild/plugins)'
+	},
 	'plugins.fromSource': { ko: '출처: 소스 {source} —', en: 'From: source {source} —' },
 	'plugins.stopUsing': { ko: '이 길드에서 빼기', en: 'Remove from this guild' },
 	'plugins.stopped': {
@@ -413,7 +419,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.codeFont': { ko: '코드 글꼴', en: 'Code font' },
 	'settings.fontSystemDefault': { ko: '시스템 기본', en: 'System default' },
 	'settings.fontCustom': { ko: '직접 입력', en: 'Custom…' },
-	'settings.fontCustomPlaceholder': { ko: '글꼴 이름 (예: Pretendard)', en: 'Font name (e.g. Inter)' },
+	'settings.fontCustomPlaceholder': {
+		ko: '글꼴 이름 (예: Pretendard)',
+		en: 'Font name (e.g. Inter)'
+	},
 	'settings.fontPreview': { ko: '미리보기', en: 'Preview' },
 	'settings.fontHint': {
 		ko: '설치되지 않은 글꼴을 골라도 안전합니다 — 기존 글꼴로 대체됩니다. 미리보기로 실제 적용 여부를 확인하세요.',
@@ -549,7 +558,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'admin.restoreFailedPre': { ko: '복원 실패: ', en: 'Restore failed: ' },
 	// DEV-436: 길드 밖 백업 파일로 복원.
 	'admin.restoreFromFile': { ko: '파일에서 복원…', en: 'Restore from file…' },
-	'admin.restoreFromFilePick': { ko: '복원할 백업 파일 고르기', en: 'Choose a backup file to restore' },
+	'admin.restoreFromFilePick': {
+		ko: '복원할 백업 파일 고르기',
+		en: 'Choose a backup file to restore'
+	},
 	'admin.restoreFromFileFilter': { ko: 'openguild 백업', en: 'openguild backup' },
 	'admin.restoreFromFileTitle': { ko: '파일에서 복원', en: 'Restore from file' },
 	'admin.restoreFromFileConfirm': {
@@ -558,7 +570,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	'admin.restoreFromFileOtherGuild': {
 		ko: '이 백업은 다른 길드의 것으로 보입니다(백업 안: {guilds}). 지금 길드의 내용이 그 길드의 것으로 바뀝니다.',
-		en: 'This looks like another guild\'s backup (inside: {guilds}). This guild\'s content will be replaced with it.'
+		en: "This looks like another guild's backup (inside: {guilds}). This guild's content will be replaced with it."
 	},
 	'admin.restoreFromFileAnyway': { ko: '그래도 복원', en: 'Restore anyway' },
 	'admin.backupDeletedPre': { ko: '백업 삭제: ', en: 'Backup deleted: ' },
@@ -1188,7 +1200,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'backlinks.title': { ko: '이 문서를 참조하는 문서', en: 'Referenced by' },
 	'backlinks.expand': { ko: '참조 목록 펼치기', en: 'Expand references' },
 	'backlinks.collapse': { ko: '참조 목록 접기', en: 'Collapse references' },
-	'backlinks.empty': { ko: '이 문서를 참조하는 문서가 없습니다.', en: 'No documents reference this one.' },
+	'backlinks.empty': {
+		ko: '이 문서를 참조하는 문서가 없습니다.',
+		en: 'No documents reference this one.'
+	},
 	'backlinks.loadFailed': { ko: '참조 목록 로드 실패', en: 'Failed to load references' },
 	'history.expand': { ko: '변경 이력 펼치기', en: 'Expand change history' },
 	'history.collapse': { ko: '변경 이력 접기', en: 'Collapse change history' },
@@ -1438,11 +1453,20 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '띄어 쓰면 그리고(& · AND) · | 나 OR = 또는 · 앞의 - = 아닌 것 · ( ) 로 묶기 · 여러 값 중 하나 = [a, b] · 범위 a..b(끝 제외) · a..=b(끝 포함) · * = 아무 글 · /정규식/(대소문자 무시) · 키 없는 낱말 = 검색 · 띄어 쓴 값은 "따옴표"로. 위의 버튼 · 검색과는 그리고로 겹칩니다.',
 		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search · quote values with spaces. Combined (AND) with the buttons and search above.'
 	},
-	'filter.queryHelpStatus': { ko: '상태 — slug · 영어 · 한국어 이름', en: 'status — slug, English or Korean name' },
+	'filter.queryHelpStatus': {
+		ko: '상태 — slug · 영어 · 한국어 이름',
+		en: 'status — slug, English or Korean name'
+	},
 	'filter.queryHelpType': { ko: '타입 접두어', en: 'type prefix' },
 	'filter.queryHelpTag': { ko: '태그', en: 'tag' },
-	'filter.queryHelpCampaign': { ko: '캠페인 번호 · none(어디에도 없음)', en: 'campaign id · none (in no campaign)' },
-	'filter.queryHelpUrgency': { ko: '긴급도 1~4 · 범위 · 비교', en: 'urgency 1–4 · range · comparison' },
+	'filter.queryHelpCampaign': {
+		ko: '캠페인 번호 · none(어디에도 없음)',
+		en: 'campaign id · none (in no campaign)'
+	},
+	'filter.queryHelpUrgency': {
+		ko: '긴급도 1~4 · 범위 · 비교',
+		en: 'urgency 1–4 · range · comparison'
+	},
 	// REQ-040: 칸을 정해 찾기 — 기본은 부분일치, `=` 를 붙이면 완전일치. 세 목록이 같이 쓴다.
 	'query.helpTitle': {
 		ko: '제목만 — 부분일치, =값 은 완전일치, * · /정규식/',
@@ -1873,8 +1897,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// REQ-006: 작업 기록 compact 뷰 — 같은 문서 조작을 문서 단위로 묶는다.
 	'worklogPage.view.compact': { ko: '문서별', en: 'By document' },
 	'worklogPage.view.full': { ko: '전체', en: 'All' },
-	'worklogPage.view.compactHint': { ko: '같은 문서의 조작을 묶어서 봅니다', en: 'Group activities by document' },
-	'worklogPage.view.fullHint': { ko: '모든 조작을 시간순으로 봅니다', en: 'Show every activity in time order' },
+	'worklogPage.view.compactHint': {
+		ko: '같은 문서의 조작을 묶어서 봅니다',
+		en: 'Group activities by document'
+	},
+	'worklogPage.view.fullHint': {
+		ko: '모든 조작을 시간순으로 봅니다',
+		en: 'Show every activity in time order'
+	},
 	'worklogPage.group.count': { ko: '건', en: '' },
 	'worklogPage.unit.day': { ko: '일', en: 'Day' },
 	'worklogPage.unit.week': { ko: '주', en: 'Week' },

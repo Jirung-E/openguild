@@ -53,8 +53,7 @@ export const libraryApi = {
 	update: (
 		bookId: string,
 		fields: { title?: string; body?: string; path?: string; base_body?: string }
-	) =>
-		api.patch<Book>(`/api/library/${encodeURIComponent(bookId)}`, fields),
+	) => api.patch<Book>(`/api/library/${encodeURIComponent(bookId)}`, fields),
 	delete: (bookId: string) => api.delete(`/api/library/${encodeURIComponent(bookId)}`),
 
 	// DEV-243: 태그 전체 교체.
@@ -79,10 +78,7 @@ export const libraryApi = {
 	 * REQ-028: 문서를 파일 시스템으로 펼친다 — 폴더 구조 그대로. **데스크톱 전용**이다
 	 * (이 기계에 파일을 쓴다). `id` 하나 또는 `folder` 하나, 둘 다 없으면 도서관 전체.
 	 */
-	exportTo: async (
-		dest: string,
-		pick: { folder?: string; id?: string; picks?: string[] } = {}
-	) => {
+	exportTo: async (dest: string, pick: { folder?: string; id?: string; picks?: string[] } = {}) => {
 		const { invoke } = await import('@tauri-apps/api/core');
 		return invoke<LibraryExported[]>('library_export', {
 			dest,
@@ -113,7 +109,6 @@ export const libraryApi = {
 		/** DEV-397: 옮기기·이름 바꾸기 — `to` 는 새 전체 경로. 바뀐 폴더 목록을 돌려준다. */
 		move: (from: string, to: string) =>
 			api.patch<LibraryFolder[]>('/api/library/folders', { from, to }),
-		delete: (path: string) =>
-			api.delete(`/api/library/folders?path=${encodeURIComponent(path)}`)
+		delete: (path: string) => api.delete(`/api/library/folders?path=${encodeURIComponent(path)}`)
 	}
 };

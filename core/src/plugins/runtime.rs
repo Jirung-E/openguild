@@ -30,8 +30,8 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use super::{Action, Plugin};
 use super::script::CommandKind;
+use super::{Action, Plugin};
 
 /// 이벤트를 실제로 밖으로 내보내는 쪽. [[DEV-377]] 이 HTTP/프로세스 구현을
 /// 넣는다. 여기서 분리해 두는 이유는 **적재와 전달을 따로 검증**하기
@@ -73,7 +73,10 @@ pub trait Delivery: Send + Sync {
         _body: &serde_json::Value,
         _event: &Event,
     ) -> Result<(), String> {
-        Err(crate::tf!("이 컴포넌트는 길드 명령을 실행하지 않습니다", "this component does not run guild commands"))
+        Err(crate::tf!(
+            "이 컴포넌트는 길드 명령을 실행하지 않습니다",
+            "this component does not run guild commands"
+        ))
     }
 }
 
@@ -223,10 +226,21 @@ fn run_handlers(
 ) {
     // 전용 스레드에서 도는 몫 — 기다리는 줄(`wait`)은 잠금이 풀린 뒤 따로 돈다(BUG-339).
     // 연결 데이터는 변경 순간에 읽어 둔 것을 쓴다 — `plugin test` 가 값을 넘기는 자리와 같은 길.
-    let mut given = Probe { lines: Vec::new(), given: Some(with) };
-    run_lines(p, event, cfg, subst, delivery, log, None, Some(&mut given), |h| {
-        h.phase() == Phase::Post && !h.wait
-    });
+    let mut given = Probe {
+        lines: Vec::new(),
+        given: Some(with),
+    };
+    run_lines(
+        p,
+        event,
+        cfg,
+        subst,
+        delivery,
+        log,
+        None,
+        Some(&mut given),
+        |h| h.phase() == Phase::Post && !h.wait,
+    );
 }
 
 /// DEV-412: `plugin test` 가 끼어드는 자리. 실행 규칙(줄 고르기·조건·순서)을 시험용으로 다시
@@ -255,7 +269,8 @@ pub(super) fn run_lines(
     let name = &p.def.name;
     // DEV-405: 연결 데이터는 이 이벤트에 대해 한 번만 읽는다 — 여러 줄이 같은 것을 받아도.
     let subject = event.subject();
-    let mut related_cache: std::collections::HashMap<String, serde_json::Value> = Default::default();
+    let mut related_cache: std::collections::HashMap<String, serde_json::Value> =
+        Default::default();
     // 이벤트 JSON 은 조건이 있는 줄이 하나라도 있을 때만 만든다.
     let mut event_json: Option<serde_json::Value> = None;
     // DEV-414: `run_after` · `run_before` 를 따른 순서(적지 않은 줄끼리는 적힌 순서). 적재가 검증했으므로
@@ -289,7 +304,8 @@ pub(super) fn run_lines(
                 h.with.contains(&head).then_some(head)
             }))
             .collect();
-        let mut extra_map: std::collections::BTreeMap<String, serde_json::Value> = Default::default();
+        let mut extra_map: std::collections::BTreeMap<String, serde_json::Value> =
+            Default::default();
         for w in needs {
             let v = match probe.as_ref().and_then(|t| t.given) {
                 // DEV-412: 시험이 직접 넘긴 값 — 없는 이름은 `null`(실제와 같다).
@@ -315,7 +331,13 @@ pub(super) fn run_lines(
         }
         if let Some(func) = &h.call {
             let Some(sc) = p.compiled.as_deref() else {
-                note(log, crate::tf!("플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다", "plugin '{name}' {who} — the script is not loaded"));
+                note(
+                    log,
+                    crate::tf!(
+                        "플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다",
+                        "plugin '{name}' {who} — the script is not loaded"
+                    ),
+                );
                 continue;
             };
             let extra: Vec<serde_json::Value> = h
@@ -327,12 +349,21 @@ pub(super) fn run_lines(
             let (value, cmds) = match sc.call_handler_with(func, event, &extra, cfg) {
                 Ok(v) => v,
                 Err(e) => {
-                    note(log, crate::tf!("플러그인 '{name}' {who} 스크립트 — {e}", "plugin '{name}' {who} script — {e}"));
+                    note(
+                        log,
+                        crate::tf!(
+                            "플러그인 '{name}' {who} 스크립트 — {e}",
+                            "plugin '{name}' {who} script — {e}"
+                        ),
+                    );
                     // DEV-407: 던졌을 때 막을지는 정의가 정한다(기본은 그냥 진행).
                     if let Some(a) = answer.as_deref_mut()
                         && h.blocks_on(false)
                     {
-                        a.blocked = Some(crate::tf!("{name}: {who} 가 실패했습니다 — {e}", "{name}: {who} failed — {e}"));
+                        a.blocked = Some(crate::tf!(
+                            "{name}: {who} 가 실패했습니다 — {e}",
+                            "{name}: {who} failed — {e}"
+                        ));
                     }
                     continue;
                 }
@@ -344,7 +375,10 @@ pub(super) fn run_lines(
                         a.blocked = Some(reason.clone());
                     }
                     serde_json::Value::Bool(false) => {
-                        a.blocked = Some(crate::tf!("{name}: {who} 가 막았습니다", "{name}: {who} blocked it"));
+                        a.blocked = Some(crate::tf!(
+                            "{name}: {who} 가 막았습니다",
+                            "{name}: {who} blocked it"
+                        ));
                     }
                     // DEV-465: `#{instead: "..."}` — 바꾸지 않고 대신 처리했다. 다른 칸은 보지 않는다.
                     serde_json::Value::Object(m)
@@ -382,7 +416,13 @@ pub(super) fn run_lines(
                         continue;
                     }
                     if let Err(e) = delivery.guild_command(p, c.kind, &c.body, event) {
-                        note(log, crate::tf!("플러그인 '{name}' {who} — {verb}(): {e}", "plugin '{name}' {who} — {verb}(): {e}"));
+                        note(
+                            log,
+                            crate::tf!(
+                                "플러그인 '{name}' {who} — {verb}(): {e}",
+                                "plugin '{name}' {who} — {verb}(): {e}"
+                            ),
+                        );
                     }
                     continue;
                 }
@@ -402,7 +442,8 @@ pub(super) fn run_lines(
                 };
                 let fits = matches!(
                     (c.kind, action),
-                    (CommandKind::Send, Action::Post { .. }) | (CommandKind::Run, Action::Run { .. })
+                    (CommandKind::Send, Action::Post { .. })
+                        | (CommandKind::Run, Action::Run { .. })
                 );
                 if !fits {
                     note(
@@ -419,7 +460,13 @@ pub(super) fn run_lines(
                     continue;
                 }
                 if let Err(e) = delivery.deliver(p, action, event, &c.body, subst) {
-                    note(log, crate::tf!("플러그인 '{name}' {who} — {e}", "plugin '{name}' {who} — {e}"));
+                    note(
+                        log,
+                        crate::tf!(
+                            "플러그인 '{name}' {who} — {e}",
+                            "plugin '{name}' {who} — {e}"
+                        ),
+                    );
                 }
             }
             // DEV-407: 시간이 넘었으면 정의가 정한 대로. 스크립트에는 자체 상한이 있고 동작에도
@@ -438,7 +485,10 @@ pub(super) fn run_lines(
                 if let Some(a) = answer.as_deref_mut()
                     && h.blocks_on(true)
                 {
-                    a.blocked = Some(crate::tf!("{name}: {who} 가 시한을 넘겼습니다", "{name}: {who} ran past its time limit"));
+                    a.blocked = Some(crate::tf!(
+                        "{name}: {who} 가 시한을 넘겼습니다",
+                        "{name}: {who} ran past its time limit"
+                    ));
                 }
             }
         } else if let Some(r) = &h.action {
@@ -457,14 +507,25 @@ pub(super) fn run_lines(
                     let given: serde_json::Map<String, serde_json::Value> = h
                         .with
                         .iter()
-                        .map(|w| (w.clone(), extra_map.get(w).cloned().unwrap_or(serde_json::Value::Null)))
+                        .map(|w| {
+                            (
+                                w.clone(),
+                                extra_map.get(w).cloned().unwrap_or(serde_json::Value::Null),
+                            )
+                        })
                         .collect();
                     o.insert("with".into(), serde_json::Value::Object(given));
                 }
                 b
             };
             if let Err(e) = delivery.deliver(p, action, event, &body, subst) {
-                note(log, crate::tf!("플러그인 '{name}' {who} — {e}", "plugin '{name}' {who} — {e}"));
+                note(
+                    log,
+                    crate::tf!(
+                        "플러그인 '{name}' {who} — {e}",
+                        "plugin '{name}' {who} — {e}"
+                    ),
+                );
             }
         }
     }
@@ -549,7 +610,15 @@ impl PluginRuntime {
                     // 없다. 스크립트도 사용자 코드라 같은 울타리 안에 둔다.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let (cfg, subst) = values_for(p);
-                        run_handlers(p, &job.event, &cfg, &subst, delivery.as_ref(), &log, &job.with);
+                        run_handlers(
+                            p,
+                            &job.event,
+                            &cfg,
+                            &subst,
+                            delivery.as_ref(),
+                            &log,
+                            &job.with,
+                        );
                     }));
                     if r.is_err() {
                         note(
@@ -567,7 +636,10 @@ impl PluginRuntime {
         if let Err(e) = &spawned {
             note(
                 problems,
-                crate::tf!("플러그인 전달 스레드를 못 띄웠습니다: {e}", "could not start the plugin delivery thread: {e}"),
+                crate::tf!(
+                    "플러그인 전달 스레드를 못 띄웠습니다: {e}",
+                    "could not start the plugin delivery thread: {e}"
+                ),
             );
         }
         Worker { tx, pending }
@@ -607,7 +679,15 @@ impl EventSink for PluginRuntime {
             let (cfg, subst) = values_for(p);
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut mine = crate::events::PreOutcome::default();
-                ask_handlers(p, &event, &cfg, &subst, delivery.as_ref(), &self.problems, &mut mine);
+                ask_handlers(
+                    p,
+                    &event,
+                    &cfg,
+                    &subst,
+                    delivery.as_ref(),
+                    &self.problems,
+                    &mut mine,
+                );
                 mine
             }));
             match r {
@@ -625,7 +705,11 @@ impl EventSink for PluginRuntime {
                 }
                 Err(_) => note(
                     &self.problems,
-                    crate::tf!("플러그인 '{}' 가 바뀌기 전 단계에서 패닉했습니다", "plugin '{}' panicked in the before-change stage", p.def.name),
+                    crate::tf!(
+                        "플러그인 '{}' 가 바뀌기 전 단계에서 패닉했습니다",
+                        "plugin '{}' panicked in the before-change stage",
+                        p.def.name
+                    ),
                 ),
             }
         }
@@ -651,7 +735,14 @@ impl EventSink for PluginRuntime {
                 }
                 let with = snapshot_with(p, &event, |h| h.wait);
                 if let Ok(mut q) = self.waiting.lock() {
-                    q.push((tokio::task::try_id(), Job { plugin: i, event: event.clone(), with }));
+                    q.push((
+                        tokio::task::try_id(),
+                        Job {
+                            plugin: i,
+                            event: event.clone(),
+                            with,
+                        },
+                    ));
                 }
             }
         }
@@ -706,7 +797,9 @@ impl EventSink for PluginRuntime {
         let me = tokio::task::try_id();
         let jobs: Vec<Job> = match self.waiting.lock() {
             Ok(mut q) => {
-                let (mine, rest) = std::mem::take(&mut *q).into_iter().partition(|(t, _)| *t == me);
+                let (mine, rest) = std::mem::take(&mut *q)
+                    .into_iter()
+                    .partition(|(t, _)| *t == me);
                 *q = rest;
                 mine.into_iter().map(|(_, j)| j).collect()
             }
@@ -719,15 +812,30 @@ impl EventSink for PluginRuntime {
             let p = &self.plugins[job.plugin];
             let (cfg, subst) = values_for(p);
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut given = Probe { lines: Vec::new(), given: Some(&job.with) };
-                run_lines(p, &job.event, &cfg, &subst, delivery.as_ref(), &self.problems, None, Some(&mut given), |h| {
-                    h.phase() == Phase::Post && h.wait
-                });
+                let mut given = Probe {
+                    lines: Vec::new(),
+                    given: Some(&job.with),
+                };
+                run_lines(
+                    p,
+                    &job.event,
+                    &cfg,
+                    &subst,
+                    delivery.as_ref(),
+                    &self.problems,
+                    None,
+                    Some(&mut given),
+                    |h| h.phase() == Phase::Post && h.wait,
+                );
             }));
             if r.is_err() {
                 note(
                     &self.problems,
-                    crate::tf!("플러그인 '{}' 기다리는 줄에서 패닉 — 이 이벤트는 건너뜁니다", "plugin '{}' panicked in a waiting line — this event is skipped", p.def.name),
+                    crate::tf!(
+                        "플러그인 '{}' 기다리는 줄에서 패닉 — 이 이벤트는 건너뜁니다",
+                        "plugin '{}' panicked in a waiting line — this event is skipped",
+                        p.def.name
+                    ),
                 );
             }
         }
@@ -1056,7 +1164,11 @@ mod tests {
     fn a_script_can_veto_a_subscribed_event() {
         let b = Arc::new(Body::default());
         let rt = PluginRuntime::new(
-            vec![scripted("veto", &["*"], "fn h(e) { if false { send(\"out\", e) } }")],
+            vec![scripted(
+                "veto",
+                &["*"],
+                "fn h(e) { if false { send(\"out\", e) } }",
+            )],
             b.clone(),
         );
         rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
@@ -1124,11 +1236,7 @@ mod tests {
         let b = Arc::new(Body::default());
         let rt = PluginRuntime::new(
             vec![
-                scripted(
-                    "loop",
-                    &["*"],
-                    "fn h(e) { let i = 0; loop { i += 1; } }",
-                ),
+                scripted("loop", &["*"], "fn h(e) { let i = 0; loop { i += 1; } }"),
                 plugin("good", &["*"]),
             ],
             b.clone(),
@@ -1239,7 +1347,9 @@ mod tests {
                 b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
-                let Action::Post { url, .. } = a else { panic!() };
+                let Action::Post { url, .. } = a else {
+                    panic!()
+                };
                 self.0.lock().unwrap().push(format!("{url} {}", b["n"]));
                 Ok(())
             }
@@ -1252,7 +1362,9 @@ mod tests {
         };
         let mut p = plugin("multi", &["quest.created"]);
         p.def.scripts = vec!["main.rhai".into()];
-        p.def.actions.insert("slack".into(), post("https://slack.test"));
+        p.def
+            .actions
+            .insert("slack".into(), post("https://slack.test"));
         p.def.actions.insert("tg".into(), post("https://tg.test"));
         p.def.handlers = vec![
             handler(&["quest.created"], Some("first")),

@@ -1,7 +1,17 @@
 // DEV-419: 탐색기처럼 고르기. 규칙이 어긋나면 "3개 옮기기" 가 엉뚱한 셋을 옮긴다.
 
 import { describe, it, expect } from 'vitest';
-import { click, clear, all, prune, arrow, hitsIn, marquee, EMPTY, type Picked } from './multi-select';
+import {
+	click,
+	clear,
+	all,
+	prune,
+	arrow,
+	hitsIn,
+	marquee,
+	EMPTY,
+	type Picked
+} from './multi-select';
 
 const order = ['a', 'b', 'c', 'd', 'e'];
 const ids = (p: Picked) => [...p.ids].sort();
