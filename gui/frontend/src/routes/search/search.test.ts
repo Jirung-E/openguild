@@ -64,7 +64,7 @@ describe('REQ-040 검색 페이지', () => {
 		expect(enhanced).toHaveBeenCalledWith('코끼리', ['body', 'comment', 'attachment', 'memo']);
 	});
 
-	it('쿼리는 고른 종류의 쿼리로, 전체 탭에서는 막는다', async () => {
+	it('쿼리는 고른 종류의 쿼리로, 못 쓰는 탭으로 가면 검색으로 바뀐다', async () => {
 		await open('http://localhost/search?q=status:open&kind=quest&mode=query');
 		const list = await screen.findByTestId('doc-search-results');
 		expect(questQuery).toHaveBeenCalledWith('status:open');
@@ -74,15 +74,21 @@ describe('REQ-040 검색 페이지', () => {
 		await vi.waitFor(() =>
 			expect([...list.querySelectorAll('mark')].map((m) => m.textContent)).toEqual(['열린'])
 		);
+		// '전체' 로 가면 [쿼리] 가 꺼지고 검색으로 — 쓰던 글은 검색칸으로 옮긴다.
 		fireEvent.click(screen.getByTestId('doc-search-tab-all'));
-		expect(await screen.findByTestId('doc-query-blocked')).toBeTruthy();
-		// 쿼리를 못 쓰는 탭에서는 쓰는 법(?)도 꺼진다.
-		expect((screen.getByTestId('doc-query-help-toggle') as HTMLButtonElement).disabled).toBe(true);
-		fireEvent.click(screen.getByTestId('doc-search-tab-campaign'));
 		await vi.waitFor(() =>
-			expect((screen.getByTestId('doc-query-help-toggle') as HTMLButtonElement).disabled).toBe(
-				false
-			)
+			expect(screen.getByTestId('doc-query-mode').getAttribute('aria-checked')).toBe('false')
+		);
+		expect(screen.getByTestId('doc-search-mode').getAttribute('aria-checked')).toBe('true');
+		expect((screen.getByTestId('doc-query-mode') as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByTestId('doc-search-input') as HTMLInputElement).value).toBe('status:open');
+		await vi.waitFor(() => expect(enhanced).toHaveBeenCalledWith('status:open', expect.anything()));
+		// 규칙 탭도 같다.
+		fireEvent.click(screen.getByTestId('doc-search-tab-quest'));
+		fireEvent.click(screen.getByTestId('doc-query-mode'));
+		fireEvent.click(screen.getByTestId('doc-search-tab-rule'));
+		await vi.waitFor(() =>
+			expect(screen.getByTestId('doc-search-mode').getAttribute('aria-checked')).toBe('true')
 		);
 	});
 });

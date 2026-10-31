@@ -65,7 +65,6 @@
 	let error = $state<string | null>(null);
 
 	const term = $derived((mode === 'query' ? query : search).trim());
-	const queryBlocked = $derived(mode === 'query' && !canQuery(tab));
 	/** 제목 · 번호에 칠할 말 — 쿼리는 `키:값` 이라 칠하지 않는다. */
 	const hitTerms = $derived<HitTerm[]>(mode === 'search' ? termsOfSearch(term) : queryTerms);
 
@@ -133,7 +132,7 @@
 			memo
 		};
 		const key = JSON.stringify(ask);
-		if (!ask.term || queryBlocked) {
+		if (!ask.term) {
 			latest.cancel();
 			rows = [];
 			rowsFor = key;
@@ -177,6 +176,20 @@
 	/** 쿼리는 한 종류의 결과라 다른 탭의 개수는 모른다. */
 	const countKnown = (k: SearchTab) => mode === 'search' || k === tab;
 
+	/**
+	 * 쿼리를 못 쓰는 탭('전체' · 규칙)으로 가면 검색으로 바꾼다 — 쓰던 글은 검색칸으로 옮긴다([쿼리] 단추와
+	 * 같은 동작). 예전엔 [쿼리] 가 켜진 채 남아 "여기서는 못 씁니다" 안내만 떴다(admin).
+	 */
+	function selectTab(k: SearchTab) {
+		if (mode === 'query' && !canQuery(k)) {
+			search = query;
+			query = '';
+			mode = 'search';
+			helpOpen = false;
+		}
+		tab = k;
+	}
+
 	function tabLabel(k: SearchTab): string {
 		return k === 'all' ? t('search.tabAll', $locale) : t(`kind.${k}`, $locale);
 	}
@@ -197,7 +210,7 @@
 			bind:query
 			bind:mode
 			bind:helpOpen
-			queryError={mode === 'query' && !queryBlocked ? error : null}
+			queryError={mode === 'query' ? error : null}
 			placeholder={t('search.placeholder', $locale)}
 			testids={{ search: 'doc-search', query: 'doc-query' }}
 			queryDisabled={!canQuery(tab)}
@@ -231,19 +244,17 @@
 				class:on={tab === k}
 				aria-selected={tab === k}
 				data-testid="doc-search-tab-{k}"
-				onclick={() => (tab = k)}
+				onclick={() => selectTab(k)}
 			>
 				{tabLabel(k)}
-				{#if term && !queryBlocked && countKnown(k) && rowsFor}
+				{#if term && countKnown(k) && rowsFor}
 					<span class="n">{counts[k]}</span>
 				{/if}
 			</button>
 		{/each}
 	</div>
 
-	{#if queryBlocked}
-		<p class="state" data-testid="doc-query-blocked">{t('search.queryNeedsKind', $locale)}</p>
-	{:else if !term}
+	{#if !term}
 		<p class="state">{t('search.hint', $locale)}</p>
 	{:else if error && mode === 'search'}
 		<p class="state error" role="alert">{error}</p>
