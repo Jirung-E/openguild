@@ -344,6 +344,21 @@ pub async fn list_backlinks(
     Ok(Json(rows))
 }
 
+/// REQ-040: `GET /api/query/highlights?q=…&of=quest|campaign|library` — 쿼리 결과에 칠할 말.
+#[derive(Debug, Deserialize)]
+pub struct HighlightQuery {
+    pub q: String,
+    pub of: Option<String>,
+}
+
+pub async fn query_highlights(
+    Query(p): Query<HighlightQuery>,
+) -> AppResult<Json<Vec<openguild_core::query::HitTerm>>> {
+    let terms = openguild_core::query::highlights_for(p.of.as_deref().unwrap_or("quest"), &p.q)
+        .map_err(openguild_core::error::AppError::from)?;
+    Ok(Json(terms))
+}
+
 /// REQ-009: `GET /api/search?q=…&in=body,comment,attachment[,memo]&limit=N`
 ///
 /// **기본 검색(`/api/quests?search=`)과 별개**다. 그쪽은 title/description/slug

@@ -98,7 +98,7 @@ Instead of `pre` / `post`, a line can run **on a schedule** and receive a list:
 [[handlers]]
     id    = "overdue"
     every = "1h"                                    # s · m · h · d, at least 1m
-    query = "status:open,in_progress due:overdue"   # the list query, same as `quest list -q`
+    query = "status:[open, in_progress] due:overdue"   # the list query, same as `quest list -q`
     of    = "quest"                                 # quest (default) · campaign · library
     call  = "overdue"                               # fn overdue(e) — e.items
 ```

@@ -311,6 +311,16 @@ pub async fn list_quests(
     openguild_core::ops::quests::list_quests(&store, &q).await.map_err(err)
 }
 
+/// REQ-040: 쿼리 결과에 칠할 말 — 서버의 `GET /api/query/highlights` 와 같다.
+#[tauri::command]
+pub async fn query_highlights(
+    q: String,
+    of: Option<String>,
+) -> Result<Vec<openguild_core::query::HitTerm>, String> {
+    openguild_core::query::highlights_for(of.as_deref().unwrap_or("quest"), &q)
+        .map_err(|e| e.to_string())
+}
+
 /// BUG-247: 강화 검색(REQ-009) 의 데스크톱 경로.
 ///
 /// 서버는 `GET /api/search` 로 같은 일을 한다. 그쪽만 있고 여기가 없어서

@@ -22,7 +22,8 @@
 	import { libraryApi } from '$lib/api/library';
 	import { locale, t } from '$lib/stores/locale';
 	import { LatestQuery } from '$lib/utils/enhanced-search';
-	import { highlightSegments } from '$lib/utils/highlight';
+	import { termsOfSearch, type HitTerm } from '$lib/utils/highlight';
+	import { queryApi } from '$lib/api/query';
 	import SearchField from '$lib/components/SearchField.svelte';
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
 	import DocLink from '$lib/components/DocLink.svelte';
@@ -56,6 +57,8 @@
 	let helpOpen = $state(false);
 
 	let rows = $state<SearchRow[]>([]);
+	/** REQ-040: 쿼리면 코어가 뽑아 준 칠할 말. */
+	let queryTerms = $state<HitTerm[]>([]);
 	/** 결과가 이 글의 것인가 — 다른 글의 결과를 보이지 않는다. */
 	let rowsFor = $state('');
 	let loading = $state(false);
@@ -64,7 +67,7 @@
 	const term = $derived((mode === 'query' ? query : search).trim());
 	const queryBlocked = $derived(mode === 'query' && !canQuery(tab));
 	/** 제목 · 번호에 칠할 말 — 쿼리는 `키:값` 이라 칠하지 않는다. */
-	const hitTerm = $derived(mode === 'search' ? term : '');
+	const hitTerms = $derived<HitTerm[]>(mode === 'search' ? termsOfSearch(term) : queryTerms);
 
 	const QUERY_KEYS_OF: Record<string, { keys: readonly QueryKeyRow[]; rules: string }> = {
 		quest: { keys: QUEST_QUERY_KEYS, rules: 'filter.queryHelpRules' },
@@ -78,13 +81,26 @@
 		kind: SearchKind | null;
 		memo: boolean;
 	}
-	const latest = new LatestQuery<Ask, SearchRow[]>(async (a) => {
+	interface Found {
+		rows: SearchRow[];
+		/** 쿼리면 코어가 뽑아 준 칠할 말. */
+		terms: HitTerm[];
+	}
+	const latest = new LatestQuery<Ask, Found>(async (a) => {
 		if (a.mode === 'search') {
 			const fields: Field[] = ['body', 'comment', 'attachment'];
 			if (a.memo) fields.push('memo');
 			const hits = await searchApi.enhanced(a.term, fields);
-			return sortRows(hits);
+			return { rows: sortRows(hits), terms: [] };
 		}
+		const of = a.kind === 'book' ? 'library' : (a.kind ?? 'quest');
+		const [rows, terms] = await Promise.all([
+			queryRows(a),
+			of === 'rule' ? Promise.resolve([]) : queryApi.highlights(a.term, of)
+		]);
+		return { rows, terms };
+	});
+	async function queryRows(a: Ask): Promise<SearchRow[]> {
 		const plain = (kind: SearchKind, id: string, title: string): SearchRow => ({
 			kind,
 			id,
@@ -104,7 +120,7 @@
 			default:
 				return [];
 		}
-	});
+	}
 	onDestroy(() => latest.cancel());
 
 	// 검색어 · 모드 · 종류(쿼리일 때만) · 메모가 바뀌면 다시 묻는다. 검색은 종류와 상관없이 한 번에 받아
@@ -129,7 +145,8 @@
 		latest.run(
 			ask,
 			(res) => {
-				rows = res;
+				rows = res.rows;
+				queryTerms = res.terms;
 				rowsFor = key;
 				loading = false;
 				error = null;
@@ -248,10 +265,10 @@
 					>
 						<span class="kind {r.kind}">{t(`kind.${r.kind}`, $locale)}</span>
 						{#if r.kind !== 'rule'}
-							<span class="id"><HitText text={r.id} query={hitTerm} /></span>
+							<span class="id"><HitText text={r.id} terms={hitTerms} /></span>
 						{/if}
 						<span class="title"
-							><HitText text={r.kind === 'rule' ? r.id : r.title} query={hitTerm} /></span
+							><HitText text={r.kind === 'rule' ? r.id : r.title} terms={hitTerms} /></span
 						>
 						{#if r.matched_in.length}
 							<span class="why">
@@ -263,9 +280,7 @@
 					</DocLink>
 					{#if r.excerpt}
 						<p class="excerpt">
-							{#each highlightSegments(r.excerpt, term) as seg, si (si)}
-								{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}
-							{/each}
+							<HitText text={r.excerpt} terms={hitTerms} />
 						</p>
 					{/if}
 				</li>
@@ -387,9 +402,5 @@
 		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		overflow-wrap: anywhere;
-	}
-	mark {
-		background: var(--search-hit-bg);
-		color: var(--search-hit-text);
 	}
 </style>

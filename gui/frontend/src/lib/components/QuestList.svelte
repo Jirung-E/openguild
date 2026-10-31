@@ -36,6 +36,8 @@
 		type TriState
 	} from '$lib/utils/quest-list';
 	import { needsServerSearch } from '$lib/utils/search-match';
+	import { queryApi } from '$lib/api/query';
+	import { termsOfSearch, type HitTerm } from '$lib/utils/highlight';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
 	// DEV-074 fix14: 내부 스크롤 컨테이너용 overlay 스크롤바.
@@ -185,6 +187,8 @@
 	/** 쿼리에 맞는 id. null = 쿼리 없음 · 틀림 · 아직 모름(거르지 않는다). */
 	let queryMatchIds = $state<Set<number> | null>(null);
 	let queryError = $state<string | null>(null);
+	/** REQ-040: 쿼리 결과에 칠할 말(낱말 · title · body · 정규식) — 코어가 뽑아 준다. */
+	let queryTerms = $state<HitTerm[]>([]);
 	let querySeq = 0;
 	let queryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -197,14 +201,15 @@
 		if (!q) {
 			queryMatchIds = null;
 			queryError = null;
+			queryTerms = [];
 			return;
 		}
 		queryTimer = setTimeout(() => {
-			questsApi
-				.matchQuery(q)
-				.then((rows) => {
+			Promise.all([questsApi.matchQuery(q), queryApi.highlights(q, 'quest')])
+				.then(([rows, terms]) => {
 					if (seq !== querySeq) return;
 					queryMatchIds = new Set(rows.map((r) => r.id));
+					queryTerms = terms;
 					queryError = null;
 				})
 				.catch((e) => {
@@ -214,6 +219,9 @@
 				});
 		}, 250);
 	});
+
+	// 제목 · 번호에 칠할 말 — 검색 글과 쿼리의 낱말(DEV-470 · REQ-040).
+	const hitTerms = $derived([...termsOfSearch(search), ...queryTerms]);
 
 	// DEV-065: 뷰 모드 — 'tree' (부모 그룹 + 들여쓰기, 기본) / 'list' (모든 quest
 	// 평면). URL ?mode= 와 localStorage 동시 영속.
@@ -722,7 +730,7 @@
 					expanded={expanded.has(node.quest.id)}
 					ontoggle={() => toggle(node.quest.id)}
 					flat={viewMode === 'list'}
-					highlight={search}
+					terms={hitTerms}
 				/>
 			{/each}
 		</div>

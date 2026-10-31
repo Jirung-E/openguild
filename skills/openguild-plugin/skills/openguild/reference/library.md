@@ -8,7 +8,7 @@ zips, images) that don't belong as markdown body text — that was one of the
 original reasons the library exists.
 
 ```bash
-openguild library list [--table] [--folder "아키텍처"] [--tag 설계] [-q 'tag:설계 -folder:보관 updated:>=2026-10-01']
+openguild library list [--table] [--folder "아키텍처"] [--tag 설계] [-q 'tag:[설계, 결정] -folder:보관 updated:2026-10-01..']
 openguild library show <book-id>
 openguild library new --title "..." [--file <PATH>] [--folder "folder/sub"]
 openguild library update <book-id> [--title ...] [--file <PATH>] [--folder "..."]

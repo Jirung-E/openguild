@@ -1710,7 +1710,21 @@ mod tests {
         assert_eq!(ids("tag:ui".into(), d()).await, vec![a]);
         assert_eq!(ids("-tag:ui".into(), d()).await, vec![b, c]);
         assert_eq!(ids("status:done".into(), d()).await, vec![c]);
-        assert_eq!(ids("status:open,완료".into(), d()).await, vec![a, b, c]);
+        assert_eq!(ids("status:[open, 완료]".into(), d()).await, vec![a, b, c]);
+        // REQ-040: 또는 · 괄호 · 범위 · 정규식(SQLite REGEXP) · title · 와일드카드.
+        assert_eq!(ids("tag:ui | status:done".into(), d()).await, vec![a, c]);
+        assert_eq!(
+            ids("(tag:ui OR urgency:1) -status:done".into(), d()).await,
+            vec![a, b]
+        );
+        assert_eq!(ids("urgency:1..=1".into(), d()).await, vec![b]);
+        assert_eq!(ids("/^로그인\\s화/".into(), d()).await, vec![b]);
+        assert_eq!(ids("title:/화면$/".into(), d()).await, vec![b]);
+        assert_eq!(ids("title:=\"로그인 화면\"".into(), d()).await, vec![b]);
+        assert_eq!(ids("title:=로그인".into(), d()).await, Vec::<i64>::new());
+        assert_eq!(ids("title:로그인*".into(), d()).await, vec![b]);
+        assert_eq!(ids("tag:U*".into(), d()).await, vec![a]);
+        assert_eq!(ids("tag:/^u/".into(), d()).await, vec![a]);
         assert_eq!(ids("urgency:<=2".into(), d()).await, vec![b]);
         assert_eq!(ids(format!("parent:{slug_a}"), d()).await, vec![b]);
         assert_eq!(ids("parent:none".into(), d()).await, vec![a, c]);

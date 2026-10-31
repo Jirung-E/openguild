@@ -36,20 +36,59 @@ export function searchTokens(query: string): string[] {
  * - 걸린 게 없으면 원문 한 조각만 돌려준다.
  */
 export function highlightSegments(text: string, query: string): HighlightSegment[] {
+	return highlightTerms(text, termsOfSearch(query));
+}
+
+/**
+ * REQ-040: 칠할 말 하나 — 글(대소문자 무시 부분일치) 또는 정규식(대소문자 무시). 쿼리의 칠할 말은 코어가
+ * 뽑아 준다(`/api/query/highlights`) — 해석기를 화면에 두 벌 두지 않는다.
+ */
+export type HitTerm = { text: string } | { regex: string };
+
+/** 검색 모드의 글 → 칠할 말. `/…/` 토막은 정규식(강화 검색과 같다). */
+export function termsOfSearch(query: string): HitTerm[] {
+	return searchTokens(query).map((t) =>
+		t.length >= 3 && t.startsWith('/') && t.endsWith('/') ? { regex: t.slice(1, -1) } : { text: t }
+	);
+}
+
+/**
+ * 정규식을 JS 로 — 코어(Rust `regex`)와 문법이 조금 달라 못 읽으면 `null`(칠하지 않는다). 거르기는 코어가 이미
+ * 했으므로 칠하지 못해도 결과는 맞다.
+ */
+function jsRegex(p: string): RegExp | null {
+	try {
+		return new RegExp(p, 'giu');
+	} catch {
+		return null;
+	}
+}
+
+/** `text` 를 칠할 말들에 걸린 조각과 아닌 조각으로 나눈다. */
+export function highlightTerms(text: string, terms: readonly HitTerm[]): HighlightSegment[] {
 	if (!text) return [];
-	const tokens = searchTokens(query);
-	if (tokens.length === 0) return [{ text, hit: false }];
+	if (terms.length === 0) return [{ text, hit: false }];
 
 	const lower = text.toLowerCase();
 	// 일부 문자는 소문자화하면 길이가 달라져(예: 'İ' → 2글자) 인덱스가 어긋난다.
 	// 그런 입력에서는 잘못된 위치를 칠하느니 표시를 포기한다.
-	if (lower.length !== text.length) return [{ text, hit: false }];
+	const lowerOk = lower.length === text.length;
 
-	// 1) 모든 토큰의 일치 구간 수집.
+	// 1) 모든 말의 일치 구간 수집.
 	const ranges: Array<[number, number]> = [];
-	for (const tok of tokens) {
-		const t = tok.toLowerCase();
-		if (t.length !== tok.length) continue;
+	for (const term of terms) {
+		if ('regex' in term) {
+			const re = jsRegex(term.regex);
+			if (!re) continue;
+			for (const m of text.matchAll(re)) {
+				// 빈 일치(`a*` 따위)는 칠할 것이 없다.
+				if (m[0].length > 0 && m.index !== undefined) ranges.push([m.index, m.index + m[0].length]);
+			}
+			continue;
+		}
+		if (!lowerOk) continue;
+		const t = term.text.toLowerCase();
+		if (!t || t.length !== term.text.length) continue;
 		let from = 0;
 		for (;;) {
 			const at = lower.indexOf(t, from);

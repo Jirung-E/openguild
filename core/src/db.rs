@@ -27,10 +27,12 @@ pub async fn create_pool_from_path(
     path: &std::path::Path,
     read_only: bool,
 ) -> Result<SqlitePool> {
+    // REQ-040: 쿼리의 `/정규식/` 은 SQLite `REGEXP` 로 거른다 — 연결마다 Rust `regex` 로 등록된다.
     let mut options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(!read_only)
-        .read_only(read_only);
+        .read_only(read_only)
+        .with_regexp();
 
     // BUG-091: WAL(sqlx 기본)은 공유메모리(mmap)가 필요해 SMB/UNC 네트워크
     // 파일시스템에서 동작하지 않는다(SQLite 공식 제약) → 네트워크 공유 길드의
@@ -61,7 +63,9 @@ pub async fn begin_write(pool: &sqlx::SqlitePool) -> sqlx::Result<sqlx::Transact
 /// URL 기반 pool — in-memory(`sqlite::memory:` / `sqlite:file:..?mode=memory`)
 /// 전용. 파일 DB 는 `create_pool_from_path` 를 쓸 것 (UNC 경로가 URL 로 깨짐).
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
-    let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+    let options = SqliteConnectOptions::from_str(database_url)?
+        .create_if_missing(true)
+        .with_regexp();
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)

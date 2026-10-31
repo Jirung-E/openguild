@@ -4,7 +4,7 @@
 //! [[handlers]]
 //!     id    = "마감 알림"
 //!     every = "1h"                                  # 분 m · 시간 h · 하루 d, 최소 1m
-//!     query = "status:open,in_progress due:overdue" # REQ-039 의 쿼리 문법
+//!     query = "status:[open, in_progress] due:overdue" # REQ-039 의 쿼리 문법
 //!     of    = "quest"                               # quest(기본) · campaign · library
 //!     call  = "마감_알림"                           # fn 마감_알림(e) — e.items 가 맞는 목록
 //! ```

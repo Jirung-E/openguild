@@ -24,6 +24,8 @@
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
 	import { CAMPAIGN_QUERY_KEYS } from '$lib/utils/query-keys';
 	import HitText from '$lib/components/HitText.svelte';
+	import { queryApi } from '$lib/api/query';
+	import { termsOfSearch, type HitTerm } from '$lib/utils/highlight';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -68,6 +70,8 @@
 	let queryHelpOpen = $state(false);
 	let queryMatch = $state<Set<string> | null>(null);
 	let queryError = $state<string | null>(null);
+	/** REQ-040: 쿼리 결과에 칠할 말 — 코어가 뽑아 준다. */
+	let queryTerms = $state<HitTerm[]>([]);
 	let querySeq = 0;
 	let queryTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -79,14 +83,19 @@
 		if (!q) {
 			queryMatch = null;
 			queryError = null;
+			queryTerms = [];
 			return;
 		}
+		const asQuery = mode === 'query';
 		queryTimer = setTimeout(() => {
-			campaignsApi
-				.matchQuery(q)
-				.then((rows) => {
+			Promise.all([
+				campaignsApi.matchQuery(q),
+				asQuery ? queryApi.highlights(q, 'campaign') : Promise.resolve([])
+			])
+				.then(([rows, terms]) => {
 					if (seq !== querySeq) return;
 					queryMatch = new Set(rows.map((r) => r.campaign_slug));
+					queryTerms = terms;
 					queryError = null;
 				})
 				.catch((e) => {
@@ -111,7 +120,8 @@
 			goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
 	});
 
-	const hitTerm = $derived(mode === 'search' ? search.trim() : '');
+	// 제목 · 번호에 칠할 말 — 검색 글, 쿼리면 코어가 뽑아 준 낱말(REQ-040).
+	const hitTerms = $derived(mode === 'search' ? termsOfSearch(search) : queryTerms);
 
 	let filtered = $derived.by(() => {
 		const byStatus = statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
@@ -245,15 +255,15 @@
 					     잘리기 쉬웠다(BUG-198 의 세로 출력도 같은 자리). -->
 					<a class="main" href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`}>
 						<span class="meta-line">
-							<span class="slug"><HitText text={c.campaign_slug} query={hitTerm} /></span>
+							<span class="slug"><HitText text={c.campaign_slug} terms={hitTerms} /></span>
 							<span class="pill status-{c.status}">{c.status}</span>
 							<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
 							<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
 								>{fmtPeriod(c)}</span
 							>
 						</span>
-						<!-- 검색에서 걸린 글자를 칠한다(쿼리는 `키:값` 이라 칠하지 않는다). -->
-						<span class="title"><HitText text={c.title} query={hitTerm} /></span>
+						<!-- 검색에서 걸린 글자를 칠한다(쿼리는 낱말 · title · body · 정규식만). -->
+						<span class="title"><HitText text={c.title} terms={hitTerms} /></span>
 						<!-- admin 요청: 목록에서도 진행도. 체크리스트 + 연결 퀘스트를
 						     합산한 하나의 바 + `완료/전체` 숫자. 둘 다 없으면 생략. -->
 						{#each progressRows(c) as p (p.key)}

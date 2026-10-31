@@ -260,6 +260,14 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		return { cmd: 'search_docs', args };
 	}
 
+	// REQ-040: 쿼리 결과에 칠할 말.
+	if (method === 'GET' && pathOnly === '/api/query/highlights') {
+		return {
+			cmd: 'query_highlights',
+			args: { q: query.get('q') ?? '', of: query.get('of') ?? 'quest' }
+		};
+	}
+
 	// ───── 플러그인 (조회만) ─────
 	// DEV-380: 읽기는 transport 를 그대로 탄다 — 그래야 브라우저는 서버에게,
 	// 데스크톱은 로컬 Store 에게, 데스크톱+원격은 **원격 서버에게** 묻는다.

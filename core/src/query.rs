@@ -1,15 +1,22 @@
 //! DEV-446 (REQ-039): 목록을 거르는 짧은 문법 — `키:값`.
 //!
 //! ```text
-//! status:open,in_progress campaign:C-003 -tag:wip urgency:<=2 due:overdue 로그인
+//! status:[open, in_progress] (tag:urgent | due:overdue) -tag:wip urgency:1..=2 title:로그인*
 //! ```
 //!
-//! - 같은 키의 쉼표 = 또는, 서로 다른 조건(띄어 씀) = 그리고, 앞에 `-` = 아닌 것.
-//! - 키 없는 낱말은 목록 검색과 같다(제목 · 본문 · 번호). `"두 낱말"` 처럼 따옴표로 묶는다.
+//! - 띄어 쓴 조건 = 그리고(`&` · `AND` 도 된다), `|` · `OR` = 또는, 앞에 `-` = 아닌 것, `( )` 로 묶는다.
+//!   그리고가 또는보다 먼저 묶인다 — `a b | c` 는 `(a b) | c`. 키워드는 대문자만(`or` 는 낱말이다).
+//! - 여러 값 중 하나는 `[a, b]` 로 묶는다(REQ-040 — 쉼표만으로는 읽기 어렵다).
+//! - 범위는 `..`(끝 제외) · `..=`(끝 포함) — `urgency:1..=2` · `due:2026-11-01..2026-12-01` · `updated:2026-10-01..`.
+//!   비교(`<=2`)도 된다.
+//! - 글 값은 키 있는 것이 완전일치, `*` 를 쓰면 그 자리에 아무 글이나(`tag:ui-*`), `/…/` 는 정규식(대소문자 무시).
+//!   `title:` · `body:` 는 부분일치가 기본이고 `=` 를 붙이면 완전일치(`title:="로그인 화면"`).
+//! - 키 없는 낱말은 목록 검색과 같다(제목 · 본문 · 번호, 부분일치). `"두 낱말"` 처럼 따옴표로 묶는다.
 //! - 모르는 키는 오류다 — 오타(`stauts:`)를 조용히 검색어로 삼으면 "없음" 으로 보여 헷갈린다.
 //!
 //! 해석은 **여기 한 곳**에만 둔다. CLI · 서버 · 앱이 같은 [`crate::models::ListQuery`] 의 `q` 로
-//! 넘기고, 목록 조회(`services::quests`)가 [`Query::to_sql`] 로 조건을 붙인다.
+//! 넘기고, 목록 조회(`services::quests`)가 [`Query::to_sql`] 로 조건을 붙인다. 정규식은 SQLite 의 `REGEXP`
+//! 로 거른다(`db` 가 연결마다 Rust `regex` 로 등록한다 — 입력 길이에 비례해 끝나서 서버에 넣어도 안전하다).
 //!
 //! DEV-451: 캠페인 · 도서관 목록도 같은 문법을 쓴다 — **키만 대상마다 다르다**([`Target`]).
 
@@ -25,13 +32,15 @@ pub const KEYS: &[&str] = &[
     "due",
     "parent",
     "commented",
+    "title",
+    "body",
 ];
 
 /// DEV-451: 캠페인 목록의 키.
-pub const CAMPAIGN_KEYS: &[&str] = &["status", "start", "end", "quest"];
+pub const CAMPAIGN_KEYS: &[&str] = &["status", "start", "end", "quest", "title", "body"];
 
 /// DEV-451: 도서관 목록의 키.
-pub const LIBRARY_KEYS: &[&str] = &["tag", "folder", "updated"];
+pub const LIBRARY_KEYS: &[&str] = &["tag", "folder", "updated", "title", "body"];
 
 /// DEV-451: 쿼리를 거는 목록. 문법은 같고 쓸 수 있는 키와 SQL 만 다르다.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -70,6 +79,9 @@ pub enum Key {
     /// DEV-451: 도서관 문서의 폴더 · 고친 날.
     Folder,
     Updated,
+    /// REQ-040: 제목만 · 본문만 — 키 없는 낱말은 둘 다(와 번호)를 본다.
+    Title,
+    Body,
 }
 
 impl Key {
@@ -93,24 +105,65 @@ impl Key {
             "quest" => Key::Quest,
             "folder" => Key::Folder,
             "updated" => Key::Updated,
+            "title" => Key::Title,
+            "body" => Key::Body,
             _ => return None,
         })
     }
+
+    /// 글을 맞추는 키 — `*` 와 `/정규식/` 을 받는다.
+    fn is_text(self) -> bool {
+        matches!(
+            self,
+            Key::Tag | Key::Type | Key::Folder | Key::Title | Key::Body
+        )
+    }
 }
 
-/// 조건 하나. `key` 가 없으면 검색 낱말이고 `values` 는 하나다.
+/// 값 하나의 모양.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Val {
+    /// 따옴표 없는 글 — `*` · 비교(`<=`) · 범위(`..`) 가 뜻을 갖는다.
+    Bare(String),
+    /// `"…"` — 글자 그대로.
+    Quoted(String),
+    /// `=…` — 완전일치(`title:` · `body:` 의 기본은 부분일치라).
+    Exact(String),
+    /// `/…/` — 정규식, 대소문자 무시.
+    Regex(String),
+}
+
+impl Val {
+    /// 오류 안내 · 비교에 쓰는 글.
+    pub fn text(&self) -> &str {
+        match self {
+            Val::Bare(s) | Val::Quoted(s) | Val::Exact(s) | Val::Regex(s) => s,
+        }
+    }
+}
+
+/// 조건 하나. `key` 가 없으면 검색 낱말이고 `values` 는 하나다. 값이 여럿이면 그중 하나(`[a, b]`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Term {
-    pub negated: bool,
     pub key: Option<Key>,
-    pub values: Vec<String>,
+    pub values: Vec<Val>,
     /// 이 조건이 시작하는 글자 위치(0부터, 글자 단위) — 오류 안내용.
     pub pos: usize,
 }
 
+/// 조건을 묶은 식.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expr {
+    Term(Term),
+    Not(Box<Expr>),
+    And(Vec<Expr>),
+    Or(Vec<Expr>),
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Query {
-    pub terms: Vec<Term>,
+    /// 빈 쿼리면 `None`.
+    pub expr: Option<Expr>,
     pub target: Target,
 }
 
@@ -145,182 +198,497 @@ impl From<QueryError> for AppError {
     }
 }
 
-/// 글 → 조건 목록 (퀘스트 목록).
+/// 글 → 조건 (퀘스트 목록).
 pub fn parse(input: &str) -> Result<Query, QueryError> {
     parse_for(Target::Quest, input)
 }
 
-/// DEV-451: 글 → 조건 목록, 대상의 키로.
+/// REQ-040: 이 쿼리의 결과에 칠할 말 — 화면이 묻는다(해석은 여기 한 곳). `of` 는 `quest` · `campaign` ·
+/// `library`.
+pub fn highlights_for(of: &str, input: &str) -> Result<Vec<HitTerm>, QueryError> {
+    let target = match of {
+        "campaign" => Target::Campaign,
+        "library" | "book" => Target::Library,
+        _ => Target::Quest,
+    };
+    Ok(parse_for(target, input)?.highlights())
+}
+
+/// DEV-451: 글 → 조건, 대상의 키로.
 pub fn parse_for(target: Target, input: &str) -> Result<Query, QueryError> {
     let chars: Vec<char> = input.chars().collect();
+    let tokens = lex(target, &chars)?;
+    let mut p = Parser {
+        tokens: &tokens,
+        i: 0,
+        end: chars.len(),
+    };
+    if tokens.is_empty() {
+        return Ok(Query { expr: None, target });
+    }
+    let expr = p.or()?;
+    if let Some(t) = p.peek() {
+        // 남은 것이 있으면 `)` 가 열린 적 없이 닫힌 것이다(다른 것은 `and` 가 다 먹는다).
+        return Err(QueryError::at(
+            t.pos,
+            crate::tf!(
+                "여는 괄호 없이 ')' 가 있습니다",
+                "')' without a matching '('"
+            ),
+        ));
+    }
+    Ok(Query {
+        expr: Some(expr),
+        target,
+    })
+}
+
+// ── 낱말 나누기 ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Tok {
+    Open,
+    Close,
+    Or,
+    And,
+    Not,
+    Term(Term),
+}
+
+#[derive(Debug, Clone)]
+struct Token {
+    tok: Tok,
+    pos: usize,
+}
+
+/// 낱말을 끝내는 글자 — 띄어쓰기, 그리고 `|` · `&`. `)` 는 괄호가 열려 있을 때만(`f(x)` 같은 낱말을 깨지 않게).
+fn ends_word(c: char, depth: usize) -> bool {
+    c.is_whitespace() || c == '|' || c == '&' || (c == ')' && depth > 0)
+}
+
+fn lex(target: Target, chars: &[char]) -> Result<Vec<Token>, QueryError> {
     let n = chars.len();
-    let mut terms = Vec::new();
+    let mut out = Vec::new();
+    let mut depth = 0usize;
     let mut i = 0;
     while i < n {
-        if chars[i].is_whitespace() {
+        let c = chars[i];
+        if c.is_whitespace() {
             i += 1;
             continue;
         }
         let start = i;
-        let negated = chars[i] == '-';
-        if negated {
+        let simple = match c {
+            '(' => Some(Tok::Open),
+            ')' if depth > 0 => Some(Tok::Close),
+            '|' => Some(Tok::Or),
+            '&' => Some(Tok::And),
+            _ => None,
+        };
+        if let Some(tok) = simple {
+            match tok {
+                Tok::Open => depth += 1,
+                Tok::Close => depth -= 1,
+                _ => {}
+            }
+            out.push(Token { tok, pos: start });
             i += 1;
-            if i >= n || chars[i].is_whitespace() {
+            continue;
+        }
+        // 대문자 `OR` · `AND` — 낱말 하나로 서 있을 때만.
+        for (word, tok) in [("OR", Tok::Or), ("AND", Tok::And)] {
+            let w: Vec<char> = word.chars().collect();
+            if chars[i..].starts_with(&w)
+                && (i + w.len() == n
+                    || ends_word(chars[i + w.len()], depth)
+                    || chars[i + w.len()] == '(')
+            {
+                out.push(Token {
+                    tok: tok.clone(),
+                    pos: start,
+                });
+                i += w.len();
+                break;
+            }
+        }
+        if out.last().is_some_and(|t| t.pos == start) {
+            continue;
+        }
+        if c == '-' {
+            if i + 1 >= n || chars[i + 1].is_whitespace() {
                 return Err(QueryError::at(
                     start,
                     crate::tf!("'-' 뒤에 조건이 없습니다", "nothing after '-'"),
                 ));
             }
-        }
-        let body = i;
-
-        // "두 낱말" — 따옴표로 묶은 검색어.
-        if chars[i] == '"' {
-            let (text, end) = read_quoted(&chars, i)?;
-            if end < n && !chars[end].is_whitespace() {
-                return Err(QueryError::at(
-                    end,
-                    crate::tf!(
-                        "닫는 따옴표 뒤에는 띄어 쓰세요",
-                        "put a space after the closing quote"
-                    ),
-                ));
-            }
-            if text.trim().is_empty() {
-                return Err(QueryError::at(
-                    start,
-                    crate::tf!("빈 따옴표입니다", "empty quotes"),
-                ));
-            }
-            terms.push(Term {
-                negated,
-                key: None,
-                values: vec![text],
+            out.push(Token {
+                tok: Tok::Not,
                 pos: start,
             });
-            i = end;
+            i += 1;
             continue;
         }
-
-        // 키 — 글자로 시작하는 영문 · 숫자 · `_` 다음에 `:`. `10:30` 같은 글은 키가 아니다.
-        let mut j = i;
-        while j < n && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
-            j += 1;
-        }
-        let is_key = j > i && chars[i].is_ascii_alphabetic() && j < n && chars[j] == ':';
-        if !is_key {
-            let mut end = i;
-            while end < n && !chars[end].is_whitespace() {
-                end += 1;
-            }
-            let text: String = chars[i..end].iter().collect();
-            terms.push(Term {
-                negated,
-                key: None,
-                values: vec![text],
-                pos: start,
-            });
-            i = end;
-            continue;
-        }
-
-        let name: String = chars[i..j].iter().collect();
-        let Some(key) = Key::parse(target, &name) else {
-            return Err(QueryError::at(
-                body,
-                crate::tf!(
-                    "모르는 키 '{name}' — 쓸 수 있는 키: {}. 쌍점이 든 글을 찾으려면 따옴표로 묶으세요",
-                    "unknown key '{name}' — available keys: {}. Quote text that contains a colon",
-                    target.keys().join(", ")
-                ),
-            ));
-        };
-        // 값들 — 쉼표로 나누고, 따옴표 안의 쉼표 · 공백은 값의 일부.
-        let mut values = Vec::new();
-        let mut k = j + 1;
-        loop {
-            let vstart = k;
-            let value = if k < n && chars[k] == '"' {
-                let (text, end) = read_quoted(&chars, k)?;
-                k = end;
-                text
-            } else {
-                let mut end = k;
-                while end < n && !chars[end].is_whitespace() && chars[end] != ',' {
-                    end += 1;
-                }
-                let text: String = chars[k..end].iter().collect();
-                k = end;
-                text
-            };
-            if value.trim().is_empty() {
-                return Err(QueryError::at(
-                    vstart,
-                    crate::tf!("'{name}:' 에 값이 없습니다", "'{name}:' has no value"),
-                ));
-            }
-            values.push(value.trim().to_string());
-            if k < n && chars[k] == ',' {
-                k += 1;
-                continue;
-            }
-            if k < n && !chars[k].is_whitespace() {
-                return Err(QueryError::at(
-                    k,
-                    crate::tf!(
-                        "닫는 따옴표 뒤에는 띄어 쓰거나 쉼표를 쓰세요",
-                        "put a space or a comma after the closing quote"
-                    ),
-                ));
-            }
-            break;
-        }
-        let term = Term {
-            negated,
-            key: Some(key),
-            values,
+        let (term, end) = read_term(target, chars, i, depth)?;
+        out.push(Token {
+            tok: Tok::Term(term),
             pos: start,
-        };
-        check_values(target, &term, body)?;
-        terms.push(term);
-        i = k;
+        });
+        i = end;
     }
-    Ok(Query { terms, target })
+    Ok(out)
 }
 
-/// `"…"` 를 읽는다 — 돌려주는 끝은 닫는 따옴표 다음 자리.
-fn read_quoted(chars: &[char], open: usize) -> Result<(String, usize), QueryError> {
-    let mut k = open + 1;
-    while k < chars.len() && chars[k] != '"' {
-        k += 1;
+/// 조건 하나 — 키 있는 것(`tag:[a, b]`) 또는 낱말(`로그인` · `"두 낱말"` · `/정규식/`).
+fn read_term(
+    target: Target,
+    chars: &[char],
+    i: usize,
+    depth: usize,
+) -> Result<(Term, usize), QueryError> {
+    let n = chars.len();
+    // 키 — 글자로 시작하는 영문 · 숫자 · `_` 다음에 `:`. `10:30` 같은 글은 키가 아니다.
+    let mut j = i;
+    while j < n && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+        j += 1;
     }
-    if k >= chars.len() {
+    let is_key = j > i && chars[i].is_ascii_alphabetic() && j < n && chars[j] == ':';
+    if !is_key {
+        let (val, end) = read_value(chars, i, depth, false, false)?;
+        if let Val::Quoted(s) = &val
+            && s.trim().is_empty()
+        {
+            return Err(QueryError::at(
+                i,
+                crate::tf!("빈 따옴표입니다", "empty quotes"),
+            ));
+        }
+        let term = Term {
+            key: None,
+            values: vec![val],
+            pos: i,
+        };
+        check_values(target, &term, i)?;
+        return Ok((term, end));
+    }
+    let name: String = chars[i..j].iter().collect();
+    let Some(key) = Key::parse(target, &name) else {
         return Err(QueryError::at(
-            open,
-            crate::tf!("따옴표가 닫히지 않았습니다", "unclosed quote"),
+            i,
+            crate::tf!(
+                "모르는 키 '{name}' — 쓸 수 있는 키: {}. 쌍점이 든 글을 찾으려면 따옴표로 묶으세요",
+                "unknown key '{name}' — available keys: {}. Quote text that contains a colon",
+                target.keys().join(", ")
+            ),
         ));
+    };
+    let mut k = j + 1;
+    let mut values = Vec::new();
+    // `=` 는 title · body 에서만 완전일치 — 다른 키에서는 비교(`urgency:=2`)다.
+    let eq = matches!(key, Key::Title | Key::Body);
+    if k < n && chars[k] == '[' {
+        // `[a, b]` — 그중 하나.
+        k += 1;
+        loop {
+            while k < n && chars[k].is_whitespace() {
+                k += 1;
+            }
+            if k < n && chars[k] == ']' && values.is_empty() {
+                return Err(QueryError::at(
+                    k,
+                    crate::tf!("'{name}:[ ]' 이 비어 있습니다", "'{name}:[ ]' is empty"),
+                ));
+            }
+            let vstart = k;
+            let (val, end) = read_value(chars, k, depth, true, eq)?;
+            if val.text().trim().is_empty() {
+                return Err(QueryError::at(
+                    vstart,
+                    crate::tf!(
+                        "'{name}:' 의 목록에 빈 값이 있습니다",
+                        "'{name}:' has an empty value in its list"
+                    ),
+                ));
+            }
+            values.push(val);
+            k = end;
+            while k < n && chars[k].is_whitespace() {
+                k += 1;
+            }
+            match chars.get(k) {
+                Some(',') => k += 1,
+                Some(']') => {
+                    k += 1;
+                    break;
+                }
+                _ => {
+                    return Err(QueryError::at(
+                        k.min(n),
+                        crate::tf!("']' 로 목록을 닫으세요", "close the list with ']'"),
+                    ));
+                }
+            }
+        }
+    } else {
+        let vstart = k;
+        let (val, end) = read_value(chars, k, depth, false, eq)?;
+        if val.text().trim().is_empty() {
+            return Err(QueryError::at(
+                vstart,
+                crate::tf!("'{name}:' 에 값이 없습니다", "'{name}:' has no value"),
+            ));
+        }
+        if let Val::Bare(s) = &val
+            && s.contains(',')
+        {
+            return Err(QueryError::at(
+                vstart,
+                crate::tf!(
+                    "여러 값은 [ ] 로 묶으세요 — {name}:[{}]",
+                    "wrap several values in [ ] — {name}:[{}]",
+                    s.split(',').map(str::trim).collect::<Vec<_>>().join(", ")
+                ),
+            ));
+        }
+        values.push(val);
+        k = end;
     }
-    Ok((chars[open + 1..k].iter().collect(), k + 1))
+    let term = Term {
+        key: Some(key),
+        values,
+        pos: i,
+    };
+    check_values(target, &term, i)?;
+    Ok((term, k))
+}
+
+/// 값 하나 — `"…"`, `/…/`, (`eq` 면) `=…`, 또는 띄어쓰기 · 연산자까지의 글. `in_list` 면 `,` · `]` 에서도 끝난다.
+fn read_value(
+    chars: &[char],
+    i: usize,
+    depth: usize,
+    in_list: bool,
+    eq: bool,
+) -> Result<(Val, usize), QueryError> {
+    let n = chars.len();
+    let stop = |c: char| ends_word(c, depth) || (in_list && (c == ',' || c == ']'));
+    let after = |end: usize| -> Result<(), QueryError> {
+        if end < n && !stop(chars[end]) && !(chars[end] == ')') {
+            return Err(QueryError::at(
+                end,
+                crate::tf!(
+                    "닫는 따옴표 · 빗금 뒤에는 띄어 쓰세요",
+                    "put a space after the closing quote or slash"
+                ),
+            ));
+        }
+        Ok(())
+    };
+    if eq && i < n && chars[i] == '=' {
+        let (inner, end) = read_value(chars, i + 1, depth, in_list, false)?;
+        return Ok((Val::Exact(inner.text().to_string()), end));
+    }
+    if i < n && chars[i] == '"' {
+        let mut k = i + 1;
+        while k < n && chars[k] != '"' {
+            k += 1;
+        }
+        if k >= n {
+            return Err(QueryError::at(
+                i,
+                crate::tf!("따옴표가 닫히지 않았습니다", "unclosed quote"),
+            ));
+        }
+        after(k + 1)?;
+        return Ok((Val::Quoted(chars[i + 1..k].iter().collect()), k + 1));
+    }
+    if i < n && chars[i] == '/' {
+        // `\/` 는 빗금 글자 — 정규식 안에 그대로 넘긴다(`regex` 도 `\/` 를 `/` 로 읽는다).
+        let mut k = i + 1;
+        while k < n && chars[k] != '/' {
+            if chars[k] == '\\' {
+                k += 1;
+            }
+            k += 1;
+        }
+        if k >= n {
+            return Err(QueryError::at(
+                i,
+                crate::tf!(
+                    "정규식이 '/' 로 닫히지 않았습니다",
+                    "the regex is not closed with '/'"
+                ),
+            ));
+        }
+        after(k + 1)?;
+        let pat: String = chars[i + 1..k].iter().collect();
+        if pat.is_empty() {
+            return Err(QueryError::at(
+                i,
+                crate::tf!("빈 정규식입니다", "empty regex"),
+            ));
+        }
+        return Ok((Val::Regex(pat), k + 1));
+    }
+    let mut end = i;
+    while end < n && !stop(chars[end]) {
+        end += 1;
+    }
+    Ok((Val::Bare(chars[i..end].iter().collect()), end))
+}
+
+// ── 묶기 ─────────────────────────────────────────────────────────────────────
+
+struct Parser<'a> {
+    tokens: &'a [Token],
+    i: usize,
+    /// 입력 끝 — "뒤에 조건이 없다" 를 가리킬 자리.
+    end: usize,
+}
+
+impl Parser<'_> {
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.i)
+    }
+
+    fn or(&mut self) -> Result<Expr, QueryError> {
+        let mut parts = vec![self.and()?];
+        while let Some(t) = self.peek()
+            && t.tok == Tok::Or
+        {
+            self.i += 1;
+            parts.push(self.and()?);
+        }
+        Ok(if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            Expr::Or(parts)
+        })
+    }
+
+    fn and(&mut self) -> Result<Expr, QueryError> {
+        let mut parts = vec![self.unary()?];
+        loop {
+            match self.peek().map(|t| &t.tok) {
+                Some(Tok::And) => {
+                    self.i += 1;
+                    parts.push(self.unary()?);
+                }
+                Some(Tok::Not | Tok::Open | Tok::Term(_)) => parts.push(self.unary()?),
+                _ => break,
+            }
+        }
+        Ok(if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            Expr::And(parts)
+        })
+    }
+
+    fn unary(&mut self) -> Result<Expr, QueryError> {
+        let Some(t) = self.peek().cloned() else {
+            return Err(QueryError::at(
+                self.end,
+                crate::tf!("연산자 뒤에 조건이 없습니다", "nothing after the operator"),
+            ));
+        };
+        self.i += 1;
+        match t.tok {
+            Tok::Not => Ok(Expr::Not(Box::new(self.unary()?))),
+            Tok::Term(term) => Ok(Expr::Term(term)),
+            Tok::Open => {
+                let inner = self.or()?;
+                match self.peek() {
+                    Some(c) if c.tok == Tok::Close => {
+                        self.i += 1;
+                        Ok(inner)
+                    }
+                    _ => Err(QueryError::at(
+                        t.pos,
+                        crate::tf!("괄호가 닫히지 않았습니다", "unclosed '('"),
+                    )),
+                }
+            }
+            Tok::Close => Err(QueryError::at(
+                t.pos,
+                crate::tf!(
+                    "괄호 안에 조건이 없습니다",
+                    "nothing inside the parentheses"
+                ),
+            )),
+            Tok::Or | Tok::And => Err(QueryError::at(
+                t.pos,
+                crate::tf!(
+                    "앞에 조건이 없는 연산자입니다",
+                    "an operator with nothing before it"
+                ),
+            )),
+        }
+    }
+}
+
+// ── 값 검사 ──────────────────────────────────────────────────────────────────
+
+/// 정규식을 대소문자 무시로 — SQL(`REGEXP`) · 강화 검색이 같은 것을 쓴다.
+pub fn regex_ci(pat: &str) -> String {
+    format!("(?i){pat}")
 }
 
 /// 값의 모양을 **해석할 때** 본다 — 조회까지 가서야 틀린 것을 알면 어디가 틀렸는지 못 짚는다.
 fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryError> {
-    let Some(key) = term.key else { return Ok(()) };
     for v in &term.values {
-        let ok = match key {
-            Key::Urgency => urgency_cond(v).is_some(),
-            Key::Due => due_cond(v).is_some(),
-            Key::Commented => commented_cond(v).is_some(),
-            Key::Parent => v.eq_ignore_ascii_case("none") || split_slug(v).is_some(),
-            Key::Campaign => v.eq_ignore_ascii_case("none") || split_slug(v).is_some(),
-            // 캠페인 상태는 둘뿐이다 — 퀘스트처럼 길드가 정하지 않는다.
-            Key::Status if target == Target::Campaign => {
-                ["active", "done"].iter().any(|s| v.eq_ignore_ascii_case(s))
+        if let Val::Regex(p) = v {
+            if term.key.is_some_and(|k| !k.is_text()) {
+                return Err(QueryError::at(
+                    pos,
+                    crate::tf!(
+                        "'/{p}/' — 정규식은 낱말과 tag · type · folder · title · body 에만 씁니다",
+                        "'/{p}/' — regexes work for words and tag, type, folder, title, body"
+                    ),
+                ));
             }
-            Key::Start | Key::Updated => date_cond("x", v).is_some(),
-            Key::End => v.eq_ignore_ascii_case("overdue") || date_cond("x", v).is_some(),
-            Key::Quest => split_slug(v).is_some(),
-            Key::Status | Key::Type | Key::Tag | Key::Folder => true,
+            if let Err(e) = regex::RegexBuilder::new(&regex_ci(p))
+                .size_limit(1 << 20)
+                .build()
+            {
+                return Err(QueryError::at(
+                    pos,
+                    crate::tf!(
+                        "'/{p}/' — 정규식이 틀렸습니다: {e}",
+                        "'/{p}/' — invalid regex: {e}"
+                    ),
+                ));
+            }
+            continue;
+        }
+        if let Val::Exact(_) = v
+            && !matches!(term.key, Some(Key::Title | Key::Body))
+        {
+            return Err(QueryError::at(
+                pos,
+                crate::tf!(
+                    "'={}' — '=' 완전일치는 title · body 에만 씁니다(다른 키는 원래 완전일치)",
+                    "'={}' — '=' (exact) is for title and body (other keys already match exactly)",
+                    v.text()
+                ),
+            ));
+        }
+        let Some(key) = term.key else { continue };
+        let s = v.text();
+        let ok = match (key, v) {
+            (Key::Urgency, _) => urgency_cond(s).is_some(),
+            (Key::Due, _) => due_cond(s).is_some(),
+            (Key::Commented, _) => commented_cond(s).is_some(),
+            (Key::Parent | Key::Campaign, _) => {
+                s.eq_ignore_ascii_case("none") || split_slug(s).is_some()
+            }
+            // 캠페인 상태는 둘뿐이다 — 퀘스트처럼 길드가 정하지 않는다.
+            (Key::Status, _) if target == Target::Campaign => {
+                ["active", "done"].iter().any(|x| s.eq_ignore_ascii_case(x))
+            }
+            (Key::Start | Key::Updated, _) => date_cond("x", s).is_some(),
+            (Key::End, _) => s.eq_ignore_ascii_case("overdue") || date_cond("x", s).is_some(),
+            (Key::Quest, _) => split_slug(s).is_some(),
+            (Key::Status | Key::Type | Key::Tag | Key::Folder | Key::Title | Key::Body, _) => true,
         };
         if !ok {
             let hint = match key {
@@ -329,32 +697,32 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                     "a campaign's status is active or done"
                 ),
                 Key::Start => crate::tf!(
-                    "start 는 none · 날짜(2026-11-01) · <=날짜 · >=날짜",
-                    "start is none, a date (2026-11-01), <=date or >=date"
+                    "start 는 none · 날짜(2026-11-01) · <=날짜 · 범위(2026-11-01..2026-12-01)",
+                    "start is none, a date (2026-11-01), <=date or a range (2026-11-01..2026-12-01)"
                 ),
                 Key::End => crate::tf!(
-                    "end 는 overdue · none · 날짜(2026-11-01) · <=날짜 · >=날짜",
-                    "end is overdue, none, a date (2026-11-01), <=date or >=date"
+                    "end 는 overdue · none · 날짜(2026-11-01) · <=날짜 · 범위(2026-11-01..)",
+                    "end is overdue, none, a date (2026-11-01), <=date or a range (2026-11-01..)"
                 ),
                 Key::Updated => crate::tf!(
-                    "updated 는 날짜(2026-11-01) · <=날짜 · >=날짜 — 고친 날과 비교",
-                    "updated is a date (2026-11-01), <=date or >=date — compared with the day it was edited"
+                    "updated 는 날짜(2026-11-01) · <=날짜 · 범위(2026-10-01..) — 고친 날과 비교",
+                    "updated is a date (2026-11-01), <=date or a range (2026-10-01..) — compared with the day it was edited"
                 ),
                 Key::Quest => crate::tf!(
                     "quest 는 퀘스트 번호(DEV-012)",
                     "quest is a quest id (DEV-012)"
                 ),
                 Key::Urgency => crate::tf!(
-                    "urgency 는 1~4 — 2 · 1-3 · <=2 · >=3 처럼",
-                    "urgency is 1–4 — like 2, 1-3, <=2, >=3"
+                    "urgency 는 1~4 — 2 · 1..=3 · <=2 · >=3 처럼",
+                    "urgency is 1–4 — like 2, 1..=3, <=2, >=3"
                 ),
                 Key::Due => crate::tf!(
-                    "due 는 overdue · none · 날짜(2026-11-01) · <=날짜 · >=날짜",
-                    "due is overdue, none, a date (2026-11-01), <=date or >=date"
+                    "due 는 overdue · none · 날짜(2026-11-01) · <=날짜 · 범위(2026-11-01..2026-12-01)",
+                    "due is overdue, none, a date (2026-11-01), <=date or a range (2026-11-01..2026-12-01)"
                 ),
                 Key::Commented => crate::tf!(
-                    "commented 는 none · 날짜(2026-11-01) · >=날짜 · <날짜 — 마지막 댓글의 날짜와 비교",
-                    "commented is none, a date (2026-11-01), >=date or <date — compared with the last comment's date"
+                    "commented 는 none · 날짜(2026-11-01) · >=날짜 · 범위 — 마지막 댓글의 날짜와 비교",
+                    "commented is none, a date (2026-11-01), >=date or a range — compared with the last comment's date"
                 ),
                 Key::Parent => crate::tf!(
                     "parent 는 퀘스트 번호(DEV-012) 또는 none",
@@ -367,7 +735,7 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
             };
             return Err(QueryError::at(
                 pos,
-                crate::tf!("'{v}' — {hint}", "'{v}' — {hint}"),
+                crate::tf!("'{s}' — {hint}", "'{s}' — {hint}"),
             ));
         }
     }
@@ -407,20 +775,56 @@ fn split_op(v: &str) -> (&'static str, &str) {
     ("=", v)
 }
 
+/// REQ-040: 범위 — `a..b`(끝 제외) · `a..=b`(끝 포함) · `a..` · `..b` · `..=b`. 범위가 아니면 `None`,
+/// 양 끝이 다 비면 `Some(None)`(틀린 범위).
+#[allow(clippy::type_complexity)]
+fn split_range(v: &str) -> Option<Option<(Option<&str>, Option<&str>, bool)>> {
+    let (lo, rest) = v.split_once("..")?;
+    let (hi, inclusive) = match rest.strip_prefix('=') {
+        Some(h) => (h, true),
+        None => (rest, false),
+    };
+    let lo = Some(lo.trim()).filter(|s| !s.is_empty());
+    let hi = Some(hi.trim()).filter(|s| !s.is_empty());
+    if lo.is_none() && hi.is_none() {
+        return Some(None);
+    }
+    Some(Some((lo, hi, inclusive)))
+}
+
+/// 범위 → `col >= ? AND col < ?` 따위. 끝값은 `ok` 로 검사한다.
+fn range_cond(
+    col: &str,
+    v: &str,
+    ok: impl Fn(&str) -> Option<Bind>,
+) -> Option<Option<(String, Vec<Bind>)>> {
+    let r = split_range(v)?;
+    let Some((lo, hi, inclusive)) = r else {
+        return Some(None);
+    };
+    let mut conds = Vec::new();
+    let mut binds = Vec::new();
+    if let Some(lo) = lo {
+        let Some(b) = ok(lo) else { return Some(None) };
+        conds.push(format!("{col} >= ?"));
+        binds.push(b);
+    }
+    if let Some(hi) = hi {
+        let Some(b) = ok(hi) else { return Some(None) };
+        conds.push(format!("{col} {} ?", if inclusive { "<=" } else { "<" }));
+        binds.push(b);
+    }
+    Some(Some((conds.join(" AND "), binds)))
+}
+
 fn urgency_num(s: &str) -> Option<i64> {
     s.trim().parse::<i64>().ok().filter(|n| (1..=4).contains(n))
 }
 
 /// urgency 값 하나 → 조건.
 fn urgency_cond(v: &str) -> Option<(String, Vec<Bind>)> {
-    if let Some((lo, hi)) = v.split_once('-')
-        && !lo.is_empty()
-    {
-        let (lo, hi) = (urgency_num(lo)?, urgency_num(hi)?);
-        return Some((
-            "q.urgency BETWEEN ? AND ?".into(),
-            vec![Bind::Int(lo.min(hi)), Bind::Int(lo.max(hi))],
-        ));
+    if let Some(r) = range_cond("q.urgency", v, |s| urgency_num(s).map(Bind::Int)) {
+        return r;
     }
     let (op, rest) = split_op(v);
     Some((
@@ -431,6 +835,10 @@ fn urgency_cond(v: &str) -> Option<(String, Vec<Bind>)> {
 
 fn is_date(s: &str) -> bool {
     chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
+}
+
+fn date_bind(s: &str) -> Option<Bind> {
+    is_date(s).then(|| Bind::Text(s.to_string()))
 }
 
 /// 유효 기한 — 필수 기한과, 연결된 진행 중 캠페인의 끝 날 중 이른 것(화면의 BUG-034 규칙과 같다).
@@ -446,16 +854,7 @@ fn due_cond(v: &str) -> Option<(String, Vec<Bind>)> {
             format!("({EFFECTIVE_DUE} < ? AND qs.counts_as_done = 0)"),
             vec![Bind::Text(crate::time::today_local_iso_date())],
         )),
-        "none" => Some((format!("{EFFECTIVE_DUE} IS NULL"), vec![])),
-        _ => {
-            let (op, rest) = split_op(v);
-            is_date(rest).then(|| {
-                (
-                    format!("{EFFECTIVE_DUE} {op} ?"),
-                    vec![Bind::Text(rest.to_string())],
-                )
-            })
-        }
+        _ => date_cond(EFFECTIVE_DUE, v),
     }
 }
 
@@ -465,22 +864,17 @@ const LAST_COMMENT: &str = "(SELECT MAX(substr(c.ts, 1, 10)) FROM quest_comments
 
 /// commented 값 하나 → 조건. `>=날짜` 는 "그날 이후 하나라도 달렸다" 와 같다(마지막 것이 그 뒤이므로).
 fn commented_cond(v: &str) -> Option<(String, Vec<Bind>)> {
-    if v.eq_ignore_ascii_case("none") {
-        return Some((format!("{LAST_COMMENT} IS NULL"), vec![]));
-    }
-    let (op, rest) = split_op(v);
-    is_date(rest).then(|| {
-        (
-            format!("{LAST_COMMENT} {op} ?"),
-            vec![Bind::Text(rest.to_string())],
-        )
-    })
+    date_cond(LAST_COMMENT, v)
 }
 
-/// DEV-451: 날짜 칸 하나와 비교 — `none` · `2026-11-01` · `<=2026-11-01` 따위. `col` 은 날짜(앞 10글자)를 낸다.
+/// DEV-451: 날짜 칸 하나와 비교 — `none` · `2026-11-01` · `<=2026-11-01` · `2026-11-01..2026-12-01` 따위.
+/// `col` 은 날짜(앞 10글자)를 낸다.
 fn date_cond(col: &str, v: &str) -> Option<(String, Vec<Bind>)> {
     if v.eq_ignore_ascii_case("none") {
         return Some((format!("{col} IS NULL"), vec![]));
+    }
+    if let Some(r) = range_cond(col, v, date_bind) {
+        return r;
     }
     let (op, rest) = split_op(v);
     is_date(rest).then(|| (format!("{col} {op} ?"), vec![Bind::Text(rest.to_string())]))
@@ -493,60 +887,154 @@ fn like_escape(s: &str) -> String {
         .replace('_', "\\_")
 }
 
-const SLUG_LIKE: &str = "LOWER(qt.prefix || '-' || printf('%03d', q.number)) LIKE LOWER(?)";
+/// 글 칸 맞추기의 기본.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Match {
+    /// 그 글이 들어 있으면(키 없는 낱말 · `title:` · `body:`).
+    Partial,
+    /// 칸 전체가 그 글이면(대소문자 무시).
+    Exact,
+}
+
+/// REQ-040: 글 칸(`cols` 중 하나라도) 맞추기 — 값의 모양이 기본을 바꾼다. `*` 는 아무 글(그 칸 전체에 대해),
+/// `/…/` 는 정규식, `=…` 는 완전일치, 따옴표는 글자 그대로(`*` 도 글자).
+fn text_cond(cols: &[&str], v: &Val, default: Match) -> (String, Vec<Bind>) {
+    let mut conds = Vec::new();
+    let mut binds = Vec::new();
+    for col in cols {
+        let (c, b) = match v {
+            Val::Regex(p) => (format!("{col} REGEXP ?"), Bind::Text(regex_ci(p))),
+            Val::Bare(s) if s.contains('*') => (
+                format!("LOWER({col}) LIKE LOWER(?) ESCAPE '\\'"),
+                Bind::Text(like_escape(s).replace('*', "%")),
+            ),
+            Val::Exact(s) => (format!("LOWER({col}) = LOWER(?)"), Bind::Text(s.clone())),
+            Val::Bare(s) | Val::Quoted(s) => match default {
+                Match::Exact => (format!("LOWER({col}) = LOWER(?)"), Bind::Text(s.clone())),
+                Match::Partial => (
+                    format!("LOWER({col}) LIKE LOWER(?) ESCAPE '\\'"),
+                    Bind::Text(format!("%{}%", like_escape(s))),
+                ),
+            },
+        };
+        conds.push(c);
+        binds.push(b);
+    }
+    (conds.join(" OR "), binds)
+}
+
+const SLUG_EXPR: &str = "(qt.prefix || '-' || printf('%03d', q.number))";
 const STATUS_NORM: &str = "REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')";
 
 impl Query {
     pub fn is_empty(&self) -> bool {
-        self.terms.is_empty()
+        self.expr.is_none()
     }
 
-    /// 조건들 → `AND (…)` 를 이어 붙인 SQL 과 그 값들(나온 순서 그대로).
+    /// 식 → ` AND (…)` SQL 과 그 값들(나온 순서 그대로). 빈 쿼리면 빈 글.
     /// 퀘스트는 별칭 `q` · `qt` · `qs`([`crate::services::quests::QUEST_SELECT`] 의 것), 캠페인은
     /// `campaigns`, 도서관은 `library_docs` 테이블 이름을 그대로 쓴다.
     pub fn to_sql(&self) -> AppResult<(String, Vec<Bind>)> {
-        let mut sql = String::new();
+        let Some(expr) = &self.expr else {
+            return Ok((String::new(), Vec::new()));
+        };
         let mut binds = Vec::new();
-        for term in &self.terms {
-            let mut alts = Vec::new();
-            for v in &term.values {
-                let cond = match self.target {
-                    Target::Quest => value_cond(term.key, v),
-                    Target::Campaign => campaign_cond(term.key, v),
-                    Target::Library => library_cond(term.key, v),
-                };
-                let (cond, b) = cond.ok_or_else(|| QueryError::at(term.pos, format!("'{v}'")))?;
-                alts.push(cond);
-                binds.extend(b);
+        let sql = self.expr_sql(expr, &mut binds)?;
+        Ok((format!(" AND {sql}"), binds))
+    }
+
+    fn expr_sql(&self, e: &Expr, binds: &mut Vec<Bind>) -> AppResult<String> {
+        Ok(match e {
+            Expr::Term(t) => {
+                let mut alts = Vec::new();
+                for v in &t.values {
+                    let cond = match self.target {
+                        Target::Quest => value_cond(t.key, v),
+                        Target::Campaign => campaign_cond(t.key, v),
+                        Target::Library => library_cond(t.key, v),
+                    };
+                    let (cond, b) =
+                        cond.ok_or_else(|| QueryError::at(t.pos, format!("'{}'", v.text())))?;
+                    alts.push(cond);
+                    binds.extend(b);
+                }
+                if alts.len() == 1 {
+                    alts.remove(0)
+                } else {
+                    format!("({})", alts.join(" OR "))
+                }
             }
-            let joined = if alts.len() == 1 {
-                alts.remove(0)
-            } else {
-                format!("({})", alts.join(" OR "))
-            };
-            if term.negated {
-                sql.push_str(&format!(" AND NOT {joined}"));
-            } else {
-                sql.push_str(&format!(" AND {joined}"));
+            Expr::Not(inner) => format!("NOT {}", self.expr_sql(inner, binds)?),
+            Expr::And(parts) | Expr::Or(parts) => {
+                let op = if matches!(e, Expr::And(_)) {
+                    " AND "
+                } else {
+                    " OR "
+                };
+                let mut out = Vec::new();
+                for p in parts {
+                    out.push(self.expr_sql(p, binds)?);
+                }
+                format!("({})", out.join(op))
+            }
+        })
+    }
+
+    /// REQ-040: 결과에 칠할 말 — 키 없는 낱말 · `title:` · `body:` 의 값(아닌 것 `-` 아래는 빼고). `*` 는 칠할
+    /// 조각으로 나눈다(`로그인*` → `로그인`).
+    pub fn highlights(&self) -> Vec<HitTerm> {
+        fn walk(e: &Expr, out: &mut Vec<HitTerm>) {
+            match e {
+                Expr::Term(t) if matches!(t.key, None | Some(Key::Title | Key::Body)) => {
+                    for v in &t.values {
+                        let h = match v {
+                            Val::Regex(p) => vec![HitTerm::Regex(p.clone())],
+                            Val::Bare(s) => s
+                                .split('*')
+                                .filter(|x| !x.trim().is_empty())
+                                .map(|x| HitTerm::Text(x.to_string()))
+                                .collect(),
+                            Val::Quoted(s) | Val::Exact(s) => vec![HitTerm::Text(s.clone())],
+                        };
+                        for x in h {
+                            if !out.contains(&x) {
+                                out.push(x);
+                            }
+                        }
+                    }
+                }
+                Expr::Term(_) | Expr::Not(_) => {}
+                Expr::And(parts) | Expr::Or(parts) => parts.iter().for_each(|p| walk(p, out)),
             }
         }
-        Ok((sql, binds))
+        let mut out = Vec::new();
+        if let Some(e) = &self.expr {
+            walk(e, &mut out);
+        }
+        out
     }
 }
 
+/// REQ-040: 칠할 말 하나 — 글(대소문자 무시 부분일치) 또는 정규식.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HitTerm {
+    Text(String),
+    Regex(String),
+}
+
 /// 값 하나 → 괄호로 감싼 조건과 값들.
-fn value_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
+fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
+    let s = v.text();
     let t = |s: &str| Bind::Text(s.to_string());
     let (cond, binds) = match key {
-        None => {
-            let pat = format!("%{v}%");
-            (
-                format!(
-                    "LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?) OR {SLUG_LIKE}"
-                ),
-                vec![t(&pat), t(&pat), t(&pat)],
-            )
-        }
+        None => text_cond(
+            &["q.title", "COALESCE(q.description, '')", SLUG_EXPR],
+            v,
+            Match::Partial,
+        ),
+        Some(Key::Title) => text_cond(&["q.title"], v, Match::Partial),
+        Some(Key::Body) => text_cond(&["COALESCE(q.description, '')"], v, Match::Partial),
         // 지금 `--status` 와 같은 비교(영어 이름 · slug, 대소문자 · 공백 · `-` 무시) + 한국어 이름.
         Some(Key::Status) => (
             format!(
@@ -554,21 +1042,24 @@ fn value_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
                  OR REPLACE(REPLACE(LOWER(COALESCE(qs.slug, '')), ' ', '_'), '-', '_') = {STATUS_NORM}
                  OR qs.name_ko = ?"
             ),
-            vec![t(v), t(v), t(v)],
+            vec![t(s), t(s), t(s)],
         ),
-        Some(Key::Type) => ("UPPER(qt.prefix) = UPPER(?)".into(), vec![t(v)]),
-        Some(Key::Tag) => (
-            "EXISTS (SELECT 1 FROM quest_tags tg WHERE tg.quest_id = q.id AND tg.tag = ?)".into(),
-            vec![t(v)],
-        ),
-        Some(Key::Campaign) if v.eq_ignore_ascii_case("none") => (
+        Some(Key::Type) => text_cond(&["qt.prefix"], v, Match::Exact),
+        Some(Key::Tag) => {
+            let (c, b) = text_cond(&["tg.tag"], v, Match::Exact);
+            (
+                format!("EXISTS (SELECT 1 FROM quest_tags tg WHERE tg.quest_id = q.id AND ({c}))"),
+                b,
+            )
+        }
+        Some(Key::Campaign) if s.eq_ignore_ascii_case("none") => (
             "NOT EXISTS (SELECT 1 FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
               WHERE cq.quest_id = q.id AND c.deleted_at IS NULL)"
                 .into(),
             vec![],
         ),
         Some(Key::Campaign) => {
-            let (prefix, num) = split_slug(v)?;
+            let (prefix, num) = split_slug(s)?;
             (
                 "EXISTS (SELECT 1 FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
                   WHERE cq.quest_id = q.id AND c.deleted_at IS NULL AND UPPER(c.campaign_slug) = UPPER(?))"
@@ -576,12 +1067,12 @@ fn value_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
                 vec![Bind::Text(format!("{prefix}-{num:03}"))],
             )
         }
-        Some(Key::Urgency) => urgency_cond(v)?,
-        Some(Key::Due) => due_cond(v)?,
-        Some(Key::Commented) => commented_cond(v)?,
-        Some(Key::Parent) if v.eq_ignore_ascii_case("none") => ("q.parent_quest_id IS NULL".into(), vec![]),
+        Some(Key::Urgency) => urgency_cond(s)?,
+        Some(Key::Due) => due_cond(s)?,
+        Some(Key::Commented) => commented_cond(s)?,
+        Some(Key::Parent) if s.eq_ignore_ascii_case("none") => ("q.parent_quest_id IS NULL".into(), vec![]),
         Some(Key::Parent) => {
-            let (prefix, num) = split_slug(v)?;
+            let (prefix, num) = split_slug(s)?;
             (
                 "q.parent_quest_id = (SELECT p.id FROM quests p JOIN quest_types pt ON p.quest_type_id = pt.id
                   WHERE UPPER(pt.prefix) = UPPER(?) AND p.number = ? AND p.deleted_at IS NULL)"
@@ -596,30 +1087,32 @@ fn value_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
 }
 
 /// DEV-451: 캠페인 목록의 값 하나 → 조건(테이블 `campaigns`).
-fn campaign_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
+fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
     const START: &str = "NULLIF(substr(campaigns.started_at, 1, 10), '')";
     const END: &str = "NULLIF(substr(campaigns.ended_at, 1, 10), '')";
-    let t = |s: &str| Bind::Text(s.to_string());
+    const DESC: &str = "COALESCE(campaigns.description, '')";
+    let s = v.text();
     let (cond, binds) = match key {
-        None => {
-            let pat = format!("%{v}%");
-            (
-                "LOWER(campaigns.title) LIKE LOWER(?) OR LOWER(COALESCE(campaigns.description, '')) LIKE LOWER(?)
-                 OR LOWER(campaigns.campaign_slug) LIKE LOWER(?)"
-                    .into(),
-                vec![t(&pat), t(&pat), t(&pat)],
-            )
-        }
-        Some(Key::Status) => ("LOWER(campaigns.status) = LOWER(?)".into(), vec![t(v)]),
-        Some(Key::Start) => date_cond(START, v)?,
+        None => text_cond(
+            &["campaigns.title", DESC, "campaigns.campaign_slug"],
+            v,
+            Match::Partial,
+        ),
+        Some(Key::Title) => text_cond(&["campaigns.title"], v, Match::Partial),
+        Some(Key::Body) => text_cond(&[DESC], v, Match::Partial),
+        Some(Key::Status) => (
+            "LOWER(campaigns.status) = LOWER(?)".into(),
+            vec![Bind::Text(s.to_string())],
+        ),
+        Some(Key::Start) => date_cond(START, s)?,
         // 퀘스트의 `due:overdue` 와 같은 뜻 — 날이 지났는데 아직 진행 중.
-        Some(Key::End) if v.eq_ignore_ascii_case("overdue") => (
+        Some(Key::End) if s.eq_ignore_ascii_case("overdue") => (
             format!("{END} < ? AND campaigns.status = 'active'"),
             vec![Bind::Text(crate::time::today_local_iso_date())],
         ),
-        Some(Key::End) => date_cond(END, v)?,
+        Some(Key::End) => date_cond(END, s)?,
         Some(Key::Quest) => {
-            let (prefix, num) = split_slug(v)?;
+            let (prefix, num) = split_slug(s)?;
             (
                 "EXISTS (SELECT 1 FROM campaign_quests cq JOIN quests q ON q.id = cq.quest_id
                   JOIN quest_types qt ON qt.id = q.quest_type_id
@@ -635,32 +1128,44 @@ fn campaign_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
 }
 
 /// DEV-451: 도서관 목록의 값 하나 → 조건(테이블 `library_docs`).
-fn library_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
+fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
+    const SLUG: &str = "('BOOK-' || printf('%03d', library_docs.number))";
+    let s = v.text();
     let t = |s: &str| Bind::Text(s.to_string());
     let (cond, binds) = match key {
-        None => {
-            let pat = format!("%{v}%");
+        None => text_cond(
+            &["library_docs.title", "library_docs.body", SLUG],
+            v,
+            Match::Partial,
+        ),
+        Some(Key::Title) => text_cond(&["library_docs.title"], v, Match::Partial),
+        Some(Key::Body) => text_cond(&["library_docs.body"], v, Match::Partial),
+        Some(Key::Tag) => {
+            let (c, b) = text_cond(&["lt.tag"], v, Match::Exact);
             (
-                "LOWER(library_docs.title) LIKE LOWER(?) OR LOWER(library_docs.body) LIKE LOWER(?)
-                 OR LOWER('BOOK-' || printf('%03d', library_docs.number)) LIKE LOWER(?)"
-                    .into(),
-                vec![t(&pat), t(&pat), t(&pat)],
+                format!(
+                    "EXISTS (SELECT 1 FROM library_tags lt WHERE lt.book_id = library_docs.id AND ({c}))"
+                ),
+                b,
             )
         }
-        Some(Key::Tag) => (
-            "EXISTS (SELECT 1 FROM library_tags lt WHERE lt.book_id = library_docs.id AND lt.tag = ?)".into(),
-            vec![t(v)],
-        ),
-        // `--folder` 와 같다 — 그 폴더와 하위 폴더. `none` 은 최상위만.
-        Some(Key::Folder) if v.eq_ignore_ascii_case("none") => ("library_docs.path = ''".into(), vec![]),
+        // `--folder` 와 같다 — 그 폴더와 하위 폴더. `none` 은 최상위만. `*` · 정규식은 폴더 경로 전체에.
+        Some(Key::Folder)
+            if matches!(v, Val::Regex(_)) || (s.contains('*') && matches!(v, Val::Bare(_))) =>
+        {
+            text_cond(&["library_docs.path"], v, Match::Exact)
+        }
+        Some(Key::Folder) if s.eq_ignore_ascii_case("none") => {
+            ("library_docs.path = ''".into(), vec![])
+        }
         Some(Key::Folder) => {
-            let f = v.trim_end_matches('/');
+            let f = s.trim_end_matches('/');
             (
                 "library_docs.path = ? OR library_docs.path LIKE ? ESCAPE '\\'".into(),
                 vec![t(f), Bind::Text(format!("{}/%", like_escape(f)))],
             )
         }
-        Some(Key::Updated) => date_cond("substr(library_docs.updated_at, 1, 10)", v)?,
+        Some(Key::Updated) => date_cond("substr(library_docs.updated_at, 1, 10)", s)?,
         _ => return None,
     };
     Some((format!("({cond})"), binds))
@@ -670,56 +1175,85 @@ fn library_cond(key: Option<Key>, v: &str) -> Option<(String, Vec<Bind>)> {
 mod tests {
     use super::*;
 
-    fn kv(q: &Query) -> Vec<(bool, Option<Key>, Vec<&str>)> {
-        q.terms
-            .iter()
-            .map(|t| {
-                (
-                    t.negated,
-                    t.key,
-                    t.values.iter().map(String::as_str).collect(),
-                )
-            })
-            .collect()
+    /// 식을 짧은 글로 — 시험에서 모양을 한눈에 본다.
+    fn show(q: &Query) -> String {
+        fn val(v: &Val) -> String {
+            match v {
+                Val::Bare(s) => s.clone(),
+                Val::Quoted(s) => format!("\"{s}\""),
+                Val::Exact(s) => format!("={s}"),
+                Val::Regex(s) => format!("/{s}/"),
+            }
+        }
+        fn go(e: &Expr) -> String {
+            match e {
+                Expr::Term(t) => {
+                    let k = t
+                        .key
+                        .map(|k| format!("{k:?}:").to_lowercase())
+                        .unwrap_or_default();
+                    let vs: Vec<String> = t.values.iter().map(val).collect();
+                    if vs.len() == 1 {
+                        format!("{k}{}", vs[0])
+                    } else {
+                        format!("{k}[{}]", vs.join(","))
+                    }
+                }
+                Expr::Not(i) => format!("-{}", go(i)),
+                Expr::And(p) => format!("({})", p.iter().map(go).collect::<Vec<_>>().join(" & ")),
+                Expr::Or(p) => format!("({})", p.iter().map(go).collect::<Vec<_>>().join(" | ")),
+            }
+        }
+        q.expr.as_ref().map(go).unwrap_or_default()
     }
 
     #[test]
-    fn keys_commas_minus_and_words() {
-        let q = parse(r#"status:open,in_progress -tag:wip 로그인 urgency:<=2"#).unwrap();
+    fn keys_lists_minus_and_words() {
+        let q = parse(r#"status:[open, in_progress] -tag:wip 로그인 urgency:<=2"#).unwrap();
         assert_eq!(
-            kv(&q),
-            vec![
-                (false, Some(Key::Status), vec!["open", "in_progress"]),
-                (true, Some(Key::Tag), vec!["wip"]),
-                (false, None, vec!["로그인"]),
-                (false, Some(Key::Urgency), vec!["<=2"]),
-            ]
+            show(&q),
+            "(status:[open,in_progress] & -tag:wip & 로그인 & urgency:<=2)"
         );
-        assert_eq!(q.terms[2].pos, 33);
     }
 
     #[test]
-    fn quotes_keep_spaces_and_commas() {
-        let q = parse(r#"tag:"두 낱말",x "a:b c" -"빼고""#).unwrap();
+    fn or_and_and_parentheses() {
+        // 그리고가 또는보다 먼저 묶인다.
+        assert_eq!(show(&parse("a b | c").unwrap()), "((a & b) | c)");
+        assert_eq!(show(&parse("a OR b AND c").unwrap()), "(a | (b & c))");
+        assert_eq!(show(&parse("a & b").unwrap()), "(a & b)");
         assert_eq!(
-            kv(&q),
-            vec![
-                (false, Some(Key::Tag), vec!["두 낱말", "x"]),
-                (false, None, vec!["a:b c"]),
-                (true, None, vec!["빼고"]),
-            ]
+            show(&parse("(tag:x | due:overdue) -status:done").unwrap()),
+            "((tag:x | due:overdue) & -status:done)"
         );
+        assert_eq!(show(&parse("-(a|b)").unwrap()), "-(a | b)");
+        // 소문자 or · and 는 낱말이다.
+        assert_eq!(
+            show(&parse("cats and dogs").unwrap()),
+            "(cats & and & dogs)"
+        );
+        // 괄호가 열려 있지 않으면 `)` 는 낱말의 일부.
+        assert_eq!(show(&parse("f(x)").unwrap()), "f(x)");
+    }
+
+    #[test]
+    fn quotes_regex_exact_and_wildcards() {
+        let q =
+            parse(r#"tag:["두 낱말", x] "a:b c" -"빼고" /로그인|인증/ title:="정확히" tag:ui-*"#)
+                .unwrap();
+        assert_eq!(
+            show(&q),
+            r#"(tag:["두 낱말",x] & "a:b c" & -"빼고" & /로그인|인증/ & title:=정확히 & tag:ui-*)"#
+        );
+        // 정규식 안의 `\/` 와 띄어쓰기.
+        assert_eq!(show(&parse(r"/a\/b c/").unwrap()), r"/a\/b c/");
     }
 
     #[test]
     fn keys_are_case_insensitive_and_times_are_not_keys() {
-        let q = parse("STATUS:open 10:30").unwrap();
         assert_eq!(
-            kv(&q),
-            vec![
-                (false, Some(Key::Status), vec!["open"]),
-                (false, None, vec!["10:30"])
-            ]
+            show(&parse("STATUS:open 10:30").unwrap()),
+            "(status:open & 10:30)"
         );
     }
 
@@ -728,7 +1262,6 @@ mod tests {
         let at = |s: &str| parse(s).unwrap_err().pos;
         assert_eq!(at("open stauts:open"), 5); // 모르는 키
         assert_eq!(at("status:"), 7); // 빈 값
-        assert_eq!(at("status:open,"), 12); // 쉼표 뒤가 빔
         assert_eq!(at(r#"x "abc"#), 2); // 안 닫힌 따옴표
         assert_eq!(at("a -"), 2); // '-' 뒤가 빔
         assert_eq!(at("urgency:5"), 0);
@@ -738,31 +1271,97 @@ mod tests {
         assert_eq!(at("commented:yesterday"), 0);
         assert_eq!(at("parent:abc"), 0);
         assert_eq!(at("-campaign:C3"), 1);
+        assert_eq!(at("(a | b"), 0); // 안 닫힌 괄호
+        assert_eq!(at("| a"), 0); // 앞이 빈 연산자
+        assert_eq!(at("a |"), 3); // 뒤가 빈 연산자
+        assert_eq!(at("tag:[a, b"), 9); // 안 닫힌 목록
+        assert_eq!(at("tag:[]"), 5);
+        assert_eq!(at("/abc"), 0); // 안 닫힌 정규식
+        assert_eq!(at("/(/"), 0); // 틀린 정규식
+        assert_eq!(at("urgency:/1/"), 0); // 정규식을 못 쓰는 키
         assert!(
             parse("stauts:open")
                 .unwrap_err()
                 .message
                 .contains("status, type, tag")
         );
+        // 쉼표만 쓴 목록은 [ ] 를 알려 준다.
+        let e = parse("status:open,done").unwrap_err();
+        assert_eq!(e.pos, 7);
+        assert!(e.message.contains("status:[open, done]"), "{}", e.message);
+    }
+
+    #[test]
+    fn ranges() {
+        assert!(parse("urgency:2..").is_ok());
+        assert!(parse("urgency:=2 campaign:\"C-001\"").is_ok());
+        let (sql, b) = urgency_cond("1..=3").unwrap();
+        assert_eq!(sql, "q.urgency >= ? AND q.urgency <= ?");
+        assert_eq!(b, vec![Bind::Int(1), Bind::Int(3)]);
+        let (sql, _) = urgency_cond("2..4").unwrap();
+        assert_eq!(sql, "q.urgency >= ? AND q.urgency < ?");
+        let (sql, b) = date_cond("d", "2026-11-01..").unwrap();
+        assert_eq!((sql.as_str(), b.len()), ("d >= ?", 1));
+        let (sql, _) = date_cond("d", "..=2026-11-30").unwrap();
+        assert_eq!(sql, "d <= ?");
+        assert!(date_cond("d", "..").is_none());
+        assert!(date_cond("d", "2026-11-01..soon").is_none());
+        assert!(parse("due:2026-11-01..2026-12-01 updated:x").is_err());
+        assert!(parse_for(Target::Library, "updated:2026-10-01..").is_ok());
+        // 예전 `1-3` 은 이제 범위가 아니다.
+        assert!(parse("urgency:1-3").is_err());
     }
 
     #[test]
     fn values_turn_into_conditions() {
-        assert_eq!(
-            urgency_cond("3-1").unwrap().1,
-            vec![Bind::Int(1), Bind::Int(3)]
-        );
         assert_eq!(urgency_cond(">=3").unwrap().0, "q.urgency >= ?");
         assert_eq!(urgency_cond("2").unwrap().0, "q.urgency = ?");
         assert!(due_cond("<=2026-11-01").unwrap().0.ends_with("<= ?"));
         assert_eq!(split_slug("c-3"), Some(("c".into(), 3)));
-        let (sql, binds) = parse("-status:done,cancelled campaign:c-3")
+        let (sql, binds) = parse("-status:[done, cancelled] campaign:c-3")
             .unwrap()
             .to_sql()
             .unwrap();
-        assert!(sql.starts_with(" AND NOT (("));
+        assert!(sql.starts_with(" AND (NOT (("), "{sql}");
         assert_eq!(binds.len(), 7); // status 3개씩 두 값 + 캠페인 하나
         assert_eq!(binds[6], Bind::Text("c-003".into()));
+        let (sql, _) = parse("a | b").unwrap().to_sql().unwrap();
+        assert!(sql.contains(") OR ("), "{sql}");
+        // 글 값의 모양.
+        let (sql, b) = text_cond(&["c"], &Val::Bare("ui-*".into()), Match::Exact);
+        assert_eq!(
+            (sql.as_str(), b),
+            (
+                "LOWER(c) LIKE LOWER(?) ESCAPE '\\'",
+                vec![Bind::Text("ui-%".into())]
+            )
+        );
+        let (sql, b) = text_cond(&["c"], &Val::Regex("^a".into()), Match::Exact);
+        assert_eq!(
+            (sql.as_str(), b),
+            ("c REGEXP ?", vec![Bind::Text("(?i)^a".into())])
+        );
+        let (_, b) = text_cond(&["c"], &Val::Bare("50%_x".into()), Match::Partial);
+        assert_eq!(b, vec![Bind::Text("%50\\%\\_x%".into())]);
+        let (_, b) = text_cond(&["c"], &Val::Quoted("a*b".into()), Match::Partial);
+        assert_eq!(b, vec![Bind::Text("%a*b%".into())]);
+    }
+
+    #[test]
+    fn highlights_skip_keys_and_negations() {
+        let q = parse(
+            r#"로그인 status:open -안쪽 title:화면* (body:/인증|권한/ | "두 낱말") -(x | y)"#,
+        )
+        .unwrap();
+        assert_eq!(
+            q.highlights(),
+            vec![
+                HitTerm::Text("로그인".into()),
+                HitTerm::Text("화면".into()),
+                HitTerm::Regex("인증|권한".into()),
+                HitTerm::Text("두 낱말".into()),
+            ]
+        );
     }
 
     #[test]
@@ -781,7 +1380,7 @@ mod tests {
         assert!(
             parse_for(
                 Target::Campaign,
-                "status:active,DONE end:overdue quest:dev-3"
+                "status:[active, DONE] end:overdue quest:dev-3 title:출시"
             )
             .is_ok()
         );
@@ -790,7 +1389,7 @@ mod tests {
         assert!(
             parse_for(
                 Target::Library,
-                "tag:a folder:none updated:>=2026-01-01 낱말"
+                "tag:a folder:none updated:>=2026-01-01 낱말 body:/x/"
             )
             .is_ok()
         );

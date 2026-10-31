@@ -48,6 +48,8 @@
 	import { LIBRARY_QUERY_KEYS } from '$lib/utils/query-keys';
 	// 검색 결과의 제목 · 번호에도 걸린 글자를 칠한다.
 	import HitText from '$lib/components/HitText.svelte';
+	import { queryApi } from '$lib/api/query';
+	import { termsOfSearch, type HitTerm } from '$lib/utils/highlight';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
@@ -143,6 +145,8 @@
 	let queryHelpOpen = $state(false);
 	let queryMatch = $state<Set<string> | null>(null);
 	let queryError = $state<string | null>(null);
+	/** REQ-040: 쿼리 결과에 칠할 말 — 코어가 뽑아 준다. */
+	let queryTerms = $state<HitTerm[]>([]);
 	let querySeq = 0;
 	let queryTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -153,14 +157,15 @@
 		if (!q) {
 			queryMatch = null;
 			queryError = null;
+			queryTerms = [];
 			return;
 		}
 		queryTimer = setTimeout(() => {
-			libraryApi
-				.matchQuery(q)
-				.then((rows) => {
+			Promise.all([libraryApi.matchQuery(q), queryApi.highlights(q, 'library')])
+				.then(([rows, terms]) => {
 					if (seq !== querySeq) return;
 					queryMatch = new Set(rows.map((b) => b.book_id));
+					queryTerms = terms;
 					queryError = null;
 				})
 				.catch((e) => {
@@ -342,6 +347,8 @@
 	const searchResults = $derived(
 		searchLibrary(tree, sortedBooks, searchQuery, searchScope, attachMatchIds ?? undefined)
 	);
+	// 제목 · 번호에 칠할 말 — 검색 글, 쿼리면 코어가 뽑아 준 낱말(DEV-470 · REQ-040).
+	const hitTerms = $derived(searchMode === 'search' ? termsOfSearch(searchQuery) : queryTerms);
 
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
@@ -1477,11 +1484,11 @@
 							ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 							onclick={() => select(b.book_id)}
 						>
-							<span class="tile-sub"><HitText text={b.book_id} query={searchQuery} /></span>
+							<span class="tile-sub"><HitText text={b.book_id} terms={hitTerms} /></span>
 							<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
 							<span class="tile-icon" aria-hidden="true">📄</span>
 							<span class="tile-label" use:titlePopup={b.title}
-								><HitText text={b.title} query={searchQuery} /></span
+								><HitText text={b.title} terms={hitTerms} /></span
 							>
 						</button>
 					{/each}
@@ -1558,10 +1565,12 @@
 						onclick={(e) => tileClick(e, b.book_id)}
 						ondblclick={() => tileOpen(b.book_id)}
 					>
-						<span class="tile-sub">{b.book_id}</span>
+						<span class="tile-sub"><HitText text={b.book_id} terms={queryTerms} /></span>
 						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
 						<span class="tile-icon" aria-hidden="true">📄</span>
-						<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
+						<span class="tile-label" use:titlePopup={b.title}
+							><HitText text={b.title} terms={queryTerms} /></span
+						>
 					</button>
 				{/each}
 				{#if band && bandMoved}
@@ -1717,8 +1726,8 @@
 										class:active={b.book_id === selectedId}
 										onclick={() => select(b.book_id)}
 									>
-										<span class="book-id"><HitText text={b.book_id} query={searchQuery} /></span>
-										<span class="book-title"><HitText text={b.title} query={searchQuery} /></span>
+										<span class="book-id"><HitText text={b.book_id} terms={hitTerms} /></span>
+										<span class="book-title"><HitText text={b.title} terms={hitTerms} /></span>
 										{#if b.path}<span class="book-path">{b.path}</span>{/if}
 									</button>
 								{/each}
@@ -1753,8 +1762,8 @@
 									ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 									onclick={(e) => treeDocClick(e, b.book_id)}
 								>
-									<span class="book-id">{b.book_id}</span>
-									<span class="book-title">{b.title}</span>
+									<span class="book-id"><HitText text={b.book_id} terms={queryTerms} /></span>
+									<span class="book-title"><HitText text={b.title} terms={queryTerms} /></span>
 								</button>
 							{/each}
 						</div>

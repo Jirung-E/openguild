@@ -127,6 +127,11 @@ fn excerpt_around(text: &str, needle_lower: &str, width: usize) -> String {
     // byte_pos 는 lower 안의 char 경계다 — lower 로 세야 안전하다.
     let lower_char_pos = lower[..byte_pos].chars().count();
     let char_pos = origin.get(lower_char_pos).copied().unwrap_or(0);
+    excerpt_at(&chars, char_pos, width)
+}
+
+/// `char_pos`(글자 단위) 주변 발췌.
+fn excerpt_at(chars: &[char], char_pos: usize, width: usize) -> String {
     let start = char_pos.saturating_sub(width / 2);
     let end = (char_pos + width).min(chars.len());
     let mut out = String::new();
@@ -141,6 +146,52 @@ fn excerpt_around(text: &str, needle_lower: &str, width: usize) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// REQ-040: 검색어 한 토막 — 글(대소문자 무시 부분일치) 또는 `/정규식/`(대소문자 무시). 쿼리 문법의 정규식과
+/// 같은 것이다([`crate::query::regex_ci`]). 띄어 쓰면 토막이 갈리므로 정규식 안의 공백은 `\s` 로 쓴다.
+enum Token {
+    Text(String),
+    Re(regex::Regex),
+}
+
+impl Token {
+    fn parse(raw: &str) -> AppResult<Token> {
+        if raw.len() >= 3
+            && let Some(p) = raw.strip_prefix('/').and_then(|r| r.strip_suffix('/'))
+        {
+            return regex::RegexBuilder::new(&crate::query::regex_ci(p))
+                .size_limit(1 << 20)
+                .build()
+                .map(Token::Re)
+                .map_err(|e| {
+                    crate::error::AppError::BadRequest(crate::tf!(
+                        "'/{p}/' — 정규식이 틀렸습니다: {e}",
+                        "'/{p}/' — invalid regex: {e}"
+                    ))
+                });
+        }
+        Ok(Token::Text(raw.to_lowercase()))
+    }
+
+    fn is_in(&self, text: &str) -> bool {
+        match self {
+            Token::Text(t) => text.to_lowercase().contains(t.as_str()),
+            Token::Re(r) => r.is_match(text),
+        }
+    }
+
+    /// 처음 맞은 곳 주변 발췌.
+    fn excerpt(&self, text: &str, width: usize) -> String {
+        match self {
+            Token::Text(t) => excerpt_around(text, t, width),
+            Token::Re(r) => {
+                let byte = r.find(text).map(|m| m.start()).unwrap_or(0);
+                let chars: Vec<char> = text.chars().collect();
+                excerpt_at(&chars, text[..byte].chars().count(), width)
+            }
+        }
+    }
+}
+
 /// 강화된 검색. `query` 는 공백으로 나눠 **모든 토큰이** 그 문서의 검색 대상
 /// 어딘가에 있어야 매치다(기존 `--search` 의 AND 시맨틱과 동일).
 pub async fn search(
@@ -149,11 +200,10 @@ pub async fn search(
     fields: &[SearchField],
     limit: Option<usize>,
 ) -> AppResult<Vec<SearchHit>> {
-    let tokens: Vec<String> = query
+    let tokens: Vec<Token> = query
         .split_whitespace()
-        .map(|t| t.to_lowercase())
-        .filter(|t| !t.is_empty())
-        .collect();
+        .map(Token::parse)
+        .collect::<AppResult<_>>()?;
     if tokens.is_empty() {
         return Ok(Vec::new());
     }
@@ -278,12 +328,12 @@ pub async fn search(
 
         for tok in &tokens {
             let mut covered = false;
-            if d.title.to_lowercase().contains(tok) || id.to_lowercase().contains(tok) {
+            if tok.is_in(&d.title) || tok.is_in(id) {
                 covered = true;
                 title_matched = true;
             }
             for f in fields {
-                if d.texts(*f).iter().any(|t| t.to_lowercase().contains(tok)) {
+                if d.texts(*f).iter().any(|t| tok.is_in(t)) {
                     covered = true;
                     if !matched_fields.contains(f) {
                         matched_fields.push(*f);
@@ -307,8 +357,8 @@ pub async fn search(
             .find_map(|f| {
                 d.texts(*f)
                     .into_iter()
-                    .find(|t| t.to_lowercase().contains(first))
-                    .map(|t| excerpt_around(t, first, 80))
+                    .find(|t| first.is_in(t))
+                    .map(|t| first.excerpt(t, 80))
             })
             .unwrap_or_default();
 
@@ -442,6 +492,42 @@ mod tests {
 
         let missing = search(&store, "사과 포도", &SearchField::defaults(), None).await.unwrap();
         assert!(missing.is_empty(), "한 토큰이라도 없으면 매치 아님");
+    }
+
+    /// REQ-040: `/정규식/` 토막 — 대소문자 무시, 발췌는 맞은 곳 주변, 틀린 정규식은 오류.
+    #[tokio::test]
+    async fn a_slashed_token_is_a_regex() {
+        let (_d, store) = setup("regex").await;
+        let id = make_quest(&store, "Login 화면", "앞부분 ... 인증 토큰은 abc-123 형식").await;
+        let hits = search(&store, r"/abc-\d+/", &SearchField::defaults(), None)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, id);
+        assert_eq!(hits[0].matched_in, vec!["body"]);
+        assert!(hits[0].excerpt.contains("abc-123"), "{}", hits[0].excerpt);
+        let hits = search(&store, "/^login/ 화면", &SearchField::defaults(), None)
+            .await
+            .unwrap();
+        assert_eq!(hits[0].matched_in, vec!["title"]);
+        assert!(
+            search(&store, "/^화면/", &SearchField::defaults(), None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            search(&store, "/(/", &SearchField::defaults(), None)
+                .await
+                .is_err()
+        );
+        // `/` 하나 · `//` 는 글이다.
+        assert!(
+            search(&store, "//", &SearchField::defaults(), None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// BUG-249: 소문자화로 **바이트 길이가 바뀌는** 문자가 앞에 있으면, 예전

@@ -699,6 +699,7 @@ pub fn run() {
             // quests (read)
             commands::list_quests,
             commands::search_docs,
+            commands::query_highlights,
             commands::list_deleted_quests,
             commands::get_quest,
             commands::get_quest_by_slug,

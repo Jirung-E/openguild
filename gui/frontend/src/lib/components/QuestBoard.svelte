@@ -55,6 +55,8 @@
 	} from '$lib/utils/quest-board-viewport';
 	import Icon from './Icon.svelte';
 	import HitText from './HitText.svelte';
+	import { queryApi } from '$lib/api/query';
+	import { termsOfSearch, type HitTerm } from '$lib/utils/highlight';
 	import { iconSvgMarkup } from '$lib/utils/icon-paths';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
@@ -2602,6 +2604,8 @@
 	let boardQueryIds: Set<number> | null = null;
 	let boardQueryKey = '';
 	let boardQueryError = $state<string | null>(null);
+	/** REQ-040: 쿼리 결과에 칠할 말 — 노드 제목에. */
+	let boardQueryTerms = $state<HitTerm[]>([]);
 	let boardQuerySeq = 0;
 	let boardQueryTimer: ReturnType<typeof setTimeout> | null = null;
 	function refreshBoardQuery(f: QuestFilterState, force = false) {
@@ -2613,14 +2617,15 @@
 		const seq = ++boardQuerySeq;
 		if (!key) {
 			boardQueryError = null;
+			boardQueryTerms = [];
 			return;
 		}
 		boardQueryTimer = setTimeout(() => {
-			questsApi
-				.matchQuery(key)
-				.then((rows) => {
+			Promise.all([questsApi.matchQuery(key), queryApi.highlights(key, 'quest')])
+				.then(([rows, terms]) => {
 					if (seq !== boardQuerySeq) return;
 					boardQueryIds = new Set(rows.map((r) => r.id));
+					boardQueryTerms = terms;
 					boardQueryError = null;
 					applyFilterDim();
 				})
@@ -3706,7 +3711,10 @@
 								</div>
 								<!-- 검색에서 걸린 글자를 칠한다(목록 · 팔레트와 같다). -->
 								<div class="node-title" class:with-due={!!due.date}>
-									<HitText text={q.title} query={$questFilters.search} />
+									<HitText
+										text={q.title}
+										terms={[...termsOfSearch($questFilters.search), ...boardQueryTerms]}
+									/>
 								</div>
 								{#if due.date}
 									<div class="node-due {dueState(due.date)}">

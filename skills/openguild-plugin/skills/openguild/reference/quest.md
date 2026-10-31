@@ -72,16 +72,26 @@ needs a human to look at it (UI/UX, anything not automatable), move to
 One string instead of many flags — same syntax as the server's `?q=`:
 
 ```bash
-openguild quest list -q 'status:open,in_progress -tag:wip urgency:<=2 login'
+openguild quest list -q 'status:[open, in_progress] -tag:wip urgency:1..=2 login'
+openguild quest list -q '(tag:urgent | due:overdue) -status:done'
+openguild quest list -q 'title:/^login/ due:2026-11-01..2026-12-01'
 openguild quest list -q 'campaign:C-001 due:overdue'
 openguild quest list -q 'parent:none type:BUG'
 ```
 
-- Commas inside one key = OR; separate terms = AND; a leading `-` = NOT; a bare word = the
-  same text search as `--search` (title, body, id). Quote values with spaces: `tag:"two words"`.
+- Separate terms = AND (`&` / `AND` also work); `|` / `OR` = OR (uppercase only — `or` is a word);
+  a leading `-` = NOT; group with `( )`. AND binds tighter: `a b | c` = `(a b) | c`.
+- One of several values: `status:[open, in_progress]` (a bare comma is an error that suggests the brackets).
+- Ranges: `a..b` (end excluded), `a..=b` (end included), `a..`, `..=b` — for `urgency` and every date key.
+  Comparisons (`<=2`, `>=2026-11-01`) still work.
+- Keyed text values match exactly; `*` = any text (`tag:ui-*`); `/regex/` = a case-insensitive regex
+  (bare words, `tag`, `type`, `folder`, `title`, `body`). `title:` / `body:` match a part by default;
+  `=` makes them exact (`title:="Login screen"`).
+- A bare word = the same text search as `--search` (title, body, id). Quote values with spaces: `tag:"two words"`.
 - Keys: `status` (slug, English or Korean name), `type`, `tag`, `campaign` (id or `none`),
-  `urgency` (`2`, `1-3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, …), `parent` (id or `none`),
-  `commented` (date of the **last comment**: `>=YYYY-MM-DD`, `<YYYY-MM-DD`, a date, or `none`).
+  `urgency` (`2`, `1..=3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, a range, …), `parent` (id or `none`),
+  `commented` (date of the **last comment**: `>=YYYY-MM-DD`, `<YYYY-MM-DD`, a date, a range, or `none`),
+  `title`, `body`.
 - `due` is the effective due date: the earlier of the required due date and the end date of an
   active campaign the quest is in. `overdue` skips quests whose status counts as done.
 - An unknown key (typo) is an error that names the character position — quote text that

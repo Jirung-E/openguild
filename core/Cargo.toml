@@ -7,7 +7,7 @@ description = "openguild core — 비즈니스 로직, sqlx, 모델. server / cl
 
 [dependencies]
 # DB
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate", "regexp"] }
 tokio = { version = "1", features = ["full"] }
 
 # OS 별 user config / data 경로 (recents.json 등)

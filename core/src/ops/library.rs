@@ -1645,7 +1645,23 @@ mod tests {
         assert_eq!(ids(None, vec![], "tag:결정 -tag:초안").await, vec![d.clone()]);
         assert_eq!(ids(None, vec![], "folder:설계").await, vec![d.clone(), l.clone()]);
         assert_eq!(ids(None, vec![], "folder:none").await, vec![t.clone()]);
-        assert_eq!(ids(None, vec![], "folder:보관,설계/잠금").await, vec![l.clone(), o.clone()]);
+        assert_eq!(
+            ids(None, vec![], "folder:[보관, 설계/잠금]").await,
+            vec![l.clone(), o.clone()]
+        );
+        // REQ-040: 폴더 경로 전체에 `*` · 정규식, 범위, 또는, title.
+        assert_eq!(ids(None, vec![], "folder:설계/*").await, vec![l.clone()]);
+        assert_eq!(ids(None, vec![], "folder:/^보/").await, vec![o.clone()]);
+        assert_eq!(
+            ids(None, vec![], "updated:2020-01-01..2021-01-01").await,
+            vec![o.clone()]
+        );
+        assert_eq!(
+            ids(None, vec![], "tag:초안 | folder:보관").await,
+            vec![l.clone(), o.clone()]
+        );
+        assert_eq!(ids(None, vec![], "title:잠금").await, vec![l.clone()]);
+        assert_eq!(ids(None, vec![], "body:잠금").await, vec![t.clone()]);
         assert_eq!(ids(None, vec![], "updated:<2021-01-01").await, vec![o.clone()]);
         assert_eq!(ids(None, vec![], "잠금").await, vec![t.clone(), l.clone()]);
         assert_eq!(ids(None, vec![], &t.to_lowercase()).await, vec![t.clone()]);

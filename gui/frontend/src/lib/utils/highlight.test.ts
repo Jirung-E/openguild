@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { highlightSegments, searchTokens } from './highlight';
+import { highlightSegments, highlightTerms, searchTokens, termsOfSearch } from './highlight';
 
 /** 조각 배열을 읽기 쉬운 문자열로 — 걸린 부분을 «» 로 감싼다. */
 function render(text: string, query: string): string {
@@ -94,5 +94,34 @@ describe('highlightSegments', () => {
 		] as const) {
 			expect(highlightSegments(text, q).map((s) => s.text).join('')).toBe(text);
 		}
+	});
+});
+
+// REQ-040: 정규식과 칠할 말 목록(쿼리는 코어가 뽑아 준다).
+describe('REQ-040 정규식 · 칠할 말', () => {
+	const show = (text: string, terms: Parameters<typeof highlightTerms>[1]) =>
+		highlightTerms(text, terms)
+			.map((s) => (s.hit ? `«${s.text}»` : s.text))
+			.join('');
+
+	it('검색의 /…/ 토막은 정규식이다(대소문자 무시)', () => {
+		expect(termsOfSearch('로그인 /a+b/ //')).toEqual([
+			{ text: '로그인' },
+			{ regex: 'a+b' },
+			{ text: '//' }
+		]);
+		expect(render('xAAB 로그인', '/a+b/ 로그인')).toBe('x«AAB» «로그인»');
+	});
+
+	it('글과 정규식을 섞어 칠하고, 겹치면 합친다', () => {
+		expect(show('인증 토큰 abc-123', [{ regex: 'abc-\\d+' }, { text: '토큰' }])).toBe(
+			'인증 «토큰» «abc-123»'
+		);
+		expect(show('aaa', [{ regex: 'a' }, { text: 'aa' }])).toBe('«aaa»');
+	});
+
+	it('JS 가 못 읽는 정규식 · 빈 일치는 칠하지 않는다', () => {
+		expect(show('abc', [{ regex: '(' }])).toBe('abc');
+		expect(show('abc', [{ regex: 'x*' }])).toBe('abc');
 	});
 });

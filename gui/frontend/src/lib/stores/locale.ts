@@ -1424,20 +1424,29 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Search (title / description / id)'
 	},
 	'filter.queryPlaceholder': {
-		ko: '예: status:open,in_progress -tag:wip due:overdue',
-		en: 'e.g. status:open,in_progress -tag:wip due:overdue'
+		ko: '예: status:[open, in_progress] (tag:ui | due:overdue) -tag:wip',
+		en: 'e.g. status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'
 	},
 	'filter.clearQuery': { ko: '쿼리 지우기', en: 'Clear query' },
 	'filter.queryHelpToggle': { ko: '쿼리 쓰는 법', en: 'How to write a query' },
 	'filter.queryHelpRules': {
-		ko: '같은 키의 쉼표 = 또는 · 띄어 쓴 조건 = 그리고 · 앞의 - = 아닌 것 · 키 없는 낱말 = 검색 · 띄어 쓴 값은 "따옴표"로. 위의 버튼 · 검색과는 그리고로 겹칩니다.',
-		en: 'Commas within a key = OR · separate terms = AND · leading - = NOT · bare words = search · quote values with spaces. Combined (AND) with the buttons and search above.'
+		ko: '띄어 쓰면 그리고(& · AND) · | 나 OR = 또는 · 앞의 - = 아닌 것 · ( ) 로 묶기 · 여러 값 중 하나 = [a, b] · 범위 a..b(끝 제외) · a..=b(끝 포함) · * = 아무 글 · /정규식/(대소문자 무시) · 키 없는 낱말 = 검색 · 띄어 쓴 값은 "따옴표"로. 위의 버튼 · 검색과는 그리고로 겹칩니다.',
+		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search · quote values with spaces. Combined (AND) with the buttons and search above.'
 	},
 	'filter.queryHelpStatus': { ko: '상태 — slug · 영어 · 한국어 이름', en: 'status — slug, English or Korean name' },
 	'filter.queryHelpType': { ko: '타입 접두어', en: 'type prefix' },
 	'filter.queryHelpTag': { ko: '태그', en: 'tag' },
 	'filter.queryHelpCampaign': { ko: '캠페인 번호 · none(어디에도 없음)', en: 'campaign id · none (in no campaign)' },
 	'filter.queryHelpUrgency': { ko: '긴급도 1~4 · 범위 · 비교', en: 'urgency 1–4 · range · comparison' },
+	// REQ-040: 칸을 정해 찾기 — 기본은 부분일치, `=` 를 붙이면 완전일치. 세 목록이 같이 쓴다.
+	'query.helpTitle': {
+		ko: '제목만 — 부분일치, =값 은 완전일치, * · /정규식/',
+		en: 'title only — contains; =value matches exactly; * and /regex/'
+	},
+	'query.helpBody': {
+		ko: '본문만 — 부분일치, =값 은 완전일치, * · /정규식/',
+		en: 'body only — contains; =value matches exactly; * and /regex/'
+	},
 	'filter.queryHelpDue': {
 		ko: '유효 기한(필수 기한 · 진행 중 캠페인의 끝 날 중 이른 것) — overdue · none · 날짜 비교',
 		en: 'effective due date (earlier of the required due date and an active campaign’s end) — overdue · none · date comparison'
@@ -1454,8 +1463,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'e.g. end:overdue -status:done launch'
 	},
 	'campaignList.queryHelpRules': {
-		ko: '같은 키의 쉼표 = 또는 · 띄어 쓴 조건 = 그리고 · 앞의 - = 아닌 것 · 키 없는 낱말 = 제목 · 설명 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 위의 상태 선택과는 그리고로 겹칩니다.',
-		en: 'Commas within a key = OR · separate terms = AND · leading - = NOT · bare words = search title, description and id · quote values with spaces. Combined (AND) with the status selector above.'
+		ko: '띄어 쓰면 그리고(& · AND) · | 나 OR = 또는 · 앞의 - = 아닌 것 · ( ) 로 묶기 · 여러 값 중 하나 = [a, b] · 범위 a..b(끝 제외) · a..=b(끝 포함) · * = 아무 글 · /정규식/(대소문자 무시) · 키 없는 낱말 = 제목 · 설명 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 위의 상태 선택과는 그리고로 겹칩니다.',
+		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search title, description and id · quote values with spaces. Combined (AND) with the status selector above.'
 	},
 	'campaignList.queryHelpStatus': { ko: '상태 — active · done', en: 'status — active or done' },
 	'campaignList.queryHelpStart': {
@@ -1475,8 +1484,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'e.g. tag:design -folder:archive updated:>=2026-10-01'
 	},
 	'library.queryHelpRules': {
-		ko: '같은 키의 쉼표 = 또는 · 띄어 쓴 조건 = 그리고 · 앞의 - = 아닌 것 · 키 없는 낱말 = 제목 · 본문 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 검색 · 태그 줄과는 그리고로 겹칩니다.',
-		en: 'Commas within a key = OR · separate terms = AND · leading - = NOT · bare words = search title, body and id · quote values with spaces. Combined (AND) with the search and the tag row.'
+		ko: '띄어 쓰면 그리고(& · AND) · | 나 OR = 또는 · 앞의 - = 아닌 것 · ( ) 로 묶기 · 여러 값 중 하나 = [a, b] · 범위 a..b(끝 제외) · a..=b(끝 포함) · * = 아무 글 · /정규식/(대소문자 무시) · 키 없는 낱말 = 제목 · 본문 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 검색 · 태그 줄과는 그리고로 겹칩니다.',
+		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search title, body and id · quote values with spaces. Combined (AND) with the search and the tag row.'
 	},
 	'library.queryHelpTag': { ko: '태그', en: 'tag' },
 	'library.queryHelpFolder': {
@@ -1984,8 +1993,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Query keys differ by kind — pick the Quest, Campaign or Library tab to use a query'
 	},
 	'search.hint': {
-		ko: '찾을 말을 넣으세요 — 제목에서 맞은 문서가 먼저 나옵니다',
-		en: 'Type what to find — documents with a title match come first'
+		ko: '찾을 말을 넣으세요 — /정규식/ 도 됩니다. 제목에서 맞은 문서가 먼저 나옵니다',
+		en: 'Type what to find — /regex/ works too. Documents with a title match come first'
 	},
 	'search.loading': { ko: '찾는 중…', en: 'Searching…' },
 	'search.empty': { ko: '맞는 문서가 없습니다', en: 'No matching documents' },

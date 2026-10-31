@@ -372,6 +372,17 @@
 	const hitTerm = $derived(parsed.term.startsWith('#') ? '' : parsed.term);
 	const tagHitTerm = $derived(parsed.term.startsWith('#') ? parsed.term.slice(1) : parsed.term);
 
+	/** `/…/` 한 토막이면 정규식(대소문자 무시), 아니면 `null`. 못 읽는 정규식은 아무것도 안 맞는 것으로. */
+	function asRegex(term: string): RegExp | null {
+		if (!(term.length >= 3 && term.startsWith('/') && term.endsWith('/') && !/\s/.test(term)))
+			return null;
+		try {
+			return new RegExp(term.slice(1, -1), 'iu');
+		} catch {
+			return /$^/;
+		}
+	}
+
 	// 활성 네임스페이스 범위 — 있으면 그 종류만 검색(범위 칩 표시용).
 	const scopeKind = $derived(parsed.kind);
 
@@ -393,10 +404,10 @@
 			return pool.filter((i) => i.tags.some((tg) => tg.toLowerCase().includes(tag)));
 		}
 		const q = term.toLowerCase();
-		const local = (i: Item) =>
-			i.title.toLowerCase().includes(q) ||
-			i.label.toLowerCase().includes(q) ||
-			i.tags.some((tg) => tg.toLowerCase().includes(q));
+		// REQ-040: `/…/` 는 정규식(강화 검색 · 쿼리와 같다). JS 가 못 읽으면 아무것도 안 맞는다 — 넓게 켜면 서버가 판단한다.
+		const re = asRegex(term);
+		const has = (s: string) => (re ? re.test(s) : s.toLowerCase().includes(q));
+		const local = (i: Item) => has(i.title) || has(i.label) || i.tags.some(has);
 		// REQ-012: 강화 검색이 켜져 있으면 서버가 찾아낸 문서를 **합친다**(대체가
 		// 아니라). 로컬 매치는 즉시 보이고, 서버 응답이 오면 댓글·첨부에서 맞은
 		// 것이 뒤이어 붙는다 — 켠 순간 목록이 비었다가 채워지지 않는다.
@@ -417,10 +428,9 @@
 		for (const it of filtered) {
 			const h = wideHits.hits.get(hitKey(it.kind, it.label));
 			if (!h) continue;
-			const localMatch =
-				it.title.toLowerCase().includes(q) ||
-				it.label.toLowerCase().includes(q) ||
-				it.tags.some((tg) => tg.toLowerCase().includes(q));
+			const re = asRegex(parsed.term);
+			const has = (s: string) => (re ? re.test(s) : s.toLowerCase().includes(q));
+			const localMatch = has(it.title) || has(it.label) || it.tags.some(has);
 			if (!localMatch) m.set(hitKey(it.kind, it.label), h);
 		}
 		return m;

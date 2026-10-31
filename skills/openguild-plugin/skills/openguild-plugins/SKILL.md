@@ -433,7 +433,7 @@ the same place), and a group may carry its own `run_after` / `run_before`.
 [[handlers]]
     id    = "overdue"
     every = "1d"
-    query = "status:open,in_progress due:overdue"
+    query = "status:[open, in_progress] due:overdue"
     call  = "overdue"
 ```
 

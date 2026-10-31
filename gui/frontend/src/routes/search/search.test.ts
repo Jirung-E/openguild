@@ -16,6 +16,10 @@ const questQuery = vi.fn();
 vi.mock('$lib/api/quests', () => ({ questsApi: { matchQuery: (q: string) => questQuery(q) } }));
 vi.mock('$lib/api/campaigns', () => ({ campaignsApi: { matchQuery: () => Promise.resolve([]) } }));
 vi.mock('$lib/api/library', () => ({ libraryApi: { matchQuery: () => Promise.resolve([]) } }));
+const highlights = vi.fn();
+vi.mock('$lib/api/query', () => ({
+	queryApi: { highlights: (q: string, of: string) => highlights(q, of) }
+}));
 
 const HITS = [
 	{ kind: 'quest', id: 'DEV-002', title: '둘째', matched_in: ['body'], excerpt: '맨 아래 코끼리' },
@@ -34,6 +38,7 @@ describe('REQ-040 검색 페이지', () => {
 		document.body.innerHTML = '';
 		enhanced.mockReset().mockResolvedValue(HITS);
 		questQuery.mockReset().mockResolvedValue([{ quest_id: 'DEV-001', title: '열린 것' }]);
+		highlights.mockReset().mockResolvedValue([{ text: '열린' }]);
 	});
 
 	it('강화 검색 결과를 제목에서 맞은 것부터, 탭마다 개수와 함께', async () => {
@@ -64,6 +69,11 @@ describe('REQ-040 검색 페이지', () => {
 		const list = await screen.findByTestId('doc-search-results');
 		expect(questQuery).toHaveBeenCalledWith('status:open');
 		expect(list.textContent).toContain('DEV-001');
+		// REQ-040: 쿼리 결과도 코어가 뽑아 준 말로 칠한다.
+		expect(highlights).toHaveBeenCalledWith('status:open', 'quest');
+		await vi.waitFor(() =>
+			expect([...list.querySelectorAll('mark')].map((m) => m.textContent)).toEqual(['열린'])
+		);
 		fireEvent.click(screen.getByTestId('doc-search-tab-all'));
 		expect(await screen.findByTestId('doc-query-blocked')).toBeTruthy();
 		// 쿼리를 못 쓰는 탭에서는 쓰는 법(?)도 꺼진다.

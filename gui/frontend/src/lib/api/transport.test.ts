@@ -704,6 +704,12 @@ describe('routeToInvoke — 강화 검색 (BUG-247)', () => {
 		expect(r!.args.q).toBe('수달');
 	});
 
+	it('REQ-040: /api/query/highlights 가 query_highlights 로', () => {
+		const r = route('/api/query/highlights?q=title%3A%2Fa%2F&of=library');
+		expect(r!.cmd).toBe('query_highlights');
+		expect(r!.args).toEqual({ q: 'title:/a/', of: 'library' });
+	});
+
 	it('in / limit 을 넘긴다', () => {
 		const r = route('/api/search?q=x&in=comment,attachment&limit=20');
 		expect(r!.args.in).toBe('comment,attachment');
