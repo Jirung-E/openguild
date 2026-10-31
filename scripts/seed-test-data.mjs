@@ -43,6 +43,9 @@
 //  10. REQ-039/040: 쿼리 문법 — `qtest` 태그를 단 퀘스트 · 캠페인 · 도서관 문서를 만들고 쿼리
 //      (또는 · 괄호 · [목록] · 범위 · * · /정규식/ · title · body · 오류)를 돌려 기대와 대조한다.
 //      어긋나면 ✗ 목록을 찍고 0 이 아닌 코드로 끝난다.
+//  11. DEV-471: 플러그인 · 캠페인 이력 대조 — 같은 댓글 명령을 잡는 ping-a/ping-b(화면의 겹침 칸),
+//      임시 길드에서 겹침 경고 · 대신 처리 · run_after 순서 · /session(시험 모드) · 주기 실행 예제의 tick,
+//      캠페인 상태 변경 이력. 실제로 돌리는 검사는 임시 OPENGUILD_HOME 에서 — 이 기계의 동의는 안 건드린다.
 //
 // 바이너리 선택 (첫 위치 인자 = 바이너리 폴더):
 //   - 인자 없음                → PATH 의 'openguild' 사용 (기본).
@@ -57,6 +60,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
 const args = process.argv.slice(2);
@@ -138,11 +142,11 @@ function sleepMs(ms) {
 }
 
 // ── 1) init ─────────────────────────────────────────────────
-console.log('\n=== [1/13] init ===');
+console.log('\n=== [1/14] init ===');
 invokeOg('init', '--name', name);
 
 // ── 2) Quest 생성 (다양한 타입 / 상태) ────────────────────────
-console.log('\n=== [2/13] Quests ===');
+console.log('\n=== [2/14] Quests ===');
 
 // 최근 추가된 퀘스트 목록 (Home 하단) 검증용. 10개 이상 만들어 slice(0, 10) 잘림 확인.
 const questPlan = [
@@ -181,7 +185,7 @@ invokeOg(
 sleepMs(50);
 
 // 일부는 상태 변경해서 다양성 확보.
-console.log('\n=== [3/13] Quest 상태 전환 ===');
+console.log('\n=== [3/14] Quest 상태 전환 ===');
 // 가장 최신 슬러그를 모르므로 list 로 가져옴.
 const quests = invokeOgJson('quest', 'list', '--json');
 // 처음 2개는 in_progress, 다음 1개는 on_hold.
@@ -192,7 +196,7 @@ if (quests.length >= 3) {
 }
 
 // ── 4) DEV-076: 희망 / 필수 기한 (Home 임박 / Overdue 검증) ────
-console.log('\n=== [4/13] Quest 기한 설정 (DEV-076) ===');
+console.log('\n=== [4/14] Quest 기한 설정 (DEV-076) ===');
 // Home 의 "마감 임박" 뱃지 / Overdue 표시 / 정렬 검증.
 // - 과거 일자 (Overdue) 1개
 // - 1~3일 내 (Critical 임박) 2개
@@ -216,7 +220,7 @@ if (quests.length >= 6) {
 }
 
 // ── 5) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
-console.log('\n=== [5/13] Campaigns ===');
+console.log('\n=== [5/14] Campaigns ===');
 
 // 진행 중 캠페인 (carousel): 5개 — 자동 회전 + dots / 화살표 검증.
 const activeCampaigns = [
@@ -267,7 +271,7 @@ for (const c of upcomingCampaigns) newCampaignWithChecklist(c.title, c.start, c.
 newCampaignWithChecklist(futureCampaign.title, futureCampaign.start, futureCampaign.end, 0.0, 3);
 
 // ── 6) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
-console.log('\n=== [6/13] Campaign ↔ Quest 연결 ===');
+console.log('\n=== [6/14] Campaign ↔ Quest 연결 ===');
 const campList = invokeOgJson('campaign', 'list', '--status', 'active', '--json');
 const questList = invokeOgJson('quest', 'list', '--json');
 
@@ -303,7 +307,7 @@ invokeOgStdin(
 );
 
 // ── 7) DEV-099 / DEV-102: 댓글 + 메모 (CLI + DB cache sync) ──
-console.log('\n=== [7/13] 댓글 / 메모 (DEV-094/099/102) ===');
+console.log('\n=== [7/14] 댓글 / 메모 (DEV-094/099/102) ===');
 
 // DEV-094 entry 단위 댓글 + 답글, DEV-099 CLI, DEV-102 DB 캐시 + snapshot 백업.
 // Quest Detail 의 댓글 섹션 / 답글 / 메모 영역 + drift::auto_resync 도 검증.
@@ -396,7 +400,7 @@ if (secondQuest && secondQuest !== questForComments) {
 }
 
 // ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
-console.log('\n=== [8/13] 길드 규칙 (DEV-016 multi-file) ===');
+console.log('\n=== [8/14] 길드 규칙 (DEV-016 multi-file) ===');
 
 // 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
 // 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
@@ -429,7 +433,7 @@ invokeOgStdin('# 팀 컨벤션 초안 (수정)', 'rule', 'set', 'history-demo');
 invokeOg('rule', 'rename', 'history-demo', 'team-conventions');
 
 // ── 9) DEV-215~218, DEV-239: 도서관 (Library 페이지 + 폴더 + cross-link 검증) ──
-console.log('\n=== [9/13] 도서관 (DEV-215~218, DEV-239) ===');
+console.log('\n=== [9/14] 도서관 (DEV-215~218, DEV-239) ===');
 
 // BOOK-001: cross-link 대상 — quest 본문/댓글에서 [[BOOK-001]] 로 참조 검증.
 // BOOK-002: 목록 정렬/선택 + 빈 본문 문서의 '+ 작성' 흐름 검증.
@@ -463,7 +467,7 @@ console.log('[og] library update (BOOK-001 변경 이력 데모, DEV-288/290)');
 invokeOg('library', 'update', 'BOOK-001', '--title', '설계 결정 기록 (개정)');
 
 // ── 10) DEV-167: 작업 기록 (HOME 히트맵 카드 + /worklog 상세 검증) ──
-console.log('\n=== [10/13] 작업 기록 (DEV-167) ===');
+console.log('\n=== [10/14] 작업 기록 (DEV-167) ===');
 
 // 활동(생성/상태변경/댓글)은 이 스크립트 실행 자체가 오늘 날짜로 잔뜩 만들어
 // 놓음 — 히트맵의 오늘 칸 + 타임라인이 저절로 채워짐. 노트만 추가로:
@@ -479,7 +483,7 @@ invokeOg('worklog', 'note', 'set', past, '--file', tmpNote);
 fs.rmSync(tmpNote, { force: true });
 
 // ── 11) DEV-306: 백업 스냅샷 1개 ──────────────────────────────
-console.log('\n=== [11/13] 백업 스냅샷 (DEV-306) ===');
+console.log('\n=== [11/14] 백업 스냅샷 (DEV-306) ===');
 
 // 설정 > 백업 화면이 빈 목록이면 복원/삭제 UI 를 볼 수 없다. 스냅샷 1개를 미리
 // 만들어 둔다. DEV-306 이후 스냅샷은 폴더가 아니라 파일 1개(`snapshots/{ts}.db`)
@@ -491,7 +495,7 @@ if (backupList.length < 1) {
 }
 
 // ── 12) 최근 기능 — 태그 색 / 폴더 계층 / 긴 첨부 이름 / 예제 플러그인 ──
-console.log('\n=== [12/13] 태그 색 · 도서관 폴더 계층 · 첨부 이름 · 예제 플러그인 ===');
+console.log('\n=== [12/14] 태그 색 · 도서관 폴더 계층 · 첨부 이름 · 예제 플러그인 ===');
 
 // BUG-290 / DEV-392: 태그 목록 페이지의 [색 지정] / [편집] — 영문과 **한글** 이름 둘 다.
 // 한글 이름에는 예전에 색을 달 수 없었다.
@@ -555,7 +559,7 @@ if (copiedPlugins > 0) {
 // ── 13) REQ-039/040: 쿼리 문법 — 데이터를 만들고 쿼리를 돌려 결과를 대조한다 ──────────
 // 다른 단계의 데이터와 섞이지 않게 이 단계의 문서에는 모두 `qtest` 태그를 단다(쿼리마다 `tag:qtest` 로 좁힌다).
 // 기대와 다르면 끝에 ✗ 목록을 찍고 0 이 아닌 코드로 끝난다 — 쿼리 해석기의 회귀 시험을 겸한다.
-console.log('\n=== [13/13] 쿼리 문법 (REQ-039/040) ===');
+console.log('\n=== [13/14] 쿼리 문법 (REQ-039/040) ===');
 function newQuest(type, title, urgency, description, extra = []) {
 	const args = ['quest', 'new', '--type', type, '--title', title, '--urgency', String(urgency)];
 	if (description) args.push('--description', description);
@@ -587,6 +591,8 @@ const qb = invokeOgJson(
 fs.rmSync(qbFile, { force: true });
 const qbId = qb.book_id ?? `BOOK-${String(qb.number).padStart(3, '0')}`;
 invokeOg('library', 'tag', 'add', qbId, 'qtest');
+// 검색 페이지의 규칙 탭에도 결과가 나오게(REQ-040) — 아래 강화 검색 대조가 퀘스트 · 도서관 · 규칙을 함께 찾는다.
+invokeOgStdin('# 쿼리 시험 규칙\n\n이 규칙은 v3.1 부터 쓴다.\n', 'rule', 'new', 'qtest-rule');
 
 const queryFailures = [];
 /** `kind list -q` 의 결과 번호를 기대와 대조한다. `expect === null` 이면 오류여야 한다(`errorHas` 가 그 안에). */
@@ -644,13 +650,108 @@ checkQuery('library', `${T} body:/v\\d/ title:="쿼리 문서"`, [qbId]);
 {
 	const res = spawnSync(bin, ['search', '/v\\d+\\.\\d+/', '--json'], { encoding: 'utf8' });
 	const ids = res.status === 0 ? JSON.parse(res.stdout).map((h) => h.id).sort() : [];
-	const want = [q1, qbId].sort();
+	const want = [q1, qbId, 'qtest-rule'].sort();
 	const ok = JSON.stringify(ids) === JSON.stringify(want);
 	console.log(`${ok ? '✓' : '✗'} search '/v\\d+\\.\\d+/' → ${ids.join(', ') || res.stderr.trim()}`);
 	if (!ok) queryFailures.push(`search '/v\\d+\\.\\d+/' — 기대 ${want.join(', ')}, 받음 ${ids.join(', ')}`);
 }
 if (queryFailures.length > 0) {
 	console.error(`\n쿼리 대조 실패 ${queryFailures.length}건:\n  ${queryFailures.join('\n  ')}`);
+	process.exitCode = 1;
+}
+
+// ── 14) DEV-471: 9월 이후 기능 대조 — 플러그인 · 캠페인 이력 ──────────────────────────────
+// 플러그인을 **실제로 돌리는** 검사는 따로 만든 임시 길드와 임시 OPENGUILD_HOME 에서 한다 — 동의는 기계마다 남는데,
+// 시드가 이 기계의 동의 파일에 허용을 적으면 안 된다(단계 12 와 같은 이유). 시드 길드에는 화면용 데이터만 둔다.
+console.log('\n=== [14/14] 플러그인 · 캠페인 이력 (DEV-458/464/465/469/463) ===');
+const checkFailures = [];
+function check(ok, label, detail = '') {
+	console.log(`${ok ? '✓' : '✗'} ${label}${!ok && detail ? ` — ${detail}` : ''}`);
+	if (!ok) checkFailures.push(`${label}${detail ? ` — ${detail}` : ''}`);
+}
+/** 댓글 명령 플러그인 하나 — `/ping` 을 받으면 `#{instead: reply}`. `extra` 는 정의 맨 위에 덧붙일 줄. */
+function writePingPlugin(pluginsDir, name, reply, extra = '') {
+	const dir = path.join(pluginsDir, name);
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, 'plugin.toml'),
+		`#:schema ../plugin.schema.json\n# 시드: 같은 댓글 명령을 둘이 잡는 예(DEV-469) — 관리 > 플러그인의 '플러그인끼리 겹침'.\n` +
+			`name        = "${name}"\ndescription = "댓글 /ping 을 대신 처리합니다(시드 데이터)."\n` +
+			`scope       = ["gui", "cli"]\nscripts     = ["main.rhai"]\n${extra}\n\n` +
+			`[[handlers]]\n    pre     = ["comment.added"]\n    command = "/ping"\n    call    = "cmd"\n`
+	);
+	fs.writeFileSync(path.join(dir, 'main.rhai'), `fn cmd(e) { #{ instead: "${reply}" } }\n`);
+}
+// 시드 길드 — 화면용(동의 전이라 안 돈다).
+writePingPlugin(path.join('.guild', 'plugins'), 'ping-a', 'pong-a');
+writePingPlugin(path.join('.guild', 'plugins'), 'ping-b', 'pong-b');
+
+// 캠페인 이력(DEV-463) — 상태를 끝냈다 다시 연다.
+invokeOg('campaign', 'end', qc);
+invokeOg('campaign', 'start', qc);
+{
+	const h = invokeOgJson('campaign', 'history', qc, '--json');
+	const ops = h.map((x) => x.op);
+	check(
+		ops.filter((o) => o === 'change_status').length >= 2,
+		`campaign history ${qc} — 상태 변경 2건`,
+		JSON.stringify(ops)
+	);
+}
+
+// 임시 길드에서 플러그인을 실제로 돌린다.
+const pgRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'og-seed-plugins-'));
+const pgGuild = path.join(pgRoot, 'g');
+fs.mkdirSync(pgGuild);
+const pgEnv = { ...process.env, OPENGUILD_HOME: path.join(pgRoot, 'home'), CLAUDE_SESSION_DRY_RUN: '1' };
+function pg(args, input) {
+	return spawnSync(bin, args, { cwd: pgGuild, env: pgEnv, encoding: 'utf8', input });
+}
+try {
+	pg(['init', '--name', 'plugin-check']);
+	const pgPlugins = path.join(pgGuild, '.guild', 'plugins');
+	fs.mkdirSync(pgPlugins, { recursive: true });
+	const exampleDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'examples', 'plugins');
+	fs.cpSync(path.join(exampleDir, 'claude-session'), path.join(pgPlugins, 'claude-session'), { recursive: true });
+	writePingPlugin(pgPlugins, 'ping-a', 'pong-a');
+	writePingPlugin(pgPlugins, 'ping-b', 'pong-b');
+
+	// 겹침 경고(DEV-469) — 둘 다에.
+	const rep = pg(['plugin', 'check', '--json']);
+	const reports = rep.status === 0 || rep.stdout ? JSON.parse(rep.stdout || '{"plugins":[]}').plugins : [];
+	const warned = (name) =>
+		(reports.find((r) => r.name === name)?.warnings ?? []).some((w) => w.includes('/ping'));
+	check(warned('ping-a') && warned('ping-b'), "plugin check — '/ping' 겹침 경고가 ping-a · ping-b 에", rep.stderr);
+
+	pg(['plugin', 'allow', '--all', '--yes']);
+	const qid = JSON.parse(pg(['quest', 'new', '--type', 'DEV', '--title', '플러그인 대조', '--json']).stdout).quest_id;
+	const comment = (body) => pg(['quest', 'comment', 'add', qid, '--author', 'seed'], body);
+	const count = () => JSON.parse(pg(['quest', 'comment', 'list', qid, '--json']).stdout).entries.length;
+
+	// 이름순으로 앞인 ping-a 가 대신 처리하고(DEV-465), 댓글은 남지 않는다.
+	let r = comment('/ping');
+	check(r.status === 0 && r.stdout.includes('pong-a'), "댓글 '/ping' → ping-a 가 대신 처리(이름순)", r.stdout + r.stderr);
+	check(count() === 0, "대신 처리한 댓글은 남지 않는다", `댓글 ${count()}개`);
+	// run_after 로 순서를 바꾸면 ping-b 가 먼저(DEV-469).
+	writePingPlugin(pgPlugins, 'ping-a', 'pong-a', 'run_after   = ["ping-b"]');
+	pg(['plugin', 'allow', '--all', '--yes']);
+	r = comment('/ping');
+	check(r.stdout.includes('pong-b'), "run_after = [\"ping-b\"] → ping-b 가 먼저", r.stdout + r.stderr);
+	// /session 은 터미널을 여는 대신 할 명령만(시험 모드) — 그래도 대신 처리로 끝난다(DEV-464).
+	r = comment('/session');
+	check(r.status === 0 && r.stdout.includes(qid), "댓글 '/session' → claude-session 이 대신 처리", r.stdout + r.stderr);
+	// 보통 글은 그대로 달린다.
+	comment('보통 글');
+	check(count() === 1, '보통 글은 댓글로 남는다', `댓글 ${count()}개`);
+
+	// 주기 실행 예제의 시험(DEV-458) — tick 으로 줄을 돌린다.
+	const t = pg(['plugin', 'test', path.join(exampleDir, 'overdue-digest')]);
+	check(t.status === 0 && !t.stdout.includes('✗'), 'plugin test overdue-digest (every · tick)', t.stdout + t.stderr);
+} finally {
+	fs.rmSync(pgRoot, { recursive: true, force: true });
+}
+if (checkFailures.length > 0) {
+	console.error(`\n대조 실패 ${checkFailures.length}건:\n  ${checkFailures.join('\n  ')}`);
 	process.exitCode = 1;
 }
 
@@ -689,6 +790,9 @@ console.log('Tag 색  : backend / 리팩터링(한글) — 태그 목록의 색 
 console.log('폴더    : 아키텍처/결정(문서 1) + 보관 — 도서관 폴더 옮기기·드래그 (DEV-397).');
 console.log('첨부    : 확장자 없는 긴 이름의 .pdf — 종류 배지·가운데 줄임 (BUG-291).');
 console.log(`Plugins : 예제 ${copiedPlugins}개 — 관리 > 플러그인 (동의 전이라 안 돎, DEV-393/398).`);
+console.log(
+	`플러그인: ping-a/ping-b(같은 /ping — 관리 > 플러그인의 겹침 칸) · 대조 ${checkFailures.length ? `✗ ${checkFailures.length}건` : '✓ 전부 통과'} (DEV-458/463/464/465/469).`
+);
 console.log(
 	`쿼리    : qtest 태그 퀘스트 4 · 캠페인 1 · 도서관 1 — 쿼리 대조 ${queryFailures.length ? `✗ ${queryFailures.length}건` : '✓ 전부 통과'} (REQ-039/040). 화면에서는 [쿼리] 에 'tag:qtest (urgency:1 | status:done)' · 'title:/^로그인/' 같은 것.`
 );

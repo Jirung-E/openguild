@@ -16,8 +16,9 @@ openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 | `deleted-audit` | 둘 (하나는 **막는다**) | `run` | 있음 | — | **pre** |
 | `backup-archive` | 하나 | `run` | 있음 (경로만 넘김) | — | post |
 | `claude-session` | 하나 (**댓글 명령**) | `run` | 있음 | — | **pre** |
+| `overdue-digest` | 하나 (**시간마다** — `every` + `query`) | `notify`(길드에 시킴) | 있음 | — | **every** |
 
-`telegram-quest-status` 와 `deleted-audit` 에는 **시험 파일**(`main.test.rhai`)이 함께 있다.
+`telegram-quest-status` · `deleted-audit` · `claude-session` · `overdue-digest` 에는 **시험 파일**(`main.test.rhai`)이 함께 있다.
 `openguild plugin test examples/plugins/<이름>` 으로 돌려 본다 — 아무것도 밖으로 안 나간다.
 
 ---
@@ -310,3 +311,22 @@ claude -p | openguild --guild $env:OPENGUILD_GUILD_DIR quest comment add `
 
 `CLAUDE_SESSION_DRY_RUN=1` 이면 창을 열지 않고 띄울 명령만 적는다.
 
+---
+
+## overdue-digest
+
+**하루에 한 번, 기한이 지난 열린 퀘스트를 모아 알림 하나로** 알려 준다 — 시간마다 도는 줄(`every`)의 예(DEV-458).
+
+```toml
+[[handlers]]
+    id    = "기한 지남"
+    every = "1d"
+    query = "status:[open, in_progress] due:overdue"
+    call  = "digest"
+```
+
+- `query` 는 목록 화면 · `quest list -q` 와 같은 쿼리다. 맞는 목록이 `e.items` 로(`e.count` 는 개수) 오고, 맞는 것이
+  없으면 함수를 부르지 않는다.
+- 앱 · 서버에서만 돈다. 처음 허용하면 곧 한 번, 그 뒤로 하루마다. 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돈다.
+- 설정 `알림에 적을 개수`(기본 5)를 넘으면 "외 N건" 으로 줄인다.
+- 시험은 `tick("기한 지남", [목록])` 으로 — 길드 없이 그 줄을 주어진 목록으로 돌린다.

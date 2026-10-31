@@ -191,6 +191,16 @@ fn claim_due(file: &Path, p: &Plugin, now: u64) -> Result<Vec<usize>, String> {
     if lock.try_lock().is_err() {
         return Ok(Vec::new());
     }
+    // DEV-471: 다 고른 뒤 **풀고** 나간다 — 닫기만으로 풀기를 맡기면, 그사이 다른 실이 자식 프로세스를 띄울 때
+    // (fork 와 exec 사이) 자식이 같은 잠금을 잠깐 함께 쥐어 다음 확인이 "다른 쪽이 고르는 중" 으로 보고 건너뛴다.
+    // flock 의 풀기는 함께 쥔 것까지 푼다. (전체 시험에서 이 시험이 가끔 실패했다.)
+    let out = claim_locked(file, p, now);
+    let _ = lock.unlock();
+    out
+}
+
+/// [`claim_due`] 의 잠금 안쪽.
+fn claim_locked(file: &Path, p: &Plugin, now: u64) -> Result<Vec<usize>, String> {
     let mut state: BTreeMap<String, u64> = std::fs::read_to_string(file)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())

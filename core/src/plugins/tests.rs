@@ -4037,3 +4037,54 @@ fn command_and_plugin_order_are_checked_at_load() {
     // 없는 플러그인 이름은 괜찮다 — 이 길드에 없을 수 있다.
     assert!(parse(line("run_before = [\"nobody\"]", "comment.added")).is_ok());
 }
+
+/// DEV-471: 예제 플러그인의 **시험 파일도** 통과해야 한다 — `plugin test` 를 사람이 돌릴 때만 보던 것을 여기서 본다.
+/// 예제를 고치고 시험을 안 고치면(또는 그 반대) 사용자가 복사한 첫날 빨간 줄을 본다.
+#[test]
+fn shipped_example_tests_pass() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
+    let mut ran = 0;
+    let mut entries: Vec<_> = std::fs::read_dir(&src)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    for dir in entries {
+        if !dir.join("main.test.rhai").is_file() {
+            continue;
+        }
+        let def = read_def(&dir.join(MANIFEST)).unwrap();
+        let (compiled, script_src, imports) = compile_script_at(&dir, &def).unwrap();
+        if let Some(s) = &compiled {
+            s.set_guild(&dir);
+        }
+        let p = Plugin {
+            def,
+            imports,
+            dir: dir.clone(),
+            guild_root: dir.clone(),
+            compiled,
+            script_src,
+            folder: Default::default(),
+            source: None,
+        };
+        let results = testing::run_tests(&p).unwrap();
+        assert!(
+            !results.is_empty(),
+            "{}: 시험이 하나도 안 돌았다",
+            dir.display()
+        );
+        for r in &results {
+            assert!(
+                r.failure.is_none(),
+                "{} {} — {:?}",
+                dir.display(),
+                r.name,
+                r.failure
+            );
+        }
+        ran += 1;
+    }
+    assert!(ran >= 4, "시험 파일이 있는 예제가 {ran}개뿐이다");
+}
