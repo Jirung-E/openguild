@@ -180,6 +180,8 @@
 			queryError={mode === 'query' && !queryBlocked ? error : null}
 			placeholder={t('search.placeholder', $locale)}
 			testids={{ search: 'doc-search', query: 'doc-query' }}
+			queryDisabled={!canQuery(tab)}
+			queryDisabledHint={t('search.queryNeedsKind', $locale)}
 			grow
 		>
 			{#snippet options()}

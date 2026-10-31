@@ -64,5 +64,13 @@ describe('REQ-040 검색 페이지', () => {
 		expect(list.textContent).toContain('DEV-001');
 		fireEvent.click(screen.getByTestId('doc-search-tab-all'));
 		expect(await screen.findByTestId('doc-query-blocked')).toBeTruthy();
+		// 쿼리를 못 쓰는 탭에서는 쓰는 법(?)도 꺼진다.
+		expect((screen.getByTestId('doc-query-help-toggle') as HTMLButtonElement).disabled).toBe(true);
+		fireEvent.click(screen.getByTestId('doc-search-tab-campaign'));
+		await vi.waitFor(() =>
+			expect((screen.getByTestId('doc-query-help-toggle') as HTMLButtonElement).disabled).toBe(
+				false
+			)
+		);
 	});
 });

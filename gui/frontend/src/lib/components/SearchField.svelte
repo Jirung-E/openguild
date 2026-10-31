@@ -31,6 +31,9 @@
 		testids = { search: 'quest-search', query: 'quest-query' },
 		/** 한 줄을 다 쓴다(도서관 · 캠페인). 아니면 최소 폭만(퀘스트 목록 필터 줄). */
 		grow = false,
+		/** REQ-040: 여기서는 쿼리를 못 쓴다(검색 페이지의 '전체' · 규칙 탭) — [쿼리] 와 `?` 를 끈다. */
+		queryDisabled = false,
+		queryDisabledHint = '',
 		options
 	}: {
 		search?: string;
@@ -42,6 +45,8 @@
 		queryPlaceholderKey?: string;
 		testids?: { search: string; query: string };
 		grow?: boolean;
+		queryDisabled?: boolean;
+		queryDisabledHint?: string;
 		options?: Snippet;
 	} = $props();
 
@@ -60,6 +65,11 @@
 	}
 
 	const tid = $derived(mode === 'search' ? testids.search : testids.query);
+
+	// 쿼리를 못 쓰는 자리로 오면 펼쳐 둔 쓰는 법도 닫는다 — 끈 단추 아래 안내만 남으면 닫을 길이 없다.
+	$effect(() => {
+		if (queryDisabled && helpOpen) helpOpen = false;
+	});
 </script>
 
 <div class="search-field" class:grow>
@@ -77,7 +87,10 @@
 			role="radio"
 			aria-checked={mode === 'query'}
 			class:on={mode === 'query'}
-			title={t('filter.modeQueryHint', $locale)}
+			title={queryDisabled && queryDisabledHint
+				? queryDisabledHint
+				: t('filter.modeQueryHint', $locale)}
+			disabled={queryDisabled && mode !== 'query'}
 			onclick={() => setMode('query')}
 			data-testid="{testids.query}-mode">{t('filter.modeQuery', $locale)}</button
 		>
@@ -119,7 +132,11 @@
 			class="query-help-btn"
 			class:active={helpOpen}
 			aria-expanded={helpOpen}
-			title={t('filter.queryHelpToggle', $locale)}
+			title={queryDisabled && queryDisabledHint
+				? queryDisabledHint
+				: t('filter.queryHelpToggle', $locale)}
+			disabled={queryDisabled}
+			data-testid="{testids.query}-help-toggle"
 			onclick={() => (helpOpen = !helpOpen)}>?</button
 		>
 	{:else}
@@ -212,5 +229,11 @@
 		background: color-mix(in srgb, var(--accent) 20%, transparent);
 		border-color: var(--accent);
 		color: var(--accent);
+	}
+	/* REQ-040: 여기서는 쿼리를 못 쓴다 — 누를 수 없음이 보이게. */
+	.query-help-btn:disabled,
+	.seg button:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 </style>
