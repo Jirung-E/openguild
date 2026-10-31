@@ -26,6 +26,7 @@
 	import SearchField from '$lib/components/SearchField.svelte';
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
 	import DocLink from '$lib/components/DocLink.svelte';
+	import HitText from '$lib/components/HitText.svelte';
 	import {
 		CAMPAIGN_QUERY_KEYS,
 		LIBRARY_QUERY_KEYS,
@@ -62,6 +63,8 @@
 
 	const term = $derived((mode === 'query' ? query : search).trim());
 	const queryBlocked = $derived(mode === 'query' && !canQuery(tab));
+	/** 제목 · 번호에 칠할 말 — 쿼리는 `키:값` 이라 칠하지 않는다. */
+	const hitTerm = $derived(mode === 'search' ? term : '');
 
 	const QUERY_KEYS_OF: Record<string, { keys: readonly QueryKeyRow[]; rules: string }> = {
 		quest: { keys: QUEST_QUERY_KEYS, rules: 'filter.queryHelpRules' },
@@ -245,9 +248,11 @@
 					>
 						<span class="kind {r.kind}">{t(`kind.${r.kind}`, $locale)}</span>
 						{#if r.kind !== 'rule'}
-							<span class="id">{r.id}</span>
+							<span class="id"><HitText text={r.id} query={hitTerm} /></span>
 						{/if}
-						<span class="title">{r.kind === 'rule' ? r.id : r.title}</span>
+						<span class="title"
+							><HitText text={r.kind === 'rule' ? r.id : r.title} query={hitTerm} /></span
+						>
 						{#if r.matched_in.length}
 							<span class="why">
 								{#each r.matched_in as f (f)}

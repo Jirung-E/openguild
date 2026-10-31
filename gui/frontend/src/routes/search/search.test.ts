@@ -44,6 +44,8 @@ describe('REQ-040 검색 페이지', () => {
 		expect(enhanced).toHaveBeenCalledWith('코끼리', ['body', 'comment', 'attachment']);
 		expect(screen.getByTestId('doc-search-tab-quest').textContent).toContain('1');
 		expect(screen.getByTestId('doc-search-tab-all').textContent).toContain('3');
+		// 제목에서 맞아도 걸린 글자를 칠한다.
+		expect([...list.querySelectorAll('mark')].some((m) => m.closest('.title'))).toBe(true);
 		// 본문에서만 맞은 문서는 찾기 바를 띄운 채 연다.
 		const a = list.querySelector('a[href^="/quests/DEV-002"]') as HTMLAnchorElement;
 		expect(a.getAttribute('href')).toContain('find=');

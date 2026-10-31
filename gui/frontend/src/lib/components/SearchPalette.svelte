@@ -17,6 +17,7 @@
 	import Icon from './Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import DocRowActions from './DocRowActions.svelte';
+	import HitText from './HitText.svelte';
 	import { goto, afterNavigate } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -367,6 +368,10 @@
 		return { kind: null, term: raw };
 	});
 
+	// 제목 · 번호 · 태그에 칠할 말. `#태그` 검색이면 태그만 칠한다.
+	const hitTerm = $derived(parsed.term.startsWith('#') ? '' : parsed.term);
+	const tagHitTerm = $derived(parsed.term.startsWith('#') ? parsed.term.slice(1) : parsed.term);
+
 	// 활성 네임스페이스 범위 — 있으면 그 종류만 검색(범위 칩 표시용).
 	const scopeKind = $derived(parsed.kind);
 
@@ -609,12 +614,19 @@
 							<span class="pills {it.kind}" style:--kind-c={it.color}>
 								<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 								{#if it.title}
-									<span class="pill mono xs pslug">{it.label}</span>
+									<span class="pill mono xs pslug"><HitText text={it.label} query={hitTerm} /></span
+									>
 								{/if}
 							</span>
-							<span class="ptitle">{it.title || it.label}</span>
+							<!-- 제목 · 번호 · 태그에서 맞았어도 어느 글자인지 칠한다(발췌와 같은 노랑). -->
+							<span class="ptitle"><HitText text={it.title || it.label} query={hitTerm} /></span>
 							{#if it.tags.length}
-								<span class="ptags">{it.tags.map((tg) => '#' + tg).join(' ')}</span>
+								<span class="ptags"
+									><HitText
+										text={it.tags.map((tg) => '#' + tg).join(' ')}
+										query={tagHitTerm}
+									/></span
+								>
 							{/if}
 							<!-- REQ-012: 제목/slug 에 없는데 나왔다면 왜 나왔는지 — 댓글에서
 							     맞았는데 제목만 보여주면 알 수가 없다. -->

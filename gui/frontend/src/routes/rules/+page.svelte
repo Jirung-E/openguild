@@ -50,6 +50,7 @@
 	import { filterRules } from '$lib/utils/rule-filter';
 	// REQ-014: 발췌에서 걸린 부분 표시.
 	import { highlightSegments } from '$lib/utils/highlight';
+	import HitText from '$lib/components/HitText.svelte';
 
 	// REQ-015: 사이드바 폭 — 구분선 드래그로 조절, rem 이라 배율을 따라간다.
 	const sidebarW = paneWidth('rules');
@@ -410,7 +411,8 @@
 									class:active={e.slug === selectedSlug}
 									onclick={() => select(e.slug)}
 								>
-									<span class="rule-slug">{e.slug}</span>
+									<!-- 이름에서 맞아도 어느 글자인지 칠한다(발췌와 같은 노랑). -->
+									<span class="rule-slug"><HitText text={e.slug} query={searchQuery} /></span>
 									<!-- slug 에 없는데 나왔다면 왜 나왔는지 보여준다 — 긴 본문에서
 									     검색어를 눈으로 못 찾는 상황을 막는다. -->
 									{#if m && m.matchedIn.length > 0 && !m.matchedIn.includes('slug')}

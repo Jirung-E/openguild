@@ -54,6 +54,7 @@
 		type BoardLod
 	} from '$lib/utils/quest-board-viewport';
 	import Icon from './Icon.svelte';
+	import HitText from './HitText.svelte';
 	import { iconSvgMarkup } from '$lib/utils/icon-paths';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
@@ -3703,7 +3704,10 @@
 										{/if}
 									</span>
 								</div>
-								<div class="node-title" class:with-due={!!due.date}>{q.title}</div>
+								<!-- 검색에서 걸린 글자를 칠한다(목록 · 팔레트와 같다). -->
+								<div class="node-title" class:with-due={!!due.date}>
+									<HitText text={q.title} query={$questFilters.search} />
+								</div>
 								{#if due.date}
 									<div class="node-due {dueState(due.date)}">
 										<Icon name={due.source === 'campaign' ? 'campaign' : 'clock'} size={10} />

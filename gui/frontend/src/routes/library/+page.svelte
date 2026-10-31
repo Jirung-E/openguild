@@ -46,6 +46,8 @@
 	import SearchField, { type SearchMode } from '$lib/components/SearchField.svelte';
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
 	import { LIBRARY_QUERY_KEYS } from '$lib/utils/query-keys';
+	// 검색 결과의 제목 · 번호에도 걸린 글자를 칠한다.
+	import HitText from '$lib/components/HitText.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
@@ -1475,10 +1477,12 @@
 							ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 							onclick={() => select(b.book_id)}
 						>
-							<span class="tile-sub">{b.book_id}</span>
+							<span class="tile-sub"><HitText text={b.book_id} query={searchQuery} /></span>
 							<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
 							<span class="tile-icon" aria-hidden="true">📄</span>
-							<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
+							<span class="tile-label" use:titlePopup={b.title}
+								><HitText text={b.title} query={searchQuery} /></span
+							>
 						</button>
 					{/each}
 				</div>
@@ -1713,8 +1717,8 @@
 										class:active={b.book_id === selectedId}
 										onclick={() => select(b.book_id)}
 									>
-										<span class="book-id">{b.book_id}</span>
-										<span class="book-title">{b.title}</span>
+										<span class="book-id"><HitText text={b.book_id} query={searchQuery} /></span>
+										<span class="book-title"><HitText text={b.title} query={searchQuery} /></span>
 										{#if b.path}<span class="book-path">{b.path}</span>{/if}
 									</button>
 								{/each}

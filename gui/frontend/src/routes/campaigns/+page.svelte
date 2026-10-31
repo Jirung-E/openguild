@@ -23,6 +23,7 @@
 	import SearchField, { type SearchMode } from '$lib/components/SearchField.svelte';
 	import QueryNotes from '$lib/components/QueryNotes.svelte';
 	import { CAMPAIGN_QUERY_KEYS } from '$lib/utils/query-keys';
+	import HitText from '$lib/components/HitText.svelte';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -109,6 +110,8 @@
 		if (changed)
 			goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
 	});
+
+	const hitTerm = $derived(mode === 'search' ? search.trim() : '');
 
 	let filtered = $derived.by(() => {
 		const byStatus = statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
@@ -242,14 +245,15 @@
 					     잘리기 쉬웠다(BUG-198 의 세로 출력도 같은 자리). -->
 					<a class="main" href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`}>
 						<span class="meta-line">
-							<span class="slug">{c.campaign_slug}</span>
+							<span class="slug"><HitText text={c.campaign_slug} query={hitTerm} /></span>
 							<span class="pill status-{c.status}">{c.status}</span>
 							<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
 							<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
 								>{fmtPeriod(c)}</span
 							>
 						</span>
-						<span class="title">{c.title}</span>
+						<!-- 검색에서 걸린 글자를 칠한다(쿼리는 `키:값` 이라 칠하지 않는다). -->
+						<span class="title"><HitText text={c.title} query={hitTerm} /></span>
 						<!-- admin 요청: 목록에서도 진행도. 체크리스트 + 연결 퀘스트를
 						     합산한 하나의 바 + `완료/전체` 숫자. 둘 다 없으면 생략. -->
 						{#each progressRows(c) as p (p.key)}

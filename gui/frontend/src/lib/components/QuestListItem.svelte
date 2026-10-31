@@ -5,6 +5,7 @@
 	// DEV-015: status 표시 이름 — 언어 반응.
 	import { locale } from '$lib/stores/locale';
 	import { questStatusLabel } from '$lib/utils/status-label';
+	import HitText from './HitText.svelte';
 
 	let {
 		quest,
@@ -14,7 +15,9 @@
 		ontoggle,
 		// admin 요청: 리스트 뷰는 접기/펼치기가 없으므로 토글 자리를 아예 비운다
 		// — 트리 뷰에서만 필요한 들여쓰기다.
-		flat = false
+		flat = false,
+		/** 검색어 — 제목 · 번호에서 걸린 글자를 칠한다. */
+		highlight = ''
 	}: {
 		quest: Quest;
 		depth: number;
@@ -22,6 +25,7 @@
 		expanded: boolean;
 		ontoggle: () => void;
 		flat?: boolean;
+		highlight?: string;
 	} = $props();
 
 	/** 2단(모바일) 배치에서 제목을 SLUG 와 같은 x 에 맞추기 위한 들여쓰기.
@@ -54,10 +58,12 @@
 	{/if}
 
 	<!-- 타입 뱃지 -->
-	<span class="pill" style:--c={quest.type_color}>{quest.quest_id}</span>
+	<span class="pill" style:--c={quest.type_color}
+		><HitText text={quest.quest_id} query={highlight} /></span
+	>
 
 	<!-- 제목 -->
-	<span class="title">{quest.title}</span>
+	<span class="title"><HitText text={quest.title} query={highlight} /></span>
 
 	<!-- DEV-142 후속: 토론 댓글 — 일반 댓글과 별도 아이콘. 미해결=빨강 / 해결=초록. -->
 	{#if (quest.discussion_unresolved ?? 0) > 0}
