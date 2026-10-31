@@ -214,3 +214,60 @@ describe('DEV-469 플러그인끼리 겹침', () => {
 		expect(text).toContain('claude-session 다음');
 	});
 });
+
+// DEV-464: 비어 있는 설정값 — 동작 · 명령이 쓰는 것만 "돌지 않습니다", 스크립트만 읽는 것은 비워 둬도 된다.
+describe('DEV-464 비어 있는 설정값', () => {
+	it('필요한 값만 못 돈다고 말한다', async () => {
+		document.body.innerHTML = '';
+		sources.mockResolvedValue([]);
+		const input = (key: string, required: boolean) => ({
+			key,
+			label: key,
+			type: 'text',
+			help: null,
+			secret: false,
+			options: [],
+			value: null,
+			has_value: false,
+			source: 'missing',
+			required
+		});
+		status.mockResolvedValue({
+			plugins: [
+				{
+					name: 'claude-session',
+					description: null,
+					on: [],
+					scope: ['gui'],
+					handlers: [],
+					actions: [],
+					scripts: [],
+					permissions: [],
+					imports: [],
+					env: [],
+					data_dir: null,
+					inputs: [input('PROJECT_DIR', false), input('TOKEN', true)],
+					script_src: null,
+					granted: true,
+					runs_here: true,
+					source: null
+				}
+			],
+			errors: [],
+			auto_allow: false,
+			manageable: true,
+			no_guild: false,
+			problems: [],
+			examples_url: 'https://example.test/examples'
+		});
+		render(AdminPluginsSection, { props: {} });
+		await tick();
+		await tick();
+		await new Promise((r) => setTimeout(r, 20));
+		const helps = [...document.querySelectorAll('.pi-help')].map((p) => p.textContent ?? '');
+		expect(helps).toHaveLength(2);
+		expect(helps[0]).toContain('비워 두면 플러그인이 정한 대로');
+		expect(helps[0]).not.toContain('돌지 않습니다');
+		expect(helps[1]).toContain('돌지 않습니다');
+	});
+});

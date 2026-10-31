@@ -528,6 +528,18 @@ impl PluginDef {
     /// REQ-021: 정의가 실제로 **참조하는** 값 이름들 — `${NAME}` 과 `body_env`.
     ///
     /// `body_env` 는 값이 곧 변수 **이름**이라 `${...}` 문법을 안 쓴다. 따로 본다.
+    /// DEV-464: 비어 있으면 **이 플러그인이 못 도는** 값 — 동작(`${KEY}` · `body_env`)과 줄의 댓글 명령(`command`)이
+    /// 쓰는 것. 스크립트의 `config("KEY")` 나 `run` 의 환경변수로만 읽는 값은 비어 있어도 돈다(스크립트가 정한다).
+    pub fn required_keys(&self) -> std::collections::BTreeSet<String> {
+        let mut out = self.referenced_keys();
+        for h in &self.handlers {
+            if let Some(c) = &h.command {
+                out.extend(env_refs(c));
+            }
+        }
+        out
+    }
+
     pub fn referenced_keys(&self) -> std::collections::BTreeSet<String> {
         let mut out = std::collections::BTreeSet::new();
         let mut scan = |s: &str| out.extend(env_refs(s));

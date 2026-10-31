@@ -4088,3 +4088,19 @@ fn shipped_example_tests_pass() {
     }
     assert!(ran >= 4, "시험 파일이 있는 예제가 {ran}개뿐이다");
 }
+
+/// DEV-464: 비어 있으면 못 도는 값은 동작(`${KEY}`)과 댓글 명령(`command`)이 쓰는 것뿐이다 — 스크립트만 읽는 값은
+/// 비워 둬도 된다(claude-session 의 '세션 폴더' 는 비우면 길드 폴더를 쓴다).
+#[test]
+fn only_action_and_command_values_are_required() {
+    let src =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins/claude-session");
+    let def = read_def(&src.join(MANIFEST)).unwrap();
+    let req = def.required_keys();
+    assert!(req.contains("COMMAND"), "{req:?}");
+    assert!(!req.contains("PROJECT_DIR"), "{req:?}");
+    assert!(!req.contains("REPLY"), "{req:?}");
+    // 동작의 헤더에 쓴 값은 있어야 한다.
+    let d = post_with_header("Authorization", "Bearer ${TOKEN}");
+    assert!(d.required_keys().contains("TOKEN"));
+}

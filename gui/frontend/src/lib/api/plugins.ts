@@ -158,6 +158,8 @@ export interface PluginInput {
 	has_value: boolean;
 	/** 값이 어디서 왔나 — 덮어쓸지 사용자가 판단하는 근거다. */
 	source: 'stored' | 'env' | 'default' | 'missing';
+	/** DEV-464: 비어 있으면 이 플러그인이 못 도는 값인가 — 아니면 비워 둬도 된다(스크립트가 정한다). */
+	required?: boolean;
 }
 
 export interface PluginStatus {

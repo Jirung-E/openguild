@@ -304,6 +304,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '값이 없어 이 플러그인은 돌지 않습니다.',
 		en: 'Unset — this plugin will not run.'
 	},
+	// DEV-464: 스크립트만 읽는 값 — 비워 두면 플러그인이 정한 대로(설명 참고).
+	'plugins.valueEmptyOk': {
+		ko: '비어 있습니다 — 비워 두면 플러그인이 정한 대로 합니다.',
+		en: 'Empty — the plugin decides what to do without it.'
+	},
 	'plugins.valueFromEnv': {
 		ko: '지금은 환경변수 값을 씁니다.',
 		en: 'Currently using the value from your environment.'

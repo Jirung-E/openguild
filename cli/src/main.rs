@@ -7692,6 +7692,8 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 );
                 return Ok(());
             }
+            // DEV-464: 동작 · 댓글 명령이 쓰는 값은 비어 있으면 정말 못 돈다 — 그것만 그렇게 말한다(화면과 같은 판단).
+            let required = p.def.required_keys();
             for i in &effective {
                 let r = resolved.get(&i.key);
                 let shown = match r.map(|r| (r.source, r.as_str())) {
@@ -7699,6 +7701,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     // 기본대로 도는 선택 값이다(예: 비우면 데이터 폴더에 쌓는다). 예전에는
                     // 전부 "이 플러그인은 못 돕니다" 라고 적어 겁만 줬다. 안 채웠다는
                     // 사실만 말하고, 정말 있어야 하는 값인지는 정의가 안다.
+                    Some((openguild_core::plugins::values::Source::Missing, _)) | None
+                        if required.contains(&i.key) =>
+                    {
+                        tf!("(안 채움 — 있어야 돕니다)", "(unset — required to run)")
+                    }
                     Some((openguild_core::plugins::values::Source::Missing, _)) | None => {
                         tf!("(안 채움)", "(unset)")
                     }

@@ -157,6 +157,10 @@ pub struct InputView {
     /// `stored` | `env` | `default` | `missing` — 사용자가 **덮어쓸지** 판단
     /// 하려면 값이 어디서 왔는지 알아야 한다.
     pub source: String,
+    /// DEV-464: 비어 있으면 이 플러그인이 못 도는 값인가([`super::PluginDef::required_keys`]). 아니면 비워 둬도 된다 —
+    /// 예전엔 비어 있으면 무조건 "돌지 않습니다" 라고 했다(claude-session 의 '세션 폴더' 는 비우면 길드 폴더를 쓴다).
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,6 +349,7 @@ fn input_views(p: &Plugin) -> Vec<InputView> {
         return Vec::new();
     }
     let resolved = super::values::resolve(&p.guild_root, &p.def);
+    let required = p.def.required_keys();
     inputs
         .iter()
         .map(|i| {
@@ -390,6 +395,7 @@ fn input_views(p: &Plugin) -> Vec<InputView> {
                     _ => "missing",
                 }
                 .into(),
+                required: required.contains(&i.key),
             }
         })
         .collect()

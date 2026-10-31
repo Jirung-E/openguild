@@ -630,10 +630,13 @@
 											{/if}
 										</div>
 										<!-- 값이 어디서 왔는지 안 보여주면 "이미 있는데 왜 또 넣지" 가
-										     된다. 없는 값은 이 플러그인이 못 도는 이유다. -->
+										     된다. 없는 값은 동작 · 명령이 쓰는 것이면 이 플러그인이 못 도는 이유고(DEV-464),
+										     스크립트만 읽는 것이면 비워 둬도 된다 — 설명이 비웠을 때를 알려 준다. -->
 										<p class="pi-help">
-											{#if i.source === 'missing'}
+											{#if i.source === 'missing' && i.required !== false}
 												<strong>{t('plugins.valueMissing', $locale)}</strong>
+											{:else if i.source === 'missing'}
+												{t('plugins.valueEmptyOk', $locale)}
 											{:else if i.source === 'env'}
 												{t('plugins.valueFromEnv', $locale)}
 											{:else if i.source === 'default'}
