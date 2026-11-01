@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-02T01:08:43+09:00"
-version = 2
+updated_at = "2026-11-02T01:58:24+09:00"
+version = 3
 +++
 # 릴리즈 패키지 절차
 
@@ -38,8 +38,9 @@ version = 2
 `0.6.0-beta` 로는 RPM 을 못 만든다. 정식 전이라는 표시는 `0.x` 와 README 상태 줄이 맡는다.
 옛 태그(`v0.5.3-beta` 까지)와 CHANGELOG 의 옛 절은 사실 기록이므로 그대로 둔다.
 
-**tauri-cli 는 `release.yml` 에 버전을 고정한다.** 올릴 때는 일부러 올리고 `release` 워크플로 수동 실행으로
-세 플랫폼을 확인한다.
+**tauri-cli 는 `release.yml` 에 버전을 고정한다** — `Cargo.lock` 의 tauri 크레이트와 같은 2.x 로. 함께 올리고,
+`release` 워크플로 수동 실행으로 세 플랫폼을 확인한다. 윈도우 설치본은 자체 `installer.nsi` 템플릿을 쓰므로 CLI 를
+올리면 템플릿도 맞춰야 한다(2.12 는 템플릿에 없는 `RestartManager_StartSession` 매크로를 찾아 빌드가 깨진다).
 
 **plugin.json 을 빼먹으면 사용자 쪽 스킬이 영영 갱신되지 않는다.** 설치된
 스킬은 파일 내용이 아니라 이 version 으로만 갱신 여부를 판단한다. BUG-261:
