@@ -70,7 +70,8 @@ if ($env:CLAUDE_SESSION_DRY_RUN -eq '1') {
 }
 
 if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
-    Start-Process wt.exe -ArgumentList (@('-d', "`"$dir`"", 'claude') + $claude)
+    # wt starts the command with CreateProcess, which can't find an npm-installed claude (claude.cmd) - go through powershell.
+    Start-Process wt.exe -ArgumentList (@('-d', "`"$dir`"", 'powershell', '-NoExit', '-Command', 'claude') + $claude)
 } else {
     Start-Process powershell -WorkingDirectory $dir -ArgumentList (@('-NoExit', '-Command', 'claude') + $claude)
 }

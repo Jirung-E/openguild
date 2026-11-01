@@ -4562,6 +4562,24 @@ fn only_action_and_command_values_are_required() {
 /// BUG-387: 예제 셸 스크립트는 길드 글(제목 · 본문)을 **명령 글자 안에 끼워 넣지 않는다** — 인자나 stdin 으로 넘긴다.
 /// `osascript -e "display notification \"$body\""` 는 제목에 `" & (do shell script "…") & "` 를 쓴 사람이 이 기계에서
 /// 명령을 돌리게 했다(desktop-notify). 길드 내용은 git · 서버로 남이 쓴다.
+// DEV-464: wt 는 CreateProcess 로 띄워 npm 으로 깐 claude(claude.cmd)를 못 찾는다 — 파워셸을 거친다.
+#[test]
+fn claude_session_opens_wt_through_powershell() {
+    let src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/plugins/claude-session/open.ps1"),
+    )
+    .unwrap();
+    let line = src
+        .lines()
+        .find(|l| l.contains("Start-Process wt.exe"))
+        .unwrap();
+    assert!(
+        line.contains("'powershell', '-NoExit', '-Command', 'claude'"),
+        "{line}"
+    );
+}
+
 #[test]
 fn shipped_scripts_do_not_splice_text_into_applescript() {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");

@@ -306,7 +306,7 @@ claude -p | openguild --guild $env:OPENGUILD_GUILD_DIR quest comment add `
 `run_after = ["claude-session"]` · `run_before = [...]` 로 바꾼다.
 
 터미널: 맥은 '터미널' 앱(처음 한 번 macOS 가 '제어 허용' 을 묻는다), 리눅스는 `x-terminal-emulator` 또는
-`gnome-terminal`, 윈도우는 Windows Terminal(`wt.exe`)이 있으면 그것, 없으면 파워셸 창.
+`gnome-terminal`, 윈도우는 Windows Terminal(`wt.exe`)이 있으면 그것(안에서 파워셸로 claude 를 띄운다), 없으면 파워셸 창.
 서버(`server`)에서는 안 돌린다 — 창이 서버 기계에 뜬다.
 
 `CLAUDE_SESSION_DRY_RUN=1` 이면 창을 열지 않고 띄울 명령만 적는다.
