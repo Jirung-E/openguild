@@ -432,7 +432,7 @@ the same place), and a group may carry its own `run_after` / `run_before`.
 ```toml
 [[handlers]]
     id    = "overdue"
-    every = "1d"
+    every = "1d"       # d counts calendar dates; `24h` counts elapsed hours
     query = "status:[open, in_progress] due:overdue"
     call  = "overdue"
 ```

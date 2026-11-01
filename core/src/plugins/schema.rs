@@ -134,7 +134,7 @@ pub fn plugin_schema() -> Value {
                     "every": {
                         "type": "string",
                         "pattern": "^\\s*[0-9]+\\s*[smhd]\\s*$",
-                        "description": "이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`(최소 1m). 앱 · 서버에서만 돈다. `pre` · `post` · `when` · `with` · `wait` · `group` · 순서와 같이 못 쓴다."
+                        "description": "이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`(최소 1m). `d` 는 날짜가 바뀌면, `24h` 는 24시간이 지나면. 앱 · 서버에서만 돈다. `pre` · `post` · `when` · `with` · `wait` · `group` · 순서와 같이 못 쓴다."
                     },
                     "command": { "type": "string", "description": "댓글 명령 — `comment.added` 만 보는 줄에서, 댓글 본문(앞뒤 공백 무시)이 정확히 이 글일 때만 돈다. `${COMMAND}` 처럼 입력값을 쓸 수 있다. 다른 플러그인과 같은 명령이면 경고가 뜬다." },
                     "query": { "type": "string", "description": "`every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법(`status:open due:overdue`). 함수는 `e.items` 로 받는다. 맞는 것이 없으면 안 부른다." },

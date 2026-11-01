@@ -3,7 +3,7 @@
 //! ```toml
 //! [[handlers]]
 //!     id    = "마감 알림"
-//!     every = "1h"                                  # 분 m · 시간 h · 하루 d, 최소 1m
+//!     every = "1h"                                  # 분 m · 시간 h(경과 시간) · 날 d(날짜), 최소 1m
 //!     query = "status:[open, in_progress] due:overdue" # REQ-039 의 쿼리 문법
 //!     of    = "quest"                               # quest(기본) · campaign · library
 //!     call  = "마감_알림"                           # fn 마감_알림(e) — e.items 가 맞는 목록
@@ -21,6 +21,8 @@
 //! `~/.openguild/plugin-schedule/{길드}/{플러그인}.json` 에 적고, 고르는 동안은 옆의 `.lock` 을 잠근다 — 먼저 잡은 쪽이
 //! 시각을 적고 돌린다. 다른 기계는 각자 돈다(동의가 기계마다인 것과 같다). 훅이 보는 데이터 폴더에 두지 않은 것은,
 //! 훅이 지우거나 고치면 몰래 다시 돌기 때문이다.
+//!
+//! `d` 는 **날짜**로 센다 — `1d` 는 마지막으로 돈 날과 오늘(이 기계의 시간대)의 날짜가 다르면 돈다. 24시간마다는 `24h`.
 //!
 //! 기록이 없으면(처음 허용) 곧 한 번 돈다. 앱이 꺼져 있던 동안 놓친 것은 켜질 때 **한 번만** 돈다 — 쌓아 두었다가
 //! 여러 번 돌지 않는다.
@@ -78,7 +80,7 @@ impl Of {
     }
 }
 
-/// `30m` · `1h` · `1d` · `90s` 같은 간격.
+/// `30m` · `1h` · `1d` · `90s` 같은 간격. `d` 의 실제 판단은 경과 시간이 아니라 날짜다([`is_ready`]).
 pub fn parse_every(s: &str) -> Result<Duration, String> {
     let t = s.trim();
     let split = t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len());
@@ -115,6 +117,30 @@ pub fn parse_every(s: &str) -> Result<Duration, String> {
         ));
     }
     Ok(d)
+}
+
+/// `every` 가 날 단위(`1d`)면 그 날수.
+fn calendar_days(every: &str) -> Option<i64> {
+    every.trim().strip_suffix('d')?.trim().parse().ok()
+}
+
+/// 유닉스 초의 이 기계 시간대 날짜.
+fn local_date(secs: u64) -> Option<chrono::NaiveDate> {
+    use chrono::TimeZone;
+    chrono::Local
+        .timestamp_opt(secs as i64, 0)
+        .earliest()
+        .map(|t| t.date_naive())
+}
+
+/// 마지막으로 돈 때(`last`)에서 지금(`now`)까지 차례가 됐나 — `d` 는 날짜 차이, 나머지는 경과 시간.
+fn is_ready(every: &str, period: Duration, last: u64, now: u64) -> bool {
+    if let (Some(days), Some(from), Some(to)) =
+        (calendar_days(every), local_date(last), local_date(now))
+    {
+        return (to - from).num_days() >= days;
+    }
+    now.saturating_sub(last) >= period.as_secs()
 }
 
 /// 시간마다 도는 줄의 검사 — 섞을 수 없는 칸과 `every` · `query`. `call` / `action` 은 [`super::validate`] 가 본다.
@@ -207,13 +233,14 @@ fn claim_locked(file: &Path, p: &Plugin, now: u64) -> Result<Vec<usize>, String>
         .unwrap_or_default();
     let mut due = Vec::new();
     for (i, h) in every_lines(p) {
-        let Ok(period) = parse_every(h.every.as_deref().unwrap_or_default()) else {
+        let every = h.every.as_deref().unwrap_or_default();
+        let Ok(period) = parse_every(every) else {
             continue; // 적재가 막는다.
         };
         let k = key(h, i);
         let ready = state
             .get(&k)
-            .is_none_or(|&last| now.saturating_sub(last) >= period.as_secs());
+            .is_none_or(|&last| is_ready(every, period, last, now));
         if ready {
             state.insert(k, now);
             due.push(i);
@@ -576,7 +603,7 @@ mod tests {
         let p = plugin(
             &format!(
                 "{HEAD}[[handlers]]\nid = \"매시\"\nevery = \"1h\"\nquery = \"status:open\"\naction = \"out\"\n\
-                 [[handlers]]\nid = \"매일\"\nevery = \"1d\"\nquery = \"status:open\"\naction = \"out\"\n"
+                 [[handlers]]\nid = \"하루\"\nevery = \"24h\"\nquery = \"status:open\"\naction = \"out\"\n"
             ),
             &root,
         );
@@ -598,6 +625,38 @@ mod tests {
         held.unlock().unwrap();
         assert_eq!(claim_due(&file, &p, 2_000_000).unwrap(), [0, 1]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `d` 는 날짜, `24h` 는 경과 시간 — 자정을 넘긴 몇 분과 같은 날 안의 스물세 시간이 갈린다.
+    #[test]
+    fn days_count_dates_and_hours_count_elapsed_time() {
+        use chrono::TimeZone;
+        let at = |d: u32, h: u32, m: u32| {
+            chrono::Local
+                .with_ymd_and_hms(2026, 3, d, h, m, 0)
+                .earliest()
+                .unwrap()
+                .timestamp() as u64
+        };
+        let day = parse_every("1d").unwrap();
+        let hours = parse_every("24h").unwrap();
+        // 자정을 넘긴 20분 뒤.
+        let (last, now) = (at(10, 23, 50), at(11, 0, 10));
+        assert!(is_ready("1d", day, last, now));
+        assert!(!is_ready("24h", hours, last, now));
+        // 같은 날 안의 23시간 뒤.
+        let (last, now) = (at(10, 0, 10), at(10, 23, 10));
+        assert!(!is_ready("1d", day, last, now));
+        assert!(!is_ready("24h", hours, last, now));
+        // 25시간 뒤.
+        assert!(is_ready("1d", day, at(10, 9, 0), at(11, 10, 0)));
+        assert!(is_ready("24h", hours, at(10, 9, 0), at(11, 10, 0)));
+        // 이틀 — 다음 날은 아직, 그다음 날 자정을 넘기면.
+        let two = parse_every("2d").unwrap();
+        assert!(!is_ready("2d", two, at(10, 23, 50), at(11, 23, 50)));
+        assert!(is_ready("2d", two, at(10, 23, 50), at(12, 0, 10)));
+        // 시계가 뒤로 가면 안 돈다.
+        assert!(!is_ready("1d", day, at(11, 0, 10), at(10, 23, 50)));
     }
 
     /// 실제 길드 — 맞는 퀘스트만 실려 그 줄이 불리고, 맞는 것이 없으면 안 불린다.

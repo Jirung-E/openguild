@@ -1,3 +1,5 @@
 {"ts":"2026-10-27T10:07:14+09:00","op":"change_status","old":"open","new":"in_progress"}
 {"ts":"2026-10-27T10:26:22+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-10-31T01:52:45+09:00","op":"change_status","old":"testing","new":"done"}
+{"ts":"2026-11-02T00:04:05+09:00","op":"change_status","old":"done","new":"in_progress"}
+{"ts":"2026-11-02T00:06:17+09:00","op":"change_status","old":"in_progress","new":"testing"}

@@ -49,7 +49,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     상태)을 싣는다 (DEV-374, DEV-386, DEV-388, DEV-398, DEV-404, DEV-391)
   - `scope` 로 어디서 돌지 명시(`cli` / `gui` / `server` — `server` 에 걸면 그 서버를
     쓰는 모두에게 적용) (DEV-375)
-  - **시간마다 도는 줄** — `every = "1h"` 와 목록 쿼리(`query = "status:open due:overdue"`, 캠페인 ·
+  - **시간마다 도는 줄** — `every = "1h"`(`1d` 는 날짜가 바뀌면) 와 목록 쿼리(`query = "status:open due:overdue"`, 캠페인 ·
     도서관도)를 적으면 맞는 목록을 받아 돈다(맞는 것이 없으면 안 돈다). 앱 · 서버에서만, 같은 기계에서
     둘 다 열어도 한 번. 예제 `overdue-digest`(하루에 한 번 기한 지난 퀘스트를 알림 하나로) (REQ-026, DEV-458, DEV-471)
   - 동작은 `post`(HTTP)와 `run`(프로그램, 이벤트는 stdin) 둘. `run` 은 운영체제마다

@@ -147,7 +147,7 @@
           "type": "string"
         },
         "every": {
-          "description": "이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`(최소 1m). 앱 · 서버에서만 돈다. `pre` · `post` · `when` · `with` · `wait` · `group` · 순서와 같이 못 쓴다.",
+          "description": "이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`(최소 1m). `d` 는 날짜가 바뀌면, `24h` 는 24시간이 지나면. 앱 · 서버에서만 돈다. `pre` · `post` · `when` · `with` · `wait` · `group` · 순서와 같이 못 쓴다.",
           "pattern": "^\\s*[0-9]+\\s*[smhd]\\s*$",
           "type": "string"
         },

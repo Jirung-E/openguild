@@ -354,7 +354,7 @@ fn on_comment(e, subject) {
 ```toml
 [[handlers]]
     id    = "기한 지남"
-    every = "1d"                                         # s · m · h · d, 최소 1m
+    every = "1d"                                         # s · m · h(경과 시간) · d(날짜), 최소 1m
     query = "status:[open, in_progress] due:overdue"     # 목록 화면 · quest list -q 와 같은 쿼리
     of    = "quest"                                      # quest(기본) · campaign · library
     call  = "digest"                                     # fn digest(e) — e.items 가 맞는 목록
@@ -363,6 +363,7 @@ fn on_comment(e, subject) {
 - 맞는 것이 없으면 함수를 부르지 않습니다.
 - 앱 · 서버에서만 돕니다(CLI 는 명령이 끝나면 꺼집니다). 같은 기계에서 둘 다 열어도 한 번만 돕니다.
 - 처음 허용하면 곧 한 번, 그 뒤로 `every` 마다. 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돕니다.
+- `1d` 는 **날짜**가 바뀌면 돕니다 — 그날 처음 켤 때 한 번(켜 둔 채면 자정에). 24시간마다는 `24h` 로 씁니다.
 - 시험에서는 `tick("기한 지남", [목록])` 으로 그 줄을 주어진 목록으로 돌립니다.
 
 - `description` 은 선택입니다. 적어 두면 데스크톱 관리 → 플러그인 과

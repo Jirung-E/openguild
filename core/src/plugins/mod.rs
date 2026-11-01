@@ -285,7 +285,7 @@ pub struct Handler {
     /// 순서는 이 줄에도 걸린다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// DEV-458(REQ-026): 이벤트 대신 **시간마다** 돈다 — `30m` · `1h` · `1d`. 있으면 `pre` · `post` 를 안 쓴다([`schedule`]).
+    /// DEV-458(REQ-026): 이벤트 대신 **시간마다** 돈다 — `30m` · `1h`(경과 시간) · `1d`(날짜). 있으면 `pre` · `post` 를 안 쓴다([`schedule`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub every: Option<String>,
     /// DEV-458: `every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법.
