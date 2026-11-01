@@ -8,10 +8,16 @@ $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), (New
 $e = ConvertFrom-Json $reader.ReadToEnd()
 
 $title = 'openguild'
-if ($e.event) { $title = "openguild - $($e.event)" }
+# A comment event has no quest - where it landed is in target.
+if ($e.quest) { $title = "openguild - $($e.quest.id)" }
+elseif ($e.target) { $title = "openguild - $($e.target.id)" }
+elseif ($e.event) { $title = "openguild - $($e.event)" }
 $body = ''
-if ($e.quest) { $body = "$($e.quest.id) $($e.quest.title)" }
-elseif ($e.comment) { $body = [string]$e.comment.body }
+if ($e.comment) {
+    $body = [string]$e.comment.body
+    if ($e.comment.author) { $body = "$($e.comment.author): $body" }
+}
+elseif ($e.quest) { $body = [string]$e.quest.title }
 $body = $body.Trim()
 if ($body -eq '') { $body = $title }   # a balloon with empty text throws
 if ($body.Length -gt 200) { $body = $body.Substring(0, 200) }

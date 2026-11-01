@@ -5,9 +5,9 @@
 # 된다 — 스크립트가 유일한 방법은 아니다.
 
 name        = "desktop-notify"
-description = "퀘스트가 생기거나 댓글이 달리면 이 컴퓨터에 데스크톱 알림을 띄웁니다. 밖으로 나가는 것은 없습니다."
-# CLI 로 스무 개를 일괄 처리하는데 알림이 스무 번 뜨면 곤란하다 — 앱에서만.
-scope       = ["gui"]
+description = "이 컴퓨터의 앱이나 CLI(AI 포함)에서 퀘스트가 생기거나 댓글이 달리면 데스크톱 알림을 띄웁니다. 밖으로 나가는 것은 없습니다."
+# CLI 도 넣는다 — AI 가 CLI 로 댓글을 달면 알림이 온다. 대신 CLI 로 스무 개를 일괄 처리하면 스무 번 뜬다.
+scope       = ["gui", "cli"]
 
 [actions.notify.run]
     command    = "sh"

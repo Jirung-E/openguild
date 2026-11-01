@@ -21,8 +21,9 @@ json=$(cat)
 # 잡힌다. 적어도 글에서는 어디서 온 알림인지 바로 보이게 한다. (윈도우는 앱
 # 이름표를 쓸 수 있어 notify.ps1 이 진짜 openguild 이름으로 띄운다.)
 if command -v jq >/dev/null 2>&1; then
-  title="openguild - $(printf '%s' "$json" | jq -r '.event')"
-  body=$(printf '%s' "$json" | jq -r '(.quest.id // "?") + " " + (.quest.title // .comment.body // "")')
+  # 댓글 이벤트에는 quest 가 없다 — 달린 곳은 target 이다.
+  title="openguild - $(printf '%s' "$json" | jq -r '.quest.id // .target.id // .event')"
+  body=$(printf '%s' "$json" | jq -r 'if .comment then ((.comment.author // "") | if . == "" then "" else . + ": " end) + .comment.body else .quest.title // "" end')
 else
   title="openguild"
   body=$(printf '%s' "$json" | cut -c1-200)
