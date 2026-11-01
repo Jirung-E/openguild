@@ -10,6 +10,7 @@
 	// DEV-183: 코드펜스 syntax highlighting — highlight.js (로컬 번들, 외부 통신 없음).
 	import { markedHighlight } from 'marked-highlight';
 	import hljs from 'highlight.js';
+	import DOMPurify, { type Config as PurifyConfig } from 'dompurify';
 	import { tick } from 'svelte';
 	// DEV-443: 개인 형광펜 — 읽는 화면에서 칠한다. 본문은 안 건드린다.
 	import { locale, t } from '$lib/stores/locale';
@@ -130,7 +131,29 @@
 
 	// DEV-183: highlight.js 연동 marked 인스턴스. language-mermaid 는 mermaid 가
 	// 따로 렌더 — plaintext 로 하이라이트돼도 innerText 가 보존돼 영향 없음.
+	// BUG-387: 본문에 쓸 만한 HTML 태그. 여기 없는 태그(꺾쇠로 감싼 slug · String 같은 글 속 자리표시, 그리고
+	// style · script 같은 태그 언급)는 **글자로 보인다** — 예전엔 모르는 태그로 들어가 글자가 사라졌고, style 은 그
+	// 뒤 문단을 통째로 CSS 로 삼켜 숨겼다(실제 길드 DEV-183 · DEV-131). 남은 태그도 아래 DOMPurify 가 속성까지 거른다.
+	const BODY_TAGS = new Set(
+		(
+			'a abbr b bdi bdo blockquote br caption cite code col colgroup dd del details dfn div dl dt em figcaption ' +
+			'figure h1 h2 h3 h4 h5 h6 hr i img ins kbd li mark ol p picture pre q rp rt ruby s samp small source span ' +
+			'strong sub summary sup table tbody td tfoot th thead time tr u ul var video audio wbr center font'
+		).split(' ')
+	);
+	function htmlOrText(raw: string): string {
+		// 속성값은 따옴표 안의 `<` · `>` 까지 한 태그로 읽는다 — `srcdoc="<script>…"` 에서 끊기면 앞부분이 태그로 남는다.
+		return raw.replace(
+			/<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^'"<>])*)>/g,
+			(tag, _slash, name: string) =>
+				BODY_TAGS.has(name.toLowerCase())
+					? tag
+					: tag.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+		);
+	}
+
 	const md = new Marked(
+		{ renderer: { html: (token) => htmlOrText(token.text) } },
 		markedHighlight({
 			emptyLangClass: 'hljs',
 			langPrefix: 'hljs language-',
@@ -140,7 +163,21 @@
 			}
 		})
 	);
-	let html = $derived(md.parse(source ?? '', { async: false }) as string);
+	// BUG-387: 본문 속 HTML 은 그대로 통과한다(marked) — 남이 쓴 본문이 git · 서버로 들어오므로 **거른다.**
+	// DOMPurify 는 허용한 것만 남긴다: 스크립트 · `on…` 속성 · `javascript:` 주소 · iframe · object 등은 지운다.
+	// 첨부 동영상(video 태그 · controls · src), 코드 하이라이트의 class, 체크박스, 표, 이미지는 그대로다.
+	// 더 막는 것: style 태그와 style 속성 — 스크립트가 없어도 앱 화면을 덮어 꾸밀 수 있다(허용 단추 흉내 등).
+	// form 류 — 본문에 입력칸을 만들어 보내게 할 수 있다(체크박스 input 은 marked 가 만든다).
+	const PURIFY: PurifyConfig = {
+		FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select'],
+		FORBID_ATTR: ['style']
+	};
+	let html = $derived(
+		DOMPurify.sanitize(md.parse(source ?? '', { async: false }) as string, {
+			...PURIFY,
+			RETURN_TRUSTED_TYPE: false
+		})
+	);
 	let container: HTMLDivElement | undefined = $state(undefined);
 
 	// 매 effect 실행 시 mermaid 블록 탐지 + 렌더. id 충돌 방지용 counter.
@@ -623,7 +660,7 @@
 		if (e.shiftKey) onSelectEnd();
 	}}
 >
-	<!-- BUG-387: 아직 소독하지 않는다 — 본문 속 HTML 이 그대로 들어간다. 고칠 때 이 줄의 예외도 뺀다. -->
+	<!-- BUG-387: `html` 은 DOMPurify 로 거른 것이다(위). -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html html}
 </div>
