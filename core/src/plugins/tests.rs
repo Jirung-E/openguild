@@ -4558,3 +4558,36 @@ fn only_action_and_command_values_are_required() {
     let d = post_with_header("Authorization", "Bearer ${TOKEN}");
     assert!(d.required_keys().contains("TOKEN"));
 }
+
+/// BUG-387: 예제 셸 스크립트는 길드 글(제목 · 본문)을 **명령 글자 안에 끼워 넣지 않는다** — 인자나 stdin 으로 넘긴다.
+/// `osascript -e "display notification \"$body\""` 는 제목에 `" & (do shell script "…") & "` 를 쓴 사람이 이 기계에서
+/// 명령을 돌리게 했다(desktop-notify). 길드 내용은 git · 서버로 남이 쓴다.
+#[test]
+fn shipped_scripts_do_not_splice_text_into_applescript() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
+    let mut bad = Vec::new();
+    for dir in std::fs::read_dir(&src).unwrap().flatten() {
+        for f in std::fs::read_dir(dir.path())
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let p = f.path();
+            if p.extension().is_none_or(|e| e != "sh") {
+                continue;
+            }
+            for (i, line) in std::fs::read_to_string(&p).unwrap().lines().enumerate() {
+                // 큰따옴표로 감싼 -e 글자 안에 $변수 — 셸이 먼저 풀어 AppleScript 코드가 된다.
+                if let Some(rest) = line.split("osascript -e \"").nth(1)
+                    && rest.contains('$')
+                {
+                    bad.push(format!("{}:{}", p.display(), i + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "AppleScript 글자에 변수를 끼워 넣는다: {bad:?}"
+    );
+}

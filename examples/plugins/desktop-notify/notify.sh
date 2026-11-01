@@ -30,7 +30,10 @@ fi
 
 case "$(uname -s)" in
   Darwin)
-    osascript -e "display notification \"$body\" with title \"$title\"" ;;
+    # BUG-387: 글은 **인자로** 넘긴다 — AppleScript 글자 안에 끼워 넣으면 제목에 `" & (do shell script "…") & "` 를
+    # 쓴 사람이 이 기계에서 아무 명령이나 돌릴 수 있었다(길드 내용은 남이 쓴다).
+    osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' \
+      "$body" "$title" ;;
   Linux)
     command -v notify-send >/dev/null 2>&1 && notify-send "$title" "$body" ;;
   *)
