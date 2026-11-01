@@ -8,3 +8,4 @@
 {"ts":"2026-10-31T23:20:11+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-11-01T02:31:30+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-11-01T02:39:33+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-11-01T20:47:50+09:00","op":"change_status","old":"testing","new":"done"}
