@@ -204,7 +204,9 @@
 		mermaid.initialize({
 			startOnLoad: false,
 			theme: eff === 'dark' ? 'dark' : 'default',
-			securityLevel: 'loose',
+			// BUG-387: strict — 'loose' 는 `click 노드 "javascript:…"` 를 링크로 만들어 누르면 스크립트가 돌았다(본문은
+			// 남이 쓴다). strict 는 click 을 끄고 그림 글자 속 HTML 을 글자로 둔다(줄바꿈 br 은 그대로).
+			securityLevel: 'strict',
 			fontFamily: 'inherit'
 		});
 		for (const block of Array.from(blocks)) {
