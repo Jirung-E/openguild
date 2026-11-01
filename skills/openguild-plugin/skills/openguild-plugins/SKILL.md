@@ -526,12 +526,12 @@ In this order:
 - Working examples in `examples/plugins/` of the openguild repo — the folder
   itself works as a source (`openguild plugin source add <repo>/examples/plugins`):
   - `telegram-quest-status` — post + script + tag filter + `inputs`, with tests
-  - `discussion-to-ai` — run, hands the comment to something on this machine
-    (inbox file / command / tmux pane); `select` inputs pick which, with tests
   - `desktop-notify` — run, no script at all
   - `deleted-audit` — two `pre` lines, one of which **blocks**
   - `backup-archive` — run on `backup.created`, a plain-string payload,
     `inputs` read as environment variables
+  - `claude-session` — a **comment command** (`pre` + `command`): `/session` opens a terminal, with tests
+  - `overdue-digest` — a **timed line** (`every` + `query`), `notify` in the app, with tests
   - `examples/plugins/README.md` — read this before writing one from scratch
 - `openguild plugin events` for event names, phases and `with` names;
   `openguild plugin --help` for commands.

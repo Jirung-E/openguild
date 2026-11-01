@@ -233,7 +233,7 @@ fn without_an_open_guild_nothing_is_recorded() {
 /// BUG-335 진단: **앱에서 댓글을 달고 토론으로 바꾸면 훅이 실제로 도는가.**
 ///
 /// CLI 로는 되는데 앱에서는 안 된다는 보고를 받았다. 두 길은 같은 `ops` 를 부르지만
-/// 그 위(적재 scope, 알림 구현, 드레인 없음)가 다르다. 예제 플러그인을 **그대로**
+/// 그 위(적재 scope, 알림 구현, 드레인 없음)가 다르다. 시험 자료 플러그인을 그대로
 /// 꽂고 IPC 로만 조작해서, 앱 쪽 배선에 구멍이 있는지 본다.
 #[test]
 fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
@@ -253,14 +253,11 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
     )
     .unwrap();
 
-    // 예제를 그대로 복사한다 — 고쳐서 시험하면 사용자가 쓰는 것과 달라진다.
-    let ex = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("examples/plugins/discussion-to-ai");
+    // 없앤 예제 discussion-to-ai 를 시험 자료로 남겨 둔 것 — 앱 쪽 배선을 끝까지 도는 유일한 플러그인이다.
+    let ex = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata/comment-hook");
     let dst = src.join("discussion-to-ai");
     std::fs::create_dir_all(&dst).unwrap();
-    for f in ["plugin.toml", "main.rhai", "deliver.sh", "deliver.ps1"] {
+    for f in ["plugin.toml", "main.rhai", "deliver.sh"] {
         std::fs::copy(ex.join(f), dst.join(f)).unwrap();
     }
 
