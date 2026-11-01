@@ -252,7 +252,7 @@ enum Command {
         "Enhanced search — scans comments and attachment names, not just bodies. Memos are private: only with --in memo."
     ))]
     Search {
-        #[arg(help = tf!("검색어. 공백으로 나뉜 토큰이 **모두** 있어야 매치(AND).", "Query. All whitespace-separated tokens must match (AND)."))]
+        #[arg(help = tf!("검색어. 공백으로 나뉜 토큰이 **모두** 있어야 매치(AND). `/…/` 토큰은 정규식(대소문자 무시) — 안의 공백은 \\s 로.", "Query. All whitespace-separated tokens must match (AND). A `/…/` token is a case-insensitive regex — write spaces inside it as \\s."))]
         query: Vec<String>,
         #[arg(long = "in", value_delimiter = ',', help = tf!(
             "검색 영역 (쉼표 구분): body / comment / attachment / memo. 기본은 memo 를 뺀 나머지 — 메모는 gitignore 되는 개인 기록이라 명시해야 포함된다.",

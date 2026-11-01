@@ -1,6 +1,7 @@
 +++
 created_at = "2026-09-06T19:41:42+09:00"
-updated_at = "2026-09-06T19:41:42+09:00"
+updated_at = "2026-11-01T18:26:02+09:00"
+version = 1
 +++
 # 코드 컨벤션 (백엔드 / 프론트엔드 / 테스트)
 
@@ -20,6 +21,8 @@ updated_at = "2026-09-06T19:41:42+09:00"
   고친다. **`core::models` 가 진리원**이므로 그쪽을 먼저 바꾼다.
 - HTTP 와 Tauri invoke 는 같은 `ops::` 함수를 거쳐야 한다 — 한쪽에만 로직을
   두면 두 경로의 동작이 갈린다([[BUG-231]]).
+- 서식은 `cargo fmt` 그대로 — 파일 전체에 돌려도 된다(`just fmt`). `just test` · CI 가
+  `cargo fmt --all --check` 로 검사한다([[DEV-472]]: 전체를 한 번 정리했다).
 
 ## 프론트엔드 (Svelte)
 
@@ -28,6 +31,8 @@ updated_at = "2026-09-06T19:41:42+09:00"
 - Svelte 5 문법(`$state` / `$derived` / `$effect`)만 쓴다. Svelte 4 방식
   (`writable` store 등) 혼용 금지.
 - `npm run check` 타입 에러 0 유지.
+- 서식은 prettier 그대로(`.prettierrc`) — 파일 전체에 돌려도 된다(`just fmt` 또는 프런트 폴더의
+  `npm run format`). `just test` · CI 가 `npm run check:format` 으로 검사한다([[DEV-472]]).
 - 색·곡률·여백·글꼴·뷰포트 단위는 각각 전용 규칙과 가드가 있다
   (`frontend-theme-tokens`, `frontend-ui-scale`, `check:*`).
 

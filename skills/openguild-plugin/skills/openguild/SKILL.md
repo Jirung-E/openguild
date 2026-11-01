@@ -215,6 +215,10 @@ openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2
                       [--table]                 # aligned table for humans
                       [--json]                  # machine-readable
 # campaign list / library list take -q too — same syntax, their own keys (reference/campaign.md, library.md)
+openguild search <words...> [--in body,comment,attachment,memo] [--limit N] [--json]
+                                                 # every kind at once (quest/campaign/library/rule) — body, comments,
+                                                 # attachment names; says where it matched + an excerpt. Tokens are ANDed;
+                                                 # a `/regex/` token is a case-insensitive regex. Memos only with --in memo.
 openguild quest show <slug>                      # summary: id/title/status/urgency + relations
 openguild quest show <slug> --full               # everything (body, relations, tags, due)
 openguild quest show <slug> --field title status parent   # only these (1 field = bare value)
