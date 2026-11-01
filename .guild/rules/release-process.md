@@ -1,6 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-09-06T21:48:14+09:00"
+updated_at = "2026-11-01T23:20:52+09:00"
+version = 1
 +++
 # 릴리즈 패키지 절차
 
@@ -16,7 +17,7 @@ updated_at = "2026-09-06T21:48:14+09:00"
 - [ ] `cd gui/frontend && npm run check` 0 errors.
 - [ ] `cd gui/frontend && npm run build` 성공 (Tauri 가 embed 할 frontend 자산).
 - [ ] `cargo tauri build` 정상 (3 OS 각각 — Windows / macOS / Linux).
-- [ ] AGENTS.md / docs/planning.md / docs/architecture-refactor.md 갱신.
+- [ ] AGENTS.md / docs/USAGE.md / README.md 갱신.
 - [ ] 알려진 BUG 의 closure 또는 known-issue 명시.
 - [ ] BUG-041 후속: `core/migrations/` 의 새 mig 가 있다면 `_sqlx_migrations`
       에 영향 — README 의 "복구" 절차 인지.
