@@ -103,7 +103,8 @@ jobs:
 
       - name: Install tauri-cli
         # cache-bin: true 가 적중하면 skip. 첫 run / 캐시 키 변경 시만 install.
-        run: cargo install tauri-cli --version '^2' --locked
+        # 고정한다 — 2.12 의 rpm 은 버전의 `-` 를 거절해 `0.6.0-beta` 로 rpm 을 못 만든다.
+        run: cargo install tauri-cli --version '=2.11.4' --locked
 
       - name: Tauri build (NSIS)
         working-directory: gui
@@ -166,7 +167,7 @@ jobs:
         run: npm ci
 
       - name: Install tauri-cli
-        run: cargo install tauri-cli --version '^2' --locked
+        run: cargo install tauri-cli --version '=2.11.4' --locked
 
       # DEV-349: DMG 는 GUI 만 담는다. CLI/Server 는 사용자가 Rust/Cargo 없이
       # 설치할 수 있도록 별도 tar.gz 로 묶어 같은 artifact/Release 에 첨부한다.
@@ -241,7 +242,7 @@ jobs:
         run: npm ci
 
       - name: Install tauri-cli
-        run: cargo install tauri-cli --version '^2' --locked
+        run: cargo install tauri-cli --version '=2.11.4' --locked
 
       # `gui/tauri.conf.json` 의 bundle.targets 에 deb/rpm/appimage 가 이미
       # 있음(BUG-142). 여긴 Linux 러너에서 그 세 타깃만 명시적으로 빌드.
