@@ -144,7 +144,7 @@
 	{#if !narrow || chipsOpen}
 		<div class="filter-group">
 			<button class:active={typeIds.size === 0} onclick={() => (typeIds = new Set())}>All</button>
-			{#each types as t}
+			{#each types as t (t.id)}
 				<button
 					class:active={typeIds.has(t.id)}
 					style:--c={t.color}
@@ -161,7 +161,7 @@
 			<button class:active={statusIds.size === 0} onclick={() => (statusIds = new Set())}
 				>All</button
 			>
-			{#each statuses as s}
+			{#each statuses as s (s.id)}
 				<button
 					class:active={statusIds.has(s.id)}
 					style:--c={s.color}

@@ -17,7 +17,6 @@
 	const WEEKS = 12;
 
 	let loading = $state(true);
-	let counts = $state<Map<string, number>>(new Map());
 	let total = $state(0);
 	let today = $state<WorklogReport | null>(null);
 
@@ -54,7 +53,6 @@
 				map.set(s.date, s.count);
 				sum += s.count;
 			}
-			counts = map;
 			total = sum;
 			today = report;
 

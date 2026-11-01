@@ -49,12 +49,6 @@
 	let visible = $state(false);
 	let dragging = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
-	let ro: ResizeObserver | null = null;
-	// 컨텐츠(scrollHeight) 변화 감지용 — ResizeObserver 는 컨테이너 자신의 box
-	// 크기만 보고, 필터/접기 등으로 내부 행이 늘거나 줄어 scrollHeight 가 바뀌는
-	// 건 못 잡는다 (= thumb 크기가 안 갱신돼 끝까지 안 내려가는 버그). 자식
-	// 추가/삭제(childList) 를 MutationObserver 로 잡아 재측정.
-	let mo: MutationObserver | null = null;
 	let rafHandle: number | null = null;
 
 	function measure() {
@@ -192,7 +186,9 @@
 		const localRo = new ResizeObserver(scheduleRemeasure);
 		localRo.observe(t ?? document.documentElement);
 		if (!t) localRo.observe(document.body);
-		// 컨텐츠 mutation (행 추가/삭제, 댓글 접기/펼치기 등) → 재측정.
+		// 컨텐츠 mutation (행 추가/삭제, 댓글 접기/펼치기 등) → 재측정. ResizeObserver 는 컨테이너 자신의 box
+		// 크기만 보고, 필터/접기 등으로 내부 행이 늘거나 줄어 scrollHeight 가 바뀌는 건 못 잡는다(= thumb 크기가
+		// 안 갱신돼 끝까지 안 내려가는 버그). 자식 추가/삭제(childList)를 MutationObserver 로 잡아 재측정.
 		const localMo = new MutationObserver(scheduleRemeasure);
 		localMo.observe(t ?? document.body, { childList: true, subtree: true });
 		// BUG-213: **textarea/input 의 값은 자식 노드가 아니라서** MutationObserver
@@ -200,8 +196,6 @@
 		// 일반 댓글 입력창은 타이핑해도 재측정이 안 돼 thumb 이 영영 안 그려졌다.
 		// input 이벤트는 버블링되므로 컨테이너 target 에도 그대로 유효하다.
 		if (t) t.addEventListener('input', scheduleRemeasure);
-		ro = localRo;
-		mo = localMo;
 
 		return () => {
 			scrollSrc.removeEventListener('scroll', handler);

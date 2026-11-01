@@ -272,7 +272,6 @@
 	});
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <svelte:window onkeydown={onWindowKeyDown} />
 
 <div class="find-bar" role="search" {...{ 'data-find-skip': '' }} onkeydown={onKeyDown}>

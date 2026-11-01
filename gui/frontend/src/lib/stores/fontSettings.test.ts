@@ -12,7 +12,6 @@ import {
 	composeFontStack,
 	setFont,
 	uiFont,
-	codeFont,
 	initFonts,
 	UI_FONT_PRESETS,
 	CODE_FONT_PRESETS

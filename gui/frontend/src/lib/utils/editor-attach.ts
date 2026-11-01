@@ -15,7 +15,6 @@
 
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
-import { api } from '$lib/api/client';
 import { detectEnvironment, isLocalTauri, postWithUploadProgress } from '$lib/api/transport';
 import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 import { get } from 'svelte/store';
@@ -544,7 +543,7 @@ function insertIntoTextarea(ta: HTMLTextAreaElement, text: string) {
 	const end = ta.selectionEnd ?? ta.value.length;
 	ta.focus();
 	ta.setSelectionRange(start, end);
-	let ok = false;
+	let ok: boolean;
 	try {
 		ok = document.execCommand('insertText', false, text);
 	} catch {

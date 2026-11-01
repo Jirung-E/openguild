@@ -16,7 +16,7 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
-	import type { Campaign, CampaignSummary } from '$lib/types';
+	import type { CampaignSummary } from '$lib/types';
 	import { isDateOverdue } from '$lib/utils/datetime';
 	import NewCampaignModal from '$lib/components/NewCampaignModal.svelte';
 	// DEV-452 (REQ-039): 검색칸 — 퀘스트 목록과 같은 부품([검색 | 쿼리]), 키만 캠페인 것.

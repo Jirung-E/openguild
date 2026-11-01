@@ -17,7 +17,7 @@ describe('Generation', () => {
 	it('늦게 도착한 이전 응답을 걸러낸다', () => {
 		const g = new Generation();
 		let shown = '';
-		const load = (name: string) => {
+		const load = (_name: string) => {
 			const mine = g.next();
 			return (value: string) => {
 				if (g.isCurrent(mine)) shown = value;

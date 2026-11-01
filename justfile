@@ -105,6 +105,7 @@ test-frontend:
     cd gui/frontend && npm run check:classes
     cd gui/frontend && npm run check:guards
     cd gui/frontend && npm run check:format
+    cd gui/frontend && npm run check:lint
     cd gui/frontend && npm test -- --run
     cd gui/frontend && npm run build
 

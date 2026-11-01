@@ -434,7 +434,7 @@
 								<div>
 									<h3>{t('admin.missingInIndex', $locale)}{drift.missing_in_index.length})</h3>
 									<ul>
-										{#each drift.missing_in_index as slug}<li><code>{slug}</code></li>{/each}
+										{#each drift.missing_in_index as slug (slug)}<li><code>{slug}</code></li>{/each}
 									</ul>
 								</div>
 							{/if}
@@ -442,7 +442,7 @@
 								<div>
 									<h3>{t('admin.staleInIndex', $locale)}{drift.stale_in_index.length})</h3>
 									<ul>
-										{#each drift.stale_in_index as slug}<li><code>{slug}</code></li>{/each}
+										{#each drift.stale_in_index as slug (slug)}<li><code>{slug}</code></li>{/each}
 									</ul>
 								</div>
 							{/if}
@@ -450,7 +450,7 @@
 								<div>
 									<h3>{t('admin.freshFiles', $locale)}{drift.fresh_files.length})</h3>
 									<ul>
-										{#each drift.fresh_files as slug}<li><code>{slug}</code></li>{/each}
+										{#each drift.fresh_files as slug (slug)}<li><code>{slug}</code></li>{/each}
 									</ul>
 								</div>
 							{/if}

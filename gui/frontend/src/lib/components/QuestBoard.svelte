@@ -2050,7 +2050,7 @@
 					startRow = Math.max(startRow, laneNextRow.get(li) ?? globalRow);
 				}
 				// 각 lane 안 cluster height — 열을 적게 쓰면 더 길어지므로 slots 로 다시 잰다(아래).
-				let clusterHeight = 1;
+				let clusterHeight: number;
 				// DEV-421: 레인마다 **몇 열을 어디에** 쓸지 고른다. 예전엔 `i % lcols` 로 언제나
 				// 레인 왼쪽부터 열을 전부 썼다(admin: "지금 사각형은 최소 사각형이 아니다").
 				// 실측: 교차 163 → 122(−25%), 선길이 −11%, 넓이는 거의 그대로. 줄 순서는 안 건드린다.
@@ -3032,6 +3032,9 @@
 		});
 	}
 
+	// 레인 배경 · 격자 · 머리글은 Svelte 가 그리지 않는 빈 그릇(`bind:this` 한 div)에 손으로 만든다 — cytoscape
+	// 캔버스와 같은 좌표로 매 그리기마다 다시 짓는 층이라 Svelte 의 DOM 과 겹치지 않는다(DEV-472).
+	/* eslint-disable svelte/no-dom-manipulating */
 	function buildLaneDivs(sorted: QuestStatus[]) {
 		lanesEl.innerHTML = '';
 		if (lanePopLayerEl) lanePopLayerEl.innerHTML = '';
@@ -3193,6 +3196,7 @@
 			lanePopLayerEl?.appendChild(pop);
 		});
 	}
+	/* eslint-enable svelte/no-dom-manipulating */
 
 	function syncScreenGrid(pan: BoardPoint, zoom: number) {
 		if (!gridLanesEl) return;

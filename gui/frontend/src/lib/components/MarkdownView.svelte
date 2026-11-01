@@ -176,7 +176,7 @@
 			const code = block.innerText;
 			const id = `mm-${++renderCounter}-${Math.random().toString(36).slice(2, 8)}`;
 			// (A) parse pre-check — syntax error 시 render 안 부름.
-			let parseOk = true;
+			let parseOk: boolean;
 			let parseErr: unknown = null;
 			try {
 				const res = await mermaid.parse(code, { suppressErrors: true });
@@ -610,7 +610,7 @@
 <!-- DEV-256: mouseover/out/click 델리게이션 — 동적 생성되는 a.xlink 에 개별
      리스너를 달 수 없어 컨테이너에서 위임. 키보드 접근성은 링크 자체가 anchor
      라 기본 포커스/이동/Enter 로 이미 제공됨(팝업은 마우스 보조 UI). -->
-<!-- svelte-ignore a11y_mouse_events_have_key_events, a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_mouse_events_have_key_events, a11y_no_static_element_interactions -->
 <div
 	class="md"
 	bind:this={container}
@@ -623,6 +623,8 @@
 		if (e.shiftKey) onSelectEnd();
 	}}
 >
+	<!-- BUG-387: 아직 소독하지 않는다 — 본문 속 HTML 이 그대로 들어간다. 고칠 때 이 줄의 예외도 뺀다. -->
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html html}
 </div>
 

@@ -44,7 +44,7 @@
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
-	import { usesCustomTitlebar, isLinux, hasCoarsePointer } from '$lib/utils/platform';
+	import { usesCustomTitlebar, isLinux } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	// DEV-272: 저장된 글꼴 선택을 시작 시 root 에 반영.
 	import { initFonts } from '$lib/stores/fontSettings';
@@ -57,7 +57,6 @@
 		theme,
 		applyThemeToDocument,
 		watchSystemPreference,
-		resolveTheme,
 		type ThemeChoice
 	} from '$lib/stores/theme';
 	// DEV-114: 커스텀 테마 — 시동 시 활성 프리셋의 토큰 override 복원.

@@ -145,7 +145,7 @@ export function depthOf(
 	const ids = new Set(quests.map((q) => q.id));
 	const prereqs = new Map<number, number[]>();
 	const dependents = new Map<number, number[]>();
-	let indeg = new Map<number, number>();
+	const indeg = new Map<number, number>();
 	for (const id of ids) {
 		prereqs.set(id, []);
 		dependents.set(id, []);

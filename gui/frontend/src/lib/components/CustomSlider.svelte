@@ -168,7 +168,7 @@
 
 	function onKey(e: KeyboardEvent) {
 		if (disabled) return;
-		let next: number | null = null;
+		let next: number;
 		switch (e.key) {
 			case 'ArrowLeft':
 			case 'ArrowDown':

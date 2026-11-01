@@ -282,6 +282,10 @@ jobs:
       - name: check formatting (prettier)
         run: npm run check:format
 
+      # DEV-472: eslint — 0건으로 맞춰 두었다.
+      - name: eslint
+        run: npm run check:lint
+
       - name: vitest
         run: npm test -- --run
 

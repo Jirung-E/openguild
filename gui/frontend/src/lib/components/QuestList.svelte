@@ -133,7 +133,6 @@
 	let searchAttachments = $state(false);
 	/** 서버가 계산한 매치 id 집합. null = 서버 판정 미사용(로컬 필터). */
 	let serverMatchIds = $state<Set<number> | null>(null);
-	let wideSearching = $state(false);
 	let wideSeq = 0;
 	let wideTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -150,13 +149,11 @@
 		const wantTitleOnly = titleOnly;
 		if (!wide) {
 			serverMatchIds = null;
-			wideSearching = false;
 			return;
 		}
 		// 글자마다 요청을 던지지 않는다.
 		if (wideTimer) clearTimeout(wideTimer);
 		const seq = ++wideSeq;
-		wideSearching = true;
 		wideTimer = setTimeout(() => {
 			questsApi
 				.searchWide(q, {
@@ -173,9 +170,6 @@
 					if (seq !== wideSeq) return;
 					// 실패 시 로컬 필터로 떨어진다 — 빈 목록을 보여주는 것보다 낫다.
 					serverMatchIds = null;
-				})
-				.finally(() => {
-					if (seq === wideSeq) wideSearching = false;
 				});
 		}, 250);
 	});

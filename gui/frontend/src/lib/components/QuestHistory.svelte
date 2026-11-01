@@ -9,7 +9,6 @@
 <script lang="ts">
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
-	import { onMount } from 'svelte';
 	import { questsApi } from '$lib/api/quests';
 	import type { QuestHistoryEntry, QuestStatus } from '$lib/types';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';

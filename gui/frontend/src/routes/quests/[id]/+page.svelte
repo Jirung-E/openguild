@@ -847,7 +847,7 @@
 					<!-- DEV-287: 드롭다운 대신 pill 버튼 — 타입 변경 UI 와 통일.
 					     선택만 바꾸고 적용은 기존대로 저장 시. -->
 					<div class="status-btns">
-						{#each [1, 2, 3, 4] as u}
+						{#each [1, 2, 3, 4] as u (u)}
 							<button
 								type="button"
 								class="status-btn"
@@ -870,7 +870,7 @@
 						<span class="hint">{t('qd.typeChangeHint', $locale)}</span></span
 					>
 					<div class="status-btns">
-						{#each types as ty}
+						{#each types as ty (ty.id)}
 							<button
 								class="status-btn"
 								class:active={ty.id === detail.quest_type_id}
@@ -950,7 +950,7 @@
 			<div class="status-row">
 				<span class="branch-label">{t('qd.statusChange', $locale)}</span>
 				<div class="status-btns">
-					{#each sortedStatuses as s}
+					{#each sortedStatuses as s (s.id)}
 						<button
 							class="status-btn"
 							class:active={s.id === detail.status_id}

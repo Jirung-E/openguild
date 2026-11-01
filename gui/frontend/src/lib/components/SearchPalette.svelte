@@ -18,7 +18,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import DocRowActions from './DocRowActions.svelte';
 	import HitText from './HitText.svelte';
-	import { goto, afterNavigate } from '$app/navigation';
+	import { afterNavigate } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { rulesApi } from '$lib/api/rules';
