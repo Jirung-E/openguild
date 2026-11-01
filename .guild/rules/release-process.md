@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-01T23:20:52+09:00"
-version = 1
+updated_at = "2026-11-02T01:08:43+09:00"
+version = 2
 +++
 # 릴리즈 패키지 절차
 
@@ -32,8 +32,14 @@ version = 1
 - `gui/Cargo.toml`
 - `gui/tauri.conf.json` (`version` 필드)
 - `gui/frontend/package.json`
-- `skills/openguild-plugin/.claude-plugin/plugin.json` — **`-beta` 를 뗀 값**
-  (앱이 `0.5.2-beta` 면 여기는 `0.5.2`).
+- `skills/openguild-plugin/.claude-plugin/plugin.json`
+
+**버전에 `-beta` 같은 꼬리를 붙이지 않는다**(0.6.0 부터). RPM 버전에는 `-` 를 쓸 수 없어 tauri-cli 2.12 부터
+`0.6.0-beta` 로는 RPM 을 못 만든다. 정식 전이라는 표시는 `0.x` 와 README 상태 줄이 맡는다.
+옛 태그(`v0.5.3-beta` 까지)와 CHANGELOG 의 옛 절은 사실 기록이므로 그대로 둔다.
+
+**tauri-cli 는 `release.yml` 에 버전을 고정한다.** 올릴 때는 일부러 올리고 `release` 워크플로 수동 실행으로
+세 플랫폼을 확인한다.
 
 **plugin.json 을 빼먹으면 사용자 쪽 스킬이 영영 갱신되지 않는다.** 설치된
 스킬은 파일 내용이 아니라 이 version 으로만 갱신 여부를 판단한다. BUG-261:
@@ -81,7 +87,7 @@ grep version ~/.openguild/skill-marketplace/openguild-plugin/.claude-plugin/plug
 반드시 한 번 걸러야 한다.
 
 ```bash
-PREV=v0.5.2-beta          # 직전 릴리스 태그
+PREV=v0.5.3-beta          # 직전 릴리스 태그
 
 # 1) 이 퀘스트가 이번에 실제로 들어갔나 (0 이면 노트에서 뺀다)
 git log $PREV..HEAD --oneline --grep='\[BUG-263\]'

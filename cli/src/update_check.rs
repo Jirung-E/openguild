@@ -199,6 +199,9 @@ mod tests {
         use Ordering::*;
         for (a, b, want) in [
             ("0.6.0-beta", "0.5.3-beta", Greater),
+            // 0.6.0 부터 버전에 `-beta` 를 안 붙인다 — 옛 설치본이 새 버전을 알아봐야 한다.
+            ("0.6.0", "0.5.3-beta", Greater),
+            ("0.5.3-beta", "0.6.0", Less),
             ("0.5.3-beta", "0.6.0-beta", Less),
             ("0.6.0-beta", "0.6.0-beta", Equal),
             ("v0.6.0-beta", "0.6.0-beta", Equal),

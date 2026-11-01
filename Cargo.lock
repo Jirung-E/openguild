@@ -2992,7 +2992,7 @@ dependencies = [
 
 [[package]]
 name = "openguild-cli"
-version = "0.6.0-beta"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async_zip",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "openguild-core"
-version = "0.6.0-beta"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3033,7 +3033,7 @@ dependencies = [
 
 [[package]]
 name = "openguild-gui"
-version = "0.6.0-beta"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3059,7 +3059,7 @@ dependencies = [
 
 [[package]]
 name = "openguild-server"
-version = "0.6.0-beta"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async_zip",

@@ -17,7 +17,7 @@
     (OS 별로 추출 로직을 두 번 쓰지 않는다).
 
 .PARAMETER Tag
-    릴리스 태그 (예: `v0.4.1-beta`). 선행 `v` 는 떼고 CHANGELOG 헤딩과 맞춘다.
+    릴리스 태그 (예: `v0.6.0`). 선행 `v` 는 떼고 CHANGELOG 헤딩과 맞춘다.
 
 .PARAMETER Repo
     `owner/name` — compare 링크 생성용. 생략하면 링크를 붙이지 않는다.
@@ -29,7 +29,7 @@
     기본 `release-notes.md`.
 
 .EXAMPLE
-    pwsh scripts/extract-release-notes.ps1 -Tag v0.4.1-beta -Repo owner/repo
+    pwsh scripts/extract-release-notes.ps1 -Tag v0.6.0 -Repo owner/repo
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Tag,
@@ -60,8 +60,8 @@ $lines = [System.IO.File]::ReadAllLines(
     (New-Object System.Text.UTF8Encoding($false))
 )
 
-# 버전 절의 시작/끝 줄 찾기. 헤딩 형식: `## 0.4.1-beta — 2026-07-26`
-# (날짜는 없을 수도 있다 — `## 0.1.0-beta`). 다음 `## ` 헤딩 직전까지가 본문.
+# 버전 절의 시작/끝 줄 찾기. 헤딩 형식: `## 0.6.0 — 2026-11-02`
+# (날짜는 없을 수도 있다 — `## 0.6.0`). 다음 `## ` 헤딩 직전까지가 본문.
 # 이어지는 버전 헤딩에서 이전 버전도 함께 얻는다(compare 링크용).
 $start = -1
 $end = $lines.Count
@@ -70,7 +70,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -notmatch '^## ') { continue }
     $heading = $lines[$i].Substring(3).Trim()
     if ($start -lt 0) {
-        # 헤딩이 정확히 이 버전으로 시작하는지 — `0.4.1-beta` 가 `0.4.10-beta`
+        # 헤딩이 정확히 이 버전으로 시작하는지 — `0.6.0` 이 `0.6.0-rc` · `0.6.01`
         # 에 걸리지 않도록 뒤에 공백/구분자/끝만 허용.
         if ($heading -match ('^' + [regex]::Escape($version) + '(\s|$)')) {
             $start = $i
