@@ -1,8 +1,7 @@
 # openguild
 A project issue tracker.
 
-> **Status: Beta 1.0.0 (in progress)** — Active milestone tracked in
-> campaign `C-001`. Roadmap lives in the guild — `openguild campaign list`.
+> **Status: Beta 0.6.0** — Roadmap lives in the guild — `openguild campaign list`.
 
 ## Terminology
 | Term | Description |
@@ -77,6 +76,21 @@ The board has a grid-snap toggle (G key) and an Arrange action with two modes (`
 
 ### Quest List
 All quests are shown in a flat list. Sub-quests appear as a collapsible tree under their parent. Status cannot be changed from this view — use the Quest Board or Quest Detail page.
+
+### Query and search
+Filter any list with one line of query. The quest, board, campaign and library screens and the CLI's `-q` share the same grammar.
+
+```bash
+openguild quest list -q 'status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'
+```
+
+The search page (`/search`) finds across quests, campaigns, library and rules at once.
+
+### Plugins
+Call your own programs when something happens in a guild. A plugin can block a change or alter its values before it lands, or run on a schedule. Definitions live in the guild and are shared, but each machine allows them separately. Examples are in `examples/plugins/`; details in `docs/USAGE.md`.
+
+### Working at the same time
+The app, CLI and server can change the same guild at once without losing tags or comments. When two people edit the same body, parts that don't overlap are merged.
 
 ### CLI (`openguild`)
 A console client for agents and automation. Two modes:
@@ -194,8 +208,7 @@ doesn't use that table.
 # openguild
 프로젝트 이슈 트래커.
 
-> **상태: Beta 1.0.0 (진행 중)** — 활성 마일스톤은 캠페인 `C-001` 으로 추적.
-> 로드맵은 길드에 있다 — `openguild campaign list`.
+> **상태: Beta 0.6.0** — 로드맵은 길드에 있다 — `openguild campaign list`.
 
 ## 용어 설명
 | 용어 | 설명 |
@@ -270,6 +283,21 @@ openguild-server --version
 
 ### Quest List
 모든 퀘스트를 단일 리스트로 표시한다. 서브퀘스트는 부모 퀘스트 하위에 접기/펼치기 트리로 나타난다. 이 뷰에서는 상태를 변경할 수 없으며, Quest Board 또는 Quest Detail 페이지에서 변경한다.
+
+### 쿼리와 검색
+목록은 쿼리 한 줄로 거릅니다. 퀘스트 · 보드 · 캠페인 · 도서관 화면과 CLI `-q` 가 같은 문법을 씁니다.
+
+```bash
+openguild quest list -q 'status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'
+```
+
+검색 페이지(`/search`)에서는 퀘스트 · 캠페인 · 도서관 · 규칙을 한 번에 찾습니다.
+
+### 플러그인
+길드에서 일이 생기면 내 프로그램을 부릅니다. 바뀌기 전에 막거나 값을 바꿀 수도 있고, 정해 둔 시간마다 돌릴 수도 있습니다. 정의는 길드에 두어 함께 쓰지만, 돌릴지는 기계마다 따로 허용합니다. 예제는 `examples/plugins/`, 자세한 내용은 `docs/USAGE.md` 에 있습니다.
+
+### 여럿이 동시에 쓰기
+앱 · CLI · 서버가 같은 길드를 동시에 고쳐도 태그와 댓글이 사라지지 않고, 같은 본문을 둘이 고치면 겹치지 않는 부분은 합칩니다.
 
 ### CLI (`openguild`)
 agent / 자동화용 콘솔 클라이언트. 두 모드:
