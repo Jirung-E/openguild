@@ -52,6 +52,7 @@ pub const MAX_ATTACHMENT_BODY_BYTES: usize = MAX_ATTACHMENT_BYTES / 3 * 4 + 64 *
 ///
 /// 예전 base64 라우트는 그대로 남긴다 — 구버전 클라이언트 호환.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StreamAttachmentQuery {
     pub ext: String,
     #[serde(default)]
@@ -153,6 +154,7 @@ pub struct AddAttachmentRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AttachmentPathQuery {
     /// DELETE 는 body 를 안 쓰는 client(`api.delete`) 와 맞추기 위해 query string.
     pub path: String,

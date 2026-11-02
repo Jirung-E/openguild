@@ -132,6 +132,7 @@ pub async fn vacuum(State(store): State<Store>) -> AppResult<Json<VacuumReport>>
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JournalQuery {
     /// 최근 op 개수 (기본 50). 실제 사용 전 [`JournalQuery::clamped_count`] 로
     /// 범위를 강제한다 — 그냥 쓰면 안 된다.

@@ -268,6 +268,11 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		};
 	}
 
+	// 길드 전체 댓글 — 화면은 쿼리로만 묻는다.
+	if (method === 'GET' && pathOnly === '/api/comments') {
+		return { cmd: 'search_comments', args: { q: query.get('q') } };
+	}
+
 	// ───── 플러그인 (조회만) ─────
 	// DEV-380: 읽기는 transport 를 그대로 탄다 — 그래야 브라우저는 서버에게,
 	// 데스크톱은 로컬 Store 에게, 데스크톱+원격은 **원격 서버에게** 묻는다.

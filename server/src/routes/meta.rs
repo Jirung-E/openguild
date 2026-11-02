@@ -353,6 +353,7 @@ pub async fn list_backlinks(
 
 /// REQ-040: `GET /api/query/highlights?q=…&of=quest|campaign|library` — 쿼리 결과에 칠할 말.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HighlightQuery {
     pub q: String,
     pub of: Option<String>,
@@ -374,6 +375,7 @@ pub async fn query_highlights(
 /// `in` 을 생략하면 **메모를 뺀** 기본 영역만 본다 — 메모는 gitignore 되는 개인
 /// 기록이고 이 서버는 인증이 없다. 명시적으로 요청해야 포함된다.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SearchQuery {
     pub q: String,
     pub r#in: Option<String>,

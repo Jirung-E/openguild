@@ -14,6 +14,7 @@ use openguild_core::ops::worklog as ops;
 use openguild_core::ops::worklog::WorklogReport;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RangeQuery {
     pub from: String,
     pub to: String,

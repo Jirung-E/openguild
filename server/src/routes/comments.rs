@@ -19,6 +19,7 @@ use openguild_core::services::comments::{GlobalComment, GlobalCommentsFilter, se
 // ─── BUG-231: 길드 전체 댓글 검색 ───
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalCommentsQuery {
     pub author: Option<String>,
     pub since: Option<String>,

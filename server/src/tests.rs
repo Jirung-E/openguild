@@ -1020,6 +1020,28 @@ async fn test_list_has_prereq_and_no_prereq_mutually_exclusive() {
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
+/// 모르는 조건은 거절한다 — 무시하면 틀린 이름에 전체 목록이 돌아가 거른 줄 알게 된다.
+#[tokio::test]
+async fn test_unknown_query_parameter_is_rejected() {
+    let app = setup().await;
+    for path in [
+        "/api/quests?has_sub=true",
+        "/api/quests?no_sub=true",
+        "/api/campaigns?nope=1",
+        "/api/campaigns/summaries/upcoming?days=7&nope=1",
+        "/api/comments?nope=1",
+        "/api/library?nope=1",
+        "/api/library/export.zip?nope=1",
+        "/api/search?q=x&nope=1",
+        "/api/worklog?from=2026-01-01&to=2026-01-02&nope=1",
+    ] {
+        let (status, _) = get(app.clone(), path).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path}");
+    }
+    let (status, _) = get(app, "/api/quests?has_child=true").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
 #[tokio::test]
 async fn test_list_has_child_and_no_child_mutually_exclusive() {
     let app = setup_with_relations().await;
@@ -5004,4 +5026,21 @@ async fn test_change_quest_type_endpoint_renames_and_keeps_tags() {
     assert_eq!(got["tags"], json!(["남을태그"]));
     let (s, _) = get(app.clone(), &format!("/api/quests/by/{old}")).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+/// `?lang=` 은 어느 경로에나 붙는다 — 모르는 조건으로 거절되지 않게 떼어 낸다.
+#[test]
+fn lang_is_taken_off_the_query() {
+    let strip = |u: &str| crate::uri_without_lang(&u.parse().unwrap()).map(|u| u.to_string());
+    assert_eq!(strip("/api/quests?lang=en").as_deref(), Some("/api/quests"));
+    assert_eq!(
+        strip("/api/quests?lang=en&slim=true").as_deref(),
+        Some("/api/quests?slim=true")
+    );
+    assert_eq!(
+        strip("/api/quests?q=a&lang=xx&slim=true").as_deref(),
+        Some("/api/quests?q=a&slim=true")
+    );
+    assert_eq!(strip("/api/quests?language=en"), None);
+    assert_eq!(strip("/api/quests"), None);
 }

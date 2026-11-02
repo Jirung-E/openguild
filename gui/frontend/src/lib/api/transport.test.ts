@@ -724,6 +724,12 @@ describe('routeToInvoke — 강화 검색 (BUG-247)', () => {
 		expect(r!.args).toEqual({ q: 'title:/a/', of: 'library' });
 	});
 
+	it('/api/comments 가 search_comments 로', () => {
+		const r = route('/api/comments?q=author%3Aclaude');
+		expect(r!.cmd).toBe('search_comments');
+		expect(r!.args).toEqual({ q: 'author:claude' });
+	});
+
 	it('in / limit 을 넘긴다', () => {
 		const r = route('/api/search?q=x&in=comment,attachment&limit=20');
 		expect(r!.args.in).toBe('comment,attachment');

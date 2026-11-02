@@ -28,6 +28,7 @@ pub async fn get_template(
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SaveTemplateQuery {
     #[serde(default)]
     pub force: bool,

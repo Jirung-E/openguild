@@ -714,6 +714,7 @@ pub fn run() {
             commands::list_quests,
             commands::search_docs,
             commands::query_highlights,
+            commands::search_comments,
             commands::list_deleted_quests,
             commands::get_quest,
             commands::get_quest_by_slug,

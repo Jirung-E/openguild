@@ -63,6 +63,7 @@ pub struct UpdateBookRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FolderPathQuery {
     pub path: String,
 }
@@ -85,6 +86,7 @@ pub struct MoveFolderRequest {
 /// 빈 문자열(`?folder=`)은 "최상위만" 이라 `Option` 으로는 못 가른다 —
 /// `None`(파라미터 없음)과 `Some("")`(빈 값)이 다른 뜻이다.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListBooksQuery {
     folder: Option<String>,
     /// DEV-451: 쿼리 문법(도서관 키) — 해석은 코어.
@@ -262,6 +264,16 @@ pub async fn export_zip(
     Query(q): Query<Vec<(String, String)>>,
 ) -> AppResult<axum::response::Response> {
     use openguild_core::ops::library_export::{Pick, export};
+    // 다른 경로의 `deny_unknown_fields` 와 같다 — 같은 키를 여러 번 받아 구조체로 못 받을 뿐이다.
+    if let Some((k, _)) = q
+        .iter()
+        .find(|(k, _)| !["pick", "id", "folder"].contains(&k.as_str()))
+    {
+        return Err(openguild_core::error::AppError::BadRequest(format!(
+            "unknown query parameter `{k}`, expected one of `pick`, `id`, `folder`"
+        ))
+        .into());
+    }
     let get = |k: &str| q.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
     let mut picks: Vec<Pick> = q
         .iter()

@@ -25,6 +25,7 @@ use openguild_core::ops::campaigns as ops;
 use openguild_core::services::campaigns as svc;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListQuery {
     /// "active" | "done" 미지정 시 전체 alive.
     pub status: Option<String>,
@@ -155,6 +156,7 @@ pub async fn remove_checklist(
 // ── Home summaries (DEV-011 GUI 용) ─────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpcomingQuery {
     /// 향후 N 일 이내 시작하는 캠페인. 기본 7일.
     pub days: Option<i64>,
@@ -248,6 +250,7 @@ pub async fn get_banner_image(
 /// 크기 상한은 두지 않는다 — 경로 경로가 이미 무제한(`std::fs::copy`)이라,
 /// 모드에 따라 되고 안 되고가 갈리면 그게 더 나쁘다.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BannerQuery {
     pub ext: String,
 }

@@ -29,6 +29,7 @@ fn app_with(
             crate::commands::plugin_set_value,
             crate::commands::add_comment,
             crate::commands::toggle_comment_discussion,
+            crate::commands::search_comments,
         ])
         .build(mock_context(noop_assets()))
         .expect("mock app");
@@ -235,6 +236,41 @@ fn without_an_open_guild_nothing_is_recorded() {
 /// CLI 로는 되는데 앱에서는 안 된다는 보고를 받았다. 두 길은 같은 `ops` 를 부르지만
 /// 그 위(적재 scope, 알림 구현, 드레인 없음)가 다르다. 시험 자료 플러그인을 그대로
 /// 꽂고 IPC 로만 조작해서, 앱 쪽 배선에 구멍이 있는지 본다.
+/// 화면의 댓글 쿼리 — 서버 경로만 있고 앱 명령이 없으면 앱에서만 죽는다(BUG-247 과 같은 꼴).
+#[test]
+fn search_comments_takes_the_query_in_the_app() {
+    let dir = tmp("search-comments");
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    let store = tauri::async_runtime::block_on(Store::open(&dir)).unwrap();
+    let q = tauri::async_runtime::block_on(openguild_core::ops::quests::create_quest(
+        &store,
+        openguild_core::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "댓글 달린 것".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    ))
+    .unwrap();
+    let (_app, w) = app_with(store);
+    call(
+        &w,
+        "add_comment",
+        json!({ "slug": q.quest_id, "author": "admin", "body": "코끼리" }),
+    )
+    .unwrap();
+
+    let found = call(&w, "search_comments", json!({ "q": "author:admin" })).unwrap();
+    assert_eq!(found[0]["slug"], q.quest_id.as_str());
+    assert_eq!(found[0]["body"], "코끼리");
+    let none = call(&w, "search_comments", json!({ "q": "author:nobody" })).unwrap();
+    assert_eq!(none.as_array().unwrap().len(), 0);
+    assert!(call(&w, "search_comments", json!({ "q": "status:open" })).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
     if cfg!(windows) {

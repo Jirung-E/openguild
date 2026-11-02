@@ -148,6 +148,7 @@ pub struct ChangeParentRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CandidatesQuery {
     /// "parent" | "sub" | "prereq"
     pub relation: String,
@@ -159,8 +160,11 @@ pub struct CandidatesQuery {
 /// 필드 추가 시 server / cli / gui 셋 다 동시 갱신.
 ///
 /// 다중 값은 콤마 구분 string — `?type=DEV,BUG`. service 에서 split.
+///
+/// 모르는 조건은 거절한다 — 무시하면 틀린 이름에 전체 목록이 돌아가 거른 줄 알게 된다.
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct ListQuery {
     /// type prefix 필터 — `"DEV"` 또는 다중 `"DEV,BUG"`. 대소문자 무시.
     pub r#type: Option<String>,
@@ -237,6 +241,7 @@ pub struct ListQuery {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeleteQuestQuery {
     /// "1,2,3" 형식의 cascade 삭제 대상 직계 자식 ID 목록
     pub cascade: Option<String>,

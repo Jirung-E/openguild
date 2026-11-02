@@ -15,6 +15,7 @@ use openguild_core::ops::highlights::{self as ops, NewHighlight};
 use openguild_core::repo::highlights::Highlight;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TargetQuery {
     pub target: String,
 }

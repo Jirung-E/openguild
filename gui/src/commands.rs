@@ -335,6 +335,23 @@ pub async fn query_highlights(
         .map_err(|e| e.to_string())
 }
 
+/// 길드 전체 댓글을 쿼리로 — 서버의 `GET /api/comments?q=` 와 같다.
+#[tauri::command]
+pub async fn search_comments(
+    store: State<'_, Store>,
+    q: Option<String>,
+) -> Result<Vec<openguild_core::services::comments::GlobalComment>, String> {
+    openguild_core::services::comments::search_global(
+        &store.index_pool,
+        openguild_core::services::comments::GlobalCommentsFilter {
+            query: q.as_deref(),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(err)
+}
+
 /// BUG-247: 강화 검색(REQ-009) 의 데스크톱 경로.
 ///
 /// 서버는 `GET /api/search` 로 같은 일을 한다. 그쪽만 있고 여기가 없어서

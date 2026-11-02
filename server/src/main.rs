@@ -115,8 +115,30 @@ async fn static_cache_headers(
     res
 }
 
-async fn locale_middleware(req: Request, next: Next) -> Response {
+/// `?lang=` 은 어느 경로에나 붙는 요청 설정이다 — 여기서 읽고 떼어 내, 경로의 조건을 검사하는 쪽이 모르는
+/// 조건으로 거절하지 않게 한다.
+fn uri_without_lang(uri: &axum::http::Uri) -> Option<axum::http::Uri> {
+    let is_lang = |p: &&str| *p == "lang" || p.starts_with("lang=");
+    let q = uri.query()?;
+    if !q.split('&').any(|p| is_lang(&p)) {
+        return None;
+    }
+    let rest: Vec<&str> = q.split('&').filter(|p| !is_lang(p)).collect();
+    let path = if rest.is_empty() {
+        uri.path().to_string()
+    } else {
+        format!("{}?{}", uri.path(), rest.join("&"))
+    };
+    let mut parts = uri.clone().into_parts();
+    parts.path_and_query = Some(path.parse().ok()?);
+    axum::http::Uri::from_parts(parts).ok()
+}
+
+async fn locale_middleware(mut req: Request, next: Next) -> Response {
     let locale = detect_request_locale(&req);
+    if let Some(uri) = uri_without_lang(req.uri()) {
+        *req.uri_mut() = uri;
+    }
     openguild_core::locale::scoped(locale, next.run(req)).await
 }
 
