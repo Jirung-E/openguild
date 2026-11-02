@@ -211,25 +211,31 @@ openguild library list --tag 설계
 
 # 쿼리로 거르기 — 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 키 없는 낱말 = 검색
 #   여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함) · a.. · ..=b, * = 아무 글(tag:ui-*),
-#   /정규식/ = 대소문자 무시(낱말 · tag · type · folder · title · body). 키 있는 값은 완전일치, title · body 는
+#   /정규식/ = 대소문자 무시(낱말 · id · tag · type · folder · title · body). 키 있는 값은 완전일치, title · body 는
 #   부분일치(=값 은 완전일치). 결과의 제목에서 낱말 · title · body · 정규식에 걸린 글자가 칠해진다
 #   화면(퀘스트 목록 · 보드 설정 · 캠페인 · 도서관)은 검색칸 앞의 [검색 | 쿼리] 에서 '쿼리' 를 고른다
-#   키: status · type · tag · campaign(번호 · none) · urgency(2 · 1..=3 · <=2) · due(overdue · none · <=날짜 · 날짜..날짜) · parent(번호 · none) · title · body
+#   키: id(DEV-001 · DEV-001.. · DEV-* · /정규식/) · status · type · tag · campaign(번호 · none) · urgency(2 · 1..=3 · <=2)
+#       · due(overdue · none · <=날짜 · 날짜..날짜) · required_due · desired_due · campaign_end(값은 due 와 같음)
+#       · parent · child · prereq · successor(번호 · none — child:DEV-001 = DEV-001 을 자식으로 둔 퀘스트)
+#       · discussion(unresolved · resolved · none) · created · updated(날짜 비교) · title · body
 #       · commented(마지막 댓글 날짜 — >=날짜 · <날짜 · none). 댓글은 updated_at 을 안 바꾼다 — "이후 바뀐 것" 은
 #         --updated-after 와 commented:>=날짜 를 둘 다 본다
-#   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.
+#   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것 — 따로 보려면 required_due · campaign_end.
+#   희망 기한은 desired_due 로만 본다. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.
 openguild quest list -q 'status:[open, in_progress] -tag:wip urgency:1..=2'
 openguild quest list -q '(tag:urgent | due:overdue) -status:done'
 openguild quest list -q 'title:/^로그인/ due:2026-11-01..2026-12-01'
 openguild quest list -q 'campaign:C-001 due:overdue'
 openguild quest list -q 'parent:DEV-001 "로그인 화면"'
 openguild quest list -q 'commented:>=2026-10-20'      # 그날 이후 댓글이 달린 퀘스트
+openguild quest list -q 'required_due:overdue'        # 필수 기한이 지난 것만(캠페인 끝 날은 안 본다)
+openguild quest list -q 'prereq:none child:none discussion:none'  # 선행 · 자식 · 토론이 없는 것
 
 # 캠페인 · 도서관도 같은 문법 — 키만 다르다(다른 키를 쓰면 쓸 수 있는 키를 알려 준다)
 #   캠페인: status(active · done) · start · end(날짜 · <=날짜 · >=날짜 · none; end:overdue = 끝 날이 지났는데 진행 중)
-#           · quest(그 퀘스트가 연결된 캠페인). 낱말은 제목 · 설명 · 번호
-#   도서관: tag · folder(하위 폴더까지, none = 최상위만) · updated(고친 날). 낱말은 제목 · 본문 · 번호
-#   셋 다 title · body 를 쓸 수 있다
+#           · quest(그 퀘스트가 연결된 캠페인) · checklist(open · done · none) · created · updated. 낱말은 제목 · 설명 · 번호
+#   도서관: tag · folder(하위 폴더까지, none = 최상위만) · created · updated. 낱말은 제목 · 본문 · 번호
+#   셋 다 id · title · body 를 쓸 수 있다
 openguild campaign list -q 'end:overdue'
 openguild campaign list -q 'quest:DEV-001'
 openguild library list -q 'tag:[설계, 결정] -folder:보관 updated:2026-10-01..'

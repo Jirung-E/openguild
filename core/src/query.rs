@@ -24,23 +24,44 @@ use crate::error::{AppError, AppResult};
 
 /// 퀘스트 목록에 쓸 수 있는 키. 순서는 오류 안내에 보이는 순서.
 pub const KEYS: &[&str] = &[
+    "id",
     "status",
     "type",
     "tag",
     "campaign",
     "urgency",
     "due",
+    "required_due",
+    "desired_due",
+    "campaign_end",
     "parent",
+    "child",
+    "prereq",
+    "successor",
+    "discussion",
+    "created",
+    "updated",
     "commented",
     "title",
     "body",
 ];
 
 /// DEV-451: 캠페인 목록의 키.
-pub const CAMPAIGN_KEYS: &[&str] = &["status", "start", "end", "quest", "title", "body"];
+pub const CAMPAIGN_KEYS: &[&str] = &[
+    "id",
+    "status",
+    "start",
+    "end",
+    "quest",
+    "checklist",
+    "created",
+    "updated",
+    "title",
+    "body",
+];
 
 /// DEV-451: 도서관 목록의 키.
-pub const LIBRARY_KEYS: &[&str] = &["tag", "folder", "updated", "title", "body"];
+pub const LIBRARY_KEYS: &[&str] = &["id", "tag", "folder", "created", "updated", "title", "body"];
 
 /// DEV-451: 쿼리를 거는 목록. 문법은 같고 쓸 수 있는 키와 SQL 만 다르다.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -63,13 +84,25 @@ impl Target {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
+    /// 문서 번호 — 세 대상 모두.
+    Id,
     Status,
     Type,
     Tag,
     Campaign,
     Urgency,
     Due,
+    /// 필수 기한만 · 희망 기한만 · 연결된 진행 중 캠페인의 끝 날만 — `due` 는 앞의 것과 마지막 것 중 이른 날.
+    RequiredDue,
+    DesiredDue,
+    CampaignEnd,
     Parent,
+    Child,
+    Prereq,
+    Successor,
+    Discussion,
+    Checklist,
+    Created,
     /// DEV-448: 마지막 댓글의 날짜. 댓글은 `updated_at` 을 안 바꾼다(사이드카 — DEV-433).
     Commented,
     /// DEV-451: 캠페인의 시작 · 끝 날, 연결된 퀘스트.
@@ -92,13 +125,23 @@ impl Key {
             return None;
         }
         Some(match s.as_str() {
+            "id" => Key::Id,
             "status" => Key::Status,
             "type" => Key::Type,
             "tag" => Key::Tag,
             "campaign" => Key::Campaign,
             "urgency" => Key::Urgency,
             "due" => Key::Due,
+            "required_due" => Key::RequiredDue,
+            "desired_due" => Key::DesiredDue,
+            "campaign_end" => Key::CampaignEnd,
             "parent" => Key::Parent,
+            "child" => Key::Child,
+            "prereq" => Key::Prereq,
+            "successor" => Key::Successor,
+            "discussion" => Key::Discussion,
+            "checklist" => Key::Checklist,
+            "created" => Key::Created,
             "commented" => Key::Commented,
             "start" => Key::Start,
             "end" => Key::End,
@@ -115,7 +158,7 @@ impl Key {
     fn is_text(self) -> bool {
         matches!(
             self,
-            Key::Tag | Key::Type | Key::Folder | Key::Title | Key::Body
+            Key::Id | Key::Tag | Key::Type | Key::Folder | Key::Title | Key::Body
         )
     }
 }
@@ -641,8 +684,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                 return Err(QueryError::at(
                     pos,
                     crate::tf!(
-                        "'/{p}/' — 정규식은 낱말과 tag · type · folder · title · body 에만 씁니다",
-                        "'/{p}/' — regexes work for words and tag, type, folder, title, body"
+                        "'/{p}/' — 정규식은 낱말과 id · tag · type · folder · title · body 에만 씁니다",
+                        "'/{p}/' — regexes work for words and id, tag, type, folder, title, body"
                     ),
                 ));
             }
@@ -676,22 +719,56 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
         let s = v.text();
         let ok = match (key, v) {
             (Key::Urgency, _) => urgency_cond(s).is_some(),
+            (Key::Id, _) => id_cond("x", "x", "x", v).is_some(),
             (Key::Due, _) => due_cond(s).is_some(),
+            (Key::RequiredDue | Key::DesiredDue | Key::CampaignEnd, _) => {
+                due_like_cond("x", s).is_some()
+            }
             (Key::Commented, _) => commented_cond(s).is_some(),
-            (Key::Parent | Key::Campaign, _) => {
+            (Key::Parent | Key::Child | Key::Prereq | Key::Successor | Key::Campaign, _) => {
                 s.eq_ignore_ascii_case("none") || split_slug(s).is_some()
             }
             // 캠페인 상태는 둘뿐이다 — 퀘스트처럼 길드가 정하지 않는다.
             (Key::Status, _) if target == Target::Campaign => {
                 ["active", "done"].iter().any(|x| s.eq_ignore_ascii_case(x))
             }
-            (Key::Start | Key::Updated, _) => date_cond("x", s).is_some(),
+            (Key::Discussion, _) => ["unresolved", "resolved", "none"]
+                .iter()
+                .any(|x| s.eq_ignore_ascii_case(x)),
+            (Key::Checklist, _) => ["open", "done", "none"]
+                .iter()
+                .any(|x| s.eq_ignore_ascii_case(x)),
+            (Key::Start | Key::Created | Key::Updated, _) => date_cond("x", s).is_some(),
             (Key::End, _) => s.eq_ignore_ascii_case("overdue") || date_cond("x", s).is_some(),
             (Key::Quest, _) => split_slug(s).is_some(),
             (Key::Status | Key::Type | Key::Tag | Key::Folder | Key::Title | Key::Body, _) => true,
         };
         if !ok {
             let hint = match key {
+                Key::Id => crate::tf!(
+                    "id 는 번호(DEV-012) · 범위(DEV-1..=DEV-9) · * · /정규식/",
+                    "id is an id (DEV-012), a range (DEV-1..=DEV-9), * or /regex/"
+                ),
+                Key::RequiredDue | Key::DesiredDue | Key::CampaignEnd => crate::tf!(
+                    "기한 키는 overdue · none · 날짜(2026-11-01) · <=날짜 · 범위(2026-11-01..2026-12-01)",
+                    "a due key is overdue, none, a date (2026-11-01), <=date or a range (2026-11-01..2026-12-01)"
+                ),
+                Key::Child | Key::Prereq | Key::Successor => crate::tf!(
+                    "child · prereq · successor 는 퀘스트 번호(DEV-012) 또는 none",
+                    "child, prereq and successor are a quest id (DEV-012) or none"
+                ),
+                Key::Discussion => crate::tf!(
+                    "discussion 은 unresolved(미해결이 있음) · resolved(모두 해결) · none(토론 없음)",
+                    "discussion is unresolved (some open), resolved (all resolved) or none (no discussion)"
+                ),
+                Key::Checklist => crate::tf!(
+                    "checklist 는 open(남은 것이 있음) · done(모두 체크) · none(항목 없음)",
+                    "checklist is open (items left), done (all checked) or none (no items)"
+                ),
+                Key::Created => crate::tf!(
+                    "created 는 날짜(2026-11-01) · <=날짜 · 범위(2026-10-01..) — 만든 날과 비교",
+                    "created is a date (2026-11-01), <=date or a range (2026-10-01..) — compared with the day it was created"
+                ),
                 Key::Status => crate::tf!(
                     "캠페인의 status 는 active · done",
                     "a campaign's status is active or done"
@@ -841,21 +918,101 @@ fn date_bind(s: &str) -> Option<Bind> {
     is_date(s).then(|| Bind::Text(s.to_string()))
 }
 
-/// 유효 기한 — 필수 기한과, 연결된 진행 중 캠페인의 끝 날 중 이른 것(화면의 BUG-034 규칙과 같다).
-const EFFECTIVE_DUE: &str = "(CASE
-        WHEN NULLIF(substr(q.required_due, 1, 10), '') IS NULL THEN (SELECT MIN(substr(c.ended_at, 1, 10)) FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id WHERE cq.quest_id = q.id AND c.status = 'active' AND COALESCE(c.ended_at, '') != '')
-        ELSE MIN(substr(q.required_due, 1, 10), COALESCE((SELECT MIN(substr(c.ended_at, 1, 10)) FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id WHERE cq.quest_id = q.id AND c.status = 'active' AND COALESCE(c.ended_at, '') != ''), '9999-12-31'))
-    END)";
+/// 연결된 진행 중 캠페인의 끝 날 중 가장 이른 것.
+macro_rules! campaign_end_sql {
+    () => {
+        "(SELECT MIN(substr(c.ended_at, 1, 10)) FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id WHERE cq.quest_id = q.id AND c.status = 'active' AND COALESCE(c.ended_at, '') != '')"
+    };
+}
+const CAMPAIGN_END: &str = campaign_end_sql!();
+const REQUIRED_DUE: &str = "NULLIF(substr(q.required_due, 1, 10), '')";
+const DESIRED_DUE: &str = "NULLIF(substr(q.desired_due, 1, 10), '')";
 
-/// due 값 하나 → 조건. `overdue` 의 "오늘" 은 부르는 때 바인딩한다.
-fn due_cond(v: &str) -> Option<(String, Vec<Bind>)> {
+/// 유효 기한 — 필수 기한과, 연결된 진행 중 캠페인의 끝 날 중 이른 것(화면의 BUG-034 규칙과 같다).
+const EFFECTIVE_DUE: &str = concat!(
+    "(CASE WHEN NULLIF(substr(q.required_due, 1, 10), '') IS NULL THEN ",
+    campaign_end_sql!(),
+    " ELSE MIN(substr(q.required_due, 1, 10), COALESCE(",
+    campaign_end_sql!(),
+    ", '9999-12-31')) END)"
+);
+
+/// 기한 칸 하나와 비교. `overdue` 의 "오늘" 은 부르는 때 바인딩한다.
+fn due_like_cond(col: &str, v: &str) -> Option<(String, Vec<Bind>)> {
     match v.to_ascii_lowercase().as_str() {
         "overdue" => Some((
-            format!("({EFFECTIVE_DUE} < ? AND qs.counts_as_done = 0)"),
+            format!("({col} < ? AND qs.counts_as_done = 0)"),
             vec![Bind::Text(crate::time::today_local_iso_date())],
         )),
-        _ => date_cond(EFFECTIVE_DUE, v),
+        _ => date_cond(col, v),
     }
+}
+
+/// due 값 하나 → 조건.
+fn due_cond(v: &str) -> Option<(String, Vec<Bind>)> {
+    due_like_cond(EFFECTIVE_DUE, v)
+}
+
+/// 번호 값 하나 → 조건. `DEV-1` 은 `DEV-001` 과 같고, `DEV-1..=DEV-9` 는 같은 타입 안의 범위다. `*` · 정규식은
+/// 적힌 그대로의 번호(`DEV-001`)에 맞춘다.
+fn id_cond(slug: &str, prefix: &str, number: &str, v: &Val) -> Option<(String, Vec<Bind>)> {
+    let s = v.text();
+    if matches!(v, Val::Regex(_)) || (s.contains('*') && matches!(v, Val::Bare(_))) {
+        return Some(text_cond(&[slug], v, Match::Exact));
+    }
+    if matches!(v, Val::Bare(_))
+        && let Some(r) = split_range(s)
+    {
+        let (lo, hi, inclusive) = r?;
+        let lo = match lo {
+            Some(x) => Some(split_slug(x)?),
+            None => None,
+        };
+        let hi = match hi {
+            Some(x) => Some(split_slug(x)?),
+            None => None,
+        };
+        let p = match (&lo, &hi) {
+            (Some((a, _)), Some((b, _))) if !a.eq_ignore_ascii_case(b) => return None,
+            (Some((a, _)), _) | (_, Some((a, _))) => a.clone(),
+            _ => return None,
+        };
+        let mut cond = format!("UPPER({prefix}) = UPPER(?)");
+        let mut binds = vec![Bind::Text(p)];
+        if let Some((_, n)) = lo {
+            cond += &format!(" AND {number} >= ?");
+            binds.push(Bind::Int(n));
+        }
+        if let Some((_, n)) = hi {
+            cond += &format!(" AND {number} {} ?", if inclusive { "<=" } else { "<" });
+            binds.push(Bind::Int(n));
+        }
+        return Some((cond, binds));
+    }
+    let (p, n) = split_slug(s)?;
+    Some((
+        format!("UPPER({prefix}) = UPPER(?) AND {number} = ?"),
+        vec![Bind::Text(p), Bind::Int(n)],
+    ))
+}
+
+/// 이어진 퀘스트(`o`) — `none` 이면 없는 것, 번호면 그 퀘스트가 이어진 것. `from` 은 `q` 와 `o` 를 잇는
+/// `FROM … WHERE …`.
+fn related_cond(from: &str, v: &str) -> Option<(String, Vec<Bind>)> {
+    if v.eq_ignore_ascii_case("none") {
+        return Some((
+            format!("NOT EXISTS (SELECT 1 {from} AND o.deleted_at IS NULL)"),
+            vec![],
+        ));
+    }
+    let (prefix, num) = split_slug(v)?;
+    Some((
+        format!(
+            "EXISTS (SELECT 1 {from} AND o.deleted_at IS NULL AND o.number = ?
+              AND o.quest_type_id = (SELECT ot.id FROM quest_types ot WHERE UPPER(ot.prefix) = UPPER(?)))"
+        ),
+        vec![Bind::Int(num), Bind::Text(prefix)],
+    ))
 }
 
 /// DEV-448: 마지막 댓글의 날짜 — 댓글에 적힌 시각(`2026-10-23T11:16:24+09:00`)의 날짜 부분. 적은 기계의
@@ -1033,6 +1190,7 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             v,
             Match::Partial,
         ),
+        Some(Key::Id) => id_cond(SLUG_EXPR, "qt.prefix", "q.number", v)?,
         Some(Key::Title) => text_cond(&["q.title"], v, Match::Partial),
         Some(Key::Body) => text_cond(&["COALESCE(q.description, '')"], v, Match::Partial),
         // 지금 `--status` 와 같은 비교(영어 이름 · slug, 대소문자 · 공백 · `-` 무시) + 한국어 이름.
@@ -1069,6 +1227,11 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         }
         Some(Key::Urgency) => urgency_cond(s)?,
         Some(Key::Due) => due_cond(s)?,
+        Some(Key::RequiredDue) => due_like_cond(REQUIRED_DUE, s)?,
+        Some(Key::DesiredDue) => due_like_cond(DESIRED_DUE, s)?,
+        Some(Key::CampaignEnd) => due_like_cond(CAMPAIGN_END, s)?,
+        Some(Key::Created) => date_cond("substr(q.created_at, 1, 10)", s)?,
+        Some(Key::Updated) => date_cond("substr(q.updated_at, 1, 10)", s)?,
         Some(Key::Commented) => commented_cond(s)?,
         Some(Key::Parent) if s.eq_ignore_ascii_case("none") => ("q.parent_quest_id IS NULL".into(), vec![]),
         Some(Key::Parent) => {
@@ -1080,8 +1243,28 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
                 vec![Bind::Text(prefix), Bind::Int(num)],
             )
         }
+        Some(Key::Child) => related_cond("FROM quests o WHERE o.parent_quest_id = q.id", s)?,
+        Some(Key::Prereq) => related_cond(
+            "FROM quest_dependencies d JOIN quests o ON o.id = d.prerequisite_id WHERE d.quest_id = q.id",
+            s,
+        )?,
+        Some(Key::Successor) => related_cond(
+            "FROM quest_dependencies d JOIN quests o ON o.id = d.quest_id WHERE d.prerequisite_id = q.id",
+            s,
+        )?,
+        // 목록의 토론 아이콘과 같다 — 미해결이 하나라도 있으면 unresolved, 모두 풀렸으면 resolved.
+        Some(Key::Discussion) => {
+            const ANY: &str = "SELECT 1 FROM quest_comments dc WHERE dc.quest_id = q.id AND dc.discussion = 1";
+            let cond = match s.to_ascii_lowercase().as_str() {
+                "unresolved" => format!("EXISTS ({ANY} AND dc.resolved = 0)"),
+                "resolved" => format!("EXISTS ({ANY}) AND NOT EXISTS ({ANY} AND dc.resolved = 0)"),
+                "none" => format!("NOT EXISTS ({ANY})"),
+                _ => return None,
+            };
+            (cond, vec![])
+        }
         // 다른 대상의 키 — 해석에서 이미 막는다.
-        Some(Key::Start | Key::End | Key::Quest | Key::Folder | Key::Updated) => return None,
+        Some(Key::Start | Key::End | Key::Quest | Key::Folder | Key::Checklist) => return None,
     };
     Some((format!("({cond})"), binds))
 }
@@ -1098,6 +1281,12 @@ fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             v,
             Match::Partial,
         ),
+        Some(Key::Id) => id_cond(
+            "campaigns.campaign_slug",
+            "substr(campaigns.campaign_slug, 1, instr(campaigns.campaign_slug, '-') - 1)",
+            "CAST(substr(campaigns.campaign_slug, instr(campaigns.campaign_slug, '-') + 1) AS INTEGER)",
+            v,
+        )?,
         Some(Key::Title) => text_cond(&["campaigns.title"], v, Match::Partial),
         Some(Key::Body) => text_cond(&[DESC], v, Match::Partial),
         Some(Key::Status) => (
@@ -1111,6 +1300,19 @@ fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             vec![Bind::Text(crate::time::today_local_iso_date())],
         ),
         Some(Key::End) => date_cond(END, s)?,
+        Some(Key::Created) => date_cond("substr(campaigns.created_at, 1, 10)", s)?,
+        Some(Key::Updated) => date_cond("substr(campaigns.updated_at, 1, 10)", s)?,
+        Some(Key::Checklist) => {
+            const ANY: &str =
+                "SELECT 1 FROM campaign_checklists cl WHERE cl.campaign_id = campaigns.id";
+            let cond = match s.to_ascii_lowercase().as_str() {
+                "open" => format!("EXISTS ({ANY} AND cl.checked = 0)"),
+                "done" => format!("EXISTS ({ANY}) AND NOT EXISTS ({ANY} AND cl.checked = 0)"),
+                "none" => format!("NOT EXISTS ({ANY})"),
+                _ => return None,
+            };
+            (cond, vec![])
+        }
         Some(Key::Quest) => {
             let (prefix, num) = split_slug(s)?;
             (
@@ -1138,6 +1340,7 @@ fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             v,
             Match::Partial,
         ),
+        Some(Key::Id) => id_cond(SLUG, "'BOOK'", "library_docs.number", v)?,
         Some(Key::Title) => text_cond(&["library_docs.title"], v, Match::Partial),
         Some(Key::Body) => text_cond(&["library_docs.body"], v, Match::Partial),
         Some(Key::Tag) => {
@@ -1165,6 +1368,7 @@ fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
                 vec![t(f), Bind::Text(format!("{}/%", like_escape(f)))],
             )
         }
+        Some(Key::Created) => date_cond("substr(library_docs.created_at, 1, 10)", s)?,
         Some(Key::Updated) => date_cond("substr(library_docs.updated_at, 1, 10)", s)?,
         _ => return None,
     };
@@ -1375,7 +1579,7 @@ mod tests {
     fn each_target_has_its_own_keys() {
         let err = |t: Target, s: &str| parse_for(t, s).unwrap_err().message;
         assert!(err(Target::Campaign, "urgency:2").contains("status, start, end, quest"));
-        assert!(err(Target::Library, "status:open").contains("tag, folder, updated"));
+        assert!(err(Target::Library, "status:open").contains("tag, folder, created, updated"));
         assert!(err(Target::Quest, "folder:a").contains("status, type, tag"));
         assert!(
             parse_for(

@@ -1855,6 +1855,197 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// REQ-039: 기한을 나눠 보는 키 · 번호 · 만든 날 · 고친 날 · 관계 · 토론.
+    #[tokio::test]
+    async fn query_keys_for_dues_ids_dates_links_and_discussions() {
+        let (dir, store) = fresh_store("query_keys").await;
+        let pool = store.index_pool.clone();
+        let a = make_quest(&store).await; // 필수 기한만 지남 · 미해결 토론 · 부모 · 선행
+        let b = make_quest(&store).await; // 희망 기한만 지남 · 해결된 토론 · a 의 자식
+        let c = make_quest(&store).await; // 캠페인 끝 날만 지남 · a 의 후행
+        let run = |sql: &'static str, x: i64, y: i64| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query(sql)
+                    .bind(x)
+                    .bind(y)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+        };
+        run("UPDATE quests SET parent_quest_id = ? WHERE id = ?", a, b).await;
+        run(
+            "INSERT INTO quest_dependencies (quest_id, prerequisite_id) VALUES (?, ?)",
+            c,
+            a,
+        )
+        .await;
+        sqlx::query(
+            "UPDATE quests SET required_due = '2000-01-01', desired_due = '2999-01-01',
+                    created_at = '2020-03-01T10:00:00+09:00', updated_at = '2021-03-01T10:00:00+09:00'
+              WHERE id = ?",
+        )
+        .bind(a)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE quests SET desired_due = '2000-01-01' WHERE id = ?")
+            .bind(b)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO campaigns (id, campaign_slug, title, status, ended_at, created_at, updated_at)
+             VALUES (7, 'C-007', 'c', 'active', '2000-02-01', '2026-01-01', '2026-01-01')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        run(
+            "INSERT INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
+            7,
+            c,
+        )
+        .await;
+        for (q, entry, discussion, resolved) in [
+            (a, 1, 1, 0),
+            (a, 2, 1, 1),
+            (b, 1, 1, 1),
+            (c, 1, 0, 0), // 그냥 댓글은 토론이 아니다
+        ] {
+            sqlx::query(
+                "INSERT INTO quest_comments (quest_id, entry_id, body, discussion, resolved)
+                 VALUES (?, ?, 'x', ?, ?)",
+            )
+            .bind(q)
+            .bind(entry)
+            .bind(discussion)
+            .bind(resolved)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let slug = |id: i64| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query_as::<_, (String, i64)>(
+                    "SELECT qt.prefix, q.number FROM quests q
+                      JOIN quest_types qt ON q.quest_type_id = qt.id WHERE q.id = ?",
+                )
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+            }
+        };
+        let ids = |text: String| {
+            let pool = pool.clone();
+            async move {
+                let q = ListQuery {
+                    q: Some(text),
+                    ..ListQuery::default()
+                };
+                let mut v: Vec<i64> = list(&pool, &q)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|r| r.id)
+                    .collect();
+                v.sort();
+                v
+            }
+        };
+        let none = Vec::<i64>::new();
+
+        // 기한 — 필수만 · 희망만 · 캠페인만, due 는 필수와 캠페인을 합친다.
+        assert_eq!(ids("required_due:overdue".into()).await, vec![a]);
+        assert_eq!(ids("desired_due:overdue".into()).await, vec![b]);
+        assert_eq!(ids("campaign_end:overdue".into()).await, vec![c]);
+        assert_eq!(ids("due:overdue".into()).await, vec![a, c]);
+        assert_eq!(ids("required_due:none".into()).await, vec![b, c]);
+        assert_eq!(ids("desired_due:2999-01-01".into()).await, vec![a]);
+        assert_eq!(ids("campaign_end:none".into()).await, vec![a, b]);
+        // 끝난 상태는 overdue 가 아니다.
+        sqlx::query("UPDATE quests SET status_id = (SELECT id FROM quest_statuses WHERE slug = 'done') WHERE id = ?")
+            .bind(a)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(ids("required_due:overdue".into()).await, none);
+        assert_eq!(ids("required_due:<=2000-01-01".into()).await, vec![a]);
+
+        // 번호 — 0 을 안 채워도, 대소문자, 여러 개, 범위, *, 정규식.
+        let (p, na) = slug(a).await;
+        let (_, nc) = slug(c).await;
+        assert_eq!(ids(format!("id:{p}-{na}")).await, vec![a]);
+        assert_eq!(
+            ids(format!("id:{}-{na:03}", p.to_lowercase())).await,
+            vec![a]
+        );
+        assert_eq!(ids(format!("id:[{p}-{na}, {p}-{nc}]")).await, vec![a, c]);
+        assert_eq!(ids(format!("id:{p}-{na}..={p}-{nc}")).await, vec![a, b, c]);
+        assert_eq!(ids(format!("id:{p}-{na}..{p}-{nc}")).await, vec![a, b]);
+        assert_eq!(ids(format!("id:{p}-{nc}..")).await, vec![c]);
+        assert_eq!(ids(format!("id:{p}-*")).await, vec![a, b, c]);
+        assert_eq!(ids(format!("id:/^{p}-0*{na}$/")).await, vec![a]);
+        assert_eq!(ids(format!("-id:{p}-{na}")).await, vec![b, c]);
+        assert_eq!(ids("id:NOPE-1".into()).await, none);
+
+        // 만든 날 · 고친 날.
+        assert_eq!(ids("created:2020-03-01".into()).await, vec![a]);
+        assert_eq!(ids("created:..2021-01-01".into()).await, vec![a]);
+        assert_eq!(ids("updated:2021-03-01".into()).await, vec![a]);
+        assert_eq!(ids("-updated:2021-03-01".into()).await, vec![b, c]);
+
+        // 관계 — 부모 · 자식, 선행 · 후행은 서로 반대 방향.
+        let (sa, sb, sc) = (
+            format!("{p}-{na}"),
+            format!("{p}-{}", slug(b).await.1),
+            format!("{p}-{nc}"),
+        );
+        assert_eq!(ids(format!("parent:{sa}")).await, vec![b]);
+        assert_eq!(ids(format!("child:{sb}")).await, vec![a]);
+        assert_eq!(ids("child:none".into()).await, vec![b, c]);
+        assert_eq!(ids("-child:none".into()).await, vec![a]);
+        assert_eq!(ids(format!("prereq:{sa}")).await, vec![c]);
+        assert_eq!(ids(format!("successor:{sc}")).await, vec![a]);
+        assert_eq!(ids("prereq:none".into()).await, vec![a, b]);
+        assert_eq!(ids("successor:none".into()).await, vec![b, c]);
+
+        // 지운 퀘스트는 관계로 안 친다.
+        sqlx::query("UPDATE quests SET deleted_at = '2026-01-01' WHERE id = ?")
+            .bind(b)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(ids("child:none".into()).await.contains(&a));
+        sqlx::query("UPDATE quests SET deleted_at = NULL WHERE id = ?")
+            .bind(b)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // 토론 — 목록의 아이콘과 같은 뜻.
+        assert_eq!(ids("discussion:unresolved".into()).await, vec![a]);
+        assert_eq!(ids("discussion:resolved".into()).await, vec![b]);
+        assert_eq!(ids("discussion:none".into()).await, vec![c]);
+
+        // 틀린 값은 안내와 함께 오류.
+        for bad in [
+            "discussion:open",
+            "child:아무거나",
+            "required_due:곧",
+            "id:DEV",
+            "id:DEV-1..BUG-9",
+            "id:..",
+            "created:어제",
+        ] {
+            assert!(crate::query::parse(bad).is_err(), "{bad}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // ─── BUG-284: 위치 일괄 저장 ───
 
     /// 여러 위치가 **한 번에** 저장된다. 보드가 자동 배치 노드를 고정할 때 쓴다 —

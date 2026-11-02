@@ -1133,6 +1133,57 @@ mod tests {
                     .collect::<Vec<_>>()
             }
         };
+        // REQ-039: 번호 · 만든 날 · 고친 날 · 체크리스트.
+        assert_eq!(
+            slugs(None, "id:c-2").await,
+            vec![late.campaign_slug.clone()]
+        );
+        assert_eq!(
+            slugs(None, "id:C-002..=C-003").await,
+            vec![next.campaign_slug.clone(), late.campaign_slug.clone()]
+        );
+        assert_eq!(
+            slugs(None, "id:/^c-00[3]$/").await,
+            vec![next.campaign_slug.clone()]
+        );
+        sqlx::query(
+            "UPDATE campaigns SET created_at = '2020-03-01T10:00:00+09:00', updated_at = '2021-03-01T10:00:00+09:00'
+              WHERE id = ?",
+        )
+        .bind(late.id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            slugs(None, "created:2020-03-01").await,
+            vec![late.campaign_slug.clone()]
+        );
+        assert_eq!(
+            slugs(None, "updated:..2022-01-01").await,
+            vec![late.campaign_slug.clone()]
+        );
+        for (c, checked) in [(late.id, 0), (late.id, 1), (next.id, 1)] {
+            sqlx::query(
+                "INSERT INTO campaign_checklists (campaign_id, text, checked) VALUES (?, 'x', ?)",
+            )
+            .bind(c)
+            .bind(checked)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        }
+        assert_eq!(
+            slugs(None, "checklist:open").await,
+            vec![late.campaign_slug.clone()]
+        );
+        assert_eq!(
+            slugs(None, "checklist:done").await,
+            vec![next.campaign_slug.clone()]
+        );
+        assert_eq!(
+            slugs(Some("done"), "checklist:none").await,
+            vec![done.campaign_slug.clone()]
+        );
         let sorted = |v: Vec<String>| {
             let mut v = v;
             v.sort();

@@ -1468,6 +1468,18 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'urgency 1–4 · range · comparison'
 	},
 	// REQ-040: 칸을 정해 찾기 — 기본은 부분일치, `=` 를 붙이면 완전일치. 세 목록이 같이 쓴다.
+	'query.helpId': {
+		ko: '번호 — DEV-1 · 범위 · * · /정규식/',
+		en: 'id — DEV-1 · range · * · /regex/'
+	},
+	'query.helpCreated': {
+		ko: '만든 날 — 날짜 비교',
+		en: 'day it was created — date comparison'
+	},
+	'query.helpUpdated': {
+		ko: '고친 날 — 날짜 비교',
+		en: 'day it was edited — date comparison'
+	},
 	'query.helpTitle': {
 		ko: '제목만 — 부분일치, =값 은 완전일치, * · /정규식/',
 		en: 'title only — contains; =value matches exactly; * and /regex/'
@@ -1480,7 +1492,39 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '유효 기한(필수 기한 · 진행 중 캠페인의 끝 날 중 이른 것) — overdue · none · 날짜 비교',
 		en: 'effective due date (earlier of the required due date and an active campaign’s end) — overdue · none · date comparison'
 	},
+	'filter.queryHelpRequiredDue': {
+		ko: '필수 기한만 — overdue · none · 날짜 비교',
+		en: 'required due date only — overdue · none · date comparison'
+	},
+	'filter.queryHelpDesiredDue': {
+		ko: '희망 기한만 — overdue · none · 날짜 비교',
+		en: 'desired due date only — overdue · none · date comparison'
+	},
+	'filter.queryHelpCampaignEnd': {
+		ko: '연결된 진행 중 캠페인의 끝 날만 — overdue · none · 날짜 비교',
+		en: 'end date of a linked active campaign only — overdue · none · date comparison'
+	},
 	'filter.queryHelpParent': { ko: '부모 번호 · none(최상위)', en: 'parent id · none (top level)' },
+	'filter.queryHelpChild': {
+		ko: '이 번호를 자식으로 둔 퀘스트 · none(자식 없음)',
+		en: 'quests with that child · none (no children)'
+	},
+	'filter.queryHelpPrereq': {
+		ko: '이 번호를 선행으로 둔 퀘스트 · none(선행 없음)',
+		en: 'quests with that prerequisite · none (no prerequisites)'
+	},
+	'filter.queryHelpSuccessor': {
+		ko: '이 번호를 후행으로 둔 퀘스트 · none(후행 없음)',
+		en: 'quests with that successor · none (no successors)'
+	},
+	'filter.queryHelpDiscussion': {
+		ko: '토론 — unresolved(미해결 있음) · resolved(모두 해결) · none(없음)',
+		en: 'discussions — unresolved (some open) · resolved (all resolved) · none'
+	},
+	'filter.queryHelpUpdated': {
+		ko: '고친 날 — 날짜 비교. 댓글만 달리면 안 바뀝니다(commented 를 보세요)',
+		en: 'day it was edited — date comparison. Comments do not change it (see commented)'
+	},
 	// DEV-448: 댓글은 갱신 시점을 안 바꾼다 — '갱신' 범위로는 댓글만 달린 퀘스트를 못 찾는다.
 	'filter.queryHelpCommented': {
 		ko: '마지막 댓글 날짜 · none(댓글 없음) — 댓글은 갱신 시점을 안 바꿉니다',
@@ -1503,6 +1547,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'campaignList.queryHelpEnd': {
 		ko: '끝 날 — 날짜 비교 · none · overdue(지났는데 진행 중)',
 		en: 'end date — date comparison · none · overdue (past it and still active)'
+	},
+	'campaignList.queryHelpChecklist': {
+		ko: '체크리스트 — open(남은 것 있음) · done(모두 체크) · none(항목 없음)',
+		en: 'checklist — open (items left) · done (all checked) · none (no items)'
 	},
 	'campaignList.queryHelpQuest': {
 		ko: '그 퀘스트가 연결된 캠페인',

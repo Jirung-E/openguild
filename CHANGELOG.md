@@ -117,9 +117,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   `title` · `body` · 정규식에 걸린 글자를 칠한다 (REQ-039, REQ-040)
   - 퀘스트: `status` · `type` · `tag` · `campaign`(번호 · none) · `urgency`(2 · 1..=3 · <=2) ·
     `due`(overdue · none · 날짜 비교 — 필수 기한과 진행 중 캠페인의 끝 날 중 이른 것) ·
-    `parent` · `commented`(마지막 댓글 날짜 — 댓글은 갱신 시각을 안 바꾼다)
-  - 캠페인: `status` · `start` · `end`(`end:overdue`) · `quest`. 도서관: `tag` · `folder` · `updated`.
-    셋 다 `title` · `body`
+    `required_due` · `desired_due` · `campaign_end`(기한을 하나씩) · `parent` · `child` · `prereq` · `successor`(번호 · none) ·
+    `discussion`(unresolved · resolved · none) · `created` · `updated` ·
+    `commented`(마지막 댓글 날짜 — 댓글은 갱신 시각을 안 바꾼다)
+  - 캠페인: `status` · `start` · `end`(`end:overdue`) · `quest` · `checklist`(open · done · none) · `created` · `updated`.
+    도서관: `tag` · `folder` · `created` · `updated`. 셋 다 `id`(`DEV-1` · `DEV-1..=DEV-9` · `DEV-*`) · `title` · `body`
   - 화면: 검색칸 앞의 **[검색 | 쿼리]** 에서 고른다 — 퀘스트 목록 · 보드 설정의 필터 · 캠페인 목록 ·
     도서관. 틀리면 칸이 빨개지고 이유와 `?` 쓰는 법이 나온다. 주소 `?q=` 에 실려 새로고침·공유에
     남는다. CLI `quest|campaign|library list -q`, 서버 `?q=`

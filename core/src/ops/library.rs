@@ -1867,6 +1867,27 @@ mod tests {
         );
         assert_eq!(ids(None, vec![], "잠금").await, vec![t.clone(), l.clone()]);
         assert_eq!(ids(None, vec![], &t.to_lowercase()).await, vec![t.clone()]);
+        // REQ-039: 번호 · 만든 날.
+        assert_eq!(
+            ids(None, vec![], &format!("id:{}", t.to_lowercase())).await,
+            vec![t.clone()]
+        );
+        assert_eq!(ids(None, vec![], "id:BOOK-*").await.len(), 4);
+        assert_eq!(
+            ids(None, vec![], &format!("id:BOOK-{}", old.number)).await,
+            vec![o.clone()]
+        );
+        sqlx::query(
+            "UPDATE library_docs SET created_at = '2020-04-01T10:00:00+09:00' WHERE id = ?",
+        )
+        .bind(old.id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            ids(None, vec![], "created:<2021-01-01").await,
+            vec![o.clone()]
+        );
         // 옵션과는 그리고.
         assert_eq!(
             ids(Some("설계"), vec!["초안".into()], "잠금").await,

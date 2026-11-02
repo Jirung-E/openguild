@@ -3012,7 +3012,10 @@ async fn test_campaign_and_library_lists_take_a_query() {
     assert_eq!(list.as_array().unwrap().len(), 1);
     let (status, body) = get(app, "/api/library?q=stauts%3Aopen").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(body.to_string().contains("tag, folder, updated"), "{body}");
+    assert!(
+        body.to_string().contains("tag, folder, created, updated"),
+        "{body}"
+    );
 }
 
 // DEV-226: 캠페인 status 변경 시 이력이 기록되고, no-op(같은 status 로
