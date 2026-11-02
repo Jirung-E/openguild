@@ -28,6 +28,8 @@ pub struct GlobalCommentsQuery {
     pub discussion: bool,
     #[serde(default)]
     pub unresolved: bool,
+    /// 쿼리 문법(`author:claude discussion:unresolved`).
+    pub q: Option<String>,
 }
 
 /// Quest + campaign 댓글을 한 길드 안에서 횡단 검색한다. 정렬/답글 트리/limit은
@@ -45,6 +47,7 @@ pub async fn search_comments(
             grep: query.grep.as_deref(),
             discussion: query.discussion,
             unresolved: query.unresolved,
+            query: query.q.as_deref(),
         },
     )
     .await?;

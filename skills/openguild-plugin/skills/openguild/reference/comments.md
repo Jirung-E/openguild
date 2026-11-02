@@ -110,7 +110,7 @@ local and remote (`--remote`) mode.
 
 ```bash
 openguild comments [--author <name>] [--since <ts>] [--until <ts>] [--grep "text"]
-                    [--discussion] [--unresolved]
+                    [--discussion] [--unresolved] [-q <query>]
                     [--top-only | --reply-to <entry_id>] [--reverse] [--tree]
                     [--limit N]      # default 20
                     [--summary]      # default: full body; --summary = 60-char first line
@@ -118,3 +118,13 @@ openguild comments [--author <name>] [--since <ts>] [--until <ts>] [--grep "text
 
 `--tree` groups results by slug first, then renders each slug's replies as an
 indented tree.
+
+`-q` takes the same grammar as `quest list -q`, with comment keys: `id` (number in
+the document), `quest` / `campaign` (the document — id, range, `*`, `none`), `author`,
+`parent` (number replied to, `none` = not a reply), `discussion`
+(`unresolved` / `resolved` / `none`), `created`, `updated`, `body`.
+
+```bash
+openguild comments -q 'author:claude discussion:unresolved quest:DEV-001'
+openguild comments -q 'created:>=2026-11-01 parent:none -author:claude' --limit 50
+```

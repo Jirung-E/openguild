@@ -2,21 +2,30 @@
 //
 // 팔레트는 빨리 가기(제목 · 최근 본 문서), 이 페이지는 찾아보기다. 검색은 서버의 강화 검색(`/api/search`,
 // REQ-009)을 그대로 쓰고, 쿼리는 종류마다 키가 달라 한 종류를 골랐을 때 그 목록 화면의 쿼리를 쓴다.
+// 댓글 탭은 문서 종류가 아니다 — 검색이면 댓글에서 맞은 문서, 쿼리면 맞는 댓글 하나하나가 한 줄이다.
 
 import type { SearchHit } from '$lib/api/search';
 import type { SearchMode } from '$lib/components/SearchField.svelte';
 import { withFindParam } from './find-in-page';
 
 export type SearchKind = SearchHit['kind'];
-/** 탭 — 전체 또는 한 종류. */
-export type SearchTab = 'all' | SearchKind;
+/** 쿼리를 쓸 수 있는 탭 — 규칙은 쿼리가 없고, '전체' 는 종류마다 키가 달라 막는다. */
+export type QueryKind = 'quest' | 'campaign' | 'book' | 'comment';
+/** 탭 — 전체 또는 한 종류, 또는 댓글. */
+export type SearchTab = 'all' | SearchKind | 'comment';
 
-export const SEARCH_TABS: readonly SearchTab[] = ['all', 'quest', 'campaign', 'book', 'rule'];
+export const SEARCH_TABS: readonly SearchTab[] = [
+	'all',
+	'quest',
+	'campaign',
+	'book',
+	'rule',
+	'comment'
+];
 
-/** 쿼리를 쓸 수 있는 종류 — 규칙은 쿼리가 없고, '전체' 는 종류마다 키가 달라 막는다. */
-export const QUERY_KINDS: readonly SearchKind[] = ['quest', 'campaign', 'book'];
+export const QUERY_KINDS: readonly QueryKind[] = ['quest', 'campaign', 'book', 'comment'];
 
-export function canQuery(tab: SearchTab): tab is SearchKind {
+export function canQuery(tab: SearchTab): tab is QueryKind {
 	return (QUERY_KINDS as readonly string[]).includes(tab);
 }
 
@@ -28,6 +37,8 @@ export interface SearchRow {
 	/** 어디서 맞았는지(`title` · `body` · `comment` · `attachment` · `memo`). 쿼리 결과는 비어 있다. */
 	matched_in: string[];
 	excerpt: string;
+	/** 쿼리로 찾은 댓글이면 그 문서 안의 번호 — 누르면 그 댓글로 간다. */
+	comment?: number;
 }
 
 /** 문서를 여는 주소 — 팔레트와 같다. */
@@ -50,6 +61,7 @@ export function rowHref(kind: SearchKind, id: string): string {
  */
 export function openHref(row: SearchRow, term: string): string {
 	const href = rowHref(row.kind, row.id);
+	if (row.comment !== undefined) return `${href}?comment=${row.comment}`;
 	if (!term.trim() || row.matched_in.length === 0 || row.matched_in.includes('title')) return href;
 	return withFindParam(href, term.trim());
 }
@@ -71,14 +83,20 @@ export function countByTab(rows: readonly SearchRow[]): Record<SearchTab, number
 		quest: 0,
 		campaign: 0,
 		book: 0,
-		rule: 0
+		rule: 0,
+		comment: 0
 	};
-	for (const r of rows) out[r.kind] += 1;
+	for (const r of rows) {
+		out[r.kind] += 1;
+		if (r.matched_in.includes('comment')) out.comment += 1;
+	}
 	return out;
 }
 
 export function rowsOfTab(rows: readonly SearchRow[], tab: SearchTab): SearchRow[] {
-	return tab === 'all' ? [...rows] : rows.filter((r) => r.kind === tab);
+	if (tab === 'all') return [...rows];
+	if (tab === 'comment') return rows.filter((r) => r.matched_in.includes('comment'));
+	return rows.filter((r) => r.kind === tab);
 }
 
 /** 주소에 싣는 상태 — 새로고침 · 공유한 링크가 같은 결과를 연다. */

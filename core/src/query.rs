@@ -62,6 +62,18 @@ pub const CAMPAIGN_KEYS: &[&str] = &[
 
 /// DEV-451: 도서관 목록의 키.
 pub const LIBRARY_KEYS: &[&str] = &["id", "tag", "folder", "created", "updated", "title", "body"];
+/// 댓글 — 제목이 없고, `quest` · `campaign` 은 그 댓글이 달린 문서다.
+pub const COMMENT_KEYS: &[&str] = &[
+    "id",
+    "quest",
+    "campaign",
+    "author",
+    "parent",
+    "discussion",
+    "created",
+    "updated",
+    "body",
+];
 
 /// DEV-451: 쿼리를 거는 목록. 문법은 같고 쓸 수 있는 키와 SQL 만 다르다.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -70,6 +82,7 @@ pub enum Target {
     Quest,
     Campaign,
     Library,
+    Comment,
 }
 
 impl Target {
@@ -78,6 +91,7 @@ impl Target {
             Target::Quest => KEYS,
             Target::Campaign => CAMPAIGN_KEYS,
             Target::Library => LIBRARY_KEYS,
+            Target::Comment => COMMENT_KEYS,
         }
     }
 }
@@ -109,6 +123,8 @@ pub enum Key {
     Start,
     End,
     Quest,
+    /// 댓글을 쓴 사람.
+    Author,
     /// DEV-451: 도서관 문서의 폴더 · 고친 날.
     Folder,
     Updated,
@@ -146,6 +162,7 @@ impl Key {
             "start" => Key::Start,
             "end" => Key::End,
             "quest" => Key::Quest,
+            "author" => Key::Author,
             "folder" => Key::Folder,
             "updated" => Key::Updated,
             "title" => Key::Title,
@@ -158,7 +175,7 @@ impl Key {
     fn is_text(self) -> bool {
         matches!(
             self,
-            Key::Id | Key::Tag | Key::Type | Key::Folder | Key::Title | Key::Body
+            Key::Id | Key::Tag | Key::Type | Key::Folder | Key::Author | Key::Title | Key::Body
         )
     }
 }
@@ -247,11 +264,12 @@ pub fn parse(input: &str) -> Result<Query, QueryError> {
 }
 
 /// REQ-040: 이 쿼리의 결과에 칠할 말 — 화면이 묻는다(해석은 여기 한 곳). `of` 는 `quest` · `campaign` ·
-/// `library`.
+/// `library` · `comment`.
 pub fn highlights_for(of: &str, input: &str) -> Result<Vec<HitTerm>, QueryError> {
     let target = match of {
         "campaign" => Target::Campaign,
         "library" | "book" => Target::Library,
+        "comment" => Target::Comment,
         _ => Target::Quest,
     };
     Ok(parse_for(target, input)?.highlights())
@@ -684,8 +702,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                 return Err(QueryError::at(
                     pos,
                     crate::tf!(
-                        "'/{p}/' — 정규식은 낱말과 id · tag · type · folder · title · body 에만 씁니다",
-                        "'/{p}/' — regexes work for words and id, tag, type, folder, title, body"
+                        "'/{p}/' — 정규식은 낱말과 id · tag · type · folder · author · title · body 에만 씁니다",
+                        "'/{p}/' — regexes work for words and id, tag, type, folder, author, title, body"
                     ),
                 ));
             }
@@ -718,6 +736,15 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
         let Some(key) = term.key else { continue };
         let s = v.text();
         let ok = match (key, v) {
+            // 댓글의 번호는 그 문서 안의 번호고, `quest` · `campaign` 은 달린 문서다.
+            (Key::Id, _) if target == Target::Comment => entry_cond("x", v).is_some(),
+            (Key::Parent, _) if target == Target::Comment => {
+                s.eq_ignore_ascii_case("none") || entry_cond("x", v).is_some()
+            }
+            (Key::Quest | Key::Campaign, _) if target == Target::Comment => {
+                owner_cond("quest", v).is_some()
+            }
+            (Key::Author, _) => true,
             (Key::Urgency, _) => urgency_cond(s).is_some(),
             (Key::Id, _) => id_cond("x", "x", "x", v).is_some(),
             (Key::Due, _) => due_cond(s).is_some(),
@@ -745,6 +772,22 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
         };
         if !ok {
             let hint = match key {
+                Key::Id if target == Target::Comment => crate::tf!(
+                    "댓글의 id 는 문서 안의 번호 — 3 · 1..=3 · >=3 · * · /정규식/",
+                    "a comment's id is its number in the document — 3, 1..=3, >=3, * or /regex/"
+                ),
+                Key::Parent if target == Target::Comment => crate::tf!(
+                    "댓글의 parent 는 답글을 받은 댓글의 번호(3) 또는 none(답글이 아닌 것)",
+                    "a comment's parent is the number of the comment it replies to (3) or none (not a reply)"
+                ),
+                Key::Quest | Key::Campaign if target == Target::Comment => crate::tf!(
+                    "댓글이 달린 문서 — 번호(DEV-012) · 범위(DEV-1..=DEV-9) · * · none(그 종류가 아닌 것)",
+                    "the document it is on — an id (DEV-012), a range (DEV-1..=DEV-9), * or none (on the other kind)"
+                ),
+                Key::Discussion if target == Target::Comment => crate::tf!(
+                    "댓글의 discussion 은 unresolved(미해결) · resolved(해결됨) · none(토론이 아닌 것)",
+                    "a comment's discussion is unresolved, resolved or none (not a discussion)"
+                ),
                 Key::Id => crate::tf!(
                     "id 는 번호(DEV-012) · 범위(DEV-1..=DEV-9) · * · /정규식/",
                     "id is an id (DEV-012), a range (DEV-1..=DEV-9), * or /regex/"
@@ -1090,7 +1133,8 @@ impl Query {
 
     /// 식 → ` AND (…)` SQL 과 그 값들(나온 순서 그대로). 빈 쿼리면 빈 글.
     /// 퀘스트는 별칭 `q` · `qt` · `qs`([`crate::services::quests::QUEST_SELECT`] 의 것), 캠페인은
-    /// `campaigns`, 도서관은 `library_docs` 테이블 이름을 그대로 쓴다.
+    /// `campaigns`, 도서관은 `library_docs` 테이블 이름을 그대로 쓴다. 댓글은
+    /// [`crate::services::comments::search_global`] 의 바깥 별칭 `comments` 다.
     pub fn to_sql(&self) -> AppResult<(String, Vec<Bind>)> {
         let Some(expr) = &self.expr else {
             return Ok((String::new(), Vec::new()));
@@ -1109,6 +1153,7 @@ impl Query {
                         Target::Quest => value_cond(t.key, v),
                         Target::Campaign => campaign_cond(t.key, v),
                         Target::Library => library_cond(t.key, v),
+                        Target::Comment => comment_cond(t.key, v),
                     };
                     let (cond, b) =
                         cond.ok_or_else(|| QueryError::at(t.pos, format!("'{}'", v.text())))?;
@@ -1264,7 +1309,9 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             (cond, vec![])
         }
         // 다른 대상의 키 — 해석에서 이미 막는다.
-        Some(Key::Start | Key::End | Key::Quest | Key::Folder | Key::Checklist) => return None,
+        Some(Key::Start | Key::End | Key::Quest | Key::Author | Key::Folder | Key::Checklist) => {
+            return None;
+        }
     };
     Some((format!("({cond})"), binds))
 }
@@ -1370,6 +1417,79 @@ fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         }
         Some(Key::Created) => date_cond("substr(library_docs.created_at, 1, 10)", s)?,
         Some(Key::Updated) => date_cond("substr(library_docs.updated_at, 1, 10)", s)?,
+        _ => return None,
+    };
+    Some((format!("({cond})"), binds))
+}
+
+/// 댓글 번호 값 하나 — 번호 · 범위 · 비교. `*` · 정규식은 번호를 글로 맞춘다.
+fn entry_cond(col: &str, v: &Val) -> Option<(String, Vec<Bind>)> {
+    let s = v.text();
+    if matches!(v, Val::Regex(_)) || (s.contains('*') && matches!(v, Val::Bare(_))) {
+        return Some(text_cond(
+            &[&format!("CAST({col} AS TEXT)")],
+            v,
+            Match::Exact,
+        ));
+    }
+    let num = |s: &str| {
+        s.trim()
+            .parse::<i64>()
+            .ok()
+            .filter(|n| *n >= 0)
+            .map(Bind::Int)
+    };
+    if matches!(v, Val::Bare(_))
+        && let Some(r) = range_cond(col, s, num)
+    {
+        return r;
+    }
+    let (op, rest) = split_op(s);
+    Some((format!("{col} {op} ?"), vec![num(rest)?]))
+}
+
+/// 댓글이 달린 문서 — `scope` 는 `quest` · `campaign`. `none` 이면 그 종류의 문서에 달리지 않은 것.
+fn owner_cond(scope: &str, v: &Val) -> Option<(String, Vec<Bind>)> {
+    if v.text().eq_ignore_ascii_case("none") {
+        return Some((format!("comments.scope != '{scope}'"), vec![]));
+    }
+    let (c, b) = id_cond(
+        "comments.slug",
+        "substr(comments.slug, 1, instr(comments.slug, '-') - 1)",
+        "CAST(substr(comments.slug, instr(comments.slug, '-') + 1) AS INTEGER)",
+        v,
+    )?;
+    Some((format!("comments.scope = '{scope}' AND ({c})"), b))
+}
+
+/// 댓글 목록의 값 하나 → 조건. 고친 적 없는 댓글의 `updated` 는 도서관처럼 쓴 날이다.
+fn comment_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
+    let s = v.text();
+    let (cond, binds) = match key {
+        None => text_cond(&["comments.body", "comments.slug"], v, Match::Partial),
+        Some(Key::Id) => entry_cond("comments.entry_id", v)?,
+        Some(Key::Quest) => owner_cond("quest", v)?,
+        Some(Key::Campaign) => owner_cond("campaign", v)?,
+        Some(Key::Author) => text_cond(&["comments.author"], v, Match::Exact),
+        Some(Key::Parent) if s.eq_ignore_ascii_case("none") => {
+            ("comments.parent_id IS NULL".into(), vec![])
+        }
+        Some(Key::Parent) => entry_cond("comments.parent_id", v)?,
+        Some(Key::Discussion) => {
+            let cond = match s.to_ascii_lowercase().as_str() {
+                "unresolved" => "comments.discussion = 1 AND comments.resolved = 0",
+                "resolved" => "comments.discussion = 1 AND comments.resolved = 1",
+                "none" => "comments.discussion = 0",
+                _ => return None,
+            };
+            (cond.into(), vec![])
+        }
+        Some(Key::Created) => date_cond("substr(comments.ts, 1, 10)", s)?,
+        Some(Key::Updated) => date_cond(
+            "substr(COALESCE(NULLIF(comments.edited_at, ''), comments.ts), 1, 10)",
+            s,
+        )?,
+        Some(Key::Body) => text_cond(&["comments.body"], v, Match::Partial),
         _ => return None,
     };
     Some((format!("({cond})"), binds))

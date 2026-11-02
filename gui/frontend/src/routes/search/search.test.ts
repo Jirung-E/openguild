@@ -16,6 +16,10 @@ const questQuery = vi.fn();
 vi.mock('$lib/api/quests', () => ({ questsApi: { matchQuery: (q: string) => questQuery(q) } }));
 vi.mock('$lib/api/campaigns', () => ({ campaignsApi: { matchQuery: () => Promise.resolve([]) } }));
 vi.mock('$lib/api/library', () => ({ libraryApi: { matchQuery: () => Promise.resolve([]) } }));
+const commentQuery = vi.fn();
+vi.mock('$lib/api/comments', () => ({
+	globalCommentsApi: { matchQuery: (q: string) => commentQuery(q) }
+}));
 const highlights = vi.fn();
 vi.mock('$lib/api/query', () => ({
 	queryApi: { highlights: (q: string, of: string) => highlights(q, of) }
@@ -39,6 +43,32 @@ describe('REQ-040 검색 페이지', () => {
 		enhanced.mockReset().mockResolvedValue(HITS);
 		questQuery.mockReset().mockResolvedValue([{ quest_id: 'DEV-001', title: '열린 것' }]);
 		highlights.mockReset().mockResolvedValue([{ text: '열린' }]);
+		commentQuery.mockReset().mockResolvedValue([
+			{
+				scope: 'quest',
+				slug: 'DEV-001',
+				entry_id: 1,
+				ts: '2026-11-01T10:00:00',
+				author: 'a',
+				body: '옛 댓글'
+			},
+			{
+				scope: 'quest',
+				slug: 'DEV-001',
+				entry_id: 2,
+				ts: '2026-11-02T10:00:00',
+				author: 'b',
+				body: '새 댓글'
+			},
+			{
+				scope: 'campaign',
+				slug: 'C-001',
+				entry_id: 1,
+				ts: '2026-11-03T10:00:00',
+				author: 'a',
+				body: '캠페인 댓글'
+			}
+		]);
 	});
 
 	it('강화 검색 결과를 제목에서 맞은 것부터, 탭마다 개수와 함께', async () => {
@@ -62,6 +92,32 @@ describe('REQ-040 검색 페이지', () => {
 		await open('http://localhost/search?q=코끼리&memo=1');
 		await screen.findByTestId('doc-search-results');
 		expect(enhanced).toHaveBeenCalledWith('코끼리', ['body', 'comment', 'attachment', 'memo']);
+	});
+
+	it('댓글 탭 — 쿼리는 맞는 댓글을 최근 것부터 한 줄씩, 그 댓글로 간다', async () => {
+		await open('http://localhost/search?q=author:a&kind=comment&mode=query');
+		const list = await screen.findByTestId('doc-search-results');
+		expect(commentQuery).toHaveBeenCalledWith('author:a');
+		expect(highlights).toHaveBeenCalledWith('author:a', 'comment');
+		const hrefs = [...list.querySelectorAll('a.row-link, li a[href]')].map((a) =>
+			a.getAttribute('href')
+		);
+		expect(hrefs).toContain('/campaigns/C-001?comment=1');
+		expect(hrefs).toContain('/quests/DEV-001?comment=2');
+		expect(list.querySelectorAll('li')).toHaveLength(3);
+		expect(list.querySelector('li')?.textContent).toContain('캠페인 댓글');
+		expect(screen.getByTestId('doc-search-tab-comment').textContent).toContain('3');
+	});
+
+	it('댓글 탭 — 검색이면 댓글에서 맞은 문서만', async () => {
+		enhanced.mockResolvedValue([
+			{ kind: 'quest', id: 'DEV-005', title: '가', matched_in: ['comment'], excerpt: '코끼리' },
+			{ kind: 'quest', id: 'DEV-006', title: '나', matched_in: ['body'], excerpt: '코끼리' }
+		]);
+		await open('http://localhost/search?q=코끼리&kind=comment');
+		const list = await screen.findByTestId('doc-search-results');
+		expect(list.querySelectorAll('li')).toHaveLength(1);
+		expect(list.textContent).toContain('DEV-005');
 	});
 
 	it('쿼리는 고른 종류의 쿼리로, 못 쓰는 탭으로 가면 검색으로 바뀐다', async () => {

@@ -1560,6 +1560,31 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '예: tag:설계 -folder:보관 updated:>=2026-10-01',
 		en: 'e.g. tag:design -folder:archive updated:>=2026-10-01'
 	},
+	'comments.queryHelpRules': {
+		ko: '띄어 쓰면 그리고(& · AND) · | 나 OR = 또는 · 앞의 - = 아닌 것 · ( ) 로 묶기 · 여러 값 중 하나 = [a, b] · 범위 a..b(끝 제외) · a..=b(끝 포함) · * = 아무 글 · /정규식/(대소문자 무시) · 키 없는 낱말 = 본문 · 문서 번호 검색 · 띄어 쓴 값은 "따옴표"로.',
+		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search body and document id · quote values with spaces.'
+	},
+	'comments.queryHelpId': {
+		ko: '문서 안의 댓글 번호 — 3 · 1..=3 · >=3',
+		en: 'Comment number in its document — 3, 1..=3, >=3'
+	},
+	'comments.queryHelpQuest': {
+		ko: '이 퀘스트에 달린 댓글 — 번호 · 범위 · * · none(캠페인 댓글)',
+		en: 'Comments on this quest — id, range, *, none (campaign comments)'
+	},
+	'comments.queryHelpCampaign': {
+		ko: '이 캠페인에 달린 댓글 — 번호 · 범위 · * · none(퀘스트 댓글)',
+		en: 'Comments on this campaign — id, range, *, none (quest comments)'
+	},
+	'comments.queryHelpAuthor': { ko: '쓴 사람', en: 'Who wrote it' },
+	'comments.queryHelpParent': {
+		ko: '답글을 받은 댓글의 번호, none = 답글이 아닌 것',
+		en: 'Number of the comment replied to; none = not a reply'
+	},
+	'comments.queryHelpDiscussion': {
+		ko: 'unresolved(미해결) · resolved(해결됨) · none(토론이 아닌 것)',
+		en: 'unresolved, resolved or none (not a discussion)'
+	},
 	'library.queryHelpRules': {
 		ko: '띄어 쓰면 그리고(& · AND) · | 나 OR = 또는 · 앞의 - = 아닌 것 · ( ) 로 묶기 · 여러 값 중 하나 = [a, b] · 범위 a..b(끝 제외) · a..=b(끝 포함) · * = 아무 글 · /정규식/(대소문자 무시) · 키 없는 낱말 = 제목 · 본문 · 번호 검색 · 띄어 쓴 값은 "따옴표"로. 검색 · 태그 줄과는 그리고로 겹칩니다.',
 		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search title, body and id · quote values with spaces. Combined (AND) with the search and the tag row.'
@@ -2072,8 +2097,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'search.tabsAria': { ko: '종류', en: 'Kind' },
 	'search.tabAll': { ko: '전체', en: 'All' },
 	'search.queryNeedsKind': {
-		ko: '쿼리는 종류마다 키가 달라 퀘스트 · 캠페인 · 도서관 탭에서 씁니다',
-		en: 'Query keys differ by kind — pick the Quest, Campaign or Library tab to use a query'
+		ko: '쿼리는 종류마다 키가 달라 퀘스트 · 캠페인 · 도서관 · 댓글 탭에서 씁니다',
+		en: 'Query keys differ by kind — pick the Quest, Campaign, Library or Comment tab to use a query'
 	},
 	'search.hint': {
 		ko: '찾을 말을 넣으세요 — /정규식/ 도 됩니다. 제목에서 맞은 문서가 먼저 나옵니다',

@@ -276,6 +276,11 @@ enum Command {
         discussion: bool,
         #[arg(long, conflicts_with = "discussion", help = tf!("미해결 토론만 (discussion 포함).", "Unresolved discussions only (implies discussion)."))]
         unresolved: bool,
+        // 퀘스트 목록과 같은 쿼리 문법 — 키만 댓글 것.
+        #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
+              help = tf!("쿼리로 거르기 — 예: 'author:claude discussion:unresolved created:>=2026-11-01'. 문법은 quest list -q 와 같다, 키 없는 낱말 = 본문 · 문서 번호 검색. 키: id(문서 안의 번호) · quest · campaign(달린 문서 — 번호 · 범위 · * · none) · author · parent(답글을 받은 댓글 번호, none = 답글 아닌 것) · discussion(unresolved · resolved · none) · created · updated(날짜 · <=날짜 · 범위) · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'author:claude discussion:unresolved created:>=2026-11-01'. Same grammar as quest list -q; bare words = search body and document id. Keys: id (number in the document), quest, campaign (the document — id, range, *, none), author, parent (number of the comment replied to, none = not a reply), discussion (unresolved, resolved, none), created, updated (date, <=date, range), body (contains; =value is exact). ANDed with the other options."))]
+        query: Option<String>,
         // DEV-262: quest comment list 와 옵션셋 통일.
         #[arg(long = "top-only", conflicts_with = "reply_to", help = tf!("top-level 댓글만 (답글 제외).", "Top-level comments only (excludes replies)."))]
         top_only: bool,
@@ -2615,6 +2620,7 @@ impl Backend {
         grep: Option<&str>,
         discussion: bool,
         unresolved: bool,
+        q: Option<&str>,
     ) -> Result<Vec<GlobalComment>> {
         if let Backend::Http(c) = self {
             let mut query: Vec<(&str, String)> = Vec::new();
@@ -2636,6 +2642,9 @@ impl Backend {
             if unresolved {
                 query.push(("unresolved", "true".to_string()));
             }
+            if let Some(value) = q {
+                query.push(("q", value.to_string()));
+            }
             return c.get_query("/api/comments", &query);
         }
         let Backend::Local(l) = self else {
@@ -2651,6 +2660,7 @@ impl Backend {
                     grep,
                     discussion,
                     unresolved,
+                    query: q,
                 },
             )),
         )
@@ -8213,6 +8223,7 @@ fn run() -> Result<()> {
             grep,
             discussion,
             unresolved,
+            query,
             top_only,
             reply_to,
             reverse,
@@ -8227,6 +8238,7 @@ fn run() -> Result<()> {
                 grep.as_deref(),
                 discussion,
                 unresolved,
+                query.as_deref(),
             )?;
             // DEV-262: quest comment list 와 동일 순서 — 필터 → reverse → limit.
             if top_only {
@@ -12440,7 +12452,7 @@ mod tests {
         // 전체 — quest+campaign UNION. DEV-262: 기본 오래된순(대화 흐름) —
         // `quest comment list` 의 기본 정렬과 통일.
         let all = backend
-            .comments_search(None, None, None, None, false, false)
+            .comments_search(None, None, None, None, false, false, None)
             .unwrap();
         assert_eq!(all.len(), 4);
         assert_eq!(
@@ -12469,22 +12481,45 @@ mod tests {
 
         // author 필터 (대소문자 무시) — quest 2 + campaign 1.
         let admins = backend
-            .comments_search(Some("ADMIN"), None, None, None, false, false)
+            .comments_search(Some("ADMIN"), None, None, None, false, false, None)
             .unwrap();
         assert_eq!(admins.len(), 3);
 
         // 미해결 토론만 — campaign 은 discussion 개념이 없어 자연 제외.
         let unresolved = backend
-            .comments_search(None, None, None, None, false, true)
+            .comments_search(None, None, None, None, false, true, None)
             .unwrap();
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].entry_id, 2);
 
         // grep + since 조합.
         let hits = backend
-            .comments_search(None, Some("2026-01-02"), None, Some("토론"), false, false)
+            .comments_search(
+                None,
+                Some("2026-01-02"),
+                None,
+                Some("토론"),
+                false,
+                false,
+                None,
+            )
             .unwrap();
         assert_eq!(hits.len(), 2);
+
+        // 쿼리는 다른 옵션과 그리고로 합친다.
+        let queried = backend
+            .comments_search(
+                Some("ADMIN"),
+                None,
+                None,
+                None,
+                false,
+                false,
+                Some("discussion:resolved"),
+            )
+            .unwrap();
+        assert_eq!(queried.len(), 1);
+        assert_eq!(queried[0].entry_id, 3);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

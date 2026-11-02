@@ -239,6 +239,8 @@ openguild quest list -q 'prereq:none child:none discussion:none'  # 선행 · �
 openguild campaign list -q 'end:overdue'
 openguild campaign list -q 'quest:DEV-001'
 openguild library list -q 'tag:[설계, 결정] -folder:보관 updated:2026-10-01..'
+openguild comments -q 'author:claude discussion:unresolved'   # 길드 전체 댓글(기본 오래된 순 20개, --limit)
+openguild comments -q 'quest:DEV-001 created:>=2026-11-01 -parent:none'
 openguild quest list --commented-after 2026-10-20     # 같은 것을 옵션으로 (--commented-before 도 있다)
 ```
 
@@ -561,7 +563,7 @@ openguild quest list
 | **Quest Detail** | 본문 편집 / 댓글 / 메모 / 상태 변경 / 권장 브랜치명 / 캠페인 링크. |
 | **Campaigns** | 캠페인 목록 + 체크리스트 + 링크된 quest. 새 캠페인은 모달, 퀘스트 연결에서 바로 새 퀘스트를 만들어 붙일 수 있습니다. |
 | **Rules** | 길드 규칙 다중 파일 편집. |
-| **문서 검색** (`/search`) | 퀘스트 · 캠페인 · 도서관 · 규칙의 제목 · 본문 · 댓글 · 첨부 이름을 한 번에 찾고 종류 탭으로 나눠 봅니다(제목에서 맞은 것 먼저, 맞은 곳과 발췌). 한 종류를 고르면 그 목록의 쿼리도 씁니다. 검색 팔레트(위쪽 길드 이름)에서 글을 치고 맨 아래 "모든 결과 보기" 로 오거나, 상단바에 올려 둡니다. `/정규식/` 도 됩니다. |
+| **문서 검색** (`/search`) | 퀘스트 · 캠페인 · 도서관 · 규칙의 제목 · 본문 · 댓글 · 첨부 이름을 한 번에 찾고 종류 탭으로 나눠 봅니다(제목에서 맞은 것 먼저, 맞은 곳과 발췌). 한 종류를 고르면 그 목록의 쿼리도 씁니다. 댓글 탭의 쿼리는 맞는 댓글을 한 줄씩 보여 주고, 누르면 그 댓글로 갑니다. 검색 팔레트(위쪽 길드 이름)에서 글을 치고 맨 아래 "모든 결과 보기" 로 오거나, 상단바에 올려 둡니다. `/정규식/` 도 됩니다. |
 | **Library** | 문서 + 폴더 트리. 폴더를 끌어 다른 폴더로 옮기거나 이름을 바꾸면 하위 문서 경로가 함께 바뀝니다. |
 | **Tags** | 쓰이는 태그 목록. 여기서 태그마다 색·설명을 정합니다(한글 이름도 됨). |
 | **관리 (Admin)** | 길드 관리 — 탭 넷: 퀘스트 구성(타입·상태) / 플러그인 / 백업 / 진단(drift·reindex). |

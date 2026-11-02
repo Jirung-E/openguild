@@ -122,9 +122,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     `commented`(마지막 댓글 날짜 — 댓글은 갱신 시각을 안 바꾼다)
   - 캠페인: `status` · `start` · `end`(`end:overdue`) · `quest` · `checklist`(open · done · none) · `created` · `updated`.
     도서관: `tag` · `folder` · `created` · `updated`. 셋 다 `id`(`DEV-1` · `DEV-1..=DEV-9` · `DEV-*`) · `title` · `body`
+  - 댓글: `id` · `quest` · `campaign`(달린 문서) · `author` · `parent` · `discussion` · `created` · `updated` · `body` —
+    길드 전체 댓글을 한 줄씩(`comments -q`, 검색 페이지의 댓글 탭)
   - 화면: 검색칸 앞의 **[검색 | 쿼리]** 에서 고른다 — 퀘스트 목록 · 보드 설정의 필터 · 캠페인 목록 ·
     도서관. 틀리면 칸이 빨개지고 이유와 `?` 쓰는 법이 나온다. 주소 `?q=` 에 실려 새로고침·공유에
-    남는다. CLI `quest|campaign|library list -q`, 서버 `?q=`
+    남는다. CLI `quest|campaign|library list -q` · `comments -q`, 서버 `?q=`
   - `quest list --commented-after/--before` — 댓글이 달린 때로 거르기
   (DEV-446, DEV-447, DEV-448, DEV-451, DEV-452)
 - **태그 필터** — 퀘스트 목록·보드·도서관에서 태그로 거른다(여러 개면 모두 가진 것만).

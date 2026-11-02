@@ -3,7 +3,7 @@
 import { api } from './client';
 import type { HitTerm } from '$lib/utils/highlight';
 
-export type QueryOf = 'quest' | 'campaign' | 'library';
+export type QueryOf = 'quest' | 'campaign' | 'library' | 'comment';
 
 export const queryApi = {
 	/** 틀린 쿼리면 던진다 — 부르는 쪽은 칠하지 않으면 된다(오류는 목록 조회가 이미 보여 준다). */

@@ -35,6 +35,8 @@ pub struct GlobalCommentsFilter<'a> {
     pub grep: Option<&'a str>,
     pub discussion: bool,
     pub unresolved: bool,
+    /// 쿼리 문법 — 다른 조건과는 그리고로 합친다.
+    pub query: Option<&'a str>,
 }
 
 /// Quest + campaign 댓글 캐시를 한 번에 검색한다. 출력 정렬은 오래된 순이며,
@@ -78,24 +80,30 @@ pub async fn search_global(
         push_both("c.discussion = 1 AND c.resolved = 0", "0 = 1");
     }
 
+    let (query_sql, query_binds) = match filter.query {
+        Some(text) => crate::query::parse_for(crate::query::Target::Comment, text)?.to_sql()?,
+        None => (String::new(), Vec::new()),
+    };
+
     let sql = format!(
         "SELECT * FROM (
            SELECT 'quest' AS scope,
                   qt.prefix || '-' || printf('%03d', q.number) AS slug,
                   c.entry_id, c.ts, c.author, c.body,
-                  c.discussion, c.resolved, c.parent_id, c.pinned, c.reactions
+                  c.discussion, c.resolved, c.parent_id, c.pinned, c.reactions, c.edited_at
              FROM quest_comments c
              JOIN quests q ON q.id = c.quest_id
              JOIN quest_types qt ON qt.id = q.quest_type_id
-            WHERE 1 = 1{conds_q}
+            WHERE q.deleted_at IS NULL{conds_q}
            UNION ALL
            SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
                   c.entry_id, c.ts, c.author, c.body,
-                  0 AS discussion, 0 AS resolved, c.parent_id, c.pinned, c.reactions
+                  0 AS discussion, 0 AS resolved, c.parent_id, c.pinned, c.reactions, c.edited_at
              FROM campaign_comments c
              JOIN campaigns ca ON ca.id = c.campaign_id
-            WHERE 1 = 1{conds_c}
-         )
+            WHERE ca.deleted_at IS NULL{conds_c}
+         ) AS comments
+         WHERE 1 = 1{query_sql}
          ORDER BY ts ASC"
     );
     let mut query = sqlx::query_as::<_, GlobalComment>(&sql);
@@ -104,6 +112,12 @@ pub async fn search_global(
     }
     for value in &binds {
         query = query.bind(value);
+    }
+    for b in query_binds {
+        query = match b {
+            crate::query::Bind::Text(s) => query.bind(s),
+            crate::query::Bind::Int(n) => query.bind(n),
+        };
     }
     Ok(query.fetch_all(pool).await?)
 }
@@ -380,6 +394,113 @@ mod tests {
         assert_eq!(rows[0].scope, "quest");
         assert_eq!(rows[0].slug, quest.quest_id);
         assert_eq!(rows[0].body, "remote parity needle");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn global_search_takes_the_query_grammar() {
+        let (dir, store) = fresh("global-query").await;
+        let mk = async |title: &str| {
+            quest_ops::create_quest(
+                &store,
+                CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: title.into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap()
+        };
+        let q1 = mk("첫째").await;
+        let q2 = mk("둘째").await;
+        let add = async |slug: &str, who: &str, body: &str, parent: Option<u64>, disc: bool| {
+            comment_ops::add_comment_entry(&store, slug, who.into(), body.into(), parent, disc)
+                .await
+                .unwrap()
+        };
+        let first = add(&q1.quest_id, "claude", "회귀 없음", None, false).await;
+        add(&q1.quest_id, "admin", "답글 코끼리", Some(first.id), false).await;
+        add(&q2.quest_id, "claude", "결정 필요", None, true).await;
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::campaign::CreateCampaignRequest {
+                title: "원정".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::campaign_comments::add_entry(
+            &store,
+            &camp.campaign_slug,
+            "claude".into(),
+            "캠페인 코끼리".into(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let find = async |q: &str| -> Vec<String> {
+            search_global(
+                &store.index_pool,
+                GlobalCommentsFilter {
+                    query: Some(q),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| format!("{}#{}", r.slug, r.entry_id))
+            .collect()
+        };
+        let (a, b, c) = (&q1.quest_id, &q2.quest_id, &camp.campaign_slug);
+        assert_eq!(find("author:admin").await, [format!("{a}#2")]);
+        assert_eq!(find("AUTHOR:CLAUDE").await.len(), 3);
+        assert_eq!(find("author:cl*").await.len(), 3);
+        assert_eq!(find("discussion:unresolved").await, [format!("{b}#1")]);
+        assert_eq!(find("parent:none").await.len(), 3);
+        assert_eq!(find("parent:1").await, [format!("{a}#2")]);
+        assert_eq!(find(&format!("quest:{a} id:>=2")).await, [format!("{a}#2")]);
+        assert_eq!(find(&format!("campaign:{c}")).await, [format!("{c}#1")]);
+        assert_eq!(find("campaign:none").await.len(), 3);
+        assert_eq!(find("quest:none").await, [format!("{c}#1")]);
+        assert_eq!(find("코끼리 -quest:none").await, [format!("{a}#2")]);
+        assert_eq!(find("body:/^결정/").await, [format!("{b}#1")]);
+        // 고친 적 없으면 쓴 날이 고친 날이다.
+        let today = crate::time::today_local_iso_date();
+        assert_eq!(find(&format!("created:{today}")).await.len(), 4);
+        assert_eq!(find(&format!("updated:{today}")).await.len(), 4);
+        assert!(find(&format!("updated:<{today}")).await.is_empty());
+
+        // 틀린 값은 그 키의 안내로, 없는 키는 없다고.
+        for bad in [
+            "id:abc",
+            "parent:DEV-001",
+            "discussion:x",
+            "title:x",
+            "status:open",
+        ] {
+            let e = search_global(
+                &store.index_pool,
+                GlobalCommentsFilter {
+                    query: Some(bad),
+                    ..Default::default()
+                },
+            )
+            .await;
+            assert!(e.is_err(), "{bad}");
+        }
+
+        // 지운 문서의 댓글은 나오지 않는다.
+        quest_ops::delete_quest(&store, q1.id, &[]).await.unwrap();
+        assert!(find("author:admin").await.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

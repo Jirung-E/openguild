@@ -39,6 +39,18 @@ export const CAMPAIGN_QUERY_KEYS: readonly QueryKeyRow[] = [
 	['body', 'body:/v\\d+/', 'query.helpBody']
 ];
 
+export const COMMENT_QUERY_KEYS: readonly QueryKeyRow[] = [
+	['id', 'id:>=2', 'comments.queryHelpId'],
+	['quest', 'quest:DEV-1..=DEV-9', 'comments.queryHelpQuest'],
+	['campaign', 'campaign:C-001', 'comments.queryHelpCampaign'],
+	['author', 'author:claude', 'comments.queryHelpAuthor'],
+	['parent', 'parent:none', 'comments.queryHelpParent'],
+	['discussion', 'discussion:unresolved', 'comments.queryHelpDiscussion'],
+	['created', 'created:2026-10-01..', 'query.helpCreated'],
+	['updated', 'updated:>=2026-10-20', 'query.helpUpdated'],
+	['body', 'body:/TODO|FIXME/', 'query.helpBody']
+];
+
 export const LIBRARY_QUERY_KEYS: readonly QueryKeyRow[] = [
 	['id', 'id:BOOK-001', 'query.helpId'],
 	['tag', 'tag:설계', 'library.queryHelpTag'],

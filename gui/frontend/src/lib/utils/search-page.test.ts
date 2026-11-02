@@ -50,7 +50,14 @@ describe('REQ-040 검색 페이지', () => {
 
 	it('탭마다 개수와 줄', () => {
 		const rows = [row('quest', 'A', []), row('quest', 'B', []), row('rule', 'r', [])];
-		expect(countByTab(rows)).toEqual({ all: 3, quest: 2, campaign: 0, book: 0, rule: 1 });
+		expect(countByTab(rows)).toEqual({
+			all: 3,
+			quest: 2,
+			campaign: 0,
+			book: 0,
+			rule: 1,
+			comment: 0
+		});
 		expect(rowsOfTab(rows, 'rule').map((r) => r.id)).toEqual(['r']);
 		expect(rowsOfTab(rows, 'all')).toHaveLength(3);
 	});

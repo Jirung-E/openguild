@@ -3813,12 +3813,20 @@ async fn test_global_comments_search_filters_quest_comments() {
     )
     .await;
 
-    let (status, comments) = get(app, "/api/comments?grep=needle&author=tester").await;
+    let (status, comments) = get(app.clone(), "/api/comments?grep=needle&author=tester").await;
     assert_eq!(status, StatusCode::OK);
     let rows = comments.as_array().unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["scope"], "quest");
     assert_eq!(rows[0]["slug"], "DEV-001");
+
+    let (status, comments) = get(app.clone(), "/api/comments?q=author:tester%20quest:DEV-1").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(comments.as_array().unwrap().len(), 1);
+    let (_, comments) = get(app.clone(), "/api/comments?q=author:nobody").await;
+    assert!(comments.as_array().unwrap().is_empty());
+    let (status, _) = get(app, "/api/comments?q=status:open").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 /// BUG-233: 응답 경로에 역슬래시가 섞이면 안 된다.

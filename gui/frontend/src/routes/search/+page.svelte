@@ -19,6 +19,7 @@
 	import { searchApi, type SearchField as Field } from '$lib/api/search';
 	import { questsApi } from '$lib/api/quests';
 	import { campaignsApi } from '$lib/api/campaigns';
+	import { globalCommentsApi } from '$lib/api/comments';
 	import { libraryApi } from '$lib/api/library';
 	import { locale, t } from '$lib/stores/locale';
 	import { LatestQuery } from '$lib/utils/enhanced-search';
@@ -30,6 +31,7 @@
 	import HitText from '$lib/components/HitText.svelte';
 	import {
 		CAMPAIGN_QUERY_KEYS,
+		COMMENT_QUERY_KEYS,
 		LIBRARY_QUERY_KEYS,
 		QUEST_QUERY_KEYS,
 		type QueryKeyRow
@@ -43,6 +45,7 @@
 		rowsOfTab,
 		searchStateParams,
 		sortRows,
+		type QueryKind,
 		type SearchKind,
 		type SearchRow,
 		type SearchTab
@@ -71,13 +74,14 @@
 	const QUERY_KEYS_OF: Record<string, { keys: readonly QueryKeyRow[]; rules: string }> = {
 		quest: { keys: QUEST_QUERY_KEYS, rules: 'filter.queryHelpRules' },
 		campaign: { keys: CAMPAIGN_QUERY_KEYS, rules: 'campaignList.queryHelpRules' },
-		book: { keys: LIBRARY_QUERY_KEYS, rules: 'library.queryHelpRules' }
+		book: { keys: LIBRARY_QUERY_KEYS, rules: 'library.queryHelpRules' },
+		comment: { keys: COMMENT_QUERY_KEYS, rules: 'comments.queryHelpRules' }
 	};
 
 	interface Ask {
 		mode: 'search' | 'query';
 		term: string;
-		kind: SearchKind | null;
+		kind: QueryKind | null;
 		memo: boolean;
 	}
 	interface Found {
@@ -93,10 +97,7 @@
 			return { rows: sortRows(hits), terms: [] };
 		}
 		const of = a.kind === 'book' ? 'library' : (a.kind ?? 'quest');
-		const [rows, terms] = await Promise.all([
-			queryRows(a),
-			of === 'rule' ? Promise.resolve([]) : queryApi.highlights(a.term, of)
-		]);
+		const [rows, terms] = await Promise.all([queryRows(a), queryApi.highlights(a.term, of)]);
 		return { rows, terms };
 	});
 	async function queryRows(a: Ask): Promise<SearchRow[]> {
@@ -116,6 +117,16 @@
 				);
 			case 'book':
 				return (await libraryApi.matchQuery(a.term)).map((b) => plain('book', b.book_id, b.title));
+			case 'comment':
+				// 최근 것이 먼저 — 한 문서에 여러 개가 맞아도 한 줄씩이다.
+				return (await globalCommentsApi.matchQuery(a.term)).reverse().map((c) => ({
+					kind: c.scope,
+					id: c.slug,
+					title: `#${c.entry_id} · ${c.author} · ${c.ts.slice(0, 10)}`,
+					matched_in: ['comment'],
+					excerpt: c.body.slice(0, 200),
+					comment: c.entry_id
+				}));
 			default:
 				return [];
 		}
@@ -191,7 +202,8 @@
 	}
 
 	function tabLabel(k: SearchTab): string {
-		return k === 'all' ? t('search.tabAll', $locale) : t(`kind.${k}`, $locale);
+		if (k === 'all') return t('search.tabAll', $locale);
+		return k === 'comment' ? t('search.field.comment', $locale) : t(`kind.${k}`, $locale);
 	}
 </script>
 
@@ -264,7 +276,7 @@
 		<p class="state">{t('search.empty', $locale)}</p>
 	{:else}
 		<ul class="results" data-testid="doc-search-results" aria-busy={loading}>
-			{#each shown as r (`${r.kind}:${r.id}`)}
+			{#each shown as r (`${r.kind}:${r.id}:${r.comment ?? ''}`)}
 				<li class="row">
 					<DocLink
 						kind={r.kind}

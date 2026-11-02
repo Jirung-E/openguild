@@ -40,6 +40,22 @@ export interface CommentsListResponse {
  * DEV-100: quest / campaign 공용 댓글·메모 API 팩토리.
  * 엔드포인트 base 만 다르고 요청/응답 형식 동일.
  */
+/** 길드 전체 댓글 한 줄 — `GET /api/comments`. */
+export interface GlobalComment {
+	scope: 'quest' | 'campaign';
+	slug: string;
+	entry_id: number;
+	ts: string;
+	author: string;
+	body: string;
+}
+
+/** 쿼리에 맞는 댓글 — 문서를 가리지 않고, 오래된 순. */
+export const globalCommentsApi = {
+	matchQuery: (q: string) =>
+		api.get<GlobalComment[]>(`/api/comments?${new URLSearchParams({ q }).toString()}`)
+};
+
 function makeCommentsApi(base: (slug: string) => string) {
 	return {
 		// ─── DEV-094: 댓글 entry CRUD ───
