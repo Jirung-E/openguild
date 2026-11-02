@@ -174,7 +174,7 @@ pub async fn list_with_attachment_matches(
     }
     if query.has_sub && query.no_sub {
         return Err(AppError::BadRequest(
-            "--has-sub and --no-sub are mutually exclusive".into(),
+            "--has-child and --no-child are mutually exclusive".into(),
         ));
     }
     if query.has_prereq {

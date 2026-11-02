@@ -3,3 +3,5 @@
 {"ts":"2026-11-02T23:18:04+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-11-03T00:27:02+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-11-03T00:43:24+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-11-03T00:51:33+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-11-03T00:58:59+09:00","op":"change_status","old":"in_progress","new":"testing"}

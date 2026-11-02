@@ -128,6 +128,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     도서관. 틀리면 칸이 빨개지고 이유와 `?` 쓰는 법이 나온다. 주소 `?q=` 에 실려 새로고침·공유에
     남는다. CLI `quest|campaign|library list -q` · `comments -q`, 서버 `?q=`
   - `quest list --commented-after/--before` — 댓글이 달린 때로 거르기
+  - `quest list --parent`(`--child-of` 와 같다) · `--has-child` · `--no-child` — 쿼리 키와 같은 이름(옛 `--has-sub` · `--no-sub` 도 받는다)
   (DEV-446, DEV-447, DEV-448, DEV-451, DEV-452)
 - **태그 필터** — 퀘스트 목록·보드·도서관에서 태그로 거른다(여러 개면 모두 가진 것만).
   CLI `quest list --tag`, `library list --tag` (REQ-027)

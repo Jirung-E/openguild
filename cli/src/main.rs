@@ -522,7 +522,8 @@ enum QuestCmd {
               help = tf!("마지막 댓글 시점 ≤ ISO date — 그 뒤로 댓글이 없는 것(댓글이 아예 없는 것은 빠진다).",
                          "Last comment at ≤ ISO date — no comments since then (quests with no comments are left out)."))]
         commented_before: Option<String>,
-        #[arg(long = "child-of", value_name = "SLUG", conflicts_with = "no_parent",
+        // `--parent` 는 쿼리의 `parent:` · `quest add --parent` 와 같은 이름.
+        #[arg(long = "child-of", visible_alias = "parent", value_name = "SLUG", conflicts_with = "no_parent",
               help = tf!("자식 표시 — 지정 quest slug 가 parent 인 직계 자식들만 보여줌. (--no-parent 와 상호배타.)",
                          "Show children — only direct children of the given quest slug. (Mutually exclusive with --no-parent.)"))]
         child_of: Option<String>,
@@ -532,9 +533,10 @@ enum QuestCmd {
         has_prereq: bool,
         #[arg(long = "no-prereq", help = tf!("선행 quest 가 없는 quest 만.", "Only quests with no prerequisites."))]
         no_prereq: bool,
-        #[arg(long = "has-sub", conflicts_with = "no_sub", help = tf!("서브 quest 가 1개 이상 있는 quest 만.", "Only quests with 1+ sub-quest."))]
+        // 쿼리의 `child:` 와 같은 이름. 옛 이름도 받는다 — 쓰던 스크립트가 깨지지 않게.
+        #[arg(long = "has-child", alias = "has-sub", conflicts_with = "no_sub", help = tf!("자식 quest 가 1개 이상 있는 quest 만.", "Only quests with 1+ child quest."))]
         has_sub: bool,
-        #[arg(long = "no-sub", help = tf!("서브 quest 가 없는 leaf quest 만.", "Only leaf quests (no sub-quests)."))]
+        #[arg(long = "no-child", alias = "no-sub", help = tf!("자식 quest 가 없는 leaf quest 만.", "Only leaf quests (no child quests)."))]
         no_sub: bool,
         #[arg(long, help = tf!("title / description 부분 일치 검색. 공백 split AND.", "Partial match on title / description. Space-separated tokens are AND'd."))]
         search: Option<String>,
@@ -12056,6 +12058,34 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn cli_parse_list_parent_and_child_flag_names() {
+        let list = |args: &[&str]| {
+            let mut v = vec!["openguild", "quest", "list"];
+            v.extend_from_slice(args);
+            match Cli::try_parse_from(v).unwrap().command {
+                Command::Quest {
+                    sub:
+                        QuestCmd::List {
+                            child_of,
+                            has_sub,
+                            no_sub,
+                            ..
+                        },
+                } => (child_of, has_sub, no_sub),
+                _ => panic!("expected quest list"),
+            }
+        };
+        let of = Some("DEV-001".to_string());
+        assert_eq!(list(&["--parent", "DEV-001"]), (of.clone(), false, false));
+        assert_eq!(list(&["--child-of", "DEV-001"]), (of, false, false));
+        assert_eq!(list(&["--has-child"]), (None, true, false));
+        assert_eq!(list(&["--no-child"]), (None, false, true));
+        // 옛 이름도 그대로 돈다.
+        assert_eq!(list(&["--has-sub"]), (None, true, false));
+        assert_eq!(list(&["--no-sub"]), (None, false, true));
     }
 
     #[test]
