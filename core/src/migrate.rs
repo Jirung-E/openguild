@@ -212,7 +212,7 @@ fn build_quest_file(
 
     let relations = QuestRelations {
         parent: parent_ref.clone(),
-        sub_quests: sub_refs,
+        children: sub_refs,
         prerequisites: prereq_refs.clone(),
         successors: successor_refs,
     };

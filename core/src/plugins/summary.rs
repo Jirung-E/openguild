@@ -124,6 +124,7 @@ fn handler_line(h: &view::HandlerView) -> String {
             let of = match h.of.as_deref() {
                 Some("campaign") => crate::tf!("캠페인", "campaigns"),
                 Some("library") => crate::tf!("도서관", "library"),
+                Some("comment") => crate::tf!("댓글", "comment"),
                 _ => crate::tf!("퀘스트", "quests"),
             };
             crate::tf!("{every} 마다 {of} `{q}`", "every {every}, {of} `{q}`")

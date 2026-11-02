@@ -648,10 +648,10 @@
 	function toggleAllCascade() {
 		if (!detail) return;
 		// 모두 선택돼있으면 전체 해제, 아니면 전체 선택
-		if (cascadeSet.size === detail.sub_quests.length) {
+		if (cascadeSet.size === detail.children.length) {
 			cascadeSet = new Set();
 		} else {
-			cascadeSet = new Set(detail.sub_quests.map((s) => s.id));
+			cascadeSet = new Set(detail.children.map((s) => s.id));
 		}
 	}
 
@@ -1031,7 +1031,7 @@
 
 		<!-- DEV-279: 비어 있는 연관 섹션은 아예 숨긴다 — '없음' 문구가 세 줄
 		     차지해 정작 내용이 아래로 밀렸다. 추가는 '연관 추가' 메뉴로. -->
-		{#if detail.sub_quests.length > 0}
+		{#if detail.children.length > 0}
 			<section>
 				<div class="section-head">
 					<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
@@ -1048,9 +1048,9 @@
 						>
 					{/if}
 				</div>
-				{#if detail.sub_quests.length > 0}
+				{#if detail.children.length > 0}
 					<ul class="quest-list">
-						{#each detail.sub_quests as sq (sq.id)}
+						{#each detail.children as sq (sq.id)}
 							<li>
 								<div class="prereq-row">
 									<DocLink
@@ -1536,15 +1536,15 @@
 				>
 			</div>
 			<p class="del-msg">{t('quest.delete.msg', $locale)}</p>
-			{#if detail.sub_quests.length > 0}
+			{#if detail.children.length > 0}
 				<div class="del-sub">
 					<div class="del-sub-head">
 						<p class="del-sub-title">{t('quest.delete.subTitle', $locale)}</p>
 						<label class="del-sub-all">
 							<input
 								type="checkbox"
-								checked={cascadeSet.size === detail.sub_quests.length}
-								indeterminate={cascadeSet.size > 0 && cascadeSet.size < detail.sub_quests.length}
+								checked={cascadeSet.size === detail.children.length}
+								indeterminate={cascadeSet.size > 0 && cascadeSet.size < detail.children.length}
 								onchange={toggleAllCascade}
 								data-testid="cascade-all"
 							/>
@@ -1555,7 +1555,7 @@
 						{t('quest.delete.subHelp', $locale)}
 					</p>
 					<ul class="del-sub-list" bind:this={delSubListEl}>
-						{#each detail.sub_quests as sq (sq.id)}
+						{#each detail.children as sq (sq.id)}
 							<li>
 								<label>
 									<input

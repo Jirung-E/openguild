@@ -99,7 +99,7 @@ Instead of `pre` / `post`, a line can run **on a schedule** and receive a list:
     id    = "overdue"
     every = "1h"                                    # s · m · h · d, at least 1m
     query = "status:[open, in_progress] due:overdue"   # the list query, same as `quest list -q`
-    of    = "quest"                                 # quest (default) · campaign · library
+    of    = "quest"                                 # quest (default) · campaign · library · comment
     call  = "overdue"                               # fn overdue(e) — e.items
 ```
 
@@ -107,12 +107,13 @@ Instead of `pre` / `post`, a line can run **on a schedule** and receive a list:
 |---|---|
 | `every` | Interval. Runs only in the **app (`gui`) and the server** — the CLI exits when a command ends. `plugin check` warns when `scope` has neither. |
 | `query` | Required. The list query syntax (`status:` `tag:` `due:` …, the keys of `of`). Parsed at load, so a typo is a load error with the same message the list screens show. |
-| `of` | Which list: `quest` (default), `campaign`, `library`. |
+| `of` | Which list: `quest` (default), `campaign`, `library`, `comment`. |
 
 The function gets `e` as usual: `e.event` is `"every"`, `e.items` the matching list, `e.count`, plus
 `e.line`, `e.every`, `e.query`, `e.of`. Items are short summaries — quests: `id title status type
 urgency tags desired_due required_due campaign_due updated_at comment_count`; campaigns: `id title
-status start end`; library: `id title folder tags updated_at`. **Nothing matches → nothing is
+status start end`; library: `id title folder tags updated_at`; comments, with the body: `id quest campaign author body parent
+discussion created_at updated_at`. **Nothing matches → nothing is
 called.** An `action` line sends that event JSON as the body. `pre`, `post`, `when`, `with`, `wait`,
 `group` and orders cannot be used on a scheduled line.
 

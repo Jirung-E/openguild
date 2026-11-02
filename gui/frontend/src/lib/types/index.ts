@@ -82,7 +82,7 @@ export interface Quest {
 export interface QuestDetail extends Quest {
 	/** DEV-047: 부모 quest row (slug + 색 + 제목 표시용). 없으면 null/undefined. */
 	parent?: Quest | null;
-	sub_quests: Quest[];
+	children: Quest[];
 	prerequisites: Quest[];
 	/**
 	 * DEV-070: 본 quest 를 선행으로 가지는 quest 들 (= 후속 / successor).

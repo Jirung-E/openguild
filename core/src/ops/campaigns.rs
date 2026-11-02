@@ -1146,10 +1146,12 @@ mod tests {
             slugs(None, "id:/^c-00[3]$/").await,
             vec![next.campaign_slug.clone()]
         );
-        sqlx::query(
-            "UPDATE campaigns SET created_at = '2020-03-01T10:00:00+09:00', updated_at = '2021-03-01T10:00:00+09:00'
-              WHERE id = ?",
-        )
+        // 날짜는 이 기계 시간대로 재므로, 어느 시간대에서 돌아도 그날이 되게 적는다.
+        let off = chrono::Local::now().format("%:z");
+        sqlx::query(&format!(
+            "UPDATE campaigns SET created_at = '2020-03-01T10:00:00{off}', updated_at = '2021-03-01T10:00:00{off}'
+              WHERE id = ?"
+        ))
         .bind(late.id)
         .execute(&store.index_pool)
         .await

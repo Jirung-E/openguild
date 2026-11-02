@@ -155,8 +155,8 @@ const LIST_QUERY_BOOLS = new Set([
 	'no_parent',
 	'has_prereq',
 	'no_prereq',
-	'has_sub',
-	'no_sub',
+	'has_child',
+	'no_child',
 	'reverse',
 	'slim',
 	// REQ-010: 댓글 / 첨부 이름까지 훑는 넓은 검색.

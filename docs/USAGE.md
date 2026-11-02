@@ -217,8 +217,9 @@ openguild library list --tag 설계
 #   키: id(DEV-001 · DEV-001.. · DEV-* · /정규식/) · status · type · tag · campaign(번호 · none) · urgency(2 · 1..=3 · <=2)
 #       · due(overdue · none · <=날짜 · 날짜..날짜) · required_due · desired_due · campaign_end(값은 due 와 같음)
 #       · parent · child · prereq · successor(번호 · none — child:DEV-001 = DEV-001 을 자식으로 둔 퀘스트)
-#       · discussion(unresolved · resolved · none) · created · updated(날짜 비교) · title · body
-#       · commented(마지막 댓글 날짜 — >=날짜 · <날짜 · none). 댓글은 updated_at 을 안 바꾼다 — "이후 바뀐 것" 은
+#       · discussion(unresolved · resolved · none) · created · updated(날짜 — 이 기계 시간대, 시각은 비교 · 범위로
+#         >=2026-11-01T10:00) · title · body
+#       · commented(마지막 댓글 — created 와 같은 값 · none). 댓글은 updated_at 을 안 바꾼다 — "이후 바뀐 것" 은
 #         --updated-after 와 commented:>=날짜 를 둘 다 본다
 #   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것 — 따로 보려면 required_due · campaign_end.
 #   희망 기한은 desired_due 로만 본다. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.
@@ -364,11 +365,12 @@ fn on_comment(e, subject) {
     id    = "기한 지남"
     every = "1d"                                         # s · m · h(경과 시간) · d(날짜), 최소 1m
     query = "status:[open, in_progress] due:overdue"     # 목록 화면 · quest list -q 와 같은 쿼리
-    of    = "quest"                                      # quest(기본) · campaign · library
+    of    = "quest"                                      # quest(기본) · campaign · library · comment
     call  = "digest"                                     # fn digest(e) — e.items 가 맞는 목록
 ```
 
 - 맞는 것이 없으면 함수를 부르지 않습니다.
+- `of = "comment"` 면 `e.items` 는 맞는 댓글이고, 본문도 들어 있습니다(`id quest campaign author body parent discussion created_at updated_at`).
 - 앱 · 서버에서만 돕니다(CLI 는 명령이 끝나면 꺼집니다). 같은 기계에서 둘 다 열어도 한 번만 돕니다.
 - 처음 허용하면 곧 한 번, 그 뒤로 `every` 마다. 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돕니다.
 - `1d` 는 **날짜**가 바뀌면 돕니다 — 그날 처음 켤 때 한 번(켜 둔 채면 자정에). 24시간마다는 `24h` 로 씁니다.

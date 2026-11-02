@@ -1473,12 +1473,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'id — DEV-1 · range · * · /regex/'
 	},
 	'query.helpCreated': {
-		ko: '만든 날 — 날짜 비교',
-		en: 'day it was created — date comparison'
+		ko: '만든 때 — 날짜 · 시각(>=2026-11-01T10:00) 비교',
+		en: 'when it was created — date or time (>=2026-11-01T10:00) comparison'
 	},
 	'query.helpUpdated': {
-		ko: '고친 날 — 날짜 비교',
-		en: 'day it was edited — date comparison'
+		ko: '고친 때 — 날짜 · 시각(>=2026-11-01T10:00) 비교',
+		en: 'when it was edited — date or time (>=2026-11-01T10:00) comparison'
 	},
 	'query.helpTitle': {
 		ko: '제목만 — 부분일치, =값 은 완전일치, * · /정규식/',
@@ -1522,13 +1522,13 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'discussions — unresolved (some open) · resolved (all resolved) · none'
 	},
 	'filter.queryHelpUpdated': {
-		ko: '고친 날 — 날짜 비교. 댓글만 달리면 안 바뀝니다(commented 를 보세요)',
-		en: 'day it was edited — date comparison. Comments do not change it (see commented)'
+		ko: '고친 때 — 날짜 · 시각 비교. 댓글만 달리면 안 바뀝니다(commented 를 보세요)',
+		en: 'when it was edited — date or time comparison. Comments do not change it (see commented)'
 	},
 	// DEV-448: 댓글은 갱신 시점을 안 바꾼다 — '갱신' 범위로는 댓글만 달린 퀘스트를 못 찾는다.
 	'filter.queryHelpCommented': {
-		ko: '마지막 댓글 날짜 · none(댓글 없음) — 댓글은 갱신 시점을 안 바꿉니다',
-		en: 'date of the last comment · none (no comments) — comments do not change the updated time'
+		ko: '마지막 댓글 — 날짜 · 시각 비교 · none(댓글 없음) — 댓글은 갱신 시점을 안 바꿉니다',
+		en: 'the last comment — date or time comparison · none (no comments) — comments do not change the updated time'
 	},
 	// DEV-452 (REQ-039): 캠페인 · 도서관의 쿼리 — 문법은 같고 키만 다르다(코어 DEV-451).
 	'campaignList.queryPlaceholder': {
@@ -1595,8 +1595,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'folder — including subfolders · none (top level only)'
 	},
 	'library.queryHelpUpdated': {
-		ko: '고친 날 — 날짜 비교',
-		en: 'day it was edited — date comparison'
+		ko: '고친 때 — 날짜 · 시각(>=2026-11-01T10:00) 비교',
+		en: 'when it was edited — date or time (>=2026-11-01T10:00) comparison'
 	},
 	// DEV-454: 날짜 고르기의 이전 · 다음(예전엔 화면 읽기 도구가 '◀' 를 읽었다).
 	'datefield.prev': { ko: '이전', en: 'Previous' },

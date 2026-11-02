@@ -91,8 +91,8 @@ openguild quest list -q 'parent:none type:BUG'
 - Keys: `id` (`DEV-1`, `DEV-1..=DEV-9`, `DEV-*`, `/regex/`), `status` (slug, English or Korean name), `type`, `tag`,
   `campaign` (id or `none`), `urgency` (`2`, `1..=3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, a range, …),
   `required_due`, `desired_due`, `campaign_end` (same values as `due`), `parent`, `child`, `prereq`, `successor` (id or `none`;
-  `child:DEV-9` = quests with DEV-9 as a child), `discussion` (`unresolved`, `resolved`, `none`), `created`, `updated` (dates),
-  `commented` (date of the **last comment**: `>=YYYY-MM-DD`, `<YYYY-MM-DD`, a date, a range, or `none`),
+  `child:DEV-9` = quests with DEV-9 as a child), `discussion` (`unresolved`, `resolved`, `none`), `created`, `updated` (a date, or a time in a comparison or range: `>=2026-11-01T10:00`),
+  `commented` (the **last comment**, same values as `created`, or `none`),
   `title`, `body`.
 - `due` is the effective due date: the earlier of the required due date and the end date of an
   active campaign the quest is in. `overdue` skips quests whose status counts as done.
@@ -219,8 +219,8 @@ object.
 
 ```
 id  title  status  status_ko  status_slug  urgency  description  type
-parent  sub_quests  prerequisites  successors  created_at  updated_at  version
+parent  children  prerequisites  successors  created_at  updated_at  version
 ```
 
-Relation fields print one slug per line — `--field sub_quests` is the way to
+Relation fields print one slug per line — `--field children` is the way to
 script over children/prereqs/successors.

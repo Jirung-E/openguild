@@ -1479,7 +1479,7 @@ async fn fetch_relations(pool: &SqlitePool, id: i64) -> AppResult<QuestRelations
 
     Ok(QuestRelations {
         parent,
-        sub_quests: subs.into_iter().map(QuestRef::new).collect(),
+        children: subs.into_iter().map(QuestRef::new).collect(),
         prerequisites: prereqs.into_iter().map(QuestRef::new).collect(),
         successors: successors.into_iter().map(QuestRef::new).collect(),
     })

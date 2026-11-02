@@ -939,7 +939,7 @@ async fn test_list_urgency_empty_string_no_filter() {
     assert_eq!(body.as_array().unwrap().len(), 3); // 미지정 동일
 }
 
-// === DEV-029: 관계 필터 (has-prereq / has-sub) ===
+// === DEV-029: 관계 필터 (has-prereq / has-child) ===
 
 async fn setup_with_relations() -> Router {
     let app = setup().await;
@@ -987,18 +987,18 @@ async fn test_list_no_prereq() {
 }
 
 #[tokio::test]
-async fn test_list_has_sub() {
+async fn test_list_has_child() {
     let app = setup_with_relations().await;
-    let (_, body) = get(app, "/api/quests?has_sub=true").await;
+    let (_, body) = get(app, "/api/quests?has_child=true").await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["title"], "q1-leaf-parent");
 }
 
 #[tokio::test]
-async fn test_list_no_sub() {
+async fn test_list_no_child() {
     let app = setup_with_relations().await;
-    let (_, body) = get(app, "/api/quests?no_sub=true").await;
+    let (_, body) = get(app, "/api/quests?no_child=true").await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 2); // q2, q3 (둘 다 sub 없음)
 }
@@ -1007,7 +1007,7 @@ async fn test_list_no_sub() {
 async fn test_list_no_prereq_and_no_sub_combined() {
     let app = setup_with_relations().await;
     // q2: parent 있지만 prereq 없음, sub 없음
-    let (_, body) = get(app, "/api/quests?no_prereq=true&no_sub=true").await;
+    let (_, body) = get(app, "/api/quests?no_prereq=true&no_child=true").await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["title"], "q2-child");
@@ -1021,9 +1021,9 @@ async fn test_list_has_prereq_and_no_prereq_mutually_exclusive() {
 }
 
 #[tokio::test]
-async fn test_list_has_sub_and_no_sub_mutually_exclusive() {
+async fn test_list_has_child_and_no_child_mutually_exclusive() {
     let app = setup_with_relations().await;
-    let (s, _) = get(app, "/api/quests?has_sub=true&no_sub=true").await;
+    let (s, _) = get(app, "/api/quests?has_child=true&no_child=true").await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
@@ -2149,7 +2149,7 @@ async fn test_get_quest_detail() {
     let (status, body) = get(app, &format!("/api/quests/{id}")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["title"], "detail test");
-    assert!(body["sub_quests"].is_array());
+    assert!(body["children"].is_array());
     assert!(body["prerequisites"].is_array());
 }
 
@@ -2253,7 +2253,7 @@ async fn test_prerequisites() {
 }
 
 #[tokio::test]
-async fn test_sub_quests() {
+async fn test_children() {
     let app = setup().await;
     let (_, parent) = post(
         app.clone(),
@@ -2269,7 +2269,7 @@ async fn test_sub_quests() {
 
     let (status, detail) = get(app, &format!("/api/quests/{parent_id}")).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(detail["sub_quests"].as_array().unwrap().len(), 2);
+    assert_eq!(detail["children"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]

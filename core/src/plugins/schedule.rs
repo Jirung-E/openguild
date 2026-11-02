@@ -5,7 +5,7 @@
 //!     id    = "마감 알림"
 //!     every = "1h"                                  # 분 m · 시간 h(경과 시간) · 날 d(날짜), 최소 1m
 //!     query = "status:[open, in_progress] due:overdue" # REQ-039 의 쿼리 문법
-//!     of    = "quest"                               # quest(기본) · campaign · library
+//!     of    = "quest"                               # quest(기본) · campaign · library · comment
 //!     call  = "마감_알림"                           # fn 마감_알림(e) — e.items 가 맞는 목록
 //! ```
 //!
@@ -60,6 +60,7 @@ pub enum Of {
     Quest,
     Campaign,
     Library,
+    Comment,
 }
 
 impl Of {
@@ -68,6 +69,7 @@ impl Of {
             Of::Quest => "quest",
             Of::Campaign => "campaign",
             Of::Library => "library",
+            Of::Comment => "comment",
         }
     }
 
@@ -76,6 +78,7 @@ impl Of {
             Of::Quest => crate::query::Target::Quest,
             Of::Campaign => crate::query::Target::Campaign,
             Of::Library => crate::query::Target::Library,
+            Of::Comment => crate::query::Target::Comment,
         }
     }
 }
@@ -255,7 +258,7 @@ fn claim_locked(file: &Path, p: &Plugin, now: u64) -> Result<Vec<usize>, String>
     Ok(due)
 }
 
-/// 쿼리에 맞는 목록 — 한 건은 짧은 요약이다(본문 같은 큰 칸은 뺀다).
+/// 쿼리에 맞는 목록 — 한 건은 짧은 요약이다(본문 같은 큰 칸은 뺀다). 댓글만 본문을 싣는다 — 본문이 곧 댓글이다.
 async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult<Vec<Value>> {
     Ok(match of {
         Of::Quest => {
@@ -309,6 +312,35 @@ async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult
                 })
             })
             .collect(),
+        Of::Comment => crate::services::comments::search_global(
+            &store.index_pool,
+            crate::services::comments::GlobalCommentsFilter {
+                query: Some(q),
+                ..Default::default()
+            },
+        )
+        .await?
+        .into_iter()
+        .map(|c| {
+            let on = |scope: &str| (c.scope == scope).then(|| c.slug.clone());
+            let discussion = match (c.discussion, c.resolved) {
+                (false, _) => "none",
+                (true, false) => "unresolved",
+                (true, true) => "resolved",
+            };
+            json!({
+                "id": c.entry_id,
+                "quest": on("quest"),
+                "campaign": on("campaign"),
+                "author": c.author,
+                "body": c.body,
+                "parent": c.parent_id,
+                "discussion": discussion,
+                "created_at": c.ts,
+                "updated_at": c.edited_at.as_deref().unwrap_or(&c.ts),
+            })
+        })
+        .collect(),
     })
 }
 
@@ -660,6 +692,55 @@ mod tests {
     }
 
     /// 실제 길드 — 맞는 퀘스트만 실려 그 줄이 불리고, 맞는 것이 없으면 안 불린다.
+    #[tokio::test]
+    async fn comment_items_carry_the_body_and_where_it_is() {
+        let root = tmp("comment-items");
+        crate::repo::seed_guild_dir(&root).unwrap();
+        let store = crate::Store::open(&root).await.unwrap();
+        let q = crate::ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "댓글 달린 것".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "claude".into(),
+            "결정 필요".into(),
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+        let found = items(&store, Of::Comment, "discussion:unresolved")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0]["id"], 1);
+        assert_eq!(found[0]["quest"], q.quest_id.as_str());
+        assert!(found[0]["campaign"].is_null());
+        assert_eq!(found[0]["author"], "claude");
+        assert_eq!(found[0]["body"], "결정 필요");
+        assert_eq!(found[0]["discussion"], "unresolved");
+        assert_eq!(found[0]["updated_at"], found[0]["created_at"]);
+        assert!(
+            items(&store, Of::Comment, "author:nobody")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        // 줄을 읽을 때 댓글의 키로 검사한다.
+        assert!(crate::query::parse_for(Of::Comment.target(), "status:open").is_err());
+    }
+
     #[tokio::test]
     async fn tick_runs_the_due_line_with_the_matching_items() {
         let root = tmp("tick");

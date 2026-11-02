@@ -69,7 +69,7 @@ pub struct QuestDetail {
     /// DEV-047: parent row 전체 (slug + 색 + 제목 표시용). None 이면 root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<QuestRow>,
-    pub sub_quests: Vec<QuestRow>,
+    pub children: Vec<QuestRow>,
     pub prerequisites: Vec<QuestRow>,
     /// DEV-070: 본 quest 를 선행으로 가지는 quest 들 (= 후속 / successor).
     /// `quest_dependencies` 의 역방향. alive 만. 빈 vec 이면 후속 없음 — Quest
@@ -186,10 +186,10 @@ pub struct ListQuery {
     pub has_prereq: bool,
     /// 선행 quest 가 없는 quest 만. `has_prereq` 와 상호배타.
     pub no_prereq: bool,
-    /// 서브 quest 가 1개 이상 있는 quest 만. `no_sub` 와 상호배타.
-    pub has_sub: bool,
-    /// 서브 quest 가 없는 leaf quest 만. `has_sub` 와 상호배타.
-    pub no_sub: bool,
+    /// 서브 quest 가 1개 이상 있는 quest 만. `no_child` 와 상호배타.
+    pub has_child: bool,
+    /// 서브 quest 가 없는 leaf quest 만. `has_child` 와 상호배타.
+    pub no_child: bool,
     /// 검색 키워드 — title / description 부분 일치 (대소문자 무시).
     /// 공백 split 후 AND (모든 토큰 포함).
     pub search: Option<String>,

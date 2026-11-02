@@ -164,7 +164,8 @@
           "enum": [
             "quest",
             "campaign",
-            "library"
+            "library",
+            "comment"
           ]
         },
         "on_error": {

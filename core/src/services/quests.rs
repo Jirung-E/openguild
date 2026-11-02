@@ -172,7 +172,7 @@ pub async fn list_with_attachment_matches(
             "--has-prereq and --no-prereq are mutually exclusive".into(),
         ));
     }
-    if query.has_sub && query.no_sub {
+    if query.has_child && query.no_child {
         return Err(AppError::BadRequest(
             "--has-child and --no-child are mutually exclusive".into(),
         ));
@@ -185,12 +185,12 @@ pub async fn list_with_attachment_matches(
             " AND NOT EXISTS (SELECT 1 FROM quest_dependencies d WHERE d.quest_id = q.id)",
         );
     }
-    if query.has_sub {
+    if query.has_child {
         sql.push_str(
             " AND EXISTS (SELECT 1 FROM quests s WHERE s.parent_quest_id = q.id AND s.deleted_at IS NULL)",
         );
     }
-    if query.no_sub {
+    if query.no_child {
         sql.push_str(
             " AND NOT EXISTS (SELECT 1 FROM quests s WHERE s.parent_quest_id = q.id AND s.deleted_at IS NULL)",
         );
@@ -515,7 +515,7 @@ pub async fn list_deleted(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
 pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     let quest = fetch_by_id(pool, id).await?;
     let parent = fetch_parent(pool, &quest).await?;
-    let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
+    let (children, prerequisites, position) = fetch_relations(pool, id).await?;
     // DEV-070: 후속 (이 quest 를 선행으로 갖는 quest 들).
     let successors = fetch_successors(pool, id).await?;
     // DEV-068: tag 들 — quest_tags 캐시 (file frontmatter sync 됨).
@@ -523,7 +523,7 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     Ok(QuestDetail {
         quest,
         parent,
-        sub_quests,
+        children,
         prerequisites,
         successors,
         tags,
@@ -578,14 +578,14 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
 
     let id = quest.id;
     let parent = fetch_parent(pool, &quest).await?;
-    let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
+    let (children, prerequisites, position) = fetch_relations(pool, id).await?;
     let successors = fetch_successors(pool, id).await?;
     let tags = fetch_quest_tags(pool, id).await?;
 
     Ok(QuestDetail {
         quest,
         parent,
-        sub_quests,
+        children,
         prerequisites,
         successors,
         tags,
@@ -1418,7 +1418,7 @@ async fn fetch_relations(
     let sub_sql = format!(
         "{QUEST_SELECT} WHERE q.deleted_at IS NULL AND q.parent_quest_id = ? ORDER BY q.id"
     );
-    let sub_quests = sqlx::query_as::<_, QuestRow>(&sub_sql)
+    let children = sqlx::query_as::<_, QuestRow>(&sub_sql)
         .bind(id)
         .fetch_all(pool)
         .await?;
@@ -1440,7 +1440,7 @@ async fn fetch_relations(
     .fetch_optional(pool)
     .await?;
 
-    Ok((sub_quests, prerequisites, position))
+    Ok((children, prerequisites, position))
 }
 
 /// `quest_id` 가 `ancestor_id` 의 자손인지 (parent_quest_id 체인 BFS).
@@ -1775,10 +1775,12 @@ mod tests {
             Vec::<i64>::new()
         );
         // DEV-448: 마지막 댓글의 날짜 — 댓글은 `updated_at` 을 안 바꾸므로 따로 본다.
+        // 날짜는 이 기계 시간대로 재므로, 어느 시간대에서 돌아도 그날이 되게 적는다.
+        let off = chrono::Local::now().format("%:z");
         for (qid, ts) in [
-            (a, "2026-10-01T09:00:00+09:00"),
-            (a, "2026-10-20T23:00:00+09:00"),
-            (b, "2026-09-01T10:00:00+09:00"),
+            (a, format!("2026-10-01T12:00:00{off}")),
+            (a, format!("2026-10-20T12:00:00{off}")),
+            (b, format!("2026-09-01T12:00:00{off}")),
         ] {
             sqlx::query(
                 "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body)
@@ -1828,7 +1830,10 @@ mod tests {
                 .last_comment_at
                 .clone()
         };
-        assert_eq!(last(a).as_deref(), Some("2026-10-20T23:00:00+09:00"));
+        assert_eq!(
+            last(a).as_deref(),
+            Some(format!("2026-10-20T12:00:00{off}").as_str())
+        );
         assert_eq!(last(c), None);
         // 다른 필터와는 그리고.
         assert_eq!(
@@ -1857,6 +1862,46 @@ mod tests {
 
     /// REQ-039: 기한을 나눠 보는 키 · 번호 · 만든 날 · 고친 날 · 관계 · 토론.
     #[tokio::test]
+    async fn created_date_is_the_local_day_whatever_zone_was_written() {
+        let (dir, store) = fresh_store("query_local_day").await;
+        let a = make_quest(&store).await;
+        // 옛 데이터는 UTC 로 적혀 있다 — 앞 10글자가 곧 그날은 아니다.
+        let raw = "2020-03-01T20:00:00Z";
+        sqlx::query("UPDATE quests SET created_at = ? WHERE id = ?")
+            .bind(raw)
+            .bind(a)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let local = chrono::DateTime::parse_from_rfc3339(raw)
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d")
+            .to_string();
+        let query = ListQuery {
+            q: Some(format!("created:{local}")),
+            ..Default::default()
+        };
+        let rows = list(&store.index_pool, &query).await.unwrap();
+        assert_eq!(rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![a]);
+        // 시각은 적힌 시간대가 달라도 같은 순간으로 잰다 — 20:00Z = 다음 날 05:00+09:00.
+        for (time, hit) in [
+            ("2020-03-02T04:59+09:00", true),
+            ("2020-03-02T05:01+09:00", false),
+            ("2020-03-01T19:59:00Z", true),
+            ("2020-03-01T20:01:00Z", false),
+        ] {
+            let query = ListQuery {
+                q: Some(format!("created:>={time}")),
+                ..Default::default()
+            };
+            let rows = list(&store.index_pool, &query).await.unwrap();
+            assert_eq!(!rows.is_empty(), hit, "{time}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn query_keys_for_dues_ids_dates_links_and_discussions() {
         let (dir, store) = fresh_store("query_keys").await;
         let pool = store.index_pool.clone();
@@ -1881,11 +1926,13 @@ mod tests {
             a,
         )
         .await;
-        sqlx::query(
+        // 날짜는 이 기계 시간대로 재므로, 어느 시간대에서 돌아도 그날이 되게 적는다.
+        let off = chrono::Local::now().format("%:z");
+        sqlx::query(&format!(
             "UPDATE quests SET required_due = '2000-01-01', desired_due = '2999-01-01',
-                    created_at = '2020-03-01T10:00:00+09:00', updated_at = '2021-03-01T10:00:00+09:00'
-              WHERE id = ?",
-        )
+                    created_at = '2020-03-01T10:00:00{off}', updated_at = '2021-03-01T10:00:00{off}'
+              WHERE id = ?"
+        ))
         .bind(a)
         .execute(&pool)
         .await
@@ -1996,6 +2043,11 @@ mod tests {
         assert_eq!(ids("created:2020-03-01".into()).await, vec![a]);
         assert_eq!(ids("created:..2021-01-01".into()).await, vec![a]);
         assert_eq!(ids("updated:2021-03-01".into()).await, vec![a]);
+        // 시각 — 시간대를 안 적으면 이 기계 시간대.
+        let has = async |q: &str| ids(q.into()).await.contains(&a);
+        assert!(has("created:>=2020-03-01T09:59").await);
+        assert!(!has("created:>=2020-03-01T10:01").await);
+        assert!(has("created:2020-03-01T09:00..2020-03-01T11:00:00").await);
         assert_eq!(ids("-updated:2021-03-01".into()).await, vec![b, c]);
 
         // 관계 — 부모 · 자식, 선행 · 후행은 서로 반대 방향.
@@ -2040,6 +2092,8 @@ mod tests {
             "id:DEV-1..BUG-9",
             "id:..",
             "created:어제",
+            // 시각은 딱 맞을 일이 없어 비교 · 범위로만.
+            "created:2020-03-01T10:00",
         ] {
             assert!(crate::query::parse(bad).is_err(), "{bad}");
         }

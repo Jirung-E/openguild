@@ -765,7 +765,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
             (Key::Checklist, _) => ["open", "done", "none"]
                 .iter()
                 .any(|x| s.eq_ignore_ascii_case(x)),
-            (Key::Start | Key::Created | Key::Updated, _) => date_cond("x", s).is_some(),
+            (Key::Start, _) => date_cond("x", s).is_some(),
+            (Key::Created | Key::Updated, _) => moment_cond("x", s).is_some(),
             (Key::End, _) => s.eq_ignore_ascii_case("overdue") || date_cond("x", s).is_some(),
             (Key::Quest, _) => split_slug(s).is_some(),
             (Key::Status | Key::Type | Key::Tag | Key::Folder | Key::Title | Key::Body, _) => true,
@@ -809,8 +810,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                     "checklist is open (items left), done (all checked) or none (no items)"
                 ),
                 Key::Created => crate::tf!(
-                    "created 는 날짜(2026-11-01) · <=날짜 · 범위(2026-10-01..) — 만든 날과 비교",
-                    "created is a date (2026-11-01), <=date or a range (2026-10-01..) — compared with the day it was created"
+                    "created 는 날짜(2026-11-01) · <=날짜 · >=시각(2026-11-01T10:00) · 범위(2026-10-01..) — 만든 때와 비교",
+                    "created is a date (2026-11-01), <=date, >=time (2026-11-01T10:00) or a range (2026-10-01..) — compared with when it was created"
                 ),
                 Key::Status => crate::tf!(
                     "캠페인의 status 는 active · done",
@@ -825,8 +826,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                     "end is overdue, none, a date (2026-11-01), <=date or a range (2026-11-01..)"
                 ),
                 Key::Updated => crate::tf!(
-                    "updated 는 날짜(2026-11-01) · <=날짜 · 범위(2026-10-01..) — 고친 날과 비교",
-                    "updated is a date (2026-11-01), <=date or a range (2026-10-01..) — compared with the day it was edited"
+                    "updated 는 날짜(2026-11-01) · <=날짜 · >=시각(2026-11-01T10:00) · 범위(2026-10-01..) — 고친 때와 비교",
+                    "updated is a date (2026-11-01), <=date, >=time (2026-11-01T10:00) or a range (2026-10-01..) — compared with when it was edited"
                 ),
                 Key::Quest => crate::tf!(
                     "quest 는 퀘스트 번호(DEV-012)",
@@ -841,8 +842,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                     "due is overdue, none, a date (2026-11-01), <=date or a range (2026-11-01..2026-12-01)"
                 ),
                 Key::Commented => crate::tf!(
-                    "commented 는 none · 날짜(2026-11-01) · >=날짜 · 범위 — 마지막 댓글의 날짜와 비교",
-                    "commented is none, a date (2026-11-01), >=date or a range — compared with the last comment's date"
+                    "commented 는 none · 날짜(2026-11-01) · >=날짜 · >=시각(2026-11-01T10:00) · 범위 — 마지막 댓글과 비교",
+                    "commented is none, a date (2026-11-01), >=date, >=time (2026-11-01T10:00) or a range — compared with the last comment"
                 ),
                 Key::Parent => crate::tf!(
                     "parent 는 퀘스트 번호(DEV-012) 또는 none",
@@ -1059,12 +1060,69 @@ fn related_cond(from: &str, v: &str) -> Option<(String, Vec<Bind>)> {
 }
 
 /// DEV-448: 마지막 댓글의 날짜 — 댓글에 적힌 시각(`2026-10-23T11:16:24+09:00`)의 날짜 부분. 적은 기계의
-/// 현지 날짜라 사람이 보는 날짜와 같다. 댓글이 없으면 NULL.
-const LAST_COMMENT: &str = "(SELECT MAX(substr(c.ts, 1, 10)) FROM quest_comments c WHERE c.quest_id = q.id AND COALESCE(c.ts, '') != '')";
+/// 적힌 시간대가 섞여 있어 UTC 로 맞춰 고른다. 댓글이 없으면 NULL.
+const LAST_COMMENT: &str = "(SELECT MAX(datetime(c.ts)) FROM quest_comments c WHERE c.quest_id = q.id AND COALESCE(c.ts, '') != '')";
 
 /// commented 값 하나 → 조건. `>=날짜` 는 "그날 이후 하나라도 달렸다" 와 같다(마지막 것이 그 뒤이므로).
 fn commented_cond(v: &str) -> Option<(String, Vec<Bind>)> {
-    date_cond(LAST_COMMENT, v)
+    moment_cond(LAST_COMMENT, v)
+}
+
+fn is_moment(s: &str) -> bool {
+    use chrono::{DateTime, NaiveDateTime};
+    let naive = s.strip_suffix('Z').unwrap_or(s);
+    ["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
+        .iter()
+        .any(|f| NaiveDateTime::parse_from_str(naive, f).is_ok())
+        || ["%Y-%m-%dT%H:%M%:z", "%Y-%m-%dT%H:%M:%S%:z"]
+            .iter()
+            .any(|f| DateTime::parse_from_str(s, f).is_ok())
+}
+
+/// 시각까지 적힌 칸(`created` · `updated` · `commented`)과 비교. 날짜면 이 기계 시간대의 날짜로, 시각이면 그
+/// 순간으로 잰다 — 저장된 값은 `Z` 와 `+09:00` 이 섞여 글자로는 못 잰다. 시각은 딱 맞을 일이 없어 비교 · 범위로만.
+fn moment_cond(col: &str, v: &str) -> Option<(String, Vec<Bind>)> {
+    if v.eq_ignore_ascii_case("none") {
+        return Some((format!("{col} IS NULL"), vec![]));
+    }
+    let one = |op: &str, s: &str| -> Option<(String, Bind)> {
+        let s = s.trim();
+        if is_date(s) {
+            Some((
+                format!("date({col}, 'localtime') {op} ?"),
+                Bind::Text(s.to_string()),
+            ))
+        } else if is_moment(s) {
+            Some((
+                format!("datetime({col}) {op} datetime(?)"),
+                Bind::Text(crate::time::normalize_filter_ts(s)),
+            ))
+        } else {
+            None
+        }
+    };
+    if let Some(r) = split_range(v) {
+        let (lo, hi, inclusive) = r?;
+        let mut conds = Vec::new();
+        let mut binds = Vec::new();
+        if let Some(lo) = lo {
+            let (c, b) = one(">=", lo)?;
+            conds.push(c);
+            binds.push(b);
+        }
+        if let Some(hi) = hi {
+            let (c, b) = one(if inclusive { "<=" } else { "<" }, hi)?;
+            conds.push(c);
+            binds.push(b);
+        }
+        return Some((conds.join(" AND "), binds));
+    }
+    let (op, rest) = split_op(v);
+    if op == "=" && !is_date(rest.trim()) {
+        return None;
+    }
+    let (c, b) = one(op, rest)?;
+    Some((c, vec![b]))
 }
 
 /// DEV-451: 날짜 칸 하나와 비교 — `none` · `2026-11-01` · `<=2026-11-01` · `2026-11-01..2026-12-01` 따위.
@@ -1275,8 +1333,8 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         Some(Key::RequiredDue) => due_like_cond(REQUIRED_DUE, s)?,
         Some(Key::DesiredDue) => due_like_cond(DESIRED_DUE, s)?,
         Some(Key::CampaignEnd) => due_like_cond(CAMPAIGN_END, s)?,
-        Some(Key::Created) => date_cond("substr(q.created_at, 1, 10)", s)?,
-        Some(Key::Updated) => date_cond("substr(q.updated_at, 1, 10)", s)?,
+        Some(Key::Created) => moment_cond("q.created_at", s)?,
+        Some(Key::Updated) => moment_cond("q.updated_at", s)?,
         Some(Key::Commented) => commented_cond(s)?,
         Some(Key::Parent) if s.eq_ignore_ascii_case("none") => ("q.parent_quest_id IS NULL".into(), vec![]),
         Some(Key::Parent) => {
@@ -1347,8 +1405,8 @@ fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             vec![Bind::Text(crate::time::today_local_iso_date())],
         ),
         Some(Key::End) => date_cond(END, s)?,
-        Some(Key::Created) => date_cond("substr(campaigns.created_at, 1, 10)", s)?,
-        Some(Key::Updated) => date_cond("substr(campaigns.updated_at, 1, 10)", s)?,
+        Some(Key::Created) => moment_cond("campaigns.created_at", s)?,
+        Some(Key::Updated) => moment_cond("campaigns.updated_at", s)?,
         Some(Key::Checklist) => {
             const ANY: &str =
                 "SELECT 1 FROM campaign_checklists cl WHERE cl.campaign_id = campaigns.id";
@@ -1415,8 +1473,8 @@ fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
                 vec![t(f), Bind::Text(format!("{}/%", like_escape(f)))],
             )
         }
-        Some(Key::Created) => date_cond("substr(library_docs.created_at, 1, 10)", s)?,
-        Some(Key::Updated) => date_cond("substr(library_docs.updated_at, 1, 10)", s)?,
+        Some(Key::Created) => moment_cond("library_docs.created_at", s)?,
+        Some(Key::Updated) => moment_cond("library_docs.updated_at", s)?,
         _ => return None,
     };
     Some((format!("({cond})"), binds))
@@ -1484,11 +1542,10 @@ fn comment_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             };
             (cond.into(), vec![])
         }
-        Some(Key::Created) => date_cond("substr(comments.ts, 1, 10)", s)?,
-        Some(Key::Updated) => date_cond(
-            "substr(COALESCE(NULLIF(comments.edited_at, ''), comments.ts), 1, 10)",
-            s,
-        )?,
+        Some(Key::Created) => moment_cond("comments.ts", s)?,
+        Some(Key::Updated) => {
+            moment_cond("COALESCE(NULLIF(comments.edited_at, ''), comments.ts)", s)?
+        }
         Some(Key::Body) => text_cond(&["comments.body"], v, Match::Partial),
         _ => return None,
     };

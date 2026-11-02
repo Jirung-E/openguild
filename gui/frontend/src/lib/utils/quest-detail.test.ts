@@ -44,7 +44,7 @@ function baseDetail(): QuestDetail {
 	return {
 		...baseQuest(),
 		description: '본문',
-		sub_quests: [baseQuest({ id: 4, quest_id: 'BUG-004' })],
+		children: [baseQuest({ id: 4, quest_id: 'BUG-004' })],
 		prerequisites: [baseQuest({ id: 5, quest_id: 'DEV-005' })],
 		successors: [baseQuest({ id: 6, quest_id: 'DEV-006' })],
 		tags: ['api', 'backend'],
@@ -76,7 +76,7 @@ describe('applyStatusUpdate — BUG-262', () => {
 	it('관계·태그·첨부·본문은 그대로 남는다 — 이게 재조회를 없앤 근거다', () => {
 		const before = baseDetail();
 		const next = applyStatusUpdate(before, baseQuest({ status_slug: 'testing', status_id: 3 }));
-		expect(next.sub_quests).toEqual(before.sub_quests);
+		expect(next.children).toEqual(before.children);
 		expect(next.prerequisites).toEqual(before.prerequisites);
 		expect(next.successors).toEqual(before.successors);
 		expect(next.tags).toEqual(before.tags);

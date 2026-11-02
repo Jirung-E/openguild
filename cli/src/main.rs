@@ -278,8 +278,8 @@ enum Command {
         unresolved: bool,
         // 퀘스트 목록과 같은 쿼리 문법 — 키만 댓글 것.
         #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
-              help = tf!("쿼리로 거르기 — 예: 'author:claude discussion:unresolved created:>=2026-11-01'. 문법은 quest list -q 와 같다, 키 없는 낱말 = 본문 · 문서 번호 검색. 키: id(문서 안의 번호) · quest · campaign(달린 문서 — 번호 · 범위 · * · none) · author · parent(답글을 받은 댓글 번호, none = 답글 아닌 것) · discussion(unresolved · resolved · none) · created · updated(날짜 · <=날짜 · 범위) · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
-                         "Filter with a query — e.g. 'author:claude discussion:unresolved created:>=2026-11-01'. Same grammar as quest list -q; bare words = search body and document id. Keys: id (number in the document), quest, campaign (the document — id, range, *, none), author, parent (number of the comment replied to, none = not a reply), discussion (unresolved, resolved, none), created, updated (date, <=date, range), body (contains; =value is exact). ANDed with the other options."))]
+              help = tf!("쿼리로 거르기 — 예: 'author:claude discussion:unresolved created:>=2026-11-01'. 문법은 quest list -q 와 같다, 키 없는 낱말 = 본문 · 문서 번호 검색. 키: id(문서 안의 번호) · quest · campaign(달린 문서 — 번호 · 범위 · * · none) · author · parent(답글을 받은 댓글 번호, none = 답글 아닌 것) · discussion(unresolved · resolved · none) · created · updated(날짜 · <=시각(2026-11-01T10:00) · 범위) · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'author:claude discussion:unresolved created:>=2026-11-01'. Same grammar as quest list -q; bare words = search body and document id. Keys: id (number in the document), quest, campaign (the document — id, range, *, none), author, parent (number of the comment replied to, none = not a reply), discussion (unresolved, resolved, none), created, updated (date, <=time (2026-11-01T10:00), range), body (contains; =value is exact). ANDed with the other options."))]
         query: Option<String>,
         // DEV-262: quest comment list 와 옵션셋 통일.
         #[arg(long = "top-only", conflicts_with = "reply_to", help = tf!("top-level 댓글만 (답글 제외).", "Top-level comments only (excludes replies)."))]
@@ -533,11 +533,11 @@ enum QuestCmd {
         has_prereq: bool,
         #[arg(long = "no-prereq", help = tf!("선행 quest 가 없는 quest 만.", "Only quests with no prerequisites."))]
         no_prereq: bool,
-        // 쿼리의 `child:` 와 같은 이름. 옛 이름도 받는다 — 쓰던 스크립트가 깨지지 않게.
-        #[arg(long = "has-child", alias = "has-sub", conflicts_with = "no_sub", help = tf!("자식 quest 가 1개 이상 있는 quest 만.", "Only quests with 1+ child quest."))]
-        has_sub: bool,
-        #[arg(long = "no-child", alias = "no-sub", help = tf!("자식 quest 가 없는 leaf quest 만.", "Only leaf quests (no child quests)."))]
-        no_sub: bool,
+        // 쿼리의 `child:` 와 같은 이름.
+        #[arg(long = "has-child", conflicts_with = "no_child", help = tf!("자식 quest 가 1개 이상 있는 quest 만.", "Only quests with 1+ child quest."))]
+        has_child: bool,
+        #[arg(long = "no-child", help = tf!("자식 quest 가 없는 leaf quest 만.", "Only leaf quests (no child quests)."))]
+        no_child: bool,
         #[arg(long, help = tf!("title / description 부분 일치 검색. 공백 split AND.", "Partial match on title / description. Space-separated tokens are AND'd."))]
         search: Option<String>,
         #[arg(long = "title-only", help = tf!("search 검색을 title 만으로 제한. description 제외.", "Limit `search` to title only, excluding description."))]
@@ -560,8 +560,8 @@ enum QuestCmd {
         // DEV-446 (REQ-039): 쿼리 문법 — 해석은 코어 한 곳(`openguild_core::query`).
         // `-tag:wip` 처럼 `-` 로 시작하는 쿼리를 옵션으로 읽지 않게 한다.
         #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
-              help = tf!("쿼리로 거르기 — 예: 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 로그인'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 검색. 키: status · type · tag · campaign(번호 또는 none) · urgency(2 · 1..=3 · <=2) · due(overdue · none · <=날짜 · 날짜..날짜) · parent(번호 또는 none) · commented(마지막 댓글 날짜 — >=날짜 · <날짜 · none; 댓글은 갱신 시점을 안 바꾼다) · title · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
-                         "Filter with a query — e.g. 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 login'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search. Keys: status, type, tag, campaign (id or none), urgency (2, 1..=3, <=2), due (overdue, none, <=date, date..date), parent (id or none), commented (date of the last comment — >=date, <date, none; comments do not change the updated time), title, body (contains; =value is exact). ANDed with the other options."))]
+              help = tf!("쿼리로 거르기 — 예: 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 로그인'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 검색. 키: status · type · tag · campaign(번호 또는 none) · urgency(2 · 1..=3 · <=2) · due(overdue · none · <=날짜 · 날짜..날짜) · parent(번호 또는 none) · commented(마지막 댓글 — >=날짜 · <시각(2026-11-01T10:00) · none; 댓글은 갱신 시점을 안 바꾼다) · title · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 login'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search. Keys: status, type, tag, campaign (id or none), urgency (2, 1..=3, <=2), due (overdue, none, <=date, date..date), parent (id or none), commented (the last comment — >=date, <time (2026-11-01T10:00), none; comments do not change the updated time), title, body (contains; =value is exact). ANDed with the other options."))]
         query: Option<String>,
         #[arg(long, value_delimiter = ',', num_args = 1..,
               help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",
@@ -614,8 +614,8 @@ enum QuestCmd {
         // 하나만 주면 값만 그대로 출력(기존 동작 — 파이프 친화), 여러 개면
         // `field: value` 형태로 준다.
         #[arg(long, value_name = "FIELD", num_args = 1..,
-              help = tf!("지정한 필드만 출력 (script / pipe 친화, 여러 개 가능). 사용 가능: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at / version. 하나면 값만, 여러 개면 `필드: 값`.",
-                         "Print only the given fields (script/pipe friendly, repeatable). Available: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at / version. One field prints the bare value; several print `field: value`."))]
+              help = tf!("지정한 필드만 출력 (script / pipe 친화, 여러 개 가능). 사용 가능: id / title / status / status_ko / status_slug / urgency / description / type / parent / children / prerequisites / successors / created_at / updated_at / version. 하나면 값만, 여러 개면 `필드: 값`.",
+                         "Print only the given fields (script/pipe friendly, repeatable). Available: id / title / status / status_ko / status_slug / urgency / description / type / parent / children / prerequisites / successors / created_at / updated_at / version. One field prints the bare value; several print `field: value`."))]
         field: Vec<String>,
         // DEV-347: 기본 출력은 요약. 예전의 전부 쏟아내던 형식은 여기로.
         #[arg(long, help = tf!("본문·관계·태그·기한까지 전체 출력 (예전 기본 형식).",
@@ -4703,8 +4703,8 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
         commented_before,
         has_prereq,
         no_prereq,
-        has_sub,
-        no_sub,
+        has_child,
+        no_child,
         search,
         title_only,
         search_comments,
@@ -4741,8 +4741,8 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
         ("no_parent", no_parent),
         ("has_prereq", has_prereq),
         ("no_prereq", no_prereq),
-        ("has_sub", has_sub),
-        ("no_sub", no_sub),
+        ("has_child", has_child),
+        ("no_child", no_child),
     ] {
         if *on {
             parts.push(format!("{key}=true"));
@@ -6430,11 +6430,11 @@ fn quest_summary_lines(d: &QuestDetail) -> Vec<String> {
             colorize(&p.quest_id, &p.type_color)
         ));
     }
-    if !d.sub_quests.is_empty() {
+    if !d.children.is_empty() {
         rel.push(format!(
             "{} {}",
-            colorize("sub", REL_COLOR_SUB),
-            d.sub_quests.len()
+            colorize("children", REL_COLOR_SUB),
+            d.children.len()
         ));
     }
     if !d.prerequisites.is_empty() {
@@ -6540,13 +6540,13 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
             println!("    {line}");
         }
     }
-    if !d.sub_quests.is_empty() {
+    if !d.children.is_empty() {
         println!(
             "  {} ({}):",
-            colorize("sub-quests", REL_COLOR_SUB),
-            d.sub_quests.len()
+            colorize("children", REL_COLOR_SUB),
+            d.children.len()
         );
-        for s in &d.sub_quests {
+        for s in &d.children {
             println!(
                 "    - {} [{}] {}",
                 colorize(&s.quest_id, &s.type_color),
@@ -6645,8 +6645,8 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
             .map(|r| r.quest_id.as_str())
             .collect::<Vec<_>>()
             .join("\n"),
-        "sub_quests" | "children" => d
-            .sub_quests
+        "children" => d
+            .children
             .iter()
             .map(|r| r.quest_id.as_str())
             .collect::<Vec<_>>()
@@ -10435,8 +10435,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             no_parent,
             has_prereq,
             no_prereq,
-            has_sub,
-            no_sub,
+            has_child,
+            no_child,
             search,
             title_only,
             search_comments,
@@ -10466,8 +10466,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 no_parent,
                 has_prereq,
                 no_prereq,
-                has_sub,
-                no_sub,
+                has_child,
+                no_child,
                 search,
                 title_only,
                 search_comments,
@@ -10804,17 +10804,17 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             let cascade_set: std::collections::HashSet<&str> =
                 cascade.iter().map(|s| s.as_str()).collect();
             let cascade_subs: Vec<&Quest> = detail
-                .sub_quests
+                .children
                 .iter()
                 .filter(|s| cascade_set.contains(s.quest_id.as_str()))
                 .collect();
             let detached_subs: Vec<&Quest> = detail
-                .sub_quests
+                .children
                 .iter()
                 .filter(|s| !cascade_set.contains(s.quest_id.as_str()))
                 .collect();
             let actual_subs: std::collections::HashSet<&str> = detail
-                .sub_quests
+                .children
                 .iter()
                 .map(|s| s.quest_id.as_str())
                 .collect();
@@ -11647,7 +11647,7 @@ mod tests {
         QuestDetail {
             quest: q,
             parent: None,
-            sub_quests: vec![],
+            children: vec![],
             prerequisites: vec![],
             successors: vec![],
             tags: vec![],
@@ -11672,7 +11672,7 @@ mod tests {
             "description",
             "type",
             "parent",
-            "sub_quests",
+            "children",
             "prerequisites",
             "successors",
             "created_at",
@@ -11829,8 +11829,8 @@ mod tests {
                         no_parent,
                         has_prereq,
                         no_prereq,
-                        has_sub,
-                        no_sub,
+                        has_child,
+                        no_child,
                         search,
                         title_only,
                         search_comments,
@@ -11859,8 +11859,8 @@ mod tests {
                 assert!(!has_prereq);
                 assert!(!no_prereq);
                 assert!(!title_only);
-                assert!(!has_sub);
-                assert!(!no_sub);
+                assert!(!has_child);
+                assert!(!no_child);
                 assert!(search.is_none());
                 // REQ-010: 강화 검색은 opt-in — 아무것도 안 주면 꺼져 있어야 한다.
                 assert!(!search_comments);
@@ -12014,8 +12014,8 @@ mod tests {
                         no_parent,
                         has_prereq,
                         no_prereq,
-                        has_sub,
-                        no_sub,
+                        has_child,
+                        no_child,
                         search,
                         title_only,
                         search_comments,
@@ -12043,8 +12043,8 @@ mod tests {
                 assert!(!no_parent);
                 assert!(!has_prereq);
                 assert!(!no_prereq);
-                assert!(!has_sub);
-                assert!(!no_sub);
+                assert!(!has_child);
+                assert!(!no_child);
                 assert!(search.is_none());
                 assert!(!title_only);
                 assert!(!search_comments);
@@ -12070,11 +12070,11 @@ mod tests {
                     sub:
                         QuestCmd::List {
                             child_of,
-                            has_sub,
-                            no_sub,
+                            has_child,
+                            no_child,
                             ..
                         },
-                } => (child_of, has_sub, no_sub),
+                } => (child_of, has_child, no_child),
                 _ => panic!("expected quest list"),
             }
         };
@@ -12083,9 +12083,10 @@ mod tests {
         assert_eq!(list(&["--child-of", "DEV-001"]), (of, false, false));
         assert_eq!(list(&["--has-child"]), (None, true, false));
         assert_eq!(list(&["--no-child"]), (None, false, true));
-        // 옛 이름도 그대로 돈다.
-        assert_eq!(list(&["--has-sub"]), (None, true, false));
-        assert_eq!(list(&["--no-sub"]), (None, false, true));
+        // 옛 이름은 없앴다.
+        for old in ["--has-sub", "--no-sub"] {
+            assert!(Cli::try_parse_from(["openguild", "quest", "list", old]).is_err());
+        }
     }
 
     #[test]
@@ -12160,8 +12161,8 @@ mod tests {
             no_parent: false,
             has_prereq: false,
             no_prereq: false,
-            has_sub: false,
-            no_sub: false,
+            has_child: false,
+            no_child: false,
             search: None,
             title_only: false,
             search_comments: false,
@@ -13360,7 +13361,7 @@ mod tests {
             "status_id": 1, "status_slug": "open", "status_name_en": "Open", "status_name_ko": "게시됨",
             "status_color": "#8B95A1", "urgency": 3, "parent_quest_id": null,
             "created_at": "", "updated_at": "",
-            "sub_quests": [{
+            "children": [{
                 "id": 2, "quest_id": "DEV-002", "quest_type_id": 1, "type_prefix": "DEV",
                 "type_color": "#4A90D9", "number": 2, "title": "child", "description": null,
                 "status_id": 1, "status_slug": "open", "status_name_en": "Open", "status_name_ko": "게시됨",
@@ -13371,8 +13372,8 @@ mod tests {
         }"##;
         let d: QuestDetail = serde_json::from_str(json).unwrap();
         assert_eq!(d.quest.id, 1);
-        assert_eq!(d.sub_quests.len(), 1);
-        assert_eq!(d.sub_quests[0].parent_quest_id, Some(1));
+        assert_eq!(d.children.len(), 1);
+        assert_eq!(d.children[0].parent_quest_id, Some(1));
         assert!(d.prerequisites.is_empty());
     }
 
@@ -13422,7 +13423,7 @@ mod tests {
         QuestDetail {
             quest: q,
             parent: None,
-            sub_quests: vec![],
+            children: vec![],
             prerequisites: vec![],
             successors: vec![],
             tags: vec![],

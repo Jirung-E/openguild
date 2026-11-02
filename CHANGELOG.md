@@ -48,7 +48,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   - `scope` 로 어디서 돌지 명시(`cli` / `gui` / `server` — `server` 에 걸면 그 서버를
     쓰는 모두에게 적용) (DEV-375)
   - **시간마다 도는 줄** — `every = "1h"`(`1d` 는 날짜가 바뀌면) 와 목록 쿼리(`query = "status:open due:overdue"`, 캠페인 ·
-    도서관도)를 적으면 맞는 목록을 받아 돈다(맞는 것이 없으면 안 돈다). 앱 · 서버에서만, 같은 기계에서
+    도서관 · 댓글도)를 적으면 맞는 목록을 받아 돈다(맞는 것이 없으면 안 돈다). 앱 · 서버에서만, 같은 기계에서
     둘 다 열어도 한 번. 예제 `overdue-digest`(하루에 한 번 기한 지난 퀘스트를 알림 하나로) (REQ-026, DEV-458, DEV-471)
   - 동작은 `post`(HTTP)와 `run`(프로그램, 이벤트는 stdin) 둘. `run` 은 운영체제마다
     다른 명령(`windows` / `macos` / `linux`)을 적을 수 있고, **길드 폴더에서** 돌며 길드 위치와
@@ -128,7 +128,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     도서관. 틀리면 칸이 빨개지고 이유와 `?` 쓰는 법이 나온다. 주소 `?q=` 에 실려 새로고침·공유에
     남는다. CLI `quest|campaign|library list -q` · `comments -q`, 서버 `?q=`
   - `quest list --commented-after/--before` — 댓글이 달린 때로 거르기
-  - `quest list --parent`(`--child-of` 와 같다) · `--has-child` · `--no-child` — 쿼리 키와 같은 이름(옛 `--has-sub` · `--no-sub` 도 받는다)
+  - `quest list --parent` — `--child-of` 와 같다. `created` · `updated` · `commented` 는 시각도 받는다(`>=2026-11-01T10:00`)
   (DEV-446, DEV-447, DEV-448, DEV-451, DEV-452)
 - **태그 필터** — 퀘스트 목록·보드·도서관에서 태그로 거른다(여러 개면 모두 가진 것만).
   CLI `quest list --tag`, `library list --tag` (REQ-027)
@@ -186,6 +186,8 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ### Changed
 
+- 쿼리 키와 이름을 맞췄다 — `quest list --has-sub` · `--no-sub` 는 `--has-child` · `--no-child` 로, 서버의 `?has_sub=` · `?no_sub=` 는
+  `?has_child=` · `?no_child=` 로, JSON 과 `--field` 의 `sub_quests` 는 `children` 으로. 옛 이름은 없앴다 (REQ-039)
 - 관리 페이지가 탭으로 — 퀘스트 구성 · 플러그인 · 백업 · 진단. 플러그인과 백업은
   설정에서 옮겼고, 설정에는 이 기계의 개인 설정(정보·표시·편집기)만 남는다. 관리·설정의 탭은
   주소에 남아 다른 화면에 갔다 와도 그 탭이고, 앞뒤로 오갈 수 있다 (DEV-393, BUG-310)

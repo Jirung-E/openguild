@@ -14,7 +14,7 @@ pub struct QuestRelations {
     /// 부모. None 이면 root quest.
     pub parent: Option<QuestRef>,
     /// 직계 sub-quests (현 quest 가 parent 인 quest 들).
-    pub sub_quests: Vec<QuestRef>,
+    pub children: Vec<QuestRef>,
     /// 선행 prerequisites.
     pub prerequisites: Vec<QuestRef>,
     /// 후속 successors (현 quest 를 prerequisite 로 가지는 quest 들).
@@ -48,10 +48,10 @@ pub fn render(rel: &QuestRelations) -> String {
     }
 
     out.push_str("## Sub-quests\n");
-    if rel.sub_quests.is_empty() {
+    if rel.children.is_empty() {
         out.push_str("- (없음)\n");
     } else {
-        for q in &rel.sub_quests {
+        for q in &rel.children {
             out.push_str("- ");
             out.push_str(&format_link_item(q));
             out.push('\n');
@@ -107,7 +107,7 @@ mod tests {
     fn root_with_no_relations() {
         let rel = QuestRelations {
             parent: None,
-            sub_quests: vec![],
+            children: vec![],
             prerequisites: vec![],
             successors: vec![],
         };
@@ -122,7 +122,7 @@ mod tests {
     fn root_with_subs() {
         let rel = QuestRelations {
             parent: None,
-            sub_quests: vec![r("DEV-002"), r("DEV-003")],
+            children: vec![r("DEV-002"), r("DEV-003")],
             prerequisites: vec![],
             successors: vec![],
         };
@@ -139,7 +139,7 @@ mod tests {
     fn child_with_parent_and_prereqs() {
         let rel = QuestRelations {
             parent: Some(r("DEV-001")),
-            sub_quests: vec![],
+            children: vec![],
             prerequisites: vec![r("DEV-002"), r("DEV-003")],
             successors: vec![r("DEV-004")],
         };
@@ -155,7 +155,7 @@ mod tests {
     fn parent_section_comes_first() {
         let rel = QuestRelations {
             parent: Some(r("DEV-001")),
-            sub_quests: vec![r("DEV-010")],
+            children: vec![r("DEV-010")],
             prerequisites: vec![r("DEV-020")],
             successors: vec![r("DEV-030")],
         };
@@ -173,7 +173,7 @@ mod tests {
     fn output_ends_with_newline() {
         let rel = QuestRelations {
             parent: None,
-            sub_quests: vec![r("DEV-002")],
+            children: vec![r("DEV-002")],
             prerequisites: vec![],
             successors: vec![],
         };

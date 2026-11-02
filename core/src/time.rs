@@ -76,7 +76,7 @@ pub fn normalize_filter_ts(input: &str) -> String {
         return format!("{s}T00:00:00{local_offset}");
     }
     // datetime w/o TZ.
-    if s.len() == 19 && s.contains('T') {
+    if (s.len() == 19 || s.len() == 16) && s.contains('T') {
         return format!("{s}{local_offset}");
     }
     s.to_string()

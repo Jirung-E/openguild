@@ -25,6 +25,9 @@ pub struct GlobalComment {
     pub parent_id: Option<i64>,
     pub pinned: bool,
     pub reactions: String,
+    /// 고친 시각. 고친 적 없으면 없다.
+    #[serde(default)]
+    pub edited_at: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -59,11 +62,18 @@ pub async fn search_global(
         binds.push(author.to_string());
     }
     if let Some(since) = filter.since {
-        push_both("c.ts >= ?", "c.ts >= ?");
+        // 적힌 시간대가 섞여 있어 글자로는 못 잰다.
+        push_both(
+            "datetime(c.ts) >= datetime(?)",
+            "datetime(c.ts) >= datetime(?)",
+        );
         binds.push(crate::time::normalize_filter_ts(since));
     }
     if let Some(until) = filter.until {
-        push_both("c.ts <= ?", "c.ts <= ?");
+        push_both(
+            "datetime(c.ts) <= datetime(?)",
+            "datetime(c.ts) <= datetime(?)",
+        );
         binds.push(crate::time::normalize_filter_ts(until));
     }
     if let Some(grep) = filter.grep {
@@ -478,6 +488,8 @@ mod tests {
         assert_eq!(find(&format!("created:{today}")).await.len(), 4);
         assert_eq!(find(&format!("updated:{today}")).await.len(), 4);
         assert!(find(&format!("updated:<{today}")).await.is_empty());
+        assert_eq!(find("created:>=2000-01-01T00:00").await.len(), 4);
+        assert!(find("created:>=2999-01-01T00:00Z").await.is_empty());
 
         // 틀린 값은 그 키의 안내로, 없는 키는 없다고.
         for bad in [

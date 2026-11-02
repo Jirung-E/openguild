@@ -138,7 +138,7 @@ pub fn plugin_schema() -> Value {
                     },
                     "command": { "type": "string", "description": "댓글 명령 — `comment.added` 만 보는 줄에서, 댓글 본문(앞뒤 공백 무시)이 정확히 이 글일 때만 돈다. `${COMMAND}` 처럼 입력값을 쓸 수 있다. 다른 플러그인과 같은 명령이면 경고가 뜬다." },
                     "query": { "type": "string", "description": "`every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법(`status:open due:overdue`). 함수는 `e.items` 로 받는다. 맞는 것이 없으면 안 부른다." },
-                    "of": { "enum": ["quest", "campaign", "library"], "description": "`query` 를 걸 목록. 기본 `quest`." },
+                    "of": { "enum": ["quest", "campaign", "library", "comment"], "description": "`query` 를 걸 목록. 기본 `quest`." },
                     "pre": {
                         "type": "array",
                         "items": { "$ref": "#/$defs/preEvent" },
