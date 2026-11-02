@@ -103,7 +103,7 @@ jobs:
 
       - name: Install tauri-cli
         # cache-bin: true 가 적중하면 skip. 첫 run / 캐시 키 변경 시만 install.
-        # 고정한다 — tauri 크레이트(2.11)와 맞춘다. 2.12 는 installer.nsi 템플릿에 없는 RestartManager 매크로를 찾아 윈도우 빌드가 깨진다.
+        # 고정한다 — tauri 크레이트(2.11)와 맞춘다. 2.12 는 installer.nsi 템플릿에 없는 RestartManager 매크로를 찾아 윈도우 빌드가 깨지고, rpm 이 버전의 `-` 를 거절해 `0.6.0-beta` 로 RPM 도 못 만든다.
         run: cargo install tauri-cli --version '=2.11.4' --locked
 
       - name: Tauri build (NSIS)

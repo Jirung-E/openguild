@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-02T01:58:24+09:00"
-version = 3
+updated_at = "2026-11-02T09:02:35+09:00"
+version = 4
 +++
 # 릴리즈 패키지 절차
 
@@ -32,15 +32,13 @@ version = 3
 - `gui/Cargo.toml`
 - `gui/tauri.conf.json` (`version` 필드)
 - `gui/frontend/package.json`
-- `skills/openguild-plugin/.claude-plugin/plugin.json`
-
-**버전에 `-beta` 같은 꼬리를 붙이지 않는다**(0.6.0 부터). RPM 버전에는 `-` 를 쓸 수 없어 tauri-cli 2.12 부터
-`0.6.0-beta` 로는 RPM 을 못 만든다. 정식 전이라는 표시는 `0.x` 와 README 상태 줄이 맡는다.
-옛 태그(`v0.5.3-beta` 까지)와 CHANGELOG 의 옛 절은 사실 기록이므로 그대로 둔다.
+- `skills/openguild-plugin/.claude-plugin/plugin.json` — **`-beta` 를 뗀 값**
+  (앱이 `0.5.2-beta` 면 여기는 `0.5.2`).
 
 **tauri-cli 는 `release.yml` 에 버전을 고정한다** — `Cargo.lock` 의 tauri 크레이트와 같은 2.x 로. 함께 올리고,
 `release` 워크플로 수동 실행으로 세 플랫폼을 확인한다. 윈도우 설치본은 자체 `installer.nsi` 템플릿을 쓰므로 CLI 를
 올리면 템플릿도 맞춰야 한다(2.12 는 템플릿에 없는 `RestartManager_StartSession` 매크로를 찾아 빌드가 깨진다).
+2.12 는 RPM 버전의 `-` 도 거절해 `0.6.0-beta` 로는 RPM 을 못 만든다 — 2.12 이상으로 올릴 때 버전 표기도 함께 정한다.
 
 **plugin.json 을 빼먹으면 사용자 쪽 스킬이 영영 갱신되지 않는다.** 설치된
 스킬은 파일 내용이 아니라 이 version 으로만 갱신 여부를 판단한다. BUG-261:

@@ -203,7 +203,7 @@ pub struct PluginStatus {
 
 /// 이 빌드의 예제 폴더 주소.
 ///
-/// REQ-032: 태그(`v0.6.0`)는 **master 에 릴리스할 때** 붙는다. 그 전의 develop 빌드가 태그
+/// REQ-032: 태그(`v0.6.0-beta`)는 **master 에 릴리스할 때** 붙는다. 그 전의 develop 빌드가 태그
 /// 주소를 가리키면 없는 페이지다(admin). 릴리스는 태그를 밀 때 CI 가 만들고, 그때 GitHub
 /// Actions 가 `GITHUB_REF_TYPE=tag` · `GITHUB_REF_NAME=<태그>` 를 준다 — 그 둘을 **빌드할 때**
 /// 읽는다. 태그로 만든 빌드는 그 태그를(깔린 것과 같은 형식의 예제), 나머지는 `develop` 을.
@@ -485,8 +485,8 @@ mod examples_url_tests {
     #[test]
     fn a_release_build_points_at_its_tag_and_anything_else_at_develop() {
         assert_eq!(
-            examples_url_for(Some("tag"), Some("v0.6.0")),
-            "https://github.com/Jirung-E/openguild/tree/v0.6.0/examples/plugins"
+            examples_url_for(Some("tag"), Some("v0.6.0-beta")),
+            "https://github.com/Jirung-E/openguild/tree/v0.6.0-beta/examples/plugins"
         );
         for (t, n) in [
             (Some("branch"), Some("develop")),

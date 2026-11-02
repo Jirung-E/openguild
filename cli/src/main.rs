@@ -11471,6 +11471,8 @@ mod tests {
     /// 릴리즈 규칙의 "버전 동기화" 목록에 plugin.json 이 빠져 있어서, 실제
     /// 범프는 **습관으로만** 이뤄지고 있었다(0.4.0 / 0.4.1 / 0.5.0 까지는
     /// 맞았고 0.5.1 / 0.5.2 에서 끊겼다). 습관을 검사로 바꾼다.
+    ///
+    /// `-beta` 는 뗀다 — 위 세 번의 범프가 전부 그 관례였다.
     #[test]
     fn plugin_json_version_tracks_crate_version() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -11485,7 +11487,7 @@ mod tests {
         let got = json["version"]
             .as_str()
             .expect("plugin.json 에 version 이 없음");
-        let want = env!("CARGO_PKG_VERSION");
+        let want = env!("CARGO_PKG_VERSION").trim_end_matches("-beta");
         assert_eq!(
             got,
             want,
