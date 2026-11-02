@@ -3,3 +3,4 @@
 {"ts":"2026-11-01T23:53:11+09:00","op":"quests_all_done","new":"180/180"}
 {"ts":"2026-11-02T00:13:18+09:00","op":"quests_all_done","new":"180/180"}
 {"ts":"2026-11-02T00:42:48+09:00","op":"quests_all_done","new":"180/180"}
+{"ts":"2026-11-02T10:00:28+09:00","op":"change_status","old":"active","new":"done"}
