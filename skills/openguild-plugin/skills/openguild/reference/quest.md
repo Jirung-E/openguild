@@ -84,16 +84,18 @@ openguild quest list -q 'parent:none type:BUG'
 - One of several values: `status:[open, in_progress]` (a bare comma is an error that suggests the brackets).
 - Ranges: `a..b` (end excluded), `a..=b` (end included), `a..`, `..=b` — for `urgency` and every date key.
   Comparisons (`<=2`, `>=2026-11-01`) still work.
-- Keyed text values match exactly; `*` = any text (`tag:ui-*`); `/regex/` = a case-insensitive regex
-  (bare words, `id`, `tag`, `type`, `folder`, `title`, `body`). `title:` / `body:` match a part by default;
+- Keyed text values match the whole value, ignoring case; `*` = any text (`tag:ui-*`); `/regex/` = a case-insensitive regex
+  (bare words, `id`, `status`, `tag`, `type`, `folder`, `author`, `title`, `body`). `title:` / `body:` match a part by default;
   `=` makes them exact (`title:="Login screen"`).
-- A bare word = the same text search as `--search` (title, body, id). Quote values with spaces: `tag:"two words"`.
+- A bare word = the same text search as `--search` (title, body, id). Quote values with spaces: `title:"two words"` (tag names cannot contain spaces — `quest tag add X "a b"` adds two tags).
 - Keys: `id` (`DEV-1`, `DEV-1..=DEV-9`, `DEV-*`, `/regex/`), `status` (slug, English or Korean name), `type`, `tag`,
   `campaign` (id or `none`), `urgency` (`2`, `1..=3`, `<=2`, `>=3`), `due` (`overdue`, `none`, `<=YYYY-MM-DD`, a range, …),
   `required_due`, `desired_due`, `campaign_end` (same values as `due`), `parent`, `child`, `prereq`, `successor` (id or `none`;
   `child:DEV-9` = quests with DEV-9 as a child), `discussion` (`unresolved`, `resolved`, `none`), `created`, `updated` (a date, or a time in a comparison or range: `>=2026-11-01T10:00`),
   `commented` (the **last comment**, same values as `created`, or `none`),
   `title`, `body`.
+- `updated` moves when the document itself changes: title, body, urgency, status, parent, due dates — and on a campaign, its checklist
+  (it is part of the body). Comments, tags, prerequisites and campaign links do not move it; use `commented` for comments.
 - `due` is the effective due date: the earlier of the required due date and the end date of an
   active campaign the quest is in. `overdue` skips quests whose status counts as done.
   `required_due` and `campaign_end` look at one of those two only; `desired_due` is the only key for the desired date.

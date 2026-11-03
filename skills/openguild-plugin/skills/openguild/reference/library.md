@@ -54,8 +54,8 @@ range: `>=2026-11-01T10:00`), `title`, `body`. A bare comma (`tag:a,b`) is an er
 `tag:[a, b]`. It is ANDed with `--folder` / `--tag`; a key from another list is an error that names
 the keys you can use. Over `--remote` the server filters (`GET /api/library?q=`).
 
-`--folder` was called `--path` until BUG-281; the old name still works as an
-alias. `list --folder` filters in SQL (and, over `--remote`, on the server) — it
+`--folder` was called `--path` until BUG-281; `library new` and `library update`
+still accept the old name, `library list` does not. `list --folder` filters in SQL (and, over `--remote`, on the server) — it
 does not download the whole library and discard most of it. The folder is a logical grouping recorded in the document's frontmatter —
 files stay flat under `.guild/library/`.
 

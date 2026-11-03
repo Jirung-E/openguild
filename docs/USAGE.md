@@ -211,7 +211,7 @@ openguild library list --tag 설계
 
 # 쿼리로 거르기 — 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 키 없는 낱말 = 검색
 #   여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함) · a.. · ..=b, * = 아무 글(tag:ui-*),
-#   /정규식/ = 대소문자 무시(낱말 · id · tag · type · folder · title · body). 키 있는 값은 완전일치, title · body 는
+#   /정규식/ = 대소문자 무시(낱말 · id · status · tag · type · folder · author · title · body). 키 있는 값은 완전일치(대소문자 무시), title · body 는
 #   부분일치(=값 은 완전일치). 결과의 제목에서 낱말 · title · body · 정규식에 걸린 글자가 칠해진다
 #   화면(퀘스트 목록 · 보드 설정 · 캠페인 · 도서관)은 검색칸 앞의 [검색 | 쿼리] 에서 '쿼리' 를 고른다
 #   키: id(DEV-001 · DEV-001.. · DEV-* · /정규식/) · status · type · tag · campaign(번호 · none) · urgency(2 · 1..=3 · <=2)
@@ -219,7 +219,8 @@ openguild library list --tag 설계
 #       · parent · child · prereq · successor(번호 · none — child:DEV-001 = DEV-001 을 자식으로 둔 퀘스트)
 #       · discussion(unresolved · resolved · none) · created · updated(날짜 — 이 기계 시간대, 시각은 비교 · 범위로
 #         >=2026-11-01T10:00) · title · body
-#       · commented(마지막 댓글 — created 와 같은 값 · none). 댓글은 updated_at 을 안 바꾼다 — "이후 바뀐 것" 은
+#       · commented(마지막 댓글 — created 와 같은 값 · none). updated_at 은 제목 · 본문 · 긴급도 · 상태 · 부모 · 기한(캠페인은 체크리스트도)을
+#         고칠 때 바뀌고, 댓글 · 태그 · 선행 · 캠페인 연결로는 안 바뀐다 — "이후 바뀐 것" 은
 #         --updated-after 와 commented:>=날짜 를 둘 다 본다
 #   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것 — 따로 보려면 required_due · campaign_end.
 #   희망 기한은 desired_due 로만 본다. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.

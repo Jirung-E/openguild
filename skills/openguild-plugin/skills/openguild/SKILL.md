@@ -1,19 +1,19 @@
 ---
 name: openguild
-description: Manage project tasks with openguild (guild/quest/campaign tracker) — create and track quests, comments, campaigns, tags, and docs from the CLI. Use whenever the user asks to track work, file a bug/task, check project status, or run any `openguild` command — a `.guild` marker in the directory is a strong signal, but do NOT require one; also use when the user wants to set up / init a new guild in a project that has no `.guild` yet. Also use for quest/campaign comments or discussions, private memos, tags, due dates/deadlines, quest or campaign history, backups/restore/snapshots, quest templates, project rules or conventions docs (`rule`/`rules`), reference docs or notes library (`library`), work log or activity history (`worklog`), or any request to check/change quest status (open, in progress, testing, done).
+description: Manage project tasks with openguild (guild/quest/campaign tracker) — create and track quests, comments, campaigns, tags, and docs from the CLI. Use whenever the user asks to track work, file a bug/task, check project status, or run any `openguild` command — a `.guild` folder in the directory is a strong signal, but do NOT require one; also use when the user wants to set up / init a new guild in a project that has no `.guild` yet. Also use for quest/campaign comments or discussions, private memos, tags, due dates/deadlines, quest or campaign history, backups/restore/snapshots, quest templates, project rules or conventions docs (`rule`/`rules`), reference docs or notes library (`library`), work log or activity history (`worklog`), or any request to check/change quest status (open, in progress, testing, done).
 ---
 
 # openguild usage
 
 openguild is a local-first CLI/GUI project tracker. A **guild** is one project
-(a directory with a `.guild` marker file). A **quest** is a single task/issue
+(a directory with a `.guild` folder and a `<name>.guild` marker file). A **quest** is a single task/issue
 inside a guild, with an auto-incremented ID like `DEV-001` or `BUG-003`.
 
 ## Setup
 
 ```bash
 cd /path/to/project
-openguild init [--name "My Project"]   # creates the .guild marker
+openguild init [--name "My Project"]   # creates the .guild folder and marker file
 openguild quest list                   # auto-discovers .guild from cwd
 ```
 
@@ -27,10 +27,10 @@ output), `--compact` (single-line JSON, requires `--json`).
 
 **Locating a guild by name.** If the current directory has no `.guild` and
 the user refers to a guild by name (e.g. "check my `foo` guild"), run
-`openguild guild list` — the guilds recently opened on this machine, name and
-path — and pass the name straight to `--guild`: `openguild --guild foo quest
-list`. Confirm with the user on a partial or ambiguous match. You don't need
-the user to give a full path.
+`openguild guild list` — the guilds recently opened in the desktop app on this
+machine, name and path (CLI use does not add to it) — and pass the name straight
+to `--guild`: `openguild --guild foo quest list`. Confirm with the user on a
+partial or ambiguous match. If the list is empty or lacks the guild, ask for the path.
 
 ## Before you start (do this first, every time)
 

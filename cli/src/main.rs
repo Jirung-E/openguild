@@ -560,8 +560,8 @@ enum QuestCmd {
         // DEV-446 (REQ-039): 쿼리 문법 — 해석은 코어 한 곳(`openguild_core::query`).
         // `-tag:wip` 처럼 `-` 로 시작하는 쿼리를 옵션으로 읽지 않게 한다.
         #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
-              help = tf!("쿼리로 거르기 — 예: 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 로그인'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 검색. 키: status · type · tag · campaign(번호 또는 none) · urgency(2 · 1..=3 · <=2) · due(overdue · none · <=날짜 · 날짜..날짜) · parent(번호 또는 none) · commented(마지막 댓글 — >=날짜 · <시각(2026-11-01T10:00) · none; 댓글은 갱신 시점을 안 바꾼다) · title · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
-                         "Filter with a query — e.g. 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 login'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search. Keys: status, type, tag, campaign (id or none), urgency (2, 1..=3, <=2), due (overdue, none, <=date, date..date), parent (id or none), commented (the last comment — >=date, <time (2026-11-01T10:00), none; comments do not change the updated time), title, body (contains; =value is exact). ANDed with the other options."))]
+              help = tf!("쿼리로 거르기 — 예: 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 로그인'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 검색. 키: id(번호 · 범위 · DEV-*) · status · type · tag · campaign(번호 또는 none) · urgency(2 · 1..=3 · <=2) · due(overdue · none · <=날짜 · 날짜..날짜) · required_due · desired_due · campaign_end(값은 due 와 같음) · parent · child · prereq · successor(번호 또는 none) · discussion(unresolved · resolved · none) · created · updated(날짜 · <=날짜 · 범위 · >=시각) · commented(마지막 댓글 — >=날짜 · <시각(2026-11-01T10:00) · none; 댓글은 갱신 시점을 안 바꾼다) · title · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'status:[open, testing] (tag:ui | due:overdue) -tag:wip urgency:1..=2 login'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search. Keys: id (an id, a range, DEV-*), status, type, tag, campaign (id or none), urgency (2, 1..=3, <=2), due (overdue, none, <=date, date..date), required_due, desired_due, campaign_end (same values as due), parent, child, prereq, successor (id or none), discussion (unresolved, resolved, none), created, updated (date, <=date, range, >=time), commented (the last comment — >=date, <time (2026-11-01T10:00), none; comments do not change the updated time), title, body (contains; =value is exact). ANDed with the other options."))]
         query: Option<String>,
         #[arg(long, value_delimiter = ',', num_args = 1..,
               help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",
@@ -1281,8 +1281,8 @@ enum LibraryCmd {
         tag: Vec<String>,
         // DEV-451 (REQ-039): 퀘스트 목록과 같은 쿼리 문법 — 키만 도서관 것.
         #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
-              help = tf!("쿼리로 거르기 — 예: 'tag:[설계, 결정] -folder:보관 updated:2026-10-01.. 잠금'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 제목 · 본문 · 번호 검색. 키: tag · folder(하위 폴더까지, none = 최상위만) · updated(고친 날 — 날짜 · <=날짜 · 범위) · title · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
-                         "Filter with a query — e.g. 'tag:[design, decision] -folder:archive updated:2026-10-01.. lock'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search title, body and id. Keys: tag, folder (with subfolders; none = top level only), updated (day it was edited — date, <=date, range), title, body (contains; =value is exact). ANDed with the other options."))]
+              help = tf!("쿼리로 거르기 — 예: 'tag:[설계, 결정] -folder:보관 updated:2026-10-01.. 잠금'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 제목 · 본문 · 번호 검색. 키: id · tag · folder(하위 폴더까지, none = 최상위만) · created · updated(날짜 · <=날짜 · 범위 · >=시각) · title · body(부분일치, =값 은 완전일치). 다른 옵션과는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'tag:[design, decision] -folder:archive updated:2026-10-01.. lock'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search title, body and id. Keys: id, tag, folder (with subfolders; none = top level only), created, updated (date, <=date, range, >=time), title, body (contains; =value is exact). ANDed with the other options."))]
         query: Option<String>,
     },
     // REQ-028: 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이다 — 밖으로 가져가려면
@@ -1468,8 +1468,8 @@ enum CampaignCmd {
         status: Option<String>,
         // DEV-451 (REQ-039): 퀘스트 목록과 같은 쿼리 문법 — 키만 캠페인 것.
         #[arg(short = 'q', long = "query", value_name = "QUERY", allow_hyphen_values = true,
-              help = tf!("쿼리로 거르기 — 예: 'status:active (end:overdue | title:출시*)'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 제목 · 설명 · 번호 검색. 키: status(active · done) · start · end(날짜 · <=날짜 · 범위 · none; end 는 overdue = 끝 날이 지났는데 진행 중) · quest(퀘스트 번호 — 그 퀘스트가 연결된 캠페인) · title · body(부분일치, =값 은 완전일치). --status 와는 그리고로 합친다.",
-                         "Filter with a query — e.g. 'status:active (end:overdue | title:launch*)'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search title, description and id. Keys: status (active, done), start, end (date, <=date, range, none; end also takes overdue = past its end and still active), quest (a quest id — campaigns that quest is linked to), title, body (contains; =value is exact). ANDed with --status."))]
+              help = tf!("쿼리로 거르기 — 예: 'status:active (end:overdue | title:출시*)'. 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함), * = 아무 글, /정규식/(대소문자 무시), 키 없는 낱말 = 제목 · 설명 · 번호 검색. 키: id · status(active · done) · start · end(날짜 · <=날짜 · 범위 · none; end 는 overdue = 끝 날이 지났는데 진행 중) · quest(퀘스트 번호 — 그 퀘스트가 연결된 캠페인) · checklist(open · done · none) · created · updated(날짜 · <=날짜 · 범위 · >=시각) · title · body(부분일치, =값 은 완전일치). --status 와는 그리고로 합친다.",
+                         "Filter with a query — e.g. 'status:active (end:overdue | title:launch*)'. Separate terms = AND (& · AND), | or OR = OR, leading - = NOT, group with ( ), one of several = [a, b], range a..b (end excluded) · a..=b (end included), * = any text, /regex/ (case-insensitive), bare words = search title, description and id. Keys: id, status (active, done), start, end (date, <=date, range, none; end also takes overdue = past its end and still active), quest (a quest id — campaigns that quest is linked to), checklist (open, done, none), created, updated (date, <=date, range, >=time), title, body (contains; =value is exact). ANDed with --status."))]
         query: Option<String>,
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
@@ -6625,10 +6625,12 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
         "urgency" => q.urgency.to_string(),
         "description" | "body" => q.description.clone().unwrap_or_default(),
         "type" | "type_prefix" => q.type_prefix.clone(),
-        "parent" => match q.parent_quest_id {
-            Some(p) => p.to_string(),
-            None => String::new(),
-        },
+        // 내부 번호가 아니라 다른 명령에 그대로 넘길 수 있는 번호(DEV-012)를 낸다.
+        "parent" => d
+            .parent
+            .as_ref()
+            .map(|p| p.quest_id.clone())
+            .unwrap_or_default(),
         "created_at" | "created" => q.created_at.clone(),
         "updated_at" | "updated" => q.updated_at.clone(),
         // DEV-291: 관계 slug 목록 — 스크립트로 반대방향 해제를 돌릴 수 있게
@@ -6655,8 +6657,9 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
         "version" => d.version.to_string(),
         other => {
             return Err(anyhow!(
-                "unknown field '{other}'. available: id title status status_slug \
-                 urgency description type parent created_at updated_at version"
+                "unknown field '{other}'. available: id title status status_ko status_slug \
+                 urgency description type parent children prerequisites successors \
+                 created_at updated_at version"
             ));
         }
     };
@@ -10485,7 +10488,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             ensure_table_json_exclusive(table, json)?;
             if count {
                 println!("{}", quests.len());
-            } else if id_only {
+            } else if id_only && !json {
                 for q in &quests {
                     println!("{}", q.quest_id);
                 }
@@ -12103,6 +12106,41 @@ mod tests {
         assert!(res.is_err());
     }
 
+    /// `-q` 도움말의 키 목록이 실제 키와 어긋나지 않게 — 키를 늘리면 여기서 걸린다.
+    #[test]
+    fn query_help_names_every_key() {
+        use clap::CommandFactory;
+        use openguild_core::query::Target;
+        let cmd = Cli::command();
+        for (group, target) in [
+            ("quest", Target::Quest),
+            ("campaign", Target::Campaign),
+            ("library", Target::Library),
+        ] {
+            let list = cmd
+                .find_subcommand(group)
+                .and_then(|c| c.find_subcommand("list"))
+                .unwrap();
+            let help = list
+                .get_arguments()
+                .find(|a| a.get_id() == "query")
+                .and_then(|a| a.get_help())
+                .unwrap()
+                .to_string();
+            let keys = help
+                .split_once("키:")
+                .or(help.split_once("Keys:"))
+                .unwrap()
+                .1;
+            for k in target.keys() {
+                assert!(
+                    keys.contains(k),
+                    "{group} list -q 도움말에 {k} 없음: {keys}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn cli_parse_list_id_only_and_count_conflict() {
         let res = Cli::try_parse_from(["openguild", "quest", "list", "--id-only", "--count"]);
@@ -13502,8 +13540,11 @@ mod tests {
     #[test]
     fn field_parent_returns_id_when_set() {
         let mut d = sample_detail();
+        let mut parent = d.quest.clone();
+        parent.quest_id = "DEV-012".into();
+        d.parent = Some(parent);
         d.quest.parent_quest_id = Some(42);
-        assert_eq!(quest_field_value(&d, "parent").unwrap(), "42");
+        assert_eq!(quest_field_value(&d, "parent").unwrap(), "DEV-012");
     }
 
     #[test]

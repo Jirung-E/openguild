@@ -1755,6 +1755,9 @@ mod tests {
         assert_eq!(ids("title:=로그인".into(), d()).await, Vec::<i64>::new());
         assert_eq!(ids("title:로그인*".into(), d()).await, vec![b]);
         assert_eq!(ids("tag:U*".into(), d()).await, vec![a]);
+        // 상태도 다른 글 키처럼 `*` · 정규식을 받는다 — 전에는 조용히 0건이었다.
+        assert_eq!(ids("status:do*".into(), d()).await, vec![c]);
+        assert_eq!(ids("status:/^DO/".into(), d()).await, vec![c]);
         assert_eq!(ids("tag:/^u/".into(), d()).await, vec![a]);
         assert_eq!(ids("urgency:<=2".into(), d()).await, vec![b]);
         assert_eq!(ids(format!("parent:{slug_a}"), d()).await, vec![b]);

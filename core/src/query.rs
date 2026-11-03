@@ -175,7 +175,14 @@ impl Key {
     fn is_text(self) -> bool {
         matches!(
             self,
-            Key::Id | Key::Tag | Key::Type | Key::Folder | Key::Author | Key::Title | Key::Body
+            Key::Id
+                | Key::Status
+                | Key::Tag
+                | Key::Type
+                | Key::Folder
+                | Key::Author
+                | Key::Title
+                | Key::Body
         )
     }
 }
@@ -702,8 +709,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                 return Err(QueryError::at(
                     pos,
                     crate::tf!(
-                        "'/{p}/' — 정규식은 낱말과 id · tag · type · folder · author · title · body 에만 씁니다",
-                        "'/{p}/' — regexes work for words and id, tag, type, folder, author, title, body"
+                        "'/{p}/' — 정규식은 낱말과 id · status · tag · type · folder · author · title · body 에만 씁니다",
+                        "'/{p}/' — regexes work for words and id, status, tag, type, folder, author, title, body"
                     ),
                 ));
             }
@@ -1296,6 +1303,14 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         Some(Key::Id) => id_cond(SLUG_EXPR, "qt.prefix", "q.number", v)?,
         Some(Key::Title) => text_cond(&["q.title"], v, Match::Partial),
         Some(Key::Body) => text_cond(&["COALESCE(q.description, '')"], v, Match::Partial),
+        // `*` 와 `/…/` 는 다른 글 키처럼 — 이름 · slug · 한국어 이름 중 하나에.
+        Some(Key::Status) if matches!(v, Val::Regex(_)) || (s.contains('*') && matches!(v, Val::Bare(_))) => {
+            text_cond(
+                &["qs.name_en", "COALESCE(qs.slug, '')", "qs.name_ko"],
+                v,
+                Match::Exact,
+            )
+        }
         // 지금 `--status` 와 같은 비교(영어 이름 · slug, 대소문자 · 공백 · `-` 무시) + 한국어 이름.
         Some(Key::Status) => (
             format!(
