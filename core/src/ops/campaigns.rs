@@ -439,9 +439,7 @@ pub async fn add_checklist_line(
     cf.write(&path).map_err(AppError::Internal)?;
     let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
-    // DB sync — 파일 본문 → DB.
-    let items = extract_checklist_items(&cf.body);
-    sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    sync_checklist_to_index(store, campaign_id, &cf).await?;
 
     // 새로 추가된 항목 = list 의 마지막 (order_idx 가 가장 큰 것).
     let item = sql::list_checklists(&store.index_pool, campaign_id)
@@ -514,8 +512,7 @@ pub async fn set_checklist_checked_by_index(
     cf.write(&path).map_err(AppError::Internal)?;
     let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
-    let items = extract_checklist_items(&cf.body);
-    sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    let items = sync_checklist_to_index(store, campaign_id, &cf).await?;
     // DEV-463: 이미 그 상태였으면(다시 체크) 이력은 안 남긴다.
     if prev != Some(checked) {
         let op = if checked {
@@ -584,8 +581,7 @@ pub async fn remove_checklist_by_index(
     cf.write(&path).map_err(AppError::Internal)?;
     let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
-    let items = extract_checklist_items(&cf.body);
-    sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    let items = sync_checklist_to_index(store, campaign_id, &cf).await?;
     record_history(
         store,
         campaign_id,
@@ -604,6 +600,23 @@ pub async fn remove_checklist_by_index(
         })
     });
     Ok(())
+}
+
+/// BUG-388: 체크리스트를 고치면 본문을 고친 것이다 — 항목만이 아니라 인덱스의 본문 · 고친 때도 파일에 맞춘다.
+async fn sync_checklist_to_index(
+    store: &Store,
+    campaign_id: i64,
+    cf: &CampaignFile,
+) -> AppResult<Vec<crate::repo::ChecklistLine>> {
+    sqlx::query("UPDATE campaigns SET description = ?, updated_at = ? WHERE id = ?")
+        .bind(&cf.body)
+        .bind(&cf.frontmatter.updated_at)
+        .bind(campaign_id)
+        .execute(&store.index_pool)
+        .await?;
+    let items = extract_checklist_items(&cf.body);
+    sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    Ok(items)
 }
 
 // ─────────────────────── 파일 IO ───────────────────────
@@ -627,7 +640,8 @@ pub(crate) async fn write_campaign_file(
         camp.description.clone().unwrap_or_default()
     } else {
         match CampaignFile::read(&path) {
-            Ok(existing) if !existing.body.trim().is_empty() => {
+            // BUG-388: 빈 본문도 본문이다 — 비었다고 DB 값으로 되돌리면 지운 것이 살아난다.
+            Ok(existing) => {
                 let db_desc = camp.description.as_deref().unwrap_or("");
                 if existing.body != db_desc {
                     sqlx::query("UPDATE campaigns SET description = ? WHERE id = ?")
@@ -641,7 +655,7 @@ pub(crate) async fn write_campaign_file(
                 sql::replace_checklists_from_file(&store.index_pool, camp.id, &items).await?;
                 existing.body
             }
-            _ => camp.description.clone().unwrap_or_default(),
+            Err(_) => camp.description.clone().unwrap_or_default(),
         }
     };
 
@@ -976,6 +990,105 @@ mod tests {
         assert!(r.contains("- [ ] A"));
         assert!(r.contains("- [ ] C"));
         assert!(!r.contains("- [x] B"));
+    }
+
+    /// BUG-388: 마지막 항목을 지워 본문이 빈 뒤에 캠페인을 고쳐도 항목이 되살아나지 않는다.
+    #[tokio::test]
+    async fn removed_checklist_item_stays_removed_when_body_is_empty() {
+        let (dir, store) = banner_setup("resurrect").await;
+        let id = sql::fetch_by_slug(&store.index_pool, "C-001")
+            .await
+            .unwrap()
+            .id;
+        add_checklist_line(&store, id, "zebra").await.unwrap();
+        // 상태 변경처럼 파일을 다시 쓰는 경로 — 항목이 DB 본문에 들어가던 곳.
+        let camp = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
+        write_campaign_file(&store, &camp, false).await.unwrap();
+        remove_checklist_by_index(&store, id, 1).await.unwrap();
+
+        let camp = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
+        write_campaign_file(&store, &camp, false).await.unwrap();
+
+        let path = store.paths.campaign_path("C-001");
+        let body = CampaignFile::read(&path).unwrap().body;
+        assert!(!body.contains("zebra"), "되살아남: {body:?}");
+        assert!(
+            sql::list_checklists(&store.index_pool, id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-388: 옛 DB 값이 남아 있어도 비어 있는 파일이 이긴다 — 고치기 전 코드가 되살리던 바로 그 상태.
+    #[tokio::test]
+    async fn empty_file_body_wins_over_stale_index_description() {
+        let (dir, store) = banner_setup("stale").await;
+        let id = sql::fetch_by_slug(&store.index_pool, "C-001")
+            .await
+            .unwrap()
+            .id;
+        sqlx::query("UPDATE campaigns SET description = ? WHERE id = ?")
+            .bind("- [ ] zebra\n")
+            .bind(id)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let camp = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
+        write_campaign_file(&store, &camp, false).await.unwrap();
+
+        let path = store.paths.campaign_path("C-001");
+        assert_eq!(CampaignFile::read(&path).unwrap().body.trim(), "");
+        let camp = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
+        assert_eq!(camp.description.as_deref().unwrap_or("").trim(), "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-388: 추가 · 체크 · 삭제 모두 인덱스의 본문과 고친 때를 파일에 맞춘다 — `body:` · `updated:` 쿼리가 보는 값.
+    #[tokio::test]
+    async fn checklist_edits_sync_description_and_updated_at() {
+        let (dir, store) = banner_setup("sync").await;
+        let id = sql::fetch_by_slug(&store.index_pool, "C-001")
+            .await
+            .unwrap()
+            .id;
+        let path = store.paths.campaign_path("C-001");
+        let old = "2000-01-01T00:00:00+00:00";
+        for step in 0..3 {
+            sqlx::query("UPDATE campaigns SET updated_at = ? WHERE id = ?")
+                .bind(old)
+                .bind(id)
+                .execute(&store.index_pool)
+                .await
+                .unwrap();
+            let want = match step {
+                0 => {
+                    add_checklist_line(&store, id, "zebra").await.unwrap();
+                    "- [ ] zebra"
+                }
+                1 => {
+                    set_checklist_checked_by_index(&store, id, 1, true)
+                        .await
+                        .unwrap();
+                    "- [x] zebra"
+                }
+                _ => {
+                    remove_checklist_by_index(&store, id, 1).await.unwrap();
+                    ""
+                }
+            };
+            let camp = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
+            let file = CampaignFile::read(&path).unwrap();
+            assert_eq!(
+                camp.description.as_deref().unwrap_or("").trim_end(),
+                file.body.trim_end()
+            );
+            assert!(file.body.contains(want), "{:?}", file.body);
+            assert_eq!(camp.updated_at, file.frontmatter.updated_at);
+            assert_ne!(camp.updated_at, old);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ─── BUG-255: 배너 — 경로 경로(데스크톱)가 리팩토링 후에도 그대로인지 ───

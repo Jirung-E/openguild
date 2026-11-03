@@ -244,6 +244,8 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   `--search-comments` · `--search-attachments` 를 서버에 안 보내던 문제 (BUG-369, BUG-370)
 - `comments --since` · `--until` 이 시각을 글자로 비교해, 저장 형식이 섞이면(옛 `Z` · 새 `+09:00`) 경계 근처 댓글이 빠지거나
   더 잡히던 문제. 분까지만 적은 시각(`T10:00`)에 이 기계 시간대가 안 붙던 문제 (REQ-039)
+- 캠페인 체크리스트의 마지막 항목을 지워 본문이 빈 뒤 캠페인을 고치면 지운 항목이 되살아나던 문제. 체크리스트를 고쳐도
+  `updated` 와 본문 검색이 다시 색인할 때까지 옛 값을 보던 문제 (BUG-388)
 - `quest|campaign|library show` 가 첨부를 안 싣던 문제 — 에이전트가 첨부를 못 봤다 (BUG-295)
 - 출력을 `head` 로 자르면 CLI 가 panic 하던 문제 (BUG-367)
 - `--guild .` · `--guild ../g` 처럼 상대 경로를 주면 길드를 못 찾던 문제 (BUG-377)
