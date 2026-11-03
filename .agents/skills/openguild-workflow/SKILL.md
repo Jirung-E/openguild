@@ -46,7 +46,7 @@ openguild comments --unresolved                            # 미해결 토론 �
 ## 길드 위치 — 이름만 주어졌을 때
 
 cwd 에 `.guild` 가 없고 사용자가 길드 **이름**만 준 경우, `openguild guild
-list` 로 이 기계에서 최근 연 길드(이름 + 경로)를 보고, 이름을 그대로
+list` 로 이 기계의 데스크톱 앱에서 최근 연 길드(이름 + 경로, CLI 로 쓴 길드는 안 나온다)를 보고, 이름을 그대로
 `--guild` 에 넘긴다(부분 일치 · 애매하면 사용자 확인).
 
 ```bash
@@ -185,7 +185,6 @@ rtk err cargo build -p openguild-gui   # 오류 · 경고만
 | git checkout/pull 후 CLI 실행 → **전체 quest updated_at 오탐 변조** (BUG-103/BUG-145 — 소스는 수정됐지만 **수정 이전에 빌드된 구 바이너리**(설치본/오래된 target)가 돌면 재발) | 브랜치 전환 직후 `git status` 로 .guild 대량 diff 확인, 오염 시 1+1 diff 검증 후 `git restore` + `reindex`. 대량 변조 재발 시 구버전 GUI/CLI 프로세스부터 의심 |
 | checkout 이 미커밋 .guild 와 충돌해 Abort → 그대로 커밋하면 develop 직접 커밋 사고 | checkout 후 **반드시 `git branch --show-current` 확인** |
 | 댓글 작성자 누락 | 항상 `--author {에이전트 자신의 이름, 소문자}` |
-| `cargo fmt`(인자 무시하고 **워크스페이스 전체** 포맷) → repo 가 fmt-clean 이 아니라 50파일 노이즈 diff (2회 실사고) | 단일 파일은 `rustfmt --edition 2024 <파일>` 만 사용, `cargo fmt` 금지 |
 | 파괴적 restore | `restore --at` 은 journal 을 truncate한다. 현재 상태의 자동 pre-backup으로 되돌릴 수 있지만, 검증은 여전히 스크래치 길드에서만 수행 |
 | CLI top-level 이름 헷갈림 — `type`/`status` 는 `types`/`statuses` alias 가 **있음**, `rule` 은 `rules`/`create` alias 가 **없음**(DEV-231/232, 사용자가 케이스별로 결정) | 예전 예시나 스크립트에 `rules ...`/`rule create ...` 가 있으면 깨짐 — `rule ...`/`rule new ...` 로 |
 | `comments`(전역 검색) 요약 60자만 보고 답글 달았다가 뒷줄 놓침(실사고, BUG-105) | DEV-230 이후 기본이 본문 전체로 바뀜 — 그래도 여러 건 훑을 땐 뒷줄까지 있는지 항상 의심 |

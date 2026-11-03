@@ -434,7 +434,7 @@ enum PluginCmd {
 /// DEV-319: 길드(어느 길드를 열지) 그룹. Backend/Store 무관 — recents.json 만 읽는다.
 #[derive(Subcommand, Clone)]
 enum GuildCmd {
-    #[command(about = tf!("최근 접속한 길드 목록 (이름 + 경로). `--guild <이름>` 에 쓸 수 있는 이름이 여기 나온다.", "Recently opened guilds (name + path). Names usable with `--guild <name>` are listed here."))]
+    #[command(about = tf!("데스크톱 앱에서 최근 연 길드 목록 (이름 + 경로, CLI 로 쓴 길드는 안 나온다). `--guild <이름>` 에 쓸 수 있는 이름이 여기 나온다.", "Guilds recently opened in the desktop app (name + path; CLI use does not add to it). Names usable with `--guild <name>` are listed here."))]
     List,
 }
 
@@ -8998,7 +8998,10 @@ fn handle_guild(json: bool, sub: GuildCmd) -> Result<()> {
             } else if list.is_empty() {
                 println!(
                     "{}",
-                    tf!("(최근 접속한 길드 없음)", "(no recently opened guilds)")
+                    tf!(
+                        "(앱에서 최근 연 길드 없음 — --guild 에 경로를 주세요)",
+                        "(no guilds recently opened in the app — pass a path to --guild)"
+                    )
                 );
             } else {
                 for r in &list {
@@ -12116,11 +12119,10 @@ mod tests {
             ("quest", Target::Quest),
             ("campaign", Target::Campaign),
             ("library", Target::Library),
+            ("comments", Target::Comment),
         ] {
-            let list = cmd
-                .find_subcommand(group)
-                .and_then(|c| c.find_subcommand("list"))
-                .unwrap();
+            let top = cmd.find_subcommand(group).unwrap();
+            let list = top.find_subcommand("list").unwrap_or(top);
             let help = list
                 .get_arguments()
                 .find(|a| a.get_id() == "query")

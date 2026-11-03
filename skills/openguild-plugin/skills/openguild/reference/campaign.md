@@ -42,6 +42,10 @@ can use. Over `--remote` the server filters (`GET /api/campaigns?q=`).
 
 
 `<index>` is the item's current 1-based position, not a stable item ID.
+
+Checklist items are the `- [ ]` lines of the campaign body, wherever they sit in it: the checklist gathers them
+in one place and counts the progress. Editing either side changes the other — adding, checking or removing an item edits
+the body and moves `updated`, and a task line written in the body becomes an item. Comments and quest links do not move `updated`.
 Removing an item renumbers every item after it.
 
 Campaigns also support comments/memos — see [comments.md](comments.md) — and

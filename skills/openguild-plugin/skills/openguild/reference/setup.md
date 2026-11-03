@@ -42,6 +42,6 @@ openguild --remote http://localhost:3000 ping
 |---|---|---|
 | env `OPENGUILD_REMOTE` | (unset) | Remote server URL. Setting it enables remote mode |
 | `--remote <URL>` | overrides env | Force remote mode |
-| `--guild <PATH>` | (unset) | Local mode's guild path — or a guild **name** from `openguild guild list`. Auto-discovers from cwd if unset |
+| `--guild <PATH>` | (unset) | Local mode's guild path — or a guild **name** from `openguild guild list` (guilds opened in the desktop app; CLI use does not add to it). Auto-discovers from cwd if unset |
 | `--json` | off | Machine-readable output (2-space pretty) |
 | `--compact` | off | Single-line JSON — pipes/jq/log collection. Requires `--json` |

@@ -1454,8 +1454,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Separate terms = AND (& · AND) · | or OR = OR · leading - = NOT · group with ( ) · one of several = [a, b] · range a..b (end excluded) · a..=b (end included) · * = any text · /regex/ (case-insensitive) · bare words = search · quote values with spaces. Combined (AND) with the buttons and search above.'
 	},
 	'filter.queryHelpStatus': {
-		ko: '상태 — slug · 영어 · 한국어 이름',
-		en: 'status — slug, English or Korean name'
+		ko: '상태 — slug · 영어 · 한국어 이름, * · /정규식/',
+		en: 'status — slug, English or Korean name; * and /regex/'
 	},
 	'filter.queryHelpType': { ko: '타입 접두어', en: 'type prefix' },
 	'filter.queryHelpTag': { ko: '태그', en: 'tag' },
