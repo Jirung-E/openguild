@@ -225,13 +225,27 @@
 	}
 
 	// BUG-033: editMeta + editBody → 단일 editMode. Quest Detail 패턴 그대로.
-	function enterEditMode() {
+	async function enterEditMode() {
+		if (!detail) return;
+		// BUG-388: 옛 본문으로 편집을 열면 저장할 때 그사이 생긴 줄이 지워진다 — 다른 곳(CLI · 에이전트)이 고친 것까지 받아 연다.
+		await refreshBody();
 		if (!detail) return;
 		titleEdit = detail.title;
 		startedEdit = detail.started_at ?? '';
 		endedEdit = detail.ended_at ?? '';
 		bodyEdit = detail.description ?? '';
 		editMode = true;
+	}
+	// BUG-388: 체크리스트는 본문의 줄이다 — 스크롤을 지키려고 load() 를 안 쓰는 곳에서 본문만 다시 받는다.
+	async function refreshBody() {
+		if (!detail) return;
+		try {
+			const fresh = await campaignsApi.get(detail.campaign_slug);
+			detail.description = fresh.description;
+			detail.updated_at = fresh.updated_at;
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
+		}
 	}
 	function exitEditMode() {
 		editMode = false;
@@ -250,7 +264,9 @@
 			if (keepEditing) {
 				// load()는 loading 분기에서 편집기를 unmount해 커서·undo를 잃는다.
 				// 응답 필드만 현재 detail에 합쳐 편집기는 그대로 유지한다.
-				detail = { ...detail, ...updated };
+				// BUG-388: 본문을 고치면 체크리스트 칸도 바뀐다 — 응답에 없어 따로 받는다.
+				const fresh = await campaignsApi.get(detail.campaign_slug);
+				detail = { ...detail, ...updated, checklists: fresh.checklists };
 			} else {
 				exitEditMode();
 				await load();
@@ -361,6 +377,7 @@
 			const added = await campaignsApi.addChecklist(detail.campaign_slug, t);
 			detail.checklists.push(added);
 			newChecklistText = '';
+			await refreshBody();
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
@@ -378,6 +395,7 @@
 		target.checked = next;
 		try {
 			await campaignsApi.setChecklist(detail.campaign_slug, idx + 1, next);
+			await refreshBody();
 		} catch (e) {
 			// 실패 시 원복 — 사용자에게 알림.
 			target.checked = currentlyChecked;
@@ -401,6 +419,7 @@
 		detail.checklists.splice(idx, 1);
 		try {
 			await campaignsApi.removeChecklist(detail.campaign_slug, idx + 1);
+			await refreshBody();
 		} catch (e) {
 			// 실패 시 원복 — 같은 위치에 다시.
 			detail.checklists.splice(idx, 0, removed);

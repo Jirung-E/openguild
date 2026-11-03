@@ -637,7 +637,11 @@ pub(crate) async fn write_campaign_file(
     let linked_slugs: Vec<String> = linked.into_iter().map(|q| q.quest_id).collect();
 
     let body = if description_explicit {
-        camp.description.clone().unwrap_or_default()
+        // BUG-388: 본문을 고치면 체크리스트도 바뀐다 — 지운 줄 · 새로 쓴 줄이 칸에 바로 맞아야 한다.
+        let body = camp.description.clone().unwrap_or_default();
+        let items = extract_checklist_items(&body);
+        sql::replace_checklists_from_file(&store.index_pool, camp.id, &items).await?;
+        body
     } else {
         match CampaignFile::read(&path) {
             // BUG-388: 빈 본문도 본문이다 — 비었다고 DB 값으로 되돌리면 지운 것이 살아난다.
@@ -1042,6 +1046,37 @@ mod tests {
         assert_eq!(CampaignFile::read(&path).unwrap().body.trim(), "");
         let camp = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
         assert_eq!(camp.description.as_deref().unwrap_or("").trim(), "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-388: 본문을 직접 고치면 체크리스트 칸도 그 본문을 따른다.
+    #[tokio::test]
+    async fn editing_the_body_syncs_checklist_items() {
+        let (dir, store) = banner_setup("explicit").await;
+        let id = sql::fetch_by_slug(&store.index_pool, "C-001")
+            .await
+            .unwrap()
+            .id;
+        add_checklist_line(&store, id, "old").await.unwrap();
+        let set_body = |text: &'static str| crate::models::UpdateCampaignRequest {
+            description: Some(text.into()),
+            ..Default::default()
+        };
+        update_campaign(&store, id, set_body("- [x] new\n"))
+            .await
+            .unwrap();
+        let items = sql::list_checklists(&store.index_pool, id).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].text, "new");
+        assert!(items[0].checked);
+
+        update_campaign(&store, id, set_body("")).await.unwrap();
+        assert!(
+            sql::list_checklists(&store.index_pool, id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
