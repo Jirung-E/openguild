@@ -128,3 +128,6 @@ the document), `quest` / `campaign` (the document — id, range, `*`, `none`), `
 openguild comments -q 'author:claude discussion:unresolved quest:DEV-001'
 openguild comments -q 'created:>=2026-11-01 parent:none -author:claude' --limit 50
 ```
+
+Over `--remote` the server filters (`GET /api/comments?q=`). `created` / `updated` also take a time in
+a comparison or range (`>=2026-11-01T10:00`).

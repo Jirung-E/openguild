@@ -215,6 +215,7 @@ openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2
                       [--table]                 # aligned table for humans
                       [--json]                  # machine-readable
 # campaign list / library list take -q too — same syntax, their own keys (reference/campaign.md, library.md)
+openguild comments -q 'author:claude discussion:unresolved'   # every comment in the guild (reference/comments.md)
 openguild search <words...> [--in body,comment,attachment,memo] [--limit N] [--json]
                                                  # every kind at once (quest/campaign/library/rule) — body, comments,
                                                  # attachment names; says where it matched + an excerpt. Tokens are ANDed;

@@ -443,6 +443,10 @@ fn overdue(e) {
 }
 ```
 
+`of` picks the list: `quest` (default), `campaign`, `library`, `comment` — the query then uses that
+list's keys and `e.items` holds those (`of = "comment"` items carry the body: `id quest campaign
+author body parent discussion created_at updated_at`).
+
 It runs only in the app and the server (put `gui` or `server` in `scope`), once per interval per
 machine even when both are open, and not at all when nothing matches. Test it with
 `tick("overdue", [#{ id: "DEV-1", title: "x" }])` — no guild needed. Prefer a long interval: a

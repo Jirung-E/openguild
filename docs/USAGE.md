@@ -223,6 +223,7 @@ openguild library list --tag 설계
 #         --updated-after 와 commented:>=날짜 를 둘 다 본다
 #   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것 — 따로 보려면 required_due · campaign_end.
 #   희망 기한은 desired_due 로만 본다. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.
+#   서버는 조건을 받는 경로에서 모르는 조건(?nope=1)을 무시하지 않고 400 으로 거절한다.
 openguild quest list -q 'status:[open, in_progress] -tag:wip urgency:1..=2'
 openguild quest list -q '(tag:urgent | due:overdue) -status:done'
 openguild quest list -q 'title:/^로그인/ due:2026-11-01..2026-12-01'
@@ -237,12 +238,18 @@ openguild quest list -q 'prereq:none child:none discussion:none'  # 선행 · �
 #           · quest(그 퀘스트가 연결된 캠페인) · checklist(open · done · none) · created · updated. 낱말은 제목 · 설명 · 번호
 #   도서관: tag · folder(하위 폴더까지, none = 최상위만) · created · updated. 낱말은 제목 · 본문 · 번호
 #   셋 다 id · title · body 를 쓸 수 있다
+#   댓글: id(문서 안의 번호) · quest · campaign(달린 문서 — 번호 · 범위 · * · none) · author · parent(답글을 받은 번호, none = 답글이 아닌 것)
+#         · discussion(unresolved · resolved · none) · created · updated · body. 서버는 /api/comments?q=
 openguild campaign list -q 'end:overdue'
 openguild campaign list -q 'quest:DEV-001'
 openguild library list -q 'tag:[설계, 결정] -folder:보관 updated:2026-10-01..'
 openguild comments -q 'author:claude discussion:unresolved'   # 길드 전체 댓글(기본 오래된 순 20개, --limit)
 openguild comments -q 'quest:DEV-001 created:>=2026-11-01 -parent:none'
 openguild quest list --commented-after 2026-10-20     # 같은 것을 옵션으로 (--commented-before 도 있다)
+
+# 관계로 거르기 — 쿼리의 parent · child · prereq · successor 를 옵션으로도
+openguild quest list --parent DEV-001                 # DEV-001 의 직계 자식(--child-of 와 같다). --no-parent = 최상위
+openguild quest list --has-child                      # --no-child · --has-prereq · --no-prereq 도 있다
 ```
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.

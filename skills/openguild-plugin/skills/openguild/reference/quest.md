@@ -99,8 +99,17 @@ openguild quest list -q 'parent:none type:BUG'
   `required_due` and `campaign_end` look at one of those two only; `desired_due` is the only key for the desired date.
 - Campaigns: `id`, `status`, `start`, `end`, `quest`, `checklist` (`open`, `done`, `none`), `created`, `updated`, `title`, `body`.
   Library: `id`, `tag`, `folder`, `created`, `updated`, `title`, `body`.
+  Comments have their own keys (`openguild comments -q`, see `reference/comments.md`).
 - An unknown key (typo) is an error that names the character position — quote text that
   contains a colon. `-q` is ANDed with the other flags.
+- Over HTTP, a route that takes conditions answers **400** to a parameter it does not know
+  (`/api/quests?nope=1`) instead of ignoring it and returning everything.
+
+### Filtering by relation
+
+`--parent <slug>` (same as `--child-of`) lists direct children of a quest; `--no-parent` the top-level
+ones. `--has-child` / `--no-child` and `--has-prereq` / `--no-prereq` filter on having them. The query
+keys `parent`, `child`, `prereq`, `successor` do the same and more.
 
 ### What changed since a date
 

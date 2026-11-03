@@ -47,10 +47,11 @@ openguild library list --folder ""              # top-level only
 ```
 
 `library list -q` takes the same `key:value` syntax as `quest list -q`
-(comma = OR, separate terms = AND, leading `-` = NOT, bare words search title,
-body and id). Keys: `tag`, `folder` (with subfolders; `folder:none` = top level
-only), `updated` (the day it was edited — a date, `<=date`, `>=date`). It is
-ANDed with `--folder` / `--tag`; a key from another list is an error that names
+(separate terms = AND, `|` / `OR` = OR, leading `-` = NOT, `( )`, `[a, b]`, ranges `a..b` / `a..=b`,
+`*`, `/regex/`; bare words search title, body and id). Keys: `id`, `tag`, `folder` (with subfolders;
+`folder:none` = top level only), `created`, `updated` (a date, a range, or a time in a comparison or
+range: `>=2026-11-01T10:00`), `title`, `body`. A bare comma (`tag:a,b`) is an error — write
+`tag:[a, b]`. It is ANDed with `--folder` / `--tag`; a key from another list is an error that names
 the keys you can use. Over `--remote` the server filters (`GET /api/library?q=`).
 
 `--folder` was called `--path` until BUG-281; the old name still works as an

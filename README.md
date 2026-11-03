@@ -78,7 +78,7 @@ The board has a grid-snap toggle (G key) and an Arrange action with two modes (`
 All quests are shown in a flat list. Sub-quests appear as a collapsible tree under their parent. Status cannot be changed from this view — use the Quest Board or Quest Detail page.
 
 ### Query and search
-Filter any list with one line of query. The quest, board, campaign and library screens and the CLI's `-q` share the same grammar.
+Filter any list with one line of query. The quest, board, campaign and library screens, the comment tab of the search page and the CLI's `-q` share the same grammar.
 
 ```bash
 openguild quest list -q 'status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'
@@ -285,7 +285,7 @@ openguild-server --version
 모든 퀘스트를 단일 리스트로 표시한다. 서브퀘스트는 부모 퀘스트 하위에 접기/펼치기 트리로 나타난다. 이 뷰에서는 상태를 변경할 수 없으며, Quest Board 또는 Quest Detail 페이지에서 변경한다.
 
 ### 쿼리와 검색
-목록은 쿼리 한 줄로 거릅니다. 퀘스트 · 보드 · 캠페인 · 도서관 화면과 CLI `-q` 가 같은 문법을 씁니다.
+목록은 쿼리 한 줄로 거릅니다. 퀘스트 · 보드 · 캠페인 · 도서관 화면, 검색 페이지의 댓글 탭, CLI `-q` 가 같은 문법을 씁니다.
 
 ```bash
 openguild quest list -q 'status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'

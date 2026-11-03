@@ -30,9 +30,12 @@ openguild campaign checklist remove <campaign-slug> <index>
 
 | key | values |
 |---|---|
+| `id` | `C-001`, a range, `C-*`, `/regex/` |
 | `status` | `active`, `done` |
 | `start` / `end` | a date, `<=date`, `>=date`, `none`; `end:overdue` = past its end date and still active |
 | `quest` | a quest id — campaigns that quest is linked to |
+| `checklist` | `open`, `done`, `none` |
+| `created` / `updated` | a date, a range, or a time in a comparison or range: `>=2026-11-01T10:00` |
 
 A key from another list (e.g. `urgency:`) is an error that names the keys you
 can use. Over `--remote` the server filters (`GET /api/campaigns?q=`).
