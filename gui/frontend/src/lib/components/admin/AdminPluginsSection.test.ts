@@ -165,8 +165,6 @@ describe('DEV-469 플러그인끼리 겹침', () => {
 			run_before: [],
 			group: null,
 			every: null,
-			query: null,
-			of: null,
 			command: '${COMMAND}',
 			wait: false,
 			action: null,

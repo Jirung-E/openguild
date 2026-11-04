@@ -204,7 +204,7 @@ fn warn_unused_functions(
         let called = def
             .handlers
             .iter()
-            .any(|h| h.call.as_deref() == Some(name.as_str()) && 1 + h.with.len() == arity);
+            .any(|h| h.call.as_deref() == Some(name.as_str()) && h.call_arity() == arity);
         let used_in_script = call_sites(src, &name) > src.matches(&format!("fn {name}(")).count();
         if !called && !used_in_script {
             r.warnings.push(crate::tf!(
@@ -412,6 +412,20 @@ mod tests {
                 "main.rhai",
                 "fn h(e) { notify(`${[1, 2].map(|x| x * 2)}`) }",
             )],
+        );
+        let r = check_dir(&dir, None);
+        assert!(r.ok(), "{:?}", r.errors);
+        assert!(r.warnings.is_empty(), "헛경고가 났다: {:?}", r.warnings);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 시간마다 도는 줄의 함수는 인자가 없다 — "부르는 줄이 없습니다" 로 짚으면 안 된다.
+    #[test]
+    fn a_timed_function_takes_nothing_and_is_not_unused() {
+        let dir = folder(
+            "timed",
+            "name = \"p\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\n\n[[handlers]]\nevery = \"1h\"\ncall = \"h\"\n",
+            &[("main.rhai", "fn h() { }")],
         );
         let r = check_dir(&dir, None);
         assert!(r.ok(), "{:?}", r.errors);

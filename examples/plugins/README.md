@@ -15,7 +15,7 @@ openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 | `deleted-audit` | 둘 (하나는 **막는다**) | `run` | 있음 | — | **pre** |
 | `backup-archive` | 하나 | `run` | 있음 (경로만 넘김) | — | post |
 | `claude-session` | 하나 (**댓글 명령**) | `run` | 있음 | — | **pre** |
-| `overdue-digest` | 하나 (**시간마다** — `every` + `query`) | `notify`(길드에 시킴) | 있음 | — | **every** |
+| `overdue-digest` | 하나 (**시간마다** — `every` + 함수 안의 `query()`) | `notify`(길드에 시킴), `query`(길드를 읽음) | 있음 | — | **every** |
 
 `telegram-quest-status` · `deleted-audit` · `claude-session` · `overdue-digest` 에는 **시험 파일**(`main.test.rhai`)이 함께 있다.
 `openguild plugin test examples/plugins/<이름>` 으로 돌려 본다 — 아무것도 밖으로 안 나간다.
@@ -97,14 +97,13 @@ POST /bot123456:AA.../sendMessage
 [[handlers]]
     id    = "기한 지남"
     every = "1d"
-    query = "status:[open, in_progress] due:overdue"
     call  = "digest"
 ```
 
-- `query` 는 목록 화면 · `quest list -q` 와 같은 쿼리다. 맞는 목록이 `e.items` 로(`e.count` 는 개수) 오고, 맞는 것이
-  없으면 함수를 부르지 않는다.
+- 함수는 받는 것 없이 불린다. `query("quest", "status:[open, in_progress] due:overdue")` 로 목록을 고르고(`permissions` 에 `query`), 비어 있으면 그냥 끝낸다.
+  쿼리는 목록 화면 · `quest list -q` 와 같다.
 - 앱에서만 돈다. 알림은 앱 화면의 알림이다 — 서버에서 돌면 서버 로그로만 가서 뺐다.
 - `1d` 는 **날짜**로 센다 — 그날 처음 앱을 켜면 약 5초 뒤 돌고, 오늘 안에 다시 켜면 안 돈다. 켜 둔 채면 자정에 돈다(30초마다 확인).
   24시간마다로 하려면 `every = "24h"`. 처음 허용하면 곧 한 번 돌고, 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돈다.
 - 설정 `알림에 적을 개수`(기본 5)를 넘으면 "외 N건" 으로 줄인다.
-- 시험은 `tick("기한 지남", [목록])` 으로 — 길드 없이 그 줄을 주어진 목록으로 돌린다.
+- 시험은 `set_query("quest", "쿼리", [목록])` 로 결과를 정하고 `tick("기한 지남")` 으로 — 길드 없이 그 줄을 돌린다.

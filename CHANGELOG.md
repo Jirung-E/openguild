@@ -47,9 +47,10 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
     상태)을 싣는다 (DEV-374, DEV-386, DEV-388, DEV-398, DEV-404, DEV-391)
   - `scope` 로 어디서 돌지 명시(`cli` / `gui` / `server` — `server` 에 걸면 그 서버를
     쓰는 모두에게 적용) (DEV-375)
-  - **시간마다 도는 줄** — `every = "1h"`(`1d` 는 날짜가 바뀌면) 와 목록 쿼리(`query = "status:open due:overdue"`, 캠페인 ·
-    도서관 · 댓글도)를 적으면 맞는 목록을 받아 돈다(맞는 것이 없으면 안 돈다). 앱 · 서버에서만, 같은 기계에서
-    둘 다 열어도 한 번. 예제 `overdue-digest`(하루에 한 번 기한 지난 퀘스트를 알림 하나로) (REQ-026, DEV-458, DEV-471)
+  - **시간마다 도는 줄** — `every = "1h"`(`1d` 는 날짜가 바뀌면)와 함수를 적으면 시간마다 그 함수를 부른다. 앱 · 서버에서만,
+    같은 기계에서 둘 다 열어도 한 번. 예제 `overdue-digest`(하루에 한 번 기한 지난 퀘스트를 알림 하나로) (REQ-026, DEV-458, DEV-471)
+  - **스크립트에서 길드 읽기** — `query("quest", "status:open due:overdue")` 로 목록 화면과 같은 쿼리의 결과를 받는다.
+    어느 줄의 함수에서든 쓸 수 있고, `permissions = ["query"]` 로 밝혀야 한다 (DEV-458)
   - 동작은 `post`(HTTP)와 `run`(프로그램, 이벤트는 stdin) 둘. `run` 은 운영체제마다
     다른 명령(`windows` / `macos` / `linux`)을 적을 수 있고, **길드 폴더에서** 돌며 길드 위치와
     대상(`OPENGUILD_GUILD_DIR`, `OG_TARGET_ID` …)을 환경변수로 받아 `openguild` 를 다시 부를 수

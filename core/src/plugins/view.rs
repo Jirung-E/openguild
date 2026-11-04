@@ -90,13 +90,9 @@ pub struct HandlerView {
     /// DEV-415: 든 묶음. 묶음의 조건 · 데이터는 이미 `when` · `with` 에 합쳐져 있다.
     #[serde(default)]
     pub group: Option<String>,
-    /// DEV-458: 시간마다 도는 줄 — 간격 · 쿼리 · 대상(`quest` · `campaign` · `library`). 이때 `stage` 는 `every`.
+    /// DEV-458: 시간마다 도는 줄의 간격. 이때 `stage` 는 `every`.
     #[serde(default)]
     pub every: Option<String>,
-    #[serde(default)]
-    pub query: Option<String>,
-    #[serde(default)]
-    pub of: Option<String>,
     /// DEV-469: 댓글 명령 — 적힌 그대로(`${COMMAND}` 는 안 푼다).
     #[serde(default)]
     pub command: Option<String>,
@@ -286,11 +282,6 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                 run_before: h.run_before.clone(),
                 group: h.group.clone(),
                 every: h.every.clone(),
-                query: h.query.clone(),
-                of: h
-                    .every
-                    .as_ref()
-                    .map(|_| h.of.unwrap_or_default().as_str().to_string()),
                 command: h.command.clone(),
                 action,
                 action_kind,

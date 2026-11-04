@@ -3284,6 +3284,101 @@ permissions = ["notify"]
 }
 
 /// 권한을 밝히면 백업이 실제로 만들어지고, 그 백업이 낸 이벤트는 **자기에게 돌아오지 않는다**.
+/// 어느 줄에서든 `query()` 로 읽는다 — 멈추지 않고, `pre` 는 바뀌기 전, `post` · `wait` 는 바뀐 뒤의 길드를 본다.
+#[tokio::test]
+async fn query_works_from_every_kind_of_event_line() {
+    #[derive(Default)]
+    struct Said(std::sync::Mutex<Vec<String>>);
+    impl super::guild::Notifier for Said {
+        fn notify(&self, _plugin: &str, text: &str) -> Result<(), String> {
+            self.0.lock().unwrap().push(text.to_string());
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("query-line-home");
+    let g = fresh_tmp("query-line");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("reader");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name        = "reader"
+scope       = ["cli"]
+scripts     = ["main.rhai"]
+permissions = ["notify", "query"]
+
+[[handlers]]
+    pre  = ["quest.status_changed"]
+    call = "before"
+[[handlers]]
+    post = ["quest.status_changed"]
+    wait = true
+    call = "waited"
+[[handlers]]
+    post = ["quest.status_changed"]
+    call = "after"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"
+        fn see(line, e) { notify(line + " " + query("quest", "id:" + e.quest.id)[0].status); }
+        fn before(e) { see("pre", e); }
+        fn waited(e) { see("wait", e); }
+        fn after(e) { see("post", e); }
+        "#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let said = std::sync::Arc::new(Said::default());
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins_with(
+            Scope::Cli,
+            std::sync::Arc::new(runtime::DropDelivery),
+            said.clone(),
+        );
+        assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    }
+    let q = crate::ops::quests::create_quest(
+        &store,
+        crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "대상".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::change_status(
+        &store,
+        q.id,
+        crate::models::ChangeStatusRequest {
+            status_slug: "done".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(20)));
+    assert!(
+        store.plugin_problems().is_empty(),
+        "{:?}",
+        store.plugin_problems()
+    );
+    let mut heard = said.0.lock().unwrap().clone();
+    heard.sort();
+    assert_eq!(heard, ["post done", "pre open", "wait done"]);
+    store.events.clear_sink();
+}
+
 /// BUG-390: `pre` · `wait` 줄은 런타임 안에서 돈다 — 거기서 부른 `backup()` 도 실제로 백업을 만든다. 일반 줄도 그대로다.
 #[tokio::test]
 async fn backup_runs_from_every_kind_of_event_line() {
@@ -3466,7 +3561,7 @@ fn unknown_permission_names_are_rejected() {
     )
     .unwrap_err();
     assert!(
-        e.contains("delete_everything") && e.contains("notify, backup"),
+        e.contains("delete_everything") && e.contains("notify, backup, query"),
         "{e}"
     );
 }

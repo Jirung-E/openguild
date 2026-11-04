@@ -321,7 +321,7 @@ scripts     = ["main.rhai"]
 | `id` | 줄 이름 — 화면과 오류 메시지가 이 줄을 가리킬 때 씁니다. |
 | `run_after` / `run_before` | 같은 플러그인 안의 다른 줄(`id`)과의 순서. 안 적으면 적힌 순서. |
 | `command` | 댓글 명령 — `comment.added` 만 보는 줄에서 댓글 본문이 정확히 이 글일 때만 돕니다(`"/deploy"`, `"${COMMAND}"`). |
-| `every` / `query` / `of` | 이벤트 대신 **시간마다** — `every = "1d"`, `query = "status:open due:overdue"`. 아래 참고. |
+| `every` | 이벤트 대신 **시간마다** — `every = "1d"`. 함수는 받는 것 없이 불립니다. 아래 참고. |
 | `timeout_ms`, `on_timeout`, `on_error` | 시한과, 넘거나 던졌을 때 할 일(`continue` / `block`). |
 
 스크립트는 **밖으로 못 나갑니다.** 파일도 네트워크도 없고, 할 일을 *적기만* 합니다 — 적힌
@@ -340,6 +340,7 @@ fn on_comment(e, subject) {
 - `send(이름, 본문)` / `run(이름, 입력)` — `[actions]` 의 동작을 부릅니다.
 - `notify(글)` / `backup()` — 길드에 시키는 일. **`permissions = ["notify", "backup"]`** 으로
   밝혀야 합니다(허용 화면에 그대로 보입니다).
+- `query(대상, 쿼리)` — 길드를 읽어 목록을 받습니다. **`permissions = ["query"]`** 로 밝혀야 합니다. 아래 참고.
 - `config("키")` — 사용자가 설정 화면에 넣은 값.
 - `guild_name()`, `status_name("in_progress")`, `type_name("DEV")`, `link("quest", "DEV-001")`,
   `now()`, `ago(시각)`, `truncate(글, 수)`, `plain_text(마크다운)`.
@@ -369,20 +370,45 @@ fn on_comment(e, subject) {
 **시간마다 도는 줄.** `pre` / `post` 대신 `every` 를 적으면 이벤트가 아니라 시간이 부릅니다:
 
 ```toml
+permissions = ["notify", "query"]
+
 [[handlers]]
     id    = "기한 지남"
-    every = "1d"                                         # s · m · h(경과 시간) · d(날짜), 최소 1m
-    query = "status:[open, in_progress] due:overdue"     # 목록 화면 · quest list -q 와 같은 쿼리
-    of    = "quest"                                      # quest(기본) · campaign · library · comment
-    call  = "digest"                                     # fn digest(e) — e.items 가 맞는 목록
+    every = "1d"       # s · m · h(경과 시간) · d(날짜), 최소 1m
+    call  = "digest"   # fn digest() — 받는 것 없이 불립니다
 ```
 
-- 맞는 것이 없으면 함수를 부르지 않습니다.
-- `e.items` 한 건의 모양은 그 문서가 이벤트로 올 때(`e.quest` · `e.campaign` · `e.book` · `e.comment`)와 같습니다. 그래서 함수 하나로 둘 다 읽을 수 있습니다. 퀘스트는 기한과 `comment_count` 가, 댓글은 `target`(`{ kind, id }`, 이벤트에서는 `e.target`)이 더 있습니다. 댓글에는 본문과 반응(`reactions`: `{ emoji, authors }` 목록)이 들어 있습니다. 쿼리 키(`start:` · `folder:` · `discussion:unresolved`)는 이것과 별개입니다.
+```rhai
+fn digest() {
+    let late = query("quest", "status:[open, in_progress] due:overdue");
+    if late.is_empty() { return; }
+    notify(`기한 지남 ${late.len()}건`);
+}
+```
+
+- 일어난 일이 없으니 줄에는 `call` 만 적습니다(`action` · `when` · `with` · `wait` 는 못 씁니다). 밖으로 보낼 때는 함수에서 `send()` · `run()` 을 부릅니다.
 - 앱 · 서버에서만 돕니다(CLI 는 명령이 끝나면 꺼집니다). 같은 기계에서 둘 다 열어도 한 번만 돕니다.
 - 처음 허용하면 곧 한 번, 그 뒤로 `every` 마다. 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돕니다.
 - `1d` 는 **날짜**가 바뀌면 돕니다 — 그날 처음 켤 때 한 번(켜 둔 채면 자정에). 24시간마다는 `24h` 로 씁니다.
-- 시험에서는 `tick("기한 지남", [목록])` 으로 그 줄을 주어진 목록으로 돌립니다.
+- 시험에서는 `set_query("quest", "쿼리", [목록])` 로 결과를 정하고 `tick("기한 지남")` 으로 그 줄을 돌립니다.
+
+**`query(대상, 쿼리)`.** 대상은 `quest` · `campaign` · `library` · `comment`, 쿼리는 목록 화면 · `quest list -q` 와 같은 문법입니다. 시간마다 도는 줄뿐 아니라 이벤트 줄의 함수에서도 쓸 수 있습니다.
+
+```rhai
+let list = query("quest", "tag:test");     // 'test' 태그가 달린 것
+list[0].status == "open"                   // 글자 · 숫자 비교
+"ui" in list[0].tags                       // 태그 포함 여부
+list[0].required_due < "2027-01-01"        // 날짜는 글자로 비교
+list[0].desired_due == ()                  // 값 없음
+
+// 'test' 만 달린 것 — 정확히 그 태그들인지는 스크립트에서 봅니다
+let only = query("quest", "tag:test").filter(|q| q.tags == ["test"]);
+let both = query("quest", "tag:test tag:ui").filter(|q| q.tags.len() == 2);
+```
+
+- 없으면 빈 배열입니다. 쿼리가 틀리면 오류이고, `try` 로 받지 않으면 그 함수의 일을 버리고 멈춥니다.
+- 한 건의 모양은 그 문서가 이벤트로 올 때(`e.quest` · `e.campaign` · `e.book` · `e.comment`)와 같습니다. 퀘스트는 기한과 `comment_count` 가, 댓글은 `target`(`{ kind, id }`, 이벤트에서는 `e.target`)이 더 있습니다. 댓글에는 본문과 반응(`reactions`: `{ emoji, authors }` 목록)이 들어 있습니다. 쿼리 키(`start:` · `folder:` · `discussion:unresolved`)는 이것과 별개입니다.
+- 함수의 첫 `query()` 때 밖에서 바뀐 파일을 먼저 맞춥니다. `pre` 줄은 바뀌기 전, `post` · `wait` 줄은 바뀐 뒤의 길드를 봅니다. 기다리지 않는 `post` 줄은 차례를 기다리는 동안 그 뒤의 변경까지 볼 수 있으니, 그 시점의 값은 `e` 로 봅니다.
 
 - `description` 은 선택입니다. 적어 두면 데스크톱 관리 → 플러그인 과
   `openguild plugin list` 에 그대로 보입니다 — 나머지 필드는 전부 기계가 읽는

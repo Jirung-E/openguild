@@ -118,18 +118,10 @@ fn handler_line(h: &view::HandlerView) -> String {
     } else {
         crate::tf!("바뀐 뒤", "after")
     };
-    // DEV-458: 시간마다 — "1h 마다 퀘스트 `status:open` →".
-    let when_part = match (&h.every, &h.query) {
-        (Some(every), Some(q)) => {
-            let of = match h.of.as_deref() {
-                Some("campaign") => crate::tf!("캠페인", "campaigns"),
-                Some("library") => crate::tf!("도서관", "library"),
-                Some("comment") => crate::tf!("댓글", "comment"),
-                _ => crate::tf!("퀘스트", "quests"),
-            };
-            crate::tf!("{every} 마다 {of} `{q}`", "every {every}, {of} `{q}`")
-        }
-        _ => format!("{stage} {}", h.events.join(" ")),
+    // DEV-458: 시간마다 — "1h 마다 →".
+    let when_part = match &h.every {
+        Some(every) => crate::tf!("{every} 마다", "every {every}"),
+        None => format!("{stage} {}", h.events.join(" ")),
     };
     // DEV-469: 댓글 명령 — "바뀌기 전 comment.added `/session` →".
     let when_part = match &h.command {
@@ -198,6 +190,7 @@ fn permission_name(p: &str) -> String {
     match p {
         "notify" => crate::tf!("알림 띄우기", "show notifications"),
         "backup" => crate::tf!("백업 만들기", "make backups"),
+        "query" => crate::tf!("길드 내용 읽기", "read the guild"),
         other => other.to_string(),
     }
 }

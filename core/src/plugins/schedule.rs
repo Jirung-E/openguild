@@ -3,10 +3,8 @@
 //! ```toml
 //! [[handlers]]
 //!     id    = "마감 알림"
-//!     every = "1h"                                  # 분 m · 시간 h(경과 시간) · 날 d(날짜), 최소 1m
-//!     query = "status:[open, in_progress] due:overdue" # REQ-039 의 쿼리 문법
-//!     of    = "quest"                               # quest(기본) · campaign · library · comment
-//!     call  = "마감_알림"                           # fn 마감_알림(e) — e.items 가 맞는 목록
+//!     every = "1h"           # 분 m · 시간 h(경과 시간) · 날 d(날짜), 최소 1m
+//!     call  = "마감_알림"    # fn 마감_알림() — 읽을 것은 함수가 `query()` 로 고른다
 //! ```
 //!
 //! # 누가 시간을 재나
@@ -29,11 +27,10 @@
 //!
 //! # 줄이 받는 것
 //!
-//! 다른 줄과 같은 `fn 이름(e)`. `e.event` 는 `"every"`, `e.items` 는 맞는 목록(모양은 이벤트와 같다), `e.count` 는 개수, `e.line` ·
-//! `e.every` · `e.query` · `e.of` 도 실린다. **맞는 것이 없으면 부르지 않는다.** `action` 줄이면 본문이 이 이벤트 JSON 이다.
+//! **아무것도 받지 않는다** — 일어난 일이 없으므로 전할 대상도 없다. `fn 이름()` 이 `query("quest", "due:overdue")` 로
+//! 필요한 목록을 고른다(권한 `query`). 시각은 `now()`, 길드는 `guild_name()` 이다. 그래서 줄에는 `call` 만 적는다.
 use super::runtime::{Delivery, run_lines};
 use super::{Handler, Plugin};
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -52,11 +49,9 @@ const TICK: Duration = Duration::from_secs(30);
 /// 켜진 뒤 첫 확인까지 — 앱이 길드를 여는 동안 붐비지 않게 조금 미룬다.
 const FIRST_TICK: Duration = Duration::from_secs(5);
 
-/// 쿼리를 걸 목록.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+/// 쿼리를 걸 목록 — `query()` 의 첫 인자.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Of {
-    #[default]
     Quest,
     Campaign,
     Library,
@@ -64,21 +59,16 @@ pub enum Of {
 }
 
 impl Of {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Of::Quest => "quest",
-            Of::Campaign => "campaign",
-            Of::Library => "library",
-            Of::Comment => "comment",
-        }
-    }
-
-    fn target(self) -> crate::query::Target {
-        match self {
-            Of::Quest => crate::query::Target::Quest,
-            Of::Campaign => crate::query::Target::Campaign,
-            Of::Library => crate::query::Target::Library,
-            Of::Comment => crate::query::Target::Comment,
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "quest" => Ok(Of::Quest),
+            "campaign" => Ok(Of::Campaign),
+            "library" => Ok(Of::Library),
+            "comment" => Ok(Of::Comment),
+            _ => Err(crate::tf!(
+                "`query` 의 대상 `{s}` 를 모릅니다 — quest · campaign · library · comment 중 하나를 쓰세요",
+                "unknown `query` target `{s}` — use one of quest · campaign · library · comment"
+            )),
         }
     }
 }
@@ -146,7 +136,7 @@ fn is_ready(every: &str, period: Duration, last: u64, now: u64) -> bool {
     now.saturating_sub(last) >= period.as_secs()
 }
 
-/// 시간마다 도는 줄의 검사 — 섞을 수 없는 칸과 `every` · `query`. `call` / `action` 은 [`super::validate`] 가 본다.
+/// 시간마다 도는 줄의 검사 — 섞을 수 없는 칸과 `every`. `call` 이 있는지는 [`super::validate`] 가 본다.
 pub fn validate_line(h: &Handler) -> Result<(), String> {
     let every = h.every.as_deref().unwrap_or_default();
     parse_every(every)?;
@@ -160,11 +150,12 @@ pub fn validate_line(h: &Handler) -> Result<(), String> {
         ("run_after", !h.run_after.is_empty()),
         ("run_before", !h.run_before.is_empty()),
         ("on_timeout", h.on_timeout.is_some()),
+        ("action", h.action.is_some()),
     ];
     if let Some((k, _)) = clash.iter().find(|(_, on)| *on) {
         return Err(crate::tf!(
-            "`every` 줄에는 `{k}` 를 쓸 수 없습니다 — 거르기는 `query` 가 하고, 시간마다 따로 돕니다",
-            "`{k}` cannot be used on an `every` line — `query` does the filtering, and the line runs on its own schedule"
+            "`every` 줄에는 `{k}` 를 쓸 수 없습니다 — 일어난 일 없이 시간마다 함수(`call`)를 부릅니다. 고르고 보내는 것은 함수에서 `query()` · `send()` · `run()` 으로 합니다",
+            "`{k}` cannot be used on an `every` line — it just calls a function (`call`) on a schedule. Pick and send from the function with `query()`, `send()` and `run()`"
         ));
     }
     if h.on_error == Some(super::Policy::Block) {
@@ -173,15 +164,6 @@ pub fn validate_line(h: &Handler) -> Result<(), String> {
             "an `every` line has nothing to block — `on_error = \"block\"` is for `pre` lines"
         ));
     }
-    let Some(q) = h.query.as_deref().map(str::trim).filter(|q| !q.is_empty()) else {
-        return Err(crate::tf!(
-            "`every` 줄에는 `query` 가 있어야 합니다 — 무엇의 목록을 받을지 적으세요(예: `status:open due:overdue`)",
-            "an `every` line needs a `query` — say which list it receives (e.g. `status:open due:overdue`)"
-        ));
-    };
-    let of = h.of.unwrap_or_default();
-    crate::query::parse_for(of.target(), q)
-        .map_err(|e| crate::tf!("`query` — {}", "`query` — {}", e.to_string()))?;
     Ok(())
 }
 
@@ -260,7 +242,11 @@ fn claim_locked(file: &Path, p: &Plugin, now: u64) -> Result<Vec<usize>, String>
 
 /// 쿼리에 맞는 목록. **한 건의 모양은 같은 것의 이벤트와 같다**([`crate::events::payload`]) — 같은 댓글이 이벤트로
 /// 올 때와 시간으로 올 때 칸 이름이 다르면 스크립트를 두 벌 써야 한다. 이벤트 칸에 목록에서만 쓸모 있는 칸을 더할 뿐이다.
-async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult<Vec<Value>> {
+pub(super) async fn items(
+    store: &crate::Store,
+    of: Of,
+    q: &str,
+) -> crate::error::AppResult<Vec<Value>> {
     use crate::events::payload;
     Ok(match of {
         Of::Quest => {
@@ -332,7 +318,6 @@ async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult
 pub(super) fn run_line(
     p: &Plugin,
     i: usize,
-    items: Vec<Value>,
     guild: &str,
     cfg: &BTreeMap<String, Value>,
     subst: &BTreeMap<String, String>,
@@ -344,10 +329,6 @@ pub(super) fn run_line(
     let mut data = serde_json::Map::new();
     data.insert("line".into(), json!(key(line, i)));
     data.insert("every".into(), json!(line.every));
-    data.insert("query".into(), json!(line.query));
-    data.insert("of".into(), json!(line.of.unwrap_or_default().as_str()));
-    data.insert("count".into(), json!(items.len()));
-    data.insert("items".into(), Value::Array(items));
     let event = crate::events::Event {
         name: EVENT,
         phase: crate::events::Phase::Post,
@@ -370,7 +351,7 @@ fn note(log: &Mutex<Vec<String>>, msg: String) {
     }
 }
 
-/// 한 번 확인한다 — 차례가 된 줄마다 목록을 읽어 부른다. `state_root` 가 있으면 기록을 거기 둔다(시험용).
+/// 한 번 확인한다 — 차례가 된 줄마다 함수를 부른다. `state_root` 가 있으면 기록을 거기 둔다(시험용).
 pub(super) async fn tick(
     store: &crate::Store,
     plugins: &[Plugin],
@@ -416,42 +397,12 @@ pub(super) async fn tick(
         if due.is_empty() {
             continue;
         }
-        // BUG-389: 목록은 index 를 읽는다 — 켜 둔 앱 · 서버는 밖에서 고친 파일을 모르니, 넘기기 전에 맞춘다.
-        // 도는 줄이 있을 때만 하니 주기적으로 파일을 훑지 않는다. 못 맞춰도 줄은 있는 것으로 돈다.
-        if let Err(e) = crate::incremental::sync_if_changed(store).await {
-            note(
-                log,
-                crate::tf!(
-                    "플러그인 '{name}' — 파일을 다시 읽지 못해 있는 목록으로 돕니다: {e}",
-                    "plugin '{name}' — could not re-read the files, running on the list as it is: {e}"
-                ),
-            );
-        }
         let (cfg, subst) = super::runtime::values_for(p);
         for i in due {
             let h = &p.def.handlers[i];
-            let q = h.query.as_deref().unwrap_or_default();
-            let found = match items(store, h.of.unwrap_or_default(), q).await {
-                Ok(v) => v,
-                Err(e) => {
-                    note(
-                        log,
-                        crate::tf!(
-                            "플러그인 '{name}' {} — 목록을 못 읽었습니다: {e}",
-                            "plugin '{name}' {} — could not read the list: {e}",
-                            h.label(i)
-                        ),
-                    );
-                    continue;
-                }
-            };
-            // 맞는 것이 없으면 부르지 않는다.
-            if found.is_empty() {
-                continue;
-            }
             let guild = store.guild_name.clone();
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_line(p, i, found, &guild, &cfg, &subst, delivery, log, None);
+                run_line(p, i, &guild, &cfg, &subst, delivery, log, None);
             }));
             if r.is_err() {
                 note(
@@ -560,37 +511,25 @@ mod tests {
         }
     }
 
-    const HEAD: &str =
-        "name = \"s\"\nscope = [\"gui\"]\n[actions.out.post]\nurl = \"https://example.com\"\n";
+    const HEAD: &str = "name = \"s\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\n";
 
     #[test]
-    fn an_every_line_needs_a_valid_query_and_nothing_event_shaped() {
-        let ok = format!(
-            "{HEAD}[[handlers]]\nevery = \"1h\"\nquery = \"status:open\"\naction = \"out\"\n"
-        );
+    fn an_every_line_only_says_when_and_which_function() {
+        let ok = format!("{HEAD}[[handlers]]\nevery = \"1h\"\ncall = \"f\"\n");
         assert!(super::super::parse_def(&ok).is_ok());
         let cases = [
-            ("every = \"1h\"\naction = \"out\"\n", "query"),
+            ("every = \"soon\"\ncall = \"f\"\n", "soon"),
             (
-                "every = \"1h\"\nquery = \"stauts:open\"\naction = \"out\"\n",
-                "stauts",
-            ),
-            (
-                "every = \"1h\"\nquery = \"urgency:1\"\nof = \"campaign\"\naction = \"out\"\n",
-                "urgency",
-            ),
-            (
-                "every = \"1h\"\nquery = \"status:open\"\npost = [\"quest.created\"]\naction = \"out\"\n",
+                "every = \"1h\"\npost = [\"quest.created\"]\ncall = \"f\"\n",
                 "post",
             ),
+            ("every = \"1h\"\nwait = true\ncall = \"f\"\n", "wait"),
+            // 목록을 줄에 적던 방식은 없어졌다 — 함수가 `query()` 로 고른다.
             (
-                "every = \"1h\"\nquery = \"status:open\"\nwait = true\naction = \"out\"\n",
-                "wait",
+                "every = \"1h\"\nquery = \"status:open\"\ncall = \"f\"\n",
+                "query",
             ),
-            (
-                "query = \"status:open\"\npost = [\"quest.created\"]\naction = \"out\"\n",
-                "every",
-            ),
+            ("every = \"1h\"\nof = \"quest\"\ncall = \"f\"\n", "of"),
         ];
         for (line, word) in cases {
             let e = super::super::parse_def(&format!("{HEAD}[[handlers]]\n{line}"))
@@ -598,6 +537,12 @@ mod tests {
                 .to_string();
             assert!(e.contains(word), "{line} → {e}");
         }
+        let e = super::super::parse_def(&format!(
+            "{HEAD}[actions.out.post]\nurl = \"https://example.com\"\n[[handlers]]\nevery = \"1h\"\naction = \"out\"\n"
+        ))
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("action"), "{e}");
     }
 
     fn plugin(def: &str, guild: &Path) -> Plugin {
@@ -628,8 +573,8 @@ mod tests {
         let root = tmp("claim");
         let p = plugin(
             &format!(
-                "{HEAD}[[handlers]]\nid = \"매시\"\nevery = \"1h\"\nquery = \"status:open\"\naction = \"out\"\n\
-                 [[handlers]]\nid = \"하루\"\nevery = \"24h\"\nquery = \"status:open\"\naction = \"out\"\n"
+                "{HEAD}[[handlers]]\nid = \"매시\"\nevery = \"1h\"\ncall = \"f\"\n\
+                 [[handlers]]\nid = \"하루\"\nevery = \"24h\"\ncall = \"f\"\n"
             ),
             &root,
         );
@@ -760,10 +705,19 @@ mod tests {
                 .is_empty()
         );
         // 줄을 읽을 때 댓글의 키로 검사한다.
-        assert!(crate::query::parse_for(Of::Comment.target(), "status:open").is_err());
+        assert!(crate::query::parse_for(crate::query::Target::Comment, "status:open").is_err());
     }
 
     /// BUG-389: 켜 둔 앱이 모르는 사이 밖에서 고친 댓글도 다음 차례의 목록에 실린다.
+    #[derive(Default)]
+    struct Said(Mutex<Vec<String>>);
+    impl super::super::guild::Notifier for Said {
+        fn notify(&self, _plugin: &str, text: &str) -> Result<(), String> {
+            self.0.lock().unwrap().push(text.to_string());
+            Ok(())
+        }
+    }
+
     /// BUG-390: 시간 줄은 런타임 안에서 돈다 — 거기서 부른 `backup()` 도 실제로 백업을 만든다.
     #[tokio::test]
     async fn backup_runs_from_a_timed_line() {
@@ -784,11 +738,11 @@ mod tests {
         .await
         .unwrap();
         let mut p = plugin(
-            "name = \"s\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\npermissions = [\"backup\"]\n[[handlers]]\nid = \"백업\"\nevery = \"1h\"\nquery = \"status:open\"\ncall = \"keep\"\n",
+            "name = \"s\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\npermissions = [\"backup\"]\n[[handlers]]\nid = \"백업\"\nevery = \"1h\"\ncall = \"keep\"\n",
             &root,
         );
         p.compiled = Some(Arc::new(
-            super::super::script::Script::compile_source("fn keep(e) { backup() }").unwrap(),
+            super::super::script::Script::compile_source("fn keep() { backup() }").unwrap(),
         ));
         let delivery = super::super::guild::WithGuild::new(
             Arc::new(super::super::testing::Recorder::default()),
@@ -815,7 +769,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tick_reads_the_files_before_handing_over_the_list() {
+    async fn the_first_query_reads_the_files() {
         let root = tmp("tick-outside");
         crate::repo::seed_guild_dir(&root).unwrap();
         let store = crate::Store::open(&root).await.unwrap();
@@ -849,27 +803,38 @@ mod tests {
         let file = std::fs::File::options().write(true).open(&path).unwrap();
         file.set_modified(later).unwrap();
 
-        let p = plugin(
-            &format!(
-                "{HEAD}[[handlers]]\nid = \"댓글\"\nevery = \"1h\"\nof = \"comment\"\nquery = \"author:claude\"\naction = \"out\"\n"
-            ),
+        let mut p = plugin(
+            "name = \"s\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\npermissions = [\"notify\", \"query\"]\n[[handlers]]\nid = \"댓글\"\nevery = \"1h\"\ncall = \"f\"\n",
             &root,
         );
-        let rec = super::super::testing::Recorder::default();
+        p.compiled = Some(Arc::new(
+            super::super::script::Script::compile_source(
+                r#"fn f() { for c in query("comment", "author:claude") { notify(c.body); } }"#,
+            )
+            .unwrap(),
+        ));
+        let said = Arc::new(Said::default());
+        let delivery: Arc<dyn Delivery> = Arc::new(super::super::guild::WithGuild::new(
+            Arc::new(super::super::testing::Recorder::default()),
+            store.clone(),
+            said.clone(),
+        ));
+        // `PluginRuntime` 이 권한을 보고 `query()` 를 잇는다.
+        let runtime = super::super::runtime::PluginRuntime::new(vec![p.clone()], delivery.clone());
         let log = Mutex::new(Vec::new());
         let state = root.join("state");
         tick(
             &store,
             std::slice::from_ref(&p),
-            &rec,
+            delivery.as_ref(),
             &log,
             5_000_000,
             Some(&state),
         )
         .await;
-        let sent = rec.take();
-        assert_eq!(sent.len(), 1, "{:?}", log.lock().unwrap());
-        assert_eq!(sent[0]["body"]["items"][0]["body"], "밖댓글");
+        drop(runtime);
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+        assert_eq!(*said.0.lock().unwrap(), ["밖댓글"]);
     }
 
     /// 같은 문서가 이벤트로 올 때와 시간으로 올 때 칸 이름 · 값의 모양이 같다. 목록은 칸을 더할 수만 있다.
@@ -973,61 +938,35 @@ mod tests {
         );
     }
 
+    /// 차례가 된 줄만 함수를 부르고, 받은 것 없이 돈다. 곧바로 다시 확인하면 안 부른다.
     #[tokio::test]
-    async fn tick_runs_the_due_line_with_the_matching_items() {
+    async fn tick_calls_the_due_function_with_nothing() {
         let root = tmp("tick");
         crate::repo::seed_guild_dir(&root).unwrap();
         let store = crate::Store::open(&root).await.unwrap();
-        crate::ops::create_quest(
-            &store,
-            crate::models::CreateQuestRequest {
-                quest_type_id: 1,
-                title: "열린 것".into(),
-                description: None,
-                status_slug: "open".into(),
-                urgency: Some(3),
-                parent_quest_id: None,
-            },
-        )
-        .await
-        .unwrap();
-        let p = plugin(
-            &format!(
-                "{HEAD}[[handlers]]\nid = \"열린 것\"\nevery = \"1h\"\nquery = \"status:open\"\naction = \"out\"\n\
-                 [[handlers]]\nid = \"없는 것\"\nevery = \"1h\"\nquery = \"status:done\"\naction = \"out\"\n"
-            ),
+        let mut p = plugin(
+            "name = \"s\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\npermissions = [\"notify\"]\n[[handlers]]\nid = \"한시간\"\nevery = \"1h\"\ncall = \"f\"\n",
             &root,
         );
+        p.compiled = Some(Arc::new(
+            super::super::script::Script::compile_source(r#"fn f() { notify("돌았다"); }"#)
+                .unwrap(),
+        ));
         let rec = super::super::testing::Recorder::default();
         let log = Mutex::new(Vec::new());
         let state = root.join("state");
-        tick(
-            &store,
-            std::slice::from_ref(&p),
-            &rec,
-            &log,
-            5_000_000,
-            Some(&state),
-        )
-        .await;
-        let sent = rec.take();
+        for now in [5_000_000, 5_000_030] {
+            tick(
+                &store,
+                std::slice::from_ref(&p),
+                &rec,
+                &log,
+                now,
+                Some(&state),
+            )
+            .await;
+        }
         assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
-        assert_eq!(sent.len(), 1, "{sent:?}");
-        assert_eq!(sent[0]["body"]["event"], EVENT);
-        assert_eq!(sent[0]["body"]["line"], "열린 것");
-        assert_eq!(sent[0]["body"]["count"], 1);
-        assert_eq!(sent[0]["body"]["items"][0]["title"], "열린 것");
-        // 다음 확인은 시간이 안 됐다.
-        tick(
-            &store,
-            std::slice::from_ref(&p),
-            &rec,
-            &log,
-            5_000_030,
-            Some(&state),
-        )
-        .await;
-        assert!(rec.take().is_empty());
-        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(rec.take().len(), 1, "차례가 된 때만 돌아야 한다");
     }
 }

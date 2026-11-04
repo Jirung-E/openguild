@@ -118,6 +118,8 @@ struct Fire {
     /// 이 시험 하나 동안만 먹는 설정값. 시험마다 비운다 — 앞 시험이 켠 것이 다음 시험에
     /// 남아 있으면 "따로 돌리면 실패하는 시험" 이 된다.
     overrides: Mutex<BTreeMap<String, Value>>,
+    /// `set_query` 가 정한 목록. 설정값과 같은 이유로 시험마다 비운다.
+    queries: std::sync::Arc<GivenQueries>,
 }
 
 impl Fire {
@@ -125,6 +127,29 @@ impl Fire {
         if let Ok(mut o) = self.overrides.lock() {
             o.clear();
         }
+        if let Ok(mut q) = self.queries.0.lock() {
+            q.clear();
+        }
+    }
+}
+
+/// 시험의 `query()` — 길드 없이, 시험이 `set_query` 로 정한 목록을 돌려준다.
+#[derive(Default)]
+struct GivenQueries(Mutex<BTreeMap<(String, String), Value>>);
+
+impl script::QuerySource for GivenQueries {
+    fn query(&self, of: &str, q: &str, _fresh: bool) -> Result<Value, String> {
+        super::schedule::Of::parse(of)?;
+        self.0
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&(of.to_string(), q.to_string())).cloned())
+            .ok_or_else(|| {
+                crate::tf!(
+                    "시험이 정하지 않은 쿼리입니다 — `set_query(\"{of}\", \"{q}\", [...])` 로 결과를 정하세요",
+                    "this query has no result in the test — set one with `set_query(\"{of}\", \"{q}\", [...])`"
+                )
+            })
     }
 }
 
@@ -140,18 +165,22 @@ impl Hooks for Fire {
         }
     }
 
-    fn tick(&self, line: &str, items: Value) -> Result<Value, String> {
+    fn set_query(&self, of: &str, q: &str, items: Value) {
+        if let Ok(mut m) = self.queries.0.lock() {
+            m.insert((of.to_string(), q.to_string()), items);
+        }
+    }
+
+    fn tick(&self, line: &str) -> Result<Value, String> {
         let over = self.overrides.lock().map(|o| o.clone()).unwrap_or_default();
-        tick_with(&self.plugin, line, items, &over)
+        tick_with(&self.plugin, line, &over)
     }
 }
 
-/// DEV-458: 시간마다 도는 줄(`every`) 하나를 `items` 로 돌린다 — 쿼리 대신 시험이 목록을 준다. 맞는 것이 없을 때
-/// 안 부르는 것은 실제와 같다(빈 목록이면 줄이 안 불린다).
+/// DEV-458: 시간마다 도는 줄(`every`) 하나를 돌린다 — 함수의 `query()` 는 시험이 `set_query` 로 정한 목록을 받는다.
 pub fn tick_with(
     p: &Plugin,
     line: &str,
-    items: Value,
     config: &BTreeMap<String, Value>,
 ) -> Result<Value, String> {
     let Some(i) = p
@@ -165,16 +194,6 @@ pub fn tick_with(
             "`{line}` is not the `id` of a scheduled (`every`) line"
         ));
     };
-    let items = match items {
-        Value::Array(a) => a,
-        Value::Null => Vec::new(),
-        other => {
-            return Err(crate::tf!(
-                "tick 의 목록은 배열이어야 합니다 (받은 것: {other})",
-                "the tick list must be an array (got: {other})"
-            ));
-        }
-    };
     let recorder = Recorder::default();
     let log = Mutex::new(Vec::new());
     let mut probe = Probe::default();
@@ -183,19 +202,16 @@ pub fn tick_with(
         .filter_map(|(k, r)| r.value.map(|v| (k, v)))
         .collect();
     cfg.extend(config.iter().map(|(k, v)| (k.clone(), v.clone())));
-    if !items.is_empty() {
-        super::schedule::run_line(
-            p,
-            i,
-            items,
-            &p.def.name,
-            &cfg,
-            &BTreeMap::new(),
-            &recorder,
-            &log,
-            Some(&mut probe),
-        );
-    }
+    super::schedule::run_line(
+        p,
+        i,
+        &p.def.name,
+        &cfg,
+        &BTreeMap::new(),
+        &recorder,
+        &log,
+        Some(&mut probe),
+    );
     let problems = log.lock().map(|l| l.clone()).unwrap_or_default();
     Ok(json!({
         "lines": probe.lines,
@@ -327,9 +343,16 @@ pub fn run_tests(p: &Plugin) -> Result<Vec<TestResult>, String> {
             .map_err(|e| crate::tf!("{s} 를 읽지 못했습니다: {e}", "could not read {s}: {e}"))?;
         sources.push((s.clone(), src));
     }
+    let queries = std::sync::Arc::new(GivenQueries::default());
+    if let Some(sc) = p.compiled.as_deref()
+        && p.def.permissions.iter().any(|x| x == "query")
+    {
+        sc.set_query_source(queries.clone());
+    }
     let hooks = std::sync::Arc::new(Fire {
         plugin: p.clone(),
         overrides: Mutex::new(BTreeMap::new()),
+        queries,
     });
     let script =
         script::Script::compile_test(&sources, hooks.clone()).map_err(|e| e.to_string())?;
@@ -518,30 +541,38 @@ fn title_two(e) { #{ title: "둘" } }
         let _ = std::fs::remove_dir_all(&g);
     }
 
-    /// DEV-458: `tick` 은 시간마다 도는 줄을 주어진 목록으로 돌린다 — 빈 목록이면 안 부른다.
+    /// DEV-458: `tick` 은 시간마다 도는 줄을 돌리고, 그 안의 `query()` 는 시험이 정한 목록을 받는다.
     #[test]
-    fn tick_runs_a_scheduled_line_with_the_given_items() {
+    fn tick_runs_a_scheduled_line_with_the_given_query_result() {
         let def = r#"
 name = "p"
 scope = ["gui"]
 scripts = ["main.rhai"]
-permissions = ["notify"]
+permissions = ["notify", "query"]
 
 [[handlers]]
 id = "마감"
 every = "1h"
-query = "due:overdue"
 call = "late"
 "#;
         let script = r#"
-fn late(e) { for q in e.items { notify(q.id + " 마감 지남"); } }
+fn late() { for q in query("quest", "due:overdue") { notify(q.id + " 마감 지남"); } }
 "#;
         let test_src = r#"
 fn test_two_late() {
-    let r = tick("마감", [#{ id: "DEV-1" }, #{ id: "DEV-2" }]);
+    set_query("quest", "due:overdue", [#{ id: "DEV-1" }, #{ id: "DEV-2" }]);
+    let r = tick("마감");
     assert_eq(r.commands.len(), 2);
     assert_eq(r.commands[0].body, "DEV-1 마감 지남");
-    assert_eq(tick("마감", []).lines.len(), 0);
+}
+fn test_none_late() {
+    set_query("quest", "due:overdue", []);
+    assert_eq(tick("마감").commands.len(), 0);
+}
+fn test_a_query_the_test_did_not_set_is_reported() {
+    let r = tick("마감");
+    assert_eq(r.commands.len(), 0);
+    assert(r.problems[0].contains("set_query"));
 }
 "#;
         let g = guild(
@@ -553,12 +584,9 @@ fn test_two_late() {
             ],
         );
         let p = loaded(&g);
-        let r = tick_with(&p, "마감", json!([{ "id": "DEV-9" }]), &BTreeMap::new()).unwrap();
-        assert_eq!(r["lines"], json!(["마감"]));
-        assert_eq!(r["commands"][0]["kind"], "notify");
-        assert!(tick_with(&p, "없음", json!([]), &BTreeMap::new()).is_err());
+        assert!(tick_with(&p, "없음", &BTreeMap::new()).is_err());
         let results = run_tests(&p).unwrap();
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.len(), 3);
         assert!(results.iter().all(|t| t.failure.is_none()), "{results:?}");
         let _ = std::fs::remove_dir_all(&g);
     }

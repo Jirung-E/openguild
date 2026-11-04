@@ -1,11 +1,11 @@
-//! DEV-406: 스크립트가 시킨 **길드 일**을 실제로 한다 — 알림과 백업.
+//! DEV-406: 스크립트가 시킨 **길드 일**을 실제로 한다 — 알림과 백업. 함수 도중에 부르는 `query()` 도 여기서 읽는다.
 //!
 //! # 왜 함수 안에서 바로 안 하나
 //!
 //! 스크립트는 할 일을 적기만 하고([[DEV-403]]), 실행은 함수가 끝난 뒤 여기서 한다. 셋 다
 //! 그 덕을 본다:
 //!
-//! - 스크립트가 도는 동안 길드가 안 바뀐다 — 판단하던 값이 발밑에서 변하지 않는다.
+//! - 스크립트가 도는 동안 스크립트 때문에 길드가 바뀌지 않는다 — 함수가 고른 값이 자기 일로 변하지 않는다.
 //! - **길드 잠금 안에서 자기를 기다리는 교착이 없다.** 전달은 잠금이 풀린 뒤에 돈다 — 보통 줄은 별도
 //!   스레드에서, 끝날 때까지 기다리는 줄(`wait`)은 잠금이 풀리는 순간 부른 쪽에서(BUG-339 — 예전엔 이
 //!   줄만 잠금 안에서 돌아 이 말이 틀렸다).
@@ -101,6 +101,25 @@ impl Drop for WithGuild {
 }
 
 impl Delivery for WithGuild {
+    /// 목록은 index 를 읽는다 — 켜 둔 앱 · 서버는 밖에서 고친 파일을 모르니 함수의 첫 조회 때 맞춘다(BUG-389).
+    /// 못 맞추면 낡은 목록으로 판단하지 않게 오류로 돌려준다.
+    fn query(&self, of: &str, q: &str, fresh: bool) -> Result<Value, String> {
+        let of = super::schedule::Of::parse(of)?;
+        let store = self.store.clone();
+        let q = q.to_string();
+        self.block_on(async move {
+            if fresh {
+                crate::incremental::sync_if_changed(&store)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            super::schedule::items(&store, of, &q)
+                .await
+                .map(Value::Array)
+                .map_err(|e| e.to_string())
+        })?
+    }
+
     fn deliver(
         &self,
         plugin: &Plugin,

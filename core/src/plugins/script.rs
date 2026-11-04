@@ -49,6 +49,11 @@ const MAX_OPERATIONS: u64 = 500_000;
 /// 연산 수가 곧 시간이다), 상한을 하나만 두면 그 하나가 틀렸을 때 막을 게
 /// 없다.
 const MAX_WALL_TIME: Duration = Duration::from_secs(2);
+/// 값 크기 상한. rhai 는 **안에 든 것까지 모두 더해** 잰다 — 낮으면 큰 목록을 받자마자 `.len()` · `.filter()` 가 실패한다.
+/// 퀘스트 수만 건에 본문이 긴 댓글을 받아도 남게 잡되, 연산 상한 안에서 메모리를 다 쓰지는 못하게 둔다.
+const MAX_ARRAY_SIZE: usize = 1 << 20;
+const MAX_MAP_SIZE: usize = 1 << 20;
+const MAX_STRING_SIZE: usize = 64 << 20;
 /// 한 번 부를 때 적을 수 있는 일의 수 — 반복문 하나가 보내기를 만 번 쌓지 못하게.
 pub const MAX_COMMANDS: usize = 32;
 
@@ -107,6 +112,23 @@ pub struct Script {
     commands: std::sync::Arc<Mutex<Vec<Command>>>,
     /// DEV-409: 이름을 읽어 줄 길드. 적재 때 정한다([`Script::set_guild`]).
     guild: std::sync::Arc<Mutex<super::info::GuildInfo>>,
+    /// `query()` 가 읽을 곳. 적재 뒤에 정한다([`Script::set_query_source`]).
+    query: std::sync::Arc<QueryCell>,
+}
+
+/// `query()` 가 목록을 얻는 곳 — 실제로는 길드, 시험에서는 시험이 정한 값이다.
+pub trait QuerySource: Send + Sync {
+    /// `of` 는 `quest` · `campaign` · `library` · `comment`. `fresh` 면 읽기 전에 밖에서 바뀐 파일을 맞춘다.
+    fn query(&self, of: &str, q: &str, fresh: bool) -> Result<Value, String>;
+}
+
+/// 호출마다 값이 달라지는 `query()` 의 상태 — `config` 와 같은 방식으로 엔진과 셀을 나눈다.
+#[derive(Default)]
+struct QueryCell {
+    /// `permissions` 에 `query` 를 적은 플러그인만 있다.
+    source: Mutex<Option<std::sync::Arc<dyn QuerySource>>>,
+    /// 이번 호출에서 파일을 이미 맞췄나.
+    checked: std::sync::atomic::AtomicBool,
 }
 
 impl std::fmt::Debug for Script {
@@ -165,11 +187,13 @@ impl Script {
         let config = std::sync::Arc::new(Mutex::new(rhai::Map::new()));
         let commands = std::sync::Arc::new(Mutex::new(Vec::new()));
         let guild = std::sync::Arc::new(Mutex::new(super::info::GuildInfo::default()));
+        let query = std::sync::Arc::new(QueryCell::default());
         let mut engine = sandboxed_engine(
             deadline.clone(),
             config.clone(),
             commands.clone(),
             guild.clone(),
+            query.clone(),
         );
         if let Some(h) = hooks {
             register_test(&mut engine, h);
@@ -241,7 +265,15 @@ impl Script {
             config,
             commands,
             guild,
+            query,
         })
+    }
+
+    /// `query()` 가 읽을 곳을 정한다. **`permissions` 에 `query` 를 적은 플러그인에만** 부른다 — 안 부르면 `query()` 는 오류다.
+    pub fn set_query_source(&self, source: std::sync::Arc<dyn QuerySource>) {
+        if let Ok(mut s) = self.query.source.lock() {
+            *s = Some(source);
+        }
     }
 
     /// DEV-409: 이름·링크를 어느 길드에서 읽을지. 적재 때 한 번 정한다 — 이걸 안 부르면
@@ -311,6 +343,27 @@ impl Script {
         extra: &[Value],
         config: &std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<(Value, Vec<Command>), String> {
+        let args: Vec<Dynamic> = std::iter::once(to_dynamic(&event.to_json()))
+            .chain(extra.iter().map(to_dynamic))
+            .collect();
+        self.call_with_args(func, args, config)
+    }
+
+    /// 시간마다 도는 줄의 함수 — 일어난 일이 없으니 받는 것도 없다. 읽을 것은 함수가 `query()` 로 고른다.
+    pub fn call_timed(
+        &self,
+        func: &str,
+        config: &std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<(Value, Vec<Command>), String> {
+        self.call_with_args(func, Vec::new(), config)
+    }
+
+    fn call_with_args(
+        &self,
+        func: &str,
+        args: Vec<Dynamic>,
+        config: &std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<(Value, Vec<Command>), String> {
         // REQ-021: 이번 호출이 볼 설정값. **I/O 가 아니다** — 코어가 미리 읽어
         // 넘겨주는 값이라 샌드박스(파일·네트워크 없음)는 그대로다.
         if let Ok(mut c) = self.config.lock() {
@@ -322,9 +375,9 @@ impl Script {
         if let Ok(mut c) = self.commands.lock() {
             c.clear();
         }
-        let args: Vec<Dynamic> = std::iter::once(to_dynamic(&event.to_json()))
-            .chain(extra.iter().map(to_dynamic))
-            .collect();
+        self.query
+            .checked
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         self.arm();
         let mut scope = Scope::new();
         let result = self
@@ -378,9 +431,39 @@ fn sandboxed_engine(
     config: std::sync::Arc<Mutex<rhai::Map>>,
     commands: std::sync::Arc<Mutex<Vec<Command>>>,
     guild: std::sync::Arc<Mutex<super::info::GuildInfo>>,
+    query: std::sync::Arc<QueryCell>,
 ) -> Engine {
     let mut e = Engine::new();
     register_info(&mut e, guild);
+    // 샌드박스에서 길드를 읽는 유일한 길 — 읽기뿐이고, 권한을 적은 플러그인만 열린다.
+    {
+        let deadline = deadline.clone();
+        e.register_fn(
+            "query",
+            move |of: &str, q: &str| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+                let source = query.source.lock().ok().and_then(|s| s.clone()).ok_or_else(
+                    || -> Box<rhai::EvalAltResult> {
+                        crate::tf!(
+                            "`query()` 는 권한에 없습니다. 정의에 `permissions = [\"query\"]` 를 적으면 다시 묻고 돕니다",
+                            "`query()` is not in its permissions. Add `permissions = [\"query\"]` to the definition; it will ask again and then run"
+                        )
+                        .into()
+                    },
+                )?;
+                let fresh = !query
+                    .checked
+                    .swap(true, std::sync::atomic::Ordering::SeqCst);
+                let found = source
+                    .query(of, q, fresh)
+                    .map_err(|m| -> Box<rhai::EvalAltResult> { m.into() })?;
+                // 시간 상한은 스크립트가 도는 시간을 재는 것이다 — 파일을 맞추느라 걸린 시간까지 세면 멀쩡한 함수가 잘린다.
+                if let Ok(mut d) = deadline.lock() {
+                    *d = Instant::now() + MAX_WALL_TIME;
+                }
+                Ok(to_dynamic(&found))
+            },
+        );
+    }
     // DEV-406: 길드에 시키는 일 — 이름만 받거나(알림) 인자가 없다(백업).
     {
         let cmds = commands.clone();
@@ -430,9 +513,9 @@ fn sandboxed_engine(
     e.set_max_operations(MAX_OPERATIONS);
     e.set_max_call_levels(64);
     e.set_max_expr_depths(64, 32);
-    e.set_max_string_size(256 * 1024);
-    e.set_max_array_size(8192);
-    e.set_max_map_size(8192);
+    e.set_max_string_size(MAX_STRING_SIZE);
+    e.set_max_array_size(MAX_ARRAY_SIZE);
+    e.set_max_map_size(MAX_MAP_SIZE);
     // 스크립트가 stdout 을 오염시키면 CLI 출력이 깨진다(파이프로 쓰는 사람이
     // 있다). 삼키지는 않고 갈 곳만 막는다 — 진단은 반환값과 오류로 한다.
     e.on_print(|_| {});
@@ -460,8 +543,11 @@ pub trait Hooks: Send + Sync {
     /// 기본값 하나만 시험할 수 있다.
     fn set_config(&self, key: &str, value: Value);
 
-    /// DEV-458: 시간마다 도는 줄(`every`) 하나를 주어진 목록으로 돌린다 — 길드 없이, 쿼리 대신 시험이 목록을 준다.
-    fn tick(&self, _line: &str, _items: Value) -> Result<Value, String> {
+    /// `query(of, q)` 가 이 시험 동안 돌려줄 목록을 정한다 — 시험은 길드 없이 돈다.
+    fn set_query(&self, _of: &str, _q: &str, _items: Value) {}
+
+    /// DEV-458: 시간마다 도는 줄(`every`) 하나를 돌린다.
+    fn tick(&self, _line: &str) -> Result<Value, String> {
         Err(crate::tf!(
             "이 시험 실행기는 tick 을 모릅니다",
             "this test runner does not support tick"
@@ -492,18 +578,26 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
     let h = hooks.clone();
     e.register_fn(
         "tick",
-        move |line: &str, items: Dynamic| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+        move |line: &str| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+            let out = h
+                .tick(line)
+                .map_err(|e| -> Box<rhai::EvalAltResult> { e.into() })?;
+            Ok(to_dynamic(&out))
+        },
+    );
+    let h = hooks.clone();
+    e.register_fn(
+        "set_query",
+        move |of: &str, q: &str, items: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
             let items = from_dynamic(&items).map_err(|e| -> Box<rhai::EvalAltResult> {
                 crate::tf!(
-                    "tick(\"{line}\"): 목록을 옮기지 못했습니다 — {e}",
-                    "tick(\"{line}\"): could not convert the list — {e}"
+                    "set_query(\"{of}\", \"{q}\"): 목록을 옮기지 못했습니다 — {e}",
+                    "set_query(\"{of}\", \"{q}\"): could not convert the list — {e}"
                 )
                 .into()
             })?;
-            let out = h
-                .tick(line, items)
-                .map_err(|e| -> Box<rhai::EvalAltResult> { e.into() })?;
-            Ok(to_dynamic(&out))
+            h.set_query(of, q, items);
+            Ok(())
         },
     );
     let h = hooks.clone();
@@ -1067,5 +1161,87 @@ mod tests {
             call(r#"fn h(e) { let n = 0; for i in 0..10 { n += i } send("x", #{ sum: n }) }"#)
                 .unwrap();
         assert_eq!(got[0].body["sum"], 45);
+    }
+
+    /// 시험의 `query()` — 부른 때의 `fresh` 를 적고, 정해 둔 목록을 돌려준다.
+    struct Fake {
+        list: Value,
+        fresh: Mutex<Vec<bool>>,
+        wait: Duration,
+    }
+
+    impl QuerySource for Fake {
+        fn query(&self, _of: &str, _q: &str, fresh: bool) -> Result<Value, String> {
+            self.fresh.lock().unwrap().push(fresh);
+            std::thread::sleep(self.wait);
+            Ok(self.list.clone())
+        }
+    }
+
+    fn fake(list: Value, wait: Duration) -> std::sync::Arc<Fake> {
+        std::sync::Arc::new(Fake {
+            list,
+            fresh: Mutex::new(Vec::new()),
+            wait,
+        })
+    }
+
+    /// 권한을 적지 않은 플러그인(값을 잇지 않은 스크립트)은 `query()` 로 읽을 수 없고, 고칠 방법을 듣는다.
+    #[test]
+    fn query_without_the_permission_is_an_error_that_says_how_to_fix_it() {
+        let sc = Script::compile_source(r#"fn f() { query("quest", "status:open") }"#).unwrap();
+        let e = sc.call_timed("f", &Default::default()).unwrap_err();
+        assert!(e.contains("permissions"), "{e}");
+    }
+
+    /// 파일 확인은 한 번 부를 때 첫 조회에서만 한다 — 다음 호출은 다시 첫 조회다.
+    #[test]
+    fn only_the_first_query_of_a_call_checks_the_files() {
+        let sc = Script::compile_source(r#"fn f() { query("quest", "a"); query("quest", "b"); }"#)
+            .unwrap();
+        let source = fake(serde_json::json!([]), Duration::ZERO);
+        sc.set_query_source(source.clone());
+        sc.call_timed("f", &Default::default()).unwrap();
+        sc.call_timed("f", &Default::default()).unwrap();
+        assert_eq!(*source.fresh.lock().unwrap(), [true, false, true, false]);
+    }
+
+    /// 시간 상한은 스크립트가 도는 시간이다 — 파일을 맞추느라 오래 걸린 조회 때문에 잘리지 않는다.
+    #[test]
+    fn a_slow_query_does_not_use_up_the_time_limit() {
+        let sc = Script::compile_source(
+            r#"fn f() { query("quest", "a"); let n = 0; for i in 0..20000 { n += 1; } n }"#,
+        )
+        .unwrap();
+        sc.set_query_source(fake(
+            serde_json::json!([]),
+            MAX_WALL_TIME + Duration::from_millis(100),
+        ));
+        sc.call_timed("f", &Default::default()).unwrap();
+    }
+
+    /// 안에 든 것까지 더해 재는 크기 상한에 큰 목록이 걸리지 않는다 — 큰 길드에서 `.len()` 부터 실패했다.
+    #[test]
+    fn big_lists_can_be_counted_and_filtered() {
+        let body = "가".repeat(2000);
+        let list: Vec<Value> = (0..5000)
+            .map(|i| {
+                serde_json::json!({
+                    "id": format!("DEV-{i}"), "title": "제목", "type": "DEV", "status": "open", "urgency": 2,
+                    "tags": ["ui"], "created_at": "", "updated_at": "", "desired_due": null,
+                    "required_due": null, "campaign_due": null, "comment_count": 0, "body": body,
+                })
+            })
+            .collect();
+        let sc = Script::compile_source(
+            r#"fn f() {
+                let all = query("quest", "a");
+                all.filter(|q| "ui" in q.tags).map(|q| q.id).len() + all.len()
+            }"#,
+        )
+        .unwrap();
+        sc.set_query_source(fake(Value::Array(list), Duration::ZERO));
+        let (value, _) = sc.call_timed("f", &Default::default()).unwrap();
+        assert_eq!(value, 10000);
     }
 }

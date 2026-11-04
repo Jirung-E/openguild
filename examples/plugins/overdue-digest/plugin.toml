@@ -1,19 +1,18 @@
 #:schema ../plugin.schema.json
 # 하루에 한 번, 기한이 지난 열린 퀘스트를 모아 알림 하나로 — 시간마다 도는 줄(`every`)의 예(DEV-458).
 #
-# 이벤트가 아니라 시간이 부른다. `query` 에 맞는 목록이 `e.items` 로 오고, 맞는 것이 없으면 함수를 부르지 않는다.
+# 이벤트가 아니라 시간이 부른다. 함수는 받는 것 없이 불리고, 읽을 목록을 `query()` 로 고른다.
 # 앱에서만 돈다 — `notify` 는 앱 화면의 알림이라 서버에서 돌면 서버 로그로만 가고, 같은 기계의 앱은 그날 차례를 잃는다.
 
 name        = "overdue-digest"
 description = "하루에 한 번, 기한이 지난 열린 퀘스트를 모아 알림 하나로 알려 줍니다. 밖으로 나가는 것은 없습니다."
 scope       = ["gui"]
 scripts     = ["main.rhai"]
-permissions = ["notify"]
+permissions = ["notify", "query"]
 
 [[handlers]]
     id    = "기한 지남"
     every = "1d"
-    query = "status:[open, in_progress] due:overdue"
     call  = "digest"
 
 [[inputs]]

@@ -433,18 +433,9 @@
 					{#each p.handlers as h, i (i)}
 						<li>
 							{#if h.stage === 'every'}
-								<!-- DEV-458: 이벤트 대신 시간마다 — 간격과 받을 목록의 쿼리. -->
+								<!-- DEV-458: 이벤트 대신 시간마다 — 받는 것 없이 함수만 부른다. -->
 								<span class="line-when"
-									>{t('plugins.stageEvery', $locale).replace('{every}', h.every ?? '')}
-									{t(
-										h.of === 'campaign'
-											? 'plugins.ofCampaign'
-											: h.of === 'library'
-												? 'plugins.ofLibrary'
-												: 'plugins.ofQuest',
-										$locale
-									)}
-									<code>{h.query}</code></span
+									>{t('plugins.stageEvery', $locale).replace('{every}', h.every ?? '')}</span
 								>
 							{:else}
 								<span class="line-when"

@@ -62,6 +62,15 @@ pub trait Delivery: Send + Sync {
         values: &std::collections::BTreeMap<String, String>,
     ) -> Result<(), String>;
 
+    /// 스크립트의 `query()` — 함수가 도는 **도중에** 불린다. 기본은 "이 컴포넌트는 길드를 모른다" 다.
+    /// 코어가 `Store` 를 들고 감싸 준다([`crate::Store::install_plugins`]).
+    fn query(&self, _of: &str, _q: &str, _fresh: bool) -> Result<serde_json::Value, String> {
+        Err(crate::tf!(
+            "여기서는 길드를 읽을 수 없습니다",
+            "the guild cannot be read here"
+        ))
+    }
+
     /// DEV-406: 스크립트가 시킨 **길드 일**(알림·백업). 함수가 끝난 뒤, 길드 잠금 밖에서 불린다.
     ///
     /// 기본은 "이 컴포넌트는 못 한다" 다 — 시험용 구현이 전부 이걸 쓴다. 코어가 `Store` 를 들고
@@ -346,7 +355,12 @@ pub(super) fn run_lines(
                 .map(|w| extra_map.get(w).cloned().unwrap_or(serde_json::Value::Null))
                 .collect();
             let started = std::time::Instant::now();
-            let (value, cmds) = match sc.call_handler_with(func, event, &extra, cfg) {
+            let called = if h.every.is_some() {
+                sc.call_timed(func, cfg)
+            } else {
+                sc.call_handler_with(func, event, &extra, cfg)
+            };
+            let (value, cmds) = match called {
                 Ok(v) => v,
                 Err(e) => {
                     note(
@@ -563,8 +577,25 @@ fn note(problems: &Mutex<Vec<String>>, msg: String) {
     }
 }
 
+/// 스크립트의 `query()` 를 전달 구현으로 잇는다.
+struct ViaDelivery(Arc<dyn Delivery>);
+
+impl super::script::QuerySource for ViaDelivery {
+    fn query(&self, of: &str, q: &str, fresh: bool) -> Result<serde_json::Value, String> {
+        self.0.query(of, q, fresh)
+    }
+}
+
 impl PluginRuntime {
     pub fn new(plugins: Vec<Plugin>, delivery: Arc<dyn Delivery>) -> Self {
+        // `query()` 는 권한을 적은 플러그인에게만 열린다.
+        for p in &plugins {
+            if let Some(sc) = p.compiled.as_deref()
+                && p.def.permissions.iter().any(|x| x == "query")
+            {
+                sc.set_query_source(Arc::new(ViaDelivery(delivery.clone())));
+            }
+        }
         let plugins = Arc::new(plugins);
         let problems = Arc::new(Mutex::new(Vec::new()));
         let worker = if plugins.is_empty() {

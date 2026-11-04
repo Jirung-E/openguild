@@ -39,7 +39,7 @@ name        = "ai-notify"
 description = "Sends new quests and discussion comments to my service."
 scope       = ["cli", "gui"]
 scripts     = ["main.rhai"]
-permissions = ["notify"]          # only for notify()/backup()
+permissions = ["notify"]          # only for notify()/backup()/query()
 
 # Where things go lives **here only** — the script knows names, not addresses.
 [actions.out.post]
@@ -68,7 +68,7 @@ permissions = ["notify"]          # only for notify()/backup()
 | `description` | Optional. One sentence, in the author's own words, shown in Admin → Plugins and `openguild plugin list`. Every other field is machine-readable, so without this a person deciding whether to allow the plugin has nothing saying what it is *for*. Max 500 characters; scanned for secrets like every other field. |
 | `scope` | **Required, no default.** Where it runs: `cli` / `gui` / `server`. Putting `server` in it applies the plugin to everyone using that server. |
 | `scripts` | `.rhai` files. Their functions share one namespace; a duplicate name (same arity) is a load error. |
-| `permissions` | `notify` / `backup` — what the script may ask the *guild* to do. Calling one that is not declared fails that line and is reported. `send`/`run` need no permission: `[actions]` already shows where they go. |
+| `permissions` | `notify` / `backup` / `query` — what the script may ask the *guild* to do or read. Calling one that is not declared fails that line and is reported. `send`/`run` need no permission: `[actions]` already shows where they go. |
 | `actions` | Named destinations: `post` (HTTP) or `run` (process, event JSON on **stdin**). |
 | `handlers` | The lines, in written order unless `run_after` / `run_before` say otherwise. |
 | `run_after` / `run_before` (top level) | Other **plugins** (`name`) that must run before / after this one when both fire on the same event. Without them plugins run in load order: the guild's `.guild/plugins/` folders by name, then source plugins. Matters most for `pre`: a plugin that blocks or handles instead stops the later ones. Unknown names are skipped (that plugin may not be in this guild); naming itself is a load error; a circle is not — those plugins keep load order and Admin → Plugins / `plugin check` warn. |
@@ -92,33 +92,26 @@ permissions = ["notify"]          # only for notify()/backup()
 
 ### A scheduled line
 
-Instead of `pre` / `post`, a line can run **on a schedule** and receive a list:
+Instead of `pre` / `post`, a line can run **on a schedule**. Nothing happened, so its function takes nothing and picks what to read:
 
 ```toml
+permissions = ["notify", "query"]
+
 [[handlers]]
     id    = "overdue"
-    every = "1h"                                    # s · m · h · d, at least 1m
-    query = "status:[open, in_progress] due:overdue"   # the list query, same as `quest list -q`
-    of    = "quest"                                 # quest (default) · campaign · library · comment
-    call  = "overdue"                               # fn overdue(e) — e.items
+    every = "1h"        # s · m · h · d, at least 1m
+    call  = "overdue"   # fn overdue()
 ```
 
-| Field | Meaning |
-|---|---|
-| `every` | Interval. Runs only in the **app (`gui`) and the server** — the CLI exits when a command ends. `plugin check` warns when `scope` has neither. |
-| `query` | Required. The list query syntax (`status:` `tag:` `due:` …, the keys of `of`). Parsed at load, so a typo is a load error with the same message the list screens show. |
-| `of` | Which list: `quest` (default), `campaign`, `library`, `comment`. |
+```rhai
+fn overdue() {
+    let late = query("quest", "status:[open, in_progress] due:overdue");
+    if late.is_empty() { return; }
+    notify(`${late.len()} overdue`);
+}
+```
 
-The function gets `e` as usual: `e.event` is `"every"`, `e.items` the matching list, `e.count`, plus
-`e.line`, `e.every`, `e.query`, `e.of`. **An item has the same fields as that document in an event**, so one
-function can read both: quests `e.quest` (`id title type status urgency tags created_at updated_at`) plus
-`desired_due required_due campaign_due comment_count`; campaigns `e.campaign` (`id title status started_at
-ended_at created_at updated_at`); library `e.book` (`id title path tags created_at updated_at`); comments
-`e.comment` (`id author body ts parent_id discussion resolved reactions pinned edited_at`) plus `target` —
-`{ kind, id }`, what `e.target` is on an event. `discussion` and `resolved` are true/false, and `reactions` is a
-list of `{ emoji, authors }`. The query keys are a separate thing (`start:`, `folder:`, `discussion:unresolved`). **Nothing matches → nothing is
-called.** An `action` line sends that event JSON as the body. `pre`, `post`, `when`, `with`, `wait`,
-`group` and orders cannot be used on a scheduled line.
+`every` runs only in the **app (`gui`) and the server** — the CLI exits when a command ends. `plugin check` warns when `scope` has neither. `action`, `pre`, `post`, `when`, `with`, `wait`, `group` and orders cannot be used on a scheduled line; to reach outside, call `send()` or `run()` from the function.
 
 Each line's last run time is kept per machine in `~/.openguild/plugin-schedule/` and claimed under a
 file lock, so an app and a server open on the same guild run it **once**. Other machines run their
@@ -178,6 +171,7 @@ fn on_comment(e, subject) {
 |---|---|
 | `send(name, body)` / `run(name, input)` | Queue an `[actions]` action. The script never sees the url. |
 | `notify(text)` / `backup()` | Ask the guild itself. Must be declared in `permissions`. |
+| `query(of, q)` | Read a list from any line's function. Must be declared in `permissions`. `of` is `quest`, `campaign`, `library` or `comment`; `q` is the list query syntax with that list's keys. Returns an array (empty when nothing matches); a bad query throws. The first call in a function picks up files edited outside first. **An item has the same fields as that document in an event**: quests `e.quest` (`id title type status urgency tags created_at updated_at`) plus `desired_due required_due campaign_due comment_count`; campaigns `e.campaign` (`id title status started_at ended_at created_at updated_at`); library `e.book` (`id title path tags created_at updated_at`); comments `e.comment` (`id author body ts parent_id discussion resolved reactions pinned edited_at`) plus `target` — `{ kind, id }`, what `e.target` is on an event. `discussion` and `resolved` are true/false, and `reactions` is a list of `{ emoji, authors }`. The query keys are a separate thing (`start:`, `folder:`, `discussion:unresolved`). A `pre` line sees the guild before the change, `post` and `wait` after it; a `post` line that does not wait may also see later changes, so read that moment's values from `e`. |
 | `config("KEY")` | A value the user configured. |
 | `guild_name()`, `status_name(slug[, "ko"\|"en"])`, `type_name(prefix)`, `link(kind, id)` | Guild facts read by the core — events carry slugs, people read names. Unknown slugs come back unchanged. `link` uses `OPENGUILD_WEB_BASE` when set, otherwise an in-app path. |
 | `status_info(slug)`, `type_info(prefix)` | The same as maps: `#{ slug, ko, en, color, done, order }` and `#{ prefix, description, color }`. Take this when the language of the place you are sending to is not this machine's setting, or to ask `done` ("does this status count as finished?") instead of hard-coding slugs. Type files hold one description, so types have no language choice. |
@@ -218,8 +212,7 @@ before phase. It returns `#{ lines, commands, blocked, instead, changes, problem
 failures that are otherwise only reported (undeclared permission, unknown action name, a throwing
 script).
 
-`tick("line id", [items])` runs a scheduled (`every`) line with the list you give instead of the
-query — `#{ lines, commands, problems }`. An empty list calls nothing, as in real runs.
+`tick("line id")` runs a scheduled (`every`) line, and `set_query(of, q, [items])` sets what `query(of, q)` returns in this test — a query the test did not set shows up in `problems`. `tick` returns `#{ lines, commands, problems }`. Both work without a guild.
 
 ## CLI
 

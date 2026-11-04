@@ -48,7 +48,7 @@ pub mod order;
 // DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
 pub mod related;
 pub mod runtime;
-// DEV-458(REQ-026): 시간마다 도는 줄 — `every` + `query`.
+// DEV-458(REQ-026): 시간마다 도는 줄 — `every` + 함수 안의 `query()`.
 pub mod schedule;
 pub mod script;
 // DEV-399: 길드 밖 폴더에서도 가져다 쓴다 — 소스 등록 + 이 길드에서 쓰기.
@@ -288,12 +288,6 @@ pub struct Handler {
     /// DEV-458(REQ-026): 이벤트 대신 **시간마다** 돈다 — `30m` · `1h`(경과 시간) · `1d`(날짜). 있으면 `pre` · `post` 를 안 쓴다([`schedule`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub every: Option<String>,
-    /// DEV-458: `every` 줄이 받을 목록의 쿼리 — 목록 화면 · CLI `-q` 와 같은 문법.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<String>,
-    /// DEV-458: 쿼리를 걸 목록 — `quest`(기본) · `campaign` · `library`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub of: Option<schedule::Of>,
     /// 바뀌기 **전**에 볼 이벤트 패턴. `post` 와 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre: Vec<String>,
@@ -371,6 +365,15 @@ impl Handler {
             self.on_error
         };
         p == Some(Policy::Block)
+    }
+
+    /// 이 줄이 부르는 함수의 인자 수 — 이벤트 하나 + `with` 의 수. 시간마다 도는 줄은 일어난 일이 없어 아무것도 안 받는다.
+    pub fn call_arity(&self) -> usize {
+        if self.every.is_some() {
+            0
+        } else {
+            1 + self.with.len()
+        }
     }
 
     pub fn phase(&self) -> crate::events::Phase {
@@ -1046,9 +1049,10 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
     // 인자 수는 이벤트 하나 + `with` 의 수다.
     for (i, h) in def.handlers.iter().enumerate() {
         if let Some(f) = &h.call {
-            let arity = 1 + h.with.len();
+            let arity = h.call_arity();
             if !compiled.has_function(f, arity) {
                 let params: Vec<&str> = std::iter::once("e")
+                    .filter(|_| h.every.is_none())
                     .chain(h.with.iter().map(String::as_str))
                     .collect();
                 return Err(AppError::BadRequest(crate::tf!(
@@ -1318,8 +1322,8 @@ fn is_inside_rel(rel: &str) -> bool {
         && !rel.split(['/', '\\']).any(|seg| seg == "..")
 }
 
-/// DEV-406: 정의가 밝힐 수 있는 권한 — 스크립트가 길드에 시키는 일.
-pub const PERMISSIONS: &[&str] = &["notify", "backup"];
+/// DEV-406: 정의가 밝힐 수 있는 권한 — 스크립트가 길드에 시키는 일과 길드를 읽는 일.
+pub const PERMISSIONS: &[&str] = &["notify", "backup", "query"];
 
 /// DEV-403: 줄마다 "언제" 하나, "무엇" 하나. 가리키는 것이 다 있어야 한다.
 fn validate_handlers(def: &PluginDef) -> AppResult<()> {
@@ -1375,15 +1379,8 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
         let phase = h.phase();
         // DEV-458: 시간마다 도는 줄은 자기 검사를 따로 한다 — 이벤트 · 조건 · 연결 데이터가 없다.
         let scheduled = h.every.is_some();
-        if scheduled {
-            if let Err(m) = schedule::validate_line(h) {
-                return bad(format!("{who}: {m}"));
-            }
-        } else if h.query.is_some() || h.of.is_some() {
-            return bad(crate::tf!(
-                "{who}: `query` · `of` 는 시간마다 도는 줄(`every`)에만 씁니다",
-                "{who}: `query` and `of` are only for lines that run on a schedule (`every`)"
-            ));
+        if scheduled && let Err(m) = schedule::validate_line(h) {
+            return bad(format!("{who}: {m}"));
         }
         match (h.pre.is_empty(), h.post.is_empty()) {
             _ if scheduled => {}

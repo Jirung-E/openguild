@@ -113,10 +113,8 @@ export interface PluginHandler {
 	run_before: string[];
 	/** DEV-415: 든 묶음. 묶음의 조건 · 읽는 것은 이미 `when` · `with` 에 합쳐져 있다. */
 	group: string | null;
-	/** DEV-458: 시간마다 도는 줄의 간격 · 쿼리 · 대상(`quest` · `campaign` · `library`). */
+	/** DEV-458: 시간마다 도는 줄의 간격. */
 	every: string | null;
-	query: string | null;
-	of: string | null;
 	/** DEV-469: 댓글 명령 — 본문이 이 글일 때만 돈다. 적힌 그대로(`${COMMAND}` 는 안 푼다). */
 	command?: string | null;
 	/** DEV-407: 이 줄을 기다리나. `pre` 줄은 언제나 기다린다. */

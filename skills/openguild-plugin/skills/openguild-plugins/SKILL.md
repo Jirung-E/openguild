@@ -144,7 +144,8 @@ Only write a `.rhai` file if the answer is yes.
   (Telegram wants `{chat_id, text}`), when the decision needs more than field
   equality, or when the line is `pre` and must produce a reason to block.
 
-There is **no I/O in a script** — no files, no network, no processes. It records
+There is **no I/O in a script** — no files, no network, no processes. The one way to
+read the guild is `query()`, which needs a permission. It records
 work (`send` / `run` / `notify` / `backup`) and the core performs it after the
 function returns, outside the guild lock. That is the sandbox, not a gap to work
 around.
@@ -427,31 +428,36 @@ the same place), and a group may carry its own `run_after` / `run_before`.
 ## On a schedule
 
 "Remind me about overdue quests every morning" is not an event — nothing changes. Use a
-**scheduled line** with the same query the list screens use:
+**scheduled line**. It only says when and which function; the function picks what to read:
 
 ```toml
+permissions = ["notify", "query"]
+
 [[handlers]]
     id    = "overdue"
     every = "1d"       # d counts calendar dates; `24h` counts elapsed hours
-    query = "status:[open, in_progress] due:overdue"
     call  = "overdue"
 ```
 
 ```rhai
-fn overdue(e) {
-    for q in e.items { notify(`${q.id} ${q.title} is overdue`); }
+fn overdue() {   // takes nothing — no event happened
+    for q in query("quest", "status:[open, in_progress] due:overdue") {
+        notify(`${q.id} ${q.title} is overdue`);
+    }
 }
 ```
 
-`of` picks the list: `quest` (default), `campaign`, `library`, `comment` — the query then uses that
-list's keys and `e.items` holds those. An item has the same fields as that document in an event
-(`e.quest`, `e.campaign`, `e.book`, `e.comment`), so one function can read both. Quests add the due dates and
-`comment_count`; comments add `target` (`{ kind, id }`, `e.target` on an event).
+`query(of, q)` needs `permissions = ["query"]`. `of` is `quest`, `campaign`, `library` or `comment`; `q`
+uses that list's keys, the same syntax as the list screens. It returns an array, empty when nothing
+matches. An item has the same fields as that document in an event (`e.quest`, `e.campaign`, `e.book`,
+`e.comment`), so one function can read both. Quests add the due dates and `comment_count`; comments add
+`target` (`{ kind, id }`, `e.target` on an event). Any line's function may call it, not only scheduled ones.
 
-It runs only in the app and the server (put `gui` or `server` in `scope`), once per interval per
-machine even when both are open, and not at all when nothing matches. Test it with
-`tick("overdue", [#{ id: "DEV-1", title: "x" }])` — no guild needed. Prefer a long interval: a
-scheduled notice that fires every few minutes becomes noise the user turns off.
+A scheduled line runs only in the app and the server (put `gui` or `server` in `scope`), once per
+interval per machine even when both are open. It takes only `call`: to reach outside, call `send()` or
+`run()` from the function. Test it with `set_query("quest", "status:[open, in_progress] due:overdue", [#{ id:
+"DEV-1", title: "x" }])` then `tick("overdue")` — no guild needed. Prefer a long interval: a scheduled
+notice that fires every few minutes becomes noise the user turns off.
 
 ## Verifying (do this before handing it over)
 
@@ -536,7 +542,7 @@ In this order:
   - `backup-archive` — run on `backup.created`, a plain-string payload,
     `inputs` read as environment variables
   - `claude-session` — a **comment command** (`pre` + `command`): `/session` opens a terminal, with tests
-  - `overdue-digest` — a **timed line** (`every` + `query`), `notify` in the app, with tests
+  - `overdue-digest` — a **timed line** (`every` + `query()`), `notify` in the app, with tests
   - `examples/plugins/README.md` — read this before writing one from scratch
 - `openguild plugin events` for event names, phases and `with` names;
   `openguild plugin --help` for commands.
