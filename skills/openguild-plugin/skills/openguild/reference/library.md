@@ -8,7 +8,7 @@ zips, images) that don't belong as markdown body text — that was one of the
 original reasons the library exists.
 
 ```bash
-openguild library list [--table] [--folder "아키텍처"] [--tag 설계] [-q 'tag:[설계, 결정] -folder:보관 updated:2026-10-01..']
+openguild library list [--table] [--folder "아키텍처"] [--tag 설계] [-q 'tag:any(설계, 결정) -folder:보관 updated:2026-10-01..']
 openguild library show <book-id>
 openguild library new --title "..." [--file <PATH>] [--folder "folder/sub"]
 openguild library update <book-id> [--title ...] [--file <PATH>] [--folder "..."]
@@ -47,11 +47,11 @@ openguild library list --folder ""              # top-level only
 ```
 
 `library list -q` takes the same `key:value` syntax as `quest list -q`
-(separate terms = AND, `|` / `OR` = OR, leading `-` = NOT, `( )`, `[a, b]`, ranges `a..b` / `a..=b`,
+(separate terms = AND, `|` / `OR` = OR, leading `-` = NOT, `( )`, `any(a, b)` (one of) / `all(a, b)` (all of) / `only(a, b)` (exactly these), ranges `a..b` / `a..=b`,
 `*`, `/regex/`; bare words search title, body and id). Keys: `id`, `tag`, `folder` (with subfolders;
 `folder:none` = top level only), `created`, `updated` (a date, a range, or a time in a comparison or
 range: `>=2026-11-01T10:00`), `title`, `body`. A bare comma (`tag:a,b`) is an error — write
-`tag:[a, b]`. It is ANDed with `--folder` / `--tag`; a key from another list is an error that names
+`tag:any(a, b)`. It is ANDed with `--folder` / `--tag`; a key from another list is an error that names
 the keys you can use. Over `--remote` the server filters (`GET /api/library?q=`).
 
 `--folder` was called `--path` until BUG-281; `library new` and `library update`

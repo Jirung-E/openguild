@@ -210,7 +210,7 @@ openguild quest list --tag backend,api
 openguild library list --tag 설계
 
 # 쿼리로 거르기 — 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 키 없는 낱말 = 검색
-#   여러 값 중 하나 = [a, b], 범위 a..b(끝 제외) · a..=b(끝 포함) · a.. · ..=b, * = 아무 글(tag:ui-*),
+#   여러 값 = any(a, b) 하나라도 · all(a, b) 모두 · only(a, b) 정확히 이것들만, 범위 a..b(끝 제외) · a..=b(끝 포함) · a.. · ..=b, * = 아무 글(tag:ui-*),
 #   /정규식/ = 대소문자 무시(낱말 · id · status · tag · type · folder · author · title · body). 키 있는 값은 완전일치(대소문자 무시), title · body 는
 #   부분일치(=값 은 완전일치). 결과의 제목에서 낱말 · title · body · 정규식에 걸린 글자가 칠해진다
 #   화면(퀘스트 목록 · 보드 설정 · 캠페인 · 도서관)은 검색칸 앞의 [검색 | 쿼리] 에서 '쿼리' 를 고른다
@@ -225,7 +225,7 @@ openguild library list --tag 설계
 #   due 는 필수 기한과 연결된 진행 중 캠페인의 끝 날 중 이른 것 — 따로 보려면 required_due · campaign_end.
 #   희망 기한은 desired_due 로만 본다. 띄어 쓴 값은 "따옴표"로. 서버는 ?q= 로 받는다.
 #   서버는 조건을 받는 경로에서 모르는 조건(?nope=1)을 무시하지 않고 400 으로 거절한다.
-openguild quest list -q 'status:[open, in_progress] -tag:wip urgency:1..=2'
+openguild quest list -q 'status:any(open, in_progress) -tag:wip urgency:1..=2'
 openguild quest list -q '(tag:urgent | due:overdue) -status:done'
 openguild quest list -q 'title:/^로그인/ due:2026-11-01..2026-12-01'
 openguild quest list -q 'campaign:C-001 due:overdue'
@@ -243,7 +243,7 @@ openguild quest list -q 'prereq:none child:none discussion:none'  # 선행 · �
 #         · discussion(unresolved · resolved · none) · created · updated · body. 서버는 /api/comments?q=
 openguild campaign list -q 'end:overdue'
 openguild campaign list -q 'quest:DEV-001'
-openguild library list -q 'tag:[설계, 결정] -folder:보관 updated:2026-10-01..'
+openguild library list -q 'tag:any(설계, 결정) -folder:보관 updated:2026-10-01..'
 openguild comments -q 'author:claude discussion:unresolved'   # 길드 전체 댓글(기본 오래된 순 20개, --limit)
 openguild comments -q 'quest:DEV-001 created:>=2026-11-01 -parent:none'
 openguild quest list --commented-after 2026-10-20     # 같은 것을 옵션으로 (--commented-before 도 있다)
@@ -380,7 +380,7 @@ permissions = ["notify", "query"]
 
 ```rhai
 fn digest() {
-    let late = query("quest", "status:[open, in_progress] due:overdue");
+    let late = query("quest", "status:any(open, in_progress) due:overdue");
     if late.is_empty() { return; }
     notify(`기한 지남 ${late.len()}건`);
 }

@@ -81,7 +81,7 @@ All quests are shown in a flat list. Sub-quests appear as a collapsible tree und
 Filter any list with one line of query. The quest, board, campaign and library screens, the comment tab of the search page and the CLI's `-q` share the same grammar.
 
 ```bash
-openguild quest list -q 'status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'
+openguild quest list -q 'status:any(open, in_progress) (tag:ui | due:overdue) -tag:wip'
 ```
 
 The search page (`/search`) finds across quests, campaigns, library and rules at once.
@@ -288,7 +288,7 @@ openguild-server --version
 목록은 쿼리 한 줄로 거릅니다. 퀘스트 · 보드 · 캠페인 · 도서관 화면, 검색 페이지의 댓글 탭, CLI `-q` 가 같은 문법을 씁니다.
 
 ```bash
-openguild quest list -q 'status:[open, in_progress] (tag:ui | due:overdue) -tag:wip'
+openguild quest list -q 'status:any(open, in_progress) (tag:ui | due:overdue) -tag:wip'
 ```
 
 검색 페이지(`/search`)에서는 퀘스트 · 캠페인 · 도서관 · 규칙을 한 번에 찾습니다.

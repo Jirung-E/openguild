@@ -441,7 +441,7 @@ permissions = ["notify", "query"]
 
 ```rhai
 fn overdue() {   // takes nothing — no event happened
-    for q in query("quest", "status:[open, in_progress] due:overdue") {
+    for q in query("quest", "status:any(open, in_progress) due:overdue") {
         notify(`${q.id} ${q.title} is overdue`);
     }
 }
@@ -455,7 +455,7 @@ matches. An item has the same fields as that document in an event (`e.quest`, `e
 
 A scheduled line runs only in the app and the server (put `gui` or `server` in `scope`), once per
 interval per machine even when both are open. It takes only `call`: to reach outside, call `send()` or
-`run()` from the function. Test it with `set_query("quest", "status:[open, in_progress] due:overdue", [#{ id:
+`run()` from the function. Test it with `set_query("quest", "status:any(open, in_progress) due:overdue", [#{ id:
 "DEV-1", title: "x" }])` then `tick("overdue")` — no guild needed. Prefer a long interval: a scheduled
 notice that fires every few minutes becomes noise the user turns off.
 

@@ -1,12 +1,13 @@
 //! DEV-446 (REQ-039): 목록을 거르는 짧은 문법 — `키:값`.
 //!
 //! ```text
-//! status:[open, in_progress] (tag:urgent | due:overdue) -tag:wip urgency:1..=2 title:로그인*
+//! status:any(open, in_progress) (tag:urgent | due:overdue) -tag:wip urgency:1..=2 title:로그인*
 //! ```
 //!
 //! - 띄어 쓴 조건 = 그리고(`&` · `AND` 도 된다), `|` · `OR` = 또는, 앞에 `-` = 아닌 것, `( )` 로 묶는다.
 //!   그리고가 또는보다 먼저 묶인다 — `a b | c` 는 `(a b) | c`. 키워드는 대문자만(`or` 는 낱말이다).
-//! - 여러 값 중 하나는 `[a, b]` 로 묶는다(REQ-040 — 쉼표만으로는 읽기 어렵다).
+//! - 여러 값은 뜻을 낱말로 적는다(DEV-476 — `[a, b]` 는 "하나라도" 인지 "모두" 인지 안 읽혔다): `any(a, b)` 하나라도,
+//!   `all(a, b)` 모두, `only(a, b)` 정확히 이것들만. `all` · `only` 는 한 문서에 값이 여럿일 수 있는 키에만 뜻이 있다.
 //! - 범위는 `..`(끝 제외) · `..=`(끝 포함) — `urgency:1..=2` · `due:2026-11-01..2026-12-01` · `updated:2026-10-01..`.
 //!   비교(`<=2`)도 된다.
 //! - 글 값은 키 있는 것이 완전일치(대소문자 무시), `*` 를 쓰면 그 자리에 아무 글이나(`tag:ui-*`), `/…/` 는 정규식(대소문자 무시).
@@ -209,11 +210,23 @@ impl Val {
     }
 }
 
-/// 조건 하나. `key` 가 없으면 검색 낱말이고 `values` 는 하나다. 값이 여럿이면 그중 하나(`[a, b]`).
+/// 값이 여럿일 때 어떻게 맞추나.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// `any(a, b)` — 하나라도. 값이 하나일 때도 이것이다.
+    Any,
+    /// `all(a, b)` — 모두. 다른 값이 더 있어도 된다.
+    All,
+    /// `only(a, b)` — 정확히 이것들만.
+    Only,
+}
+
+/// 조건 하나. `key` 가 없으면 검색 낱말이고 `values` 는 하나다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Term {
     pub key: Option<Key>,
     pub values: Vec<Val>,
+    pub mode: Mode,
     /// 이 조건이 시작하는 글자 위치(0부터, 글자 단위) — 오류 안내용.
     pub pos: usize,
 }
@@ -406,7 +419,7 @@ fn lex(target: Target, chars: &[char]) -> Result<Vec<Token>, QueryError> {
     Ok(out)
 }
 
-/// 조건 하나 — 키 있는 것(`tag:[a, b]`) 또는 낱말(`로그인` · `"두 낱말"` · `/정규식/`).
+/// 조건 하나 — 키 있는 것(`tag:any(a, b)`) 또는 낱말(`로그인` · `"두 낱말"` · `/정규식/`).
 fn read_term(
     target: Target,
     chars: &[char],
@@ -433,6 +446,7 @@ fn read_term(
         let term = Term {
             key: None,
             values: vec![val],
+            mode: Mode::Any,
             pos: i,
         };
         check_values(target, &term, i)?;
@@ -453,17 +467,30 @@ fn read_term(
     let mut values = Vec::new();
     // `=` 는 title · body 에서만 완전일치 — 다른 키에서는 비교(`urgency:=2`)다.
     let eq = matches!(key, Key::Title | Key::Body);
+    let mut mode = Mode::Any;
     if k < n && chars[k] == '[' {
-        // `[a, b]` — 그중 하나.
-        k += 1;
+        return Err(QueryError::at(
+            k,
+            crate::tf!(
+                "'{name}:[ ]' 는 없어졌습니다 — 뜻을 낱말로 적으세요: {name}:any(a, b) 하나라도 · {name}:all(a, b) 모두 · {name}:only(a, b) 정확히 이것들만",
+                "'{name}:[ ]' is gone — say what you mean: {name}:any(a, b) for one of them, {name}:all(a, b) for all of them, {name}:only(a, b) for exactly these"
+            ),
+        ));
+    }
+    if let Some((m, open)) = list_start(chars, k) {
+        mode = m;
+        k = open;
         loop {
             while k < n && chars[k].is_whitespace() {
                 k += 1;
             }
-            if k < n && chars[k] == ']' && values.is_empty() {
+            if k < n && chars[k] == ')' && values.is_empty() {
                 return Err(QueryError::at(
                     k,
-                    crate::tf!("'{name}:[ ]' 이 비어 있습니다", "'{name}:[ ]' is empty"),
+                    crate::tf!(
+                        "'{name}:' 의 괄호가 비어 있습니다",
+                        "'{name}:' has empty parentheses"
+                    ),
                 ));
             }
             let vstart = k;
@@ -484,17 +511,26 @@ fn read_term(
             }
             match chars.get(k) {
                 Some(',') => k += 1,
-                Some(']') => {
+                Some(')') => {
                     k += 1;
                     break;
                 }
                 _ => {
                     return Err(QueryError::at(
                         k.min(n),
-                        crate::tf!("']' 로 목록을 닫으세요", "close the list with ']'"),
+                        crate::tf!("')' 로 목록을 닫으세요", "close the list with ')'"),
                     ));
                 }
             }
+        }
+        if k < n && !ends_word(chars[k], depth) {
+            return Err(QueryError::at(
+                k,
+                crate::tf!(
+                    "닫는 괄호 뒤에는 띄어 쓰세요",
+                    "put a space after the closing parenthesis"
+                ),
+            ));
         }
     } else {
         let vstart = k;
@@ -511,8 +547,8 @@ fn read_term(
             return Err(QueryError::at(
                 vstart,
                 crate::tf!(
-                    "여러 값은 [ ] 로 묶으세요 — {name}:[{}]",
-                    "wrap several values in [ ] — {name}:[{}]",
+                    "여러 값은 뜻을 낱말로 적으세요 — {name}:any({}) 하나라도. 쉼표가 든 글은 따옴표로 묶으세요",
+                    "say what several values mean — {name}:any({}) for one of them. Quote text that contains a comma",
                     s.split(',').map(str::trim).collect::<Vec<_>>().join(", ")
                 ),
             ));
@@ -523,13 +559,31 @@ fn read_term(
     let term = Term {
         key: Some(key),
         values,
+        mode,
         pos: i,
     };
     check_values(target, &term, i)?;
     Ok((term, k))
 }
 
-/// 값 하나 — `"…"`, `/…/`, (`eq` 면) `=…`, 또는 띄어쓰기 · 연산자까지의 글. `in_list` 면 `,` · `]` 에서도 끝난다.
+/// `any(` · `all(` · `only(` 이면 그 뜻과 괄호 다음 자리.
+fn list_start(chars: &[char], i: usize) -> Option<(Mode, usize)> {
+    [
+        ("any(", Mode::Any),
+        ("all(", Mode::All),
+        ("only(", Mode::Only),
+    ]
+    .into_iter()
+    .find_map(|(word, mode)| {
+        let w: Vec<char> = word.chars().collect();
+        chars
+            .get(i..i + w.len())
+            .is_some_and(|got| got.iter().zip(&w).all(|(a, b)| a.eq_ignore_ascii_case(b)))
+            .then_some((mode, i + w.len()))
+    })
+}
+
+/// 값 하나 — `"…"`, `/…/`, (`eq` 면) `=…`, 또는 띄어쓰기 · 연산자까지의 글. `in_list` 면 `,` · `)` 에서도 끝난다.
 fn read_value(
     chars: &[char],
     i: usize,
@@ -538,7 +592,7 @@ fn read_value(
     eq: bool,
 ) -> Result<(Val, usize), QueryError> {
     let n = chars.len();
-    let stop = |c: char| ends_word(c, depth) || (in_list && (c == ',' || c == ']'));
+    let stop = |c: char| ends_word(c, depth) || (in_list && (c == ',' || c == ')'));
     let after = |end: usize| -> Result<(), QueryError> {
         if end < n && !stop(chars[end]) && !(chars[end] == ')') {
             return Err(QueryError::at(
@@ -552,6 +606,26 @@ fn read_value(
         Ok(())
     };
     if eq && i < n && chars[i] == '=' {
+        // 글자 그대로의 값을 조용히 찾아 "없음" 이 되면 왜 없는지 모른다.
+        let next = i + 1;
+        if chars.get(next) == Some(&'[') || list_start(chars, next).is_some() {
+            return Err(QueryError::at(
+                next,
+                crate::tf!(
+                    "'=' 뒤에는 값 하나만 씁니다 — 여럿 중 하나와 똑같은 것은 any(=a, =b)",
+                    "'=' takes one value — for exactly one of several, use any(=a, =b)"
+                ),
+            ));
+        }
+        if chars.get(next) == Some(&'/') {
+            return Err(QueryError::at(
+                next,
+                crate::tf!(
+                    "'=' 과 정규식은 같이 못 씁니다 — 정규식에 ^ 와 $ 를 쓰세요",
+                    "'=' does not work with a regex — use ^ and $ in the regex"
+                ),
+            ));
+        }
         let (inner, end) = read_value(chars, i + 1, depth, in_list, false)?;
         return Ok((Val::Exact(inner.text().to_string()), end));
     }
@@ -703,6 +777,38 @@ pub fn regex_ci(pat: &str) -> String {
 
 /// 값의 모양을 **해석할 때** 본다 — 조회까지 가서야 틀린 것을 알면 어디가 틀렸는지 못 짚는다.
 fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryError> {
+    if term.mode != Mode::Any {
+        let word = if term.mode == Mode::All {
+            "all"
+        } else {
+            "only"
+        };
+        let many = term.key.is_some_and(|k| has_many_values(target, k));
+        let text = term.mode == Mode::All && matches!(term.key, Some(Key::Title | Key::Body));
+        if !many && !text {
+            return Err(QueryError::at(
+                pos,
+                crate::tf!(
+                    "'{word}(…)' 는 한 문서에 값이 여럿일 수 있는 키에만 뜻이 있습니다 — 이 키는 any(a, b) 를 쓰세요",
+                    "'{word}(…)' only means something for keys with several values per document — use any(a, b) here"
+                ),
+            ));
+        }
+        if term
+            .values
+            .iter()
+            .any(|v| matches!(v, Val::Bare(s) if s.eq_ignore_ascii_case("none")))
+            && term.key.is_some_and(|k| k != Key::Tag)
+        {
+            return Err(QueryError::at(
+                pos,
+                crate::tf!(
+                    "'{word}(…)' 에는 none 을 못 씁니다 — none 은 값이 아니라 값이 없다는 뜻입니다",
+                    "'{word}(…)' cannot hold none — none means there is no value"
+                ),
+            ));
+        }
+    }
     for v in &term.values {
         if let Val::Regex(p) = v {
             if term.key.is_some_and(|k| !k.is_text()) {
@@ -728,15 +834,19 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
             }
             continue;
         }
-        if let Val::Exact(_) = v
-            && !matches!(term.key, Some(Key::Title | Key::Body))
+        // 글 키의 `=` 는 글자 그대로 찾아 조용히 "없음" 이 된다. 숫자 · 날짜 키에서는 비교다(`urgency:=2`).
+        if let (Val::Bare(s), Some(k)) = (v, term.key)
+            && s.starts_with('=')
+            && matches!(
+                k,
+                Key::Status | Key::Type | Key::Tag | Key::Folder | Key::Author
+            )
         {
             return Err(QueryError::at(
                 pos,
                 crate::tf!(
-                    "'={}' — '=' 완전일치는 title · body 에만 씁니다(다른 키는 원래 완전일치)",
-                    "'={}' — '=' (exact) is for title and body (other keys already match exactly)",
-                    v.text()
+                    "'{s}' — '=' 은 title · body 에만 씁니다. 이 키는 원래 완전일치입니다. '=' 이 든 글은 따옴표로 묶으세요",
+                    "'{s}' — '=' is only for title and body. This key already matches exactly. Quote text that contains '='"
                 ),
             ));
         }
@@ -868,6 +978,19 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
         }
     }
     Ok(())
+}
+
+/// 한 문서에 값이 여럿일 수 있는 키 — `all` · `only` 가 뜻을 갖는다.
+fn has_many_values(target: Target, key: Key) -> bool {
+    match target {
+        Target::Quest => matches!(
+            key,
+            Key::Tag | Key::Campaign | Key::Child | Key::Prereq | Key::Successor
+        ),
+        Target::Campaign => key == Key::Quest,
+        Target::Library => key == Key::Tag,
+        Target::Comment => false,
+    }
 }
 
 /// SQL 에 끼울 값.
@@ -1056,13 +1179,10 @@ fn related_cond(from: &str, v: &str) -> Option<(String, Vec<Bind>)> {
             vec![],
         ));
     }
-    let (prefix, num) = split_slug(v)?;
+    let (c, b) = related_match(v)?;
     Some((
-        format!(
-            "EXISTS (SELECT 1 {from} AND o.deleted_at IS NULL AND o.number = ?
-              AND o.quest_type_id = (SELECT ot.id FROM quest_types ot WHERE UPPER(ot.prefix) = UPPER(?)))"
-        ),
-        vec![Bind::Int(num), Bind::Text(prefix)],
+        format!("EXISTS (SELECT 1 {from} AND o.deleted_at IS NULL AND {c})"),
+        b,
     ))
 }
 
@@ -1225,10 +1345,17 @@ impl Query {
                     alts.push(cond);
                     binds.extend(b);
                 }
+                if t.mode == Mode::Only {
+                    let (cond, b) = no_other_values(self.target, t)
+                        .ok_or_else(|| QueryError::at(t.pos, "'only(…)'".to_string()))?;
+                    alts.push(cond);
+                    binds.extend(b);
+                }
                 if alts.len() == 1 {
                     alts.remove(0)
                 } else {
-                    format!("({})", alts.join(" OR "))
+                    let op = if t.mode == Mode::Any { " OR " } else { " AND " };
+                    format!("({})", alts.join(op))
                 }
             }
             Expr::Not(inner) => format!("NOT {}", self.expr_sql(inner, binds)?),
@@ -1290,6 +1417,78 @@ pub enum HitTerm {
     Regex(String),
 }
 
+/// `only(a, b)` 의 나머지 절반 — 적힌 것 말고는 **없다**. 있는지는 `all` 과 같이 값마다 잰다.
+fn no_other_values(target: Target, term: &Term) -> Option<(String, Vec<Bind>)> {
+    let from = match (target, term.key?) {
+        (Target::Quest, Key::Tag) => "FROM quest_tags tg WHERE tg.quest_id = q.id",
+        (Target::Library, Key::Tag) => "FROM library_tags lt WHERE lt.book_id = library_docs.id",
+        (Target::Quest, Key::Campaign) => QUEST_CAMPAIGNS,
+        (Target::Quest, Key::Child) => QUEST_CHILDREN,
+        (Target::Quest, Key::Prereq) => QUEST_PREREQS,
+        (Target::Quest, Key::Successor) => QUEST_SUCCESSORS,
+        (Target::Campaign, Key::Quest) => CAMPAIGN_QUESTS,
+        _ => return None,
+    };
+    let mut conds = Vec::new();
+    let mut binds = Vec::new();
+    for v in &term.values {
+        let (c, b) = match (target, term.key?) {
+            (Target::Quest, Key::Tag) => text_cond(&["tg.tag"], v, Match::Exact),
+            (Target::Library, Key::Tag) => text_cond(&["lt.tag"], v, Match::Exact),
+            (Target::Quest, Key::Campaign) => campaign_slug_match(v.text())?,
+            (Target::Campaign, Key::Quest) => {
+                let (prefix, num) = split_slug(v.text())?;
+                (
+                    "UPPER(qt.prefix) = UPPER(?) AND q.number = ?".to_string(),
+                    vec![Bind::Text(prefix), Bind::Int(num)],
+                )
+            }
+            _ => related_match(v.text())?,
+        };
+        conds.push(format!("({c})"));
+        binds.extend(b);
+    }
+    let live = if matches!(term.key?, Key::Child | Key::Prereq | Key::Successor) {
+        " AND o.deleted_at IS NULL"
+    } else {
+        ""
+    };
+    Some((
+        format!(
+            "(NOT EXISTS (SELECT 1 {from}{live} AND NOT ({})))",
+            conds.join(" OR ")
+        ),
+        binds,
+    ))
+}
+
+const QUEST_CAMPAIGNS: &str = "FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id WHERE cq.quest_id = q.id AND c.deleted_at IS NULL";
+const QUEST_CHILDREN: &str = "FROM quests o WHERE o.parent_quest_id = q.id";
+const QUEST_PREREQS: &str =
+    "FROM quest_dependencies d JOIN quests o ON o.id = d.prerequisite_id WHERE d.quest_id = q.id";
+const QUEST_SUCCESSORS: &str =
+    "FROM quest_dependencies d JOIN quests o ON o.id = d.quest_id WHERE d.prerequisite_id = q.id";
+const CAMPAIGN_QUESTS: &str = "FROM campaign_quests cq JOIN quests q ON q.id = cq.quest_id JOIN quest_types qt ON qt.id = q.quest_type_id WHERE cq.campaign_id = campaigns.id AND q.deleted_at IS NULL";
+
+/// 이 줄의 캠페인이 그 번호인가(`c`).
+fn campaign_slug_match(s: &str) -> Option<(String, Vec<Bind>)> {
+    let (prefix, num) = split_slug(s)?;
+    Some((
+        "UPPER(c.campaign_slug) = UPPER(?)".into(),
+        vec![Bind::Text(format!("{prefix}-{num:03}"))],
+    ))
+}
+
+/// 이 줄의 퀘스트가 그 번호인가(`o`).
+fn related_match(s: &str) -> Option<(String, Vec<Bind>)> {
+    let (prefix, num) = split_slug(s)?;
+    Some((
+        "o.number = ? AND o.quest_type_id = (SELECT ot.id FROM quest_types ot WHERE UPPER(ot.prefix) = UPPER(?))"
+            .into(),
+        vec![Bind::Int(num), Bind::Text(prefix)],
+    ))
+}
+
 /// 값 하나 → 괄호로 감싼 조건과 값들.
 fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
     let s = v.text();
@@ -1328,20 +1527,12 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
                 b,
             )
         }
-        Some(Key::Campaign) if s.eq_ignore_ascii_case("none") => (
-            "NOT EXISTS (SELECT 1 FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
-              WHERE cq.quest_id = q.id AND c.deleted_at IS NULL)"
-                .into(),
-            vec![],
-        ),
+        Some(Key::Campaign) if s.eq_ignore_ascii_case("none") => {
+            (format!("NOT EXISTS (SELECT 1 {QUEST_CAMPAIGNS})"), vec![])
+        }
         Some(Key::Campaign) => {
-            let (prefix, num) = split_slug(s)?;
-            (
-                "EXISTS (SELECT 1 FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
-                  WHERE cq.quest_id = q.id AND c.deleted_at IS NULL AND UPPER(c.campaign_slug) = UPPER(?))"
-                    .into(),
-                vec![Bind::Text(format!("{prefix}-{num:03}"))],
-            )
+            let (c, b) = campaign_slug_match(s)?;
+            (format!("EXISTS (SELECT 1 {QUEST_CAMPAIGNS} AND {c})"), b)
         }
         Some(Key::Urgency) => urgency_cond(s)?,
         Some(Key::Due) => due_cond(s)?,
@@ -1361,15 +1552,9 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
                 vec![Bind::Text(prefix), Bind::Int(num)],
             )
         }
-        Some(Key::Child) => related_cond("FROM quests o WHERE o.parent_quest_id = q.id", s)?,
-        Some(Key::Prereq) => related_cond(
-            "FROM quest_dependencies d JOIN quests o ON o.id = d.prerequisite_id WHERE d.quest_id = q.id",
-            s,
-        )?,
-        Some(Key::Successor) => related_cond(
-            "FROM quest_dependencies d JOIN quests o ON o.id = d.quest_id WHERE d.prerequisite_id = q.id",
-            s,
-        )?,
+        Some(Key::Child) => related_cond(QUEST_CHILDREN, s)?,
+        Some(Key::Prereq) => related_cond(QUEST_PREREQS, s)?,
+        Some(Key::Successor) => related_cond(QUEST_SUCCESSORS, s)?,
         // 목록의 토론 아이콘과 같다 — 미해결이 하나라도 있으면 unresolved, 모두 풀렸으면 resolved.
         Some(Key::Discussion) => {
             const ANY: &str = "SELECT 1 FROM quest_comments dc WHERE dc.quest_id = q.id AND dc.discussion = 1";
@@ -1436,11 +1621,9 @@ fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         Some(Key::Quest) => {
             let (prefix, num) = split_slug(s)?;
             (
-                "EXISTS (SELECT 1 FROM campaign_quests cq JOIN quests q ON q.id = cq.quest_id
-                  JOIN quest_types qt ON qt.id = q.quest_type_id
-                  WHERE cq.campaign_id = campaigns.id AND q.deleted_at IS NULL
-                    AND UPPER(qt.prefix) = UPPER(?) AND q.number = ?)"
-                    .into(),
+                format!(
+                    "EXISTS (SELECT 1 {CAMPAIGN_QUESTS} AND UPPER(qt.prefix) = UPPER(?) AND q.number = ?)"
+                ),
                 vec![Bind::Text(prefix), Bind::Int(num)],
             )
         }
@@ -1589,10 +1772,11 @@ mod tests {
                         .map(|k| format!("{k:?}:").to_lowercase())
                         .unwrap_or_default();
                     let vs: Vec<String> = t.values.iter().map(val).collect();
-                    if vs.len() == 1 {
-                        format!("{k}{}", vs[0])
-                    } else {
-                        format!("{k}[{}]", vs.join(","))
+                    match (t.mode, vs.len()) {
+                        (Mode::Any, 1) => format!("{k}{}", vs[0]),
+                        (Mode::Any, _) => format!("{k}any({})", vs.join(",")),
+                        (Mode::All, _) => format!("{k}all({})", vs.join(",")),
+                        (Mode::Only, _) => format!("{k}only({})", vs.join(",")),
                     }
                 }
                 Expr::Not(i) => format!("-{}", go(i)),
@@ -1605,10 +1789,10 @@ mod tests {
 
     #[test]
     fn keys_lists_minus_and_words() {
-        let q = parse(r#"status:[open, in_progress] -tag:wip 로그인 urgency:<=2"#).unwrap();
+        let q = parse(r#"status:any(open, in_progress) -tag:wip 로그인 urgency:<=2"#).unwrap();
         assert_eq!(
             show(&q),
-            "(status:[open,in_progress] & -tag:wip & 로그인 & urgency:<=2)"
+            "(status:any(open,in_progress) & -tag:wip & 로그인 & urgency:<=2)"
         );
     }
 
@@ -1634,12 +1818,13 @@ mod tests {
 
     #[test]
     fn quotes_regex_exact_and_wildcards() {
-        let q =
-            parse(r#"tag:["두 낱말", x] "a:b c" -"빼고" /로그인|인증/ title:="정확히" tag:ui-*"#)
-                .unwrap();
+        let q = parse(
+            r#"tag:any("두 낱말", x) "a:b c" -"빼고" /로그인|인증/ title:="정확히" tag:ui-*"#,
+        )
+        .unwrap();
         assert_eq!(
             show(&q),
-            r#"(tag:["두 낱말",x] & "a:b c" & -"빼고" & /로그인|인증/ & title:=정확히 & tag:ui-*)"#
+            r#"(tag:any("두 낱말",x) & "a:b c" & -"빼고" & /로그인|인증/ & title:=정확히 & tag:ui-*)"#
         );
         // 정규식 안의 `\/` 와 띄어쓰기.
         assert_eq!(show(&parse(r"/a\/b c/").unwrap()), r"/a\/b c/");
@@ -1670,8 +1855,8 @@ mod tests {
         assert_eq!(at("(a | b"), 0); // 안 닫힌 괄호
         assert_eq!(at("| a"), 0); // 앞이 빈 연산자
         assert_eq!(at("a |"), 3); // 뒤가 빈 연산자
-        assert_eq!(at("tag:[a, b"), 9); // 안 닫힌 목록
-        assert_eq!(at("tag:[]"), 5);
+        assert_eq!(at("tag:any(a, b"), 12); // 안 닫힌 목록
+        assert_eq!(at("tag:any()"), 8);
         assert_eq!(at("/abc"), 0); // 안 닫힌 정규식
         assert_eq!(at("/(/"), 0); // 틀린 정규식
         assert_eq!(at("urgency:/1/"), 0); // 정규식을 못 쓰는 키
@@ -1681,10 +1866,14 @@ mod tests {
                 .message
                 .contains("status, type, tag")
         );
-        // 쉼표만 쓴 목록은 [ ] 를 알려 준다.
+        // 쉼표만 쓴 목록은 any 를 알려 준다.
         let e = parse("status:open,done").unwrap_err();
         assert_eq!(e.pos, 7);
-        assert!(e.message.contains("status:[open, done]"), "{}", e.message);
+        assert!(
+            e.message.contains("status:any(open, done)"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]
@@ -1714,7 +1903,7 @@ mod tests {
         assert_eq!(urgency_cond("2").unwrap().0, "q.urgency = ?");
         assert!(due_cond("<=2026-11-01").unwrap().0.ends_with("<= ?"));
         assert_eq!(split_slug("c-3"), Some(("c".into(), 3)));
-        let (sql, binds) = parse("-status:[done, cancelled] campaign:c-3")
+        let (sql, binds) = parse("-status:any(done, cancelled) campaign:c-3")
             .unwrap()
             .to_sql()
             .unwrap();
@@ -1776,7 +1965,7 @@ mod tests {
         assert!(
             parse_for(
                 Target::Campaign,
-                "status:[active, DONE] end:overdue quest:dev-3 title:출시"
+                "status:any(active, DONE) end:overdue quest:dev-3 title:출시"
             )
             .is_ok()
         );
@@ -1807,5 +1996,177 @@ mod tests {
             .unwrap();
         assert!(sql.starts_with(" AND NOT (EXISTS"), "{sql}");
         assert_eq!(binds, vec![Bind::Text("DEV".into()), Bind::Int(12)]);
+    }
+
+    /// 뜻을 낱말로 — 조용히 글자로 찾아 "없음" 이 되지 않고 고칠 길을 듣는다.
+    #[test]
+    fn several_values_say_what_they_mean() {
+        assert_eq!(show(&parse("tag:any(a, b)").unwrap()), "tag:any(a,b)");
+        assert_eq!(show(&parse("tag:all(a,b)").unwrap()), "tag:all(a,b)");
+        assert_eq!(show(&parse("tag:only(a)").unwrap()), "tag:only(a)");
+        assert_eq!(show(&parse("tag:ANY(a, b)").unwrap()), "tag:any(a,b)");
+        assert_eq!(show(&parse("tag:any").unwrap()), "tag:any");
+        assert_eq!(
+            show(&parse(r#"(tag:only(a) | -tag:"any(b)")"#).unwrap()),
+            r#"(tag:only(a) | -tag:"any(b)")"#
+        );
+        assert_eq!(
+            show(&parse("title:any(=a, =b)").unwrap()),
+            "title:any(=a,=b)"
+        );
+        assert_eq!(show(&parse("title:all(a, b)").unwrap()), "title:all(a,b)");
+        for (q, word) in [
+            ("tag:[a, b]", "any(a, b)"),
+            ("status:all(open, done)", "any(a, b)"),
+            ("status:only(open)", "any(a, b)"),
+            ("title:only(a)", "any(a, b)"),
+            ("parent:all(DEV-1, DEV-2)", "any(a, b)"),
+            ("campaign:all(none, C-1)", "none"),
+            ("title:=any(a, b)", "any(=a, =b)"),
+            ("title:=[a, b]", "any(=a, =b)"),
+            ("title:=/a/", "^"),
+            ("tag:=test", "title"),
+            ("status:=open", "title"),
+            ("tag:any(a)b", "띄어"),
+        ] {
+            let m = parse(q).unwrap_err().message;
+            assert!(m.contains(word), "{q} → {m}");
+        }
+        for (target, q) in [
+            (Target::Campaign, "status:all(active, done)"),
+            (Target::Library, "folder:all(a, b)"),
+            (Target::Comment, "quest:all(DEV-1, DEV-2)"),
+        ] {
+            assert!(parse_for(target, q).is_err(), "{q}");
+        }
+    }
+
+    /// 실제 길드 — `any` 는 하나라도, `all` 은 모두, `only` 는 정확히 이것들만. 세 종류의 목록과 부정까지.
+    #[tokio::test]
+    async fn any_all_and_only_find_the_right_documents() {
+        let root = std::env::temp_dir().join(format!(
+            "og-query-{}-{}",
+            std::process::id(),
+            crate::test_seq()
+        ));
+        crate::repo::seed_guild_dir(&root).unwrap();
+        let store = crate::Store::open(&root).await.unwrap();
+        let mut quests = Vec::new();
+        for tags in [vec!["test"], vec!["test", "ui"], vec!["ui"], vec![]] {
+            let q = crate::ops::create_quest(
+                &store,
+                crate::models::CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: "퀘스트".into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+            let tags = tags.into_iter().map(String::from).collect();
+            crate::ops::set_quest_tags(&store, q.id, tags)
+                .await
+                .unwrap();
+            quests.push(q);
+        }
+        let quest = |q: &'static str| {
+            let store = store.clone();
+            async move {
+                let query = crate::models::ListQuery {
+                    q: Some(q.into()),
+                    ..Default::default()
+                };
+                let mut found: Vec<i64> = crate::services::quests::list(&store.index_pool, &query)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|r| r.number)
+                    .collect();
+                found.sort();
+                found
+            }
+        };
+        assert_eq!(quest("tag:any(test, ui)").await, [1, 2, 3]);
+        assert_eq!(quest("tag:all(test, ui)").await, [2]);
+        assert_eq!(quest("tag:only(test)").await, [1]);
+        assert_eq!(quest("tag:only(ui, test)").await, [2]);
+        assert_eq!(quest("-tag:only(test)").await, [2, 3, 4]);
+        assert_eq!(quest("tag:only(te*)").await, [1]);
+
+        for prereq in [&quests[0], &quests[1]] {
+            crate::ops::add_prerequisite(
+                &store,
+                quests[2].id,
+                crate::models::AddPrerequisiteRequest {
+                    prerequisite_id: prereq.id,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let (a, b) = (quests[0].quest_id.clone(), quests[1].quest_id.clone());
+        let all = Box::leak(format!("prereq:all({a}, {b})").into_boxed_str());
+        let only_one = Box::leak(format!("prereq:only({a})").into_boxed_str());
+        let only_both = Box::leak(format!("prereq:only({a}, {b})").into_boxed_str());
+        assert_eq!(quest(all).await, [3]);
+        assert!(quest(only_one).await.is_empty());
+        assert_eq!(quest(only_both).await, [3]);
+
+        // 도서관의 태그.
+        for (title, tags) in [("하나", vec!["설계"]), ("둘", vec!["설계", "결정"])] {
+            let book = crate::ops::library::create_book(&store, title, "", "")
+                .await
+                .unwrap();
+            let tags = tags.into_iter().map(String::from).collect();
+            crate::ops::library::set_book_tags(&store, &book.book_id(), tags)
+                .await
+                .unwrap();
+        }
+        let books = async |q: &str| {
+            crate::ops::library::list_books_query(&store, None, &[], Some(q))
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|d| d.title)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(books("tag:only(설계)").await, ["하나"]);
+        assert_eq!(books("tag:all(설계, 결정)").await, ["둘"]);
+
+        // 캠페인의 퀘스트.
+        let mut slugs = Vec::new();
+        for (title, linked) in [("하나", vec![0]), ("둘", vec![0, 1])] {
+            let c = crate::ops::campaigns::create_campaign(
+                &store,
+                crate::models::CreateCampaignRequest {
+                    title: title.into(),
+                    description: None,
+                    started_at: None,
+                    ended_at: None,
+                },
+            )
+            .await
+            .unwrap();
+            for i in linked {
+                crate::ops::campaigns::link_quest_by_slug(&store, c.id, &quests[i].quest_id)
+                    .await
+                    .unwrap();
+            }
+            slugs.push(c.campaign_slug);
+        }
+        let campaigns = async |q: String| {
+            crate::services::campaigns::list_matching(&store.index_pool, None, Some(&q))
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|c| c.title)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(campaigns(format!("quest:only({a})")).await, ["하나"]);
+        assert_eq!(campaigns(format!("quest:all({a}, {b})")).await, ["둘"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

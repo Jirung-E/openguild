@@ -100,7 +100,7 @@ POST /bot123456:AA.../sendMessage
     call  = "digest"
 ```
 
-- 함수는 받는 것 없이 불린다. `query("quest", "status:[open, in_progress] due:overdue")` 로 목록을 고르고(`permissions` 에 `query`), 비어 있으면 그냥 끝낸다.
+- 함수는 받는 것 없이 불린다. `query("quest", "status:any(open, in_progress) due:overdue")` 로 목록을 고르고(`permissions` 에 `query`), 비어 있으면 그냥 끝낸다.
   쿼리는 목록 화면 · `quest list -q` 와 같다.
 - 앱에서만 돈다. 알림은 앱 화면의 알림이다 — 서버에서 돌면 서버 로그로만 가서 뺐다.
 - `1d` 는 **날짜**로 센다 — 그날 처음 앱을 켜면 약 5초 뒤 돌고, 오늘 안에 다시 켜면 안 돈다. 켜 둔 채면 자정에 돈다(30초마다 확인).

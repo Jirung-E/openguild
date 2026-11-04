@@ -1862,7 +1862,7 @@ mod tests {
         );
         assert_eq!(ids(None, vec![], "folder:none").await, vec![t.clone()]);
         assert_eq!(
-            ids(None, vec![], "folder:[보관, 설계/잠금]").await,
+            ids(None, vec![], "folder:any(보관, 설계/잠금)").await,
             vec![l.clone(), o.clone()]
         );
         // REQ-040: 폴더 경로 전체에 `*` · 정규식, 범위, 또는, title.

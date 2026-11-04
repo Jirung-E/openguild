@@ -2,7 +2,7 @@
 
 fn late(id) { #{ id: id, title: "제목 " + id, status: "open" } }
 
-fn given(list) { set_query("quest", "status:[open, in_progress] due:overdue", list); }
+fn given(list) { set_query("quest", "status:any(open, in_progress) due:overdue", list); }
 
 fn test_one_notice_for_the_list() {
     given([late("DEV-1"), late("DEV-2")]);

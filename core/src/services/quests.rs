@@ -1765,7 +1765,10 @@ mod tests {
         assert_eq!(ids("tag:ui".into(), d()).await, vec![a]);
         assert_eq!(ids("-tag:ui".into(), d()).await, vec![b, c]);
         assert_eq!(ids("status:done".into(), d()).await, vec![c]);
-        assert_eq!(ids("status:[open, 완료]".into(), d()).await, vec![a, b, c]);
+        assert_eq!(
+            ids("status:any(open, 완료)".into(), d()).await,
+            vec![a, b, c]
+        );
         // REQ-040: 또는 · 괄호 · 범위 · 정규식(SQLite REGEXP) · title · 와일드카드.
         assert_eq!(ids("tag:ui | status:done".into(), d()).await, vec![a, c]);
         assert_eq!(
@@ -2057,7 +2060,7 @@ mod tests {
             ids(format!("id:{}-{na:03}", p.to_lowercase())).await,
             vec![a]
         );
-        assert_eq!(ids(format!("id:[{p}-{na}, {p}-{nc}]")).await, vec![a, c]);
+        assert_eq!(ids(format!("id:any({p}-{na}, {p}-{nc})")).await, vec![a, c]);
         assert_eq!(ids(format!("id:{p}-{na}..={p}-{nc}")).await, vec![a, b, c]);
         assert_eq!(ids(format!("id:{p}-{na}..{p}-{nc}")).await, vec![a, b]);
         assert_eq!(ids(format!("id:{p}-{nc}..")).await, vec![c]);

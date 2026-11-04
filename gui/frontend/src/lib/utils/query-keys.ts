@@ -5,7 +5,7 @@ export type QueryKeyRow = readonly [string, string, string];
 
 export const QUEST_QUERY_KEYS: readonly QueryKeyRow[] = [
 	['id', 'id:DEV-1..=DEV-9', 'query.helpId'],
-	['status', 'status:[open, in_progress]', 'filter.queryHelpStatus'],
+	['status', 'status:any(open, in_progress)', 'filter.queryHelpStatus'],
 	['type', 'type:BUG', 'filter.queryHelpType'],
 	['tag', 'tag:ui-*', 'filter.queryHelpTag'],
 	['campaign', 'campaign:C-001', 'filter.queryHelpCampaign'],

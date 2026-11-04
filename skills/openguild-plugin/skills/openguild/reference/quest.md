@@ -72,7 +72,7 @@ needs a human to look at it (UI/UX, anything not automatable), move to
 One string instead of many flags — same syntax as the server's `?q=`:
 
 ```bash
-openguild quest list -q 'status:[open, in_progress] -tag:wip urgency:1..=2 login'
+openguild quest list -q 'status:any(open, in_progress) -tag:wip urgency:1..=2 login'
 openguild quest list -q '(tag:urgent | due:overdue) -status:done'
 openguild quest list -q 'title:/^login/ due:2026-11-01..2026-12-01'
 openguild quest list -q 'campaign:C-001 due:overdue'
@@ -81,7 +81,7 @@ openguild quest list -q 'parent:none type:BUG'
 
 - Separate terms = AND (`&` / `AND` also work); `|` / `OR` = OR (uppercase only — `or` is a word);
   a leading `-` = NOT; group with `( )`. AND binds tighter: `a b | c` = `(a b) | c`.
-- One of several values: `status:[open, in_progress]` (a bare comma is an error that suggests the brackets).
+- Several values say what they mean: `status:any(open, in_progress)` one of them, `tag:all(a, b)` all of them, `tag:only(a, b)` exactly these. `all` and `only` work for keys with several values per document (`tag`, `campaign`, `child`, `prereq`, `successor`). A bare comma or `[a, b]` is an error that suggests these.
 - Ranges: `a..b` (end excluded), `a..=b` (end included), `a..`, `..=b` — for `urgency` and every date key.
   Comparisons (`<=2`, `>=2026-11-01`) still work.
 - Keyed text values match the whole value, ignoring case; `*` = any text (`tag:ui-*`); `/regex/` = a case-insensitive regex

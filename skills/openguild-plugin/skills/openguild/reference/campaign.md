@@ -25,7 +25,7 @@ openguild campaign checklist remove <campaign-slug> <index>
 ### Filtering with a query
 
 `campaign list -q` takes the same `key:value` syntax as `quest list -q`
-(separate terms = AND, `|` / `OR` = OR, leading `-` = NOT, `( )`, `[a, b]`, ranges `a..b` / `a..=b`,
+(separate terms = AND, `|` / `OR` = OR, leading `-` = NOT, `( )`, `any(a, b)` (one of) / `all(a, b)` (all of) / `only(a, b)` (exactly these), ranges `a..b` / `a..=b`,
 `*`, `/regex/`; bare words search title, description and id; `title` and `body` keys) — only the keys differ:
 
 | key | values |

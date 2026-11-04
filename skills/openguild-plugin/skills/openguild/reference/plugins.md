@@ -105,7 +105,7 @@ permissions = ["notify", "query"]
 
 ```rhai
 fn overdue() {
-    let late = query("quest", "status:[open, in_progress] due:overdue");
+    let late = query("quest", "status:any(open, in_progress) due:overdue");
     if late.is_empty() { return; }
     notify(`${late.len()} overdue`);
 }
