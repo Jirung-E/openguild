@@ -29,7 +29,7 @@
 //!
 //! # 줄이 받는 것
 //!
-//! 다른 줄과 같은 `fn 이름(e)`. `e.event` 는 `"every"`, `e.items` 는 맞는 목록(짧은 요약), `e.count` 는 개수, `e.line` ·
+//! 다른 줄과 같은 `fn 이름(e)`. `e.event` 는 `"every"`, `e.items` 는 맞는 목록(모양은 이벤트와 같다), `e.count` 는 개수, `e.line` ·
 //! `e.every` · `e.query` · `e.of` 도 실린다. **맞는 것이 없으면 부르지 않는다.** `action` 줄이면 본문이 이 이벤트 JSON 이다.
 use super::runtime::{Delivery, run_lines};
 use super::{Handler, Plugin};
@@ -258,8 +258,10 @@ fn claim_locked(file: &Path, p: &Plugin, now: u64) -> Result<Vec<usize>, String>
     Ok(due)
 }
 
-/// 쿼리에 맞는 목록 — 한 건은 짧은 요약이다(본문 같은 큰 칸은 뺀다). 댓글만 본문을 싣는다 — 본문이 곧 댓글이다.
+/// 쿼리에 맞는 목록. **한 건의 모양은 같은 것의 이벤트와 같다**([`crate::events::payload`]) — 같은 댓글이 이벤트로
+/// 올 때와 시간으로 올 때 칸 이름이 다르면 스크립트를 두 벌 써야 한다. 이벤트 칸에 목록에서만 쓸모 있는 칸을 더할 뿐이다.
 async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult<Vec<Value>> {
+    use crate::events::payload;
     Ok(match of {
         Of::Quest => {
             let query = crate::models::ListQuery {
@@ -270,47 +272,24 @@ async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult
                 .await?
                 .into_iter()
                 .map(|r| {
-                    json!({
-                        "id": r.quest_id,
-                        "title": r.title,
-                        "status": r.status_slug,
-                        "type": r.type_prefix,
-                        "urgency": r.urgency,
-                        "tags": r.tags,
-                        "desired_due": r.desired_due,
-                        "required_due": r.required_due,
-                        "campaign_due": r.earliest_campaign_due,
-                        "updated_at": r.updated_at,
-                        "comment_count": r.comment_count,
-                    })
+                    let mut item = payload::quest(&r);
+                    item["desired_due"] = json!(r.desired_due);
+                    item["required_due"] = json!(r.required_due);
+                    item["campaign_due"] = json!(r.earliest_campaign_due);
+                    item["comment_count"] = json!(r.comment_count);
+                    item
                 })
                 .collect()
         }
         Of::Campaign => crate::services::campaigns::list_matching(&store.index_pool, None, Some(q))
             .await?
-            .into_iter()
-            .map(|c| {
-                json!({
-                    "id": c.campaign_slug,
-                    "title": c.title,
-                    "status": c.status,
-                    "start": c.started_at,
-                    "end": c.ended_at,
-                })
-            })
+            .iter()
+            .map(payload::campaign)
             .collect(),
         Of::Library => crate::ops::library::list_books_query(store, None, &[], Some(q))
             .await?
-            .into_iter()
-            .map(|d| {
-                json!({
-                    "id": d.book_id(),
-                    "title": d.title,
-                    "folder": d.path,
-                    "tags": d.tags,
-                    "updated_at": d.updated_at,
-                })
-            })
+            .iter()
+            .map(payload::book)
             .collect(),
         Of::Comment => crate::services::comments::search_global(
             &store.index_pool,
@@ -322,26 +301,27 @@ async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult
         .await?
         .into_iter()
         .map(|c| {
-            let on = |scope: &str| (c.scope == scope).then(|| c.slug.clone());
-            let discussion = match (c.discussion, c.resolved) {
-                (false, _) => "none",
-                (true, false) => "unresolved",
-                (true, true) => "resolved",
+            let entry = crate::repo::comments::CommentEntry {
+                id: c.entry_id as u64,
+                ts: c.ts,
+                author: c.author,
+                body: c.body,
+                parent_id: c.parent_id.map(|p| p as u64),
+                reactions: c
+                    .reactions
+                    .split(',')
+                    .filter(|r| !r.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+                discussion: c.discussion,
+                resolved: c.resolved,
+                pinned: c.pinned,
+                edited_at: c.edited_at,
             };
-            json!({
-                "id": c.entry_id,
-                "quest": on("quest"),
-                "campaign": on("campaign"),
-                "author": c.author,
-                "body": c.body,
-                "parent": c.parent_id,
-                "discussion": discussion,
-                "reactions": crate::events::payload::reactions(
-                    c.reactions.split(',').filter(|r| !r.is_empty()),
-                ),
-                "created_at": c.ts,
-                "updated_at": c.edited_at.as_deref().unwrap_or(&c.ts),
-            })
+            // 이벤트에서는 `e.target` 이다 — 목록에서는 한 건마다 달라 그 안에 싣는다.
+            let mut item = payload::comment(&entry);
+            item["target"] = payload::target(&c.scope, &c.slug);
+            item
         })
         .collect(),
     })
@@ -728,12 +708,15 @@ mod tests {
             .unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0]["id"], 1);
-        assert_eq!(found[0]["quest"], q.quest_id.as_str());
-        assert!(found[0]["campaign"].is_null());
+        assert_eq!(
+            found[0]["target"],
+            serde_json::json!({ "kind": "quest", "id": q.quest_id })
+        );
         assert_eq!(found[0]["author"], "claude");
         assert_eq!(found[0]["body"], "결정 필요");
-        assert_eq!(found[0]["discussion"], "unresolved");
-        assert_eq!(found[0]["updated_at"], found[0]["created_at"]);
+        assert_eq!(found[0]["discussion"], true);
+        assert_eq!(found[0]["resolved"], false);
+        assert!(found[0]["edited_at"].is_null());
         assert_eq!(found[0]["reactions"], serde_json::json!([]));
         // 반응은 파일에만 쓰고 끝내면 안 된다 — 이 목록은 index 를 읽는다.
         crate::ops::comments::toggle_comment_reaction(&store, &q.quest_id, 1, "👍", "kim")
@@ -767,6 +750,72 @@ mod tests {
         );
         // 줄을 읽을 때 댓글의 키로 검사한다.
         assert!(crate::query::parse_for(Of::Comment.target(), "status:open").is_err());
+    }
+
+    /// 같은 문서가 이벤트로 올 때와 시간으로 올 때 칸 이름 · 값의 모양이 같다. 목록은 칸을 더할 수만 있다.
+    #[tokio::test]
+    async fn items_have_every_field_of_the_event_with_the_same_shape() {
+        use crate::events::payload;
+        let root = tmp("item-shapes");
+        crate::repo::seed_guild_dir(&root).unwrap();
+        let store = crate::Store::open(&root).await.unwrap();
+        let quest = crate::ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "퀘스트".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let campaign = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "캠페인".into(),
+                description: None,
+                started_at: Some("2030-01-01".into()),
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let book = crate::ops::library::create_book(&store, "문서", "", "")
+            .await
+            .unwrap();
+        let comment = crate::ops::comments::add_comment_entry(
+            &store,
+            &quest.quest_id,
+            "claude".into(),
+            "본문".into(),
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+        let check = |label: &str, event: Value, item: &Value| {
+            for (key, want) in event.as_object().unwrap() {
+                assert_eq!(item.get(key), Some(want), "{label} 의 {key}");
+            }
+        };
+        let quest = crate::services::quests::list(&store.index_pool, &Default::default())
+            .await
+            .unwrap()
+            .remove(0);
+        let query = format!("id:{}", quest.quest_id);
+        let found = items(&store, Of::Quest, &query).await.unwrap();
+        check("퀘스트", payload::quest(&quest), &found[0]);
+        let found = items(&store, Of::Campaign, "start:2030-01-01")
+            .await
+            .unwrap();
+        check("캠페인", payload::campaign(&campaign), &found[0]);
+        let found = items(&store, Of::Library, "title:문서").await.unwrap();
+        check("문서", payload::book(&book), &found[0]);
+        let found = items(&store, Of::Comment, "author:claude").await.unwrap();
+        check("댓글", payload::comment(&comment), &found[0]);
     }
 
     #[tokio::test]

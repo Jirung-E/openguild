@@ -444,8 +444,9 @@ fn overdue(e) {
 ```
 
 `of` picks the list: `quest` (default), `campaign`, `library`, `comment` — the query then uses that
-list's keys and `e.items` holds those (`of = "comment"` items carry the body: `id quest campaign
-author body parent discussion reactions created_at updated_at`). `reactions` is a list of `{ emoji, authors }`, the same as on `e.comment` of comment events.
+list's keys and `e.items` holds those. An item has the same fields as that document in an event
+(`e.quest`, `e.campaign`, `e.book`, `e.comment`), so one function can read both. Quests add the due dates and
+`comment_count`; comments add `target` (`{ kind, id }`, `e.target` on an event).
 
 It runs only in the app and the server (put `gui` or `server` in `scope`), once per interval per
 machine even when both are open, and not at all when nothing matches. Test it with

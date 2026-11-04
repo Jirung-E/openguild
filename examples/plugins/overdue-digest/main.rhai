@@ -1,4 +1,4 @@
-// 기한이 지난 목록 → 알림 한 줄. `e.items` 는 맞는 퀘스트의 짧은 요약(id · title · status · …)이다.
+// 기한이 지난 목록 → 알림 한 줄. `e.items` 의 한 건은 이벤트의 `e.quest` 와 같은 모양이다(id · title · status · …).
 
 fn digest(e) {
     let max = config("MAX");

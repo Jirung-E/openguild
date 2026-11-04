@@ -42,6 +42,7 @@ pub fn comment(c: &CommentEntry) -> Value {
         "resolved": c.resolved,
         "reactions": reactions(c.reactions.iter().map(String::as_str)),
         "pinned": c.pinned,
+        "edited_at": c.edited_at,
     })
 }
 

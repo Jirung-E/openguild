@@ -378,7 +378,7 @@ fn on_comment(e, subject) {
 ```
 
 - 맞는 것이 없으면 함수를 부르지 않습니다.
-- `of = "comment"` 면 `e.items` 는 맞는 댓글이고, 본문도 들어 있습니다(`id quest campaign author body parent discussion reactions created_at updated_at`). `reactions` 는 `{ emoji, authors }` 목록이고, 댓글 이벤트의 `e.comment.reactions` 도 같은 모양입니다.
+- `e.items` 한 건의 모양은 그 문서가 이벤트로 올 때(`e.quest` · `e.campaign` · `e.book` · `e.comment`)와 같습니다. 그래서 함수 하나로 둘 다 읽을 수 있습니다. 퀘스트는 기한과 `comment_count` 가, 댓글은 `target`(`{ kind, id }`, 이벤트에서는 `e.target`)이 더 있습니다. 댓글에는 본문과 반응(`reactions`: `{ emoji, authors }` 목록)이 들어 있습니다. 쿼리 키(`start:` · `folder:` · `discussion:unresolved`)는 이것과 별개입니다.
 - 앱 · 서버에서만 돕니다(CLI 는 명령이 끝나면 꺼집니다). 같은 기계에서 둘 다 열어도 한 번만 돕니다.
 - 처음 허용하면 곧 한 번, 그 뒤로 `every` 마다. 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돕니다.
 - `1d` 는 **날짜**가 바뀌면 돕니다 — 그날 처음 켤 때 한 번(켜 둔 채면 자정에). 24시간마다는 `24h` 로 씁니다.

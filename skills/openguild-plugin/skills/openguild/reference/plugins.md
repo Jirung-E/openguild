@@ -110,11 +110,13 @@ Instead of `pre` / `post`, a line can run **on a schedule** and receive a list:
 | `of` | Which list: `quest` (default), `campaign`, `library`, `comment`. |
 
 The function gets `e` as usual: `e.event` is `"every"`, `e.items` the matching list, `e.count`, plus
-`e.line`, `e.every`, `e.query`, `e.of`. Items are short summaries — quests: `id title status type
-urgency tags desired_due required_due campaign_due updated_at comment_count`; campaigns: `id title
-status start end`; library: `id title folder tags updated_at`; comments, with the body: `id quest campaign author body parent
-discussion reactions created_at updated_at`. Comment `reactions` is a list of `{ emoji, authors }`, the
-same on these items and on `e.comment` of comment events (`comment.reaction_changed` fires when one changes). **Nothing matches → nothing is
+`e.line`, `e.every`, `e.query`, `e.of`. **An item has the same fields as that document in an event**, so one
+function can read both: quests `e.quest` (`id title type status urgency tags created_at updated_at`) plus
+`desired_due required_due campaign_due comment_count`; campaigns `e.campaign` (`id title status started_at
+ended_at created_at updated_at`); library `e.book` (`id title path tags created_at updated_at`); comments
+`e.comment` (`id author body ts parent_id discussion resolved reactions pinned edited_at`) plus `target` —
+`{ kind, id }`, what `e.target` is on an event. `discussion` and `resolved` are true/false, and `reactions` is a
+list of `{ emoji, authors }`. The query keys are a separate thing (`start:`, `folder:`, `discussion:unresolved`). **Nothing matches → nothing is
 called.** An `action` line sends that event JSON as the body. `pre`, `post`, `when`, `with`, `wait`,
 `group` and orders cannot be used on a scheduled line.
 
