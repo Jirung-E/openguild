@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '../Icon.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
@@ -220,6 +221,7 @@
 								<td>
 									<input
 										type="text"
+										use:focusOnMount
 										bind:value={editSlug}
 										maxlength="32"
 										pattern="[a-z0-9_]+"

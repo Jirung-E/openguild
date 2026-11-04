@@ -553,6 +553,7 @@
 								<MarkdownEditor
 									bind:value={editText}
 									mediaOnly
+									autofocus
 									onError={(msg) =>
 										(saveError = `${t('rules.attachUploadFailed', $locale)}: ${msg}`)}
 								/>

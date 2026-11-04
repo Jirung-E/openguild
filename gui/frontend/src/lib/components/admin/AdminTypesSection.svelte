@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onMount } from 'svelte';
@@ -201,6 +202,7 @@
 								<td>
 									<input
 										type="text"
+										use:focusOnMount
 										bind:value={editPrefix}
 										maxlength="6"
 										pattern="[A-Z0-9]+"

@@ -55,7 +55,8 @@
 		defaultHeight = 480,
 		minHeightRem = undefined,
 		height = $bindable(undefined),
-		persistHeight = true
+		persistHeight = true,
+		autofocus = false
 	}: {
 		/** 편집 내용 — CM 입력이 실시간 반영되므로 저장 시 이 값을 그대로 사용. */
 		value?: string;
@@ -83,6 +84,11 @@
 		height?: number;
 		/** 바꾼 높이를 "모든 편집기가 같이 쓰는 높이" 로 저장할지. 댓글처럼 잠깐 쓰는 칸은 끈다. */
 		persistHeight?: boolean;
+		/**
+		 * DEV-475: 편집 버튼으로 열 때 바로 쓰게 포커스를 준다. 긴 문서는 첫머리를 보며 시작하고(true),
+		 * 짧은 댓글은 끝에서 이어 쓴다('end').
+		 */
+		autofocus?: boolean | 'end';
 	} = $props();
 
 	// DEV-172: cross-link 자동완성 상태 — QuestCommentsSection(DEV-171)과 동일한
@@ -389,6 +395,12 @@
 	$effect(() => {
 		if (!container) return;
 		init();
+		if (autofocus && view) {
+			if (autofocus === 'end') {
+				view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
+			}
+			view.focus();
+		}
 		return () => {
 			cmScroller = null;
 			view?.destroy();

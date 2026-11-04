@@ -186,6 +186,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ### Changed
 
+- 편집 버튼을 누르면 입력칸에 바로 포커스가 간다 — 댓글 · 답글 · 메모 · 본문 · 도서관 · 규칙 · 일지 · 태그 · 관리 화면. 댓글은 글 끝에서 이어 쓰고, 문서는 첫머리에서 시작한다 (DEV-475)
 - 쿼리 키와 이름을 맞췄다 — `quest list --has-sub` · `--no-sub` 는 `--has-child` · `--no-child` 로, 서버의 `?has_sub=` · `?no_sub=` 는
   `?has_child=` · `?no_child=` 로, JSON 과 `--field` 의 `sub_quests` 는 `children` 으로. 옛 이름은 없앴다 (REQ-039)
 - 서버는 조건을 받는 경로에서 모르는 조건을 거절한다(400) — 틀린 이름에 전체 목록이 돌아가 거른 줄 아는 일을 막는다 (REQ-039)

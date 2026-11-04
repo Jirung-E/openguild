@@ -245,6 +245,7 @@
 						<MarkdownEditor
 							bind:value={editText}
 							mediaOnly
+							autofocus
 							minHeightRem={4}
 							defaultHeight={360}
 							onError={(msg) => (saveError = `${t('campaign.attachFailed', $locale)}: ${msg}`)}

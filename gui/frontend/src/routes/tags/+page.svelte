@@ -15,6 +15,7 @@
   나눠 갖지 않게 합쳤다.
 -->
 <script lang="ts">
+	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
@@ -217,6 +218,7 @@
 	<div class="editor">
 		{#if editing === ''}
 			<input
+				use:focusOnMount
 				class="input slug"
 				type="text"
 				bind:value={editSlug}
@@ -234,6 +236,7 @@
 			disabled={busy}
 		/>
 		<input
+			use:focusOnMount={editing !== ''}
 			class="input desc-input"
 			type="text"
 			bind:value={editDescription}

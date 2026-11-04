@@ -53,6 +53,7 @@
 	import { EditConflictError, type EditConflict } from '$lib/api/editConflict';
 	// DEV-130: Tab = tab 문자 삽입 (focus 이동 X).
 	import { tabInsert } from '$lib/actions/tab-insert';
+	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
 	import { textareaAttach } from '$lib/utils/editor-attach';
 	// DEV-289: 댓글 입력창을 마크다운 편집기로 토글 (본문/메모와 동일 컴포넌트).
@@ -1140,6 +1141,7 @@
 					bind:value={replyBody}
 					onError={(m) => (replyError = m)}
 					mediaOnly
+					autofocus="end"
 					minHeightRem={4}
 					bind:height={replyH}
 					persistHeight={false}
@@ -1147,6 +1149,7 @@
 				/>
 			{:else}
 				<textarea
+					use:focusOnMount
 					use:tabInsert
 					use:textareaAttach={{
 						onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
@@ -1287,6 +1290,7 @@
 					bind:value={editBody}
 					onError={(m) => (editError = m)}
 					mediaOnly
+					autofocus="end"
 					minHeightRem={4}
 					bind:height={editH}
 					persistHeight={false}
@@ -1294,6 +1298,7 @@
 				/>
 			{:else}
 				<textarea
+					use:focusOnMount
 					use:tabInsert
 					use:textareaAttach={{
 						onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`),

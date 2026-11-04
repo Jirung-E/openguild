@@ -927,6 +927,7 @@
 					/>
 					<MarkdownEditor
 						bind:value={editDescription}
+						autofocus
 						onError={(msg) => (saveError = `${t('qd.attachUploadFailed', $locale)}: ${msg}`)}
 						onAttach={attachToSection}
 					/>

@@ -633,6 +633,7 @@
 					<span>{t('campaign.bodyLabel', $locale)}</span>
 					<MarkdownEditor
 						bind:value={bodyEdit}
+						autofocus
 						onError={(msg) => (error = `${t('campaign.attachUploadFailed', $locale)}: ${msg}`)}
 						onAttach={attachToSection}
 					/>

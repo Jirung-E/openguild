@@ -1973,6 +1973,7 @@
 								/>
 								<MarkdownEditor
 									bind:value={editText}
+									autofocus
 									onError={(msg) => (saveError = `${t('library.attachUploadFail', $locale)}${msg}`)}
 									onAttach={attachToSection}
 								/>

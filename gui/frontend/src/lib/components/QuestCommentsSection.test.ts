@@ -147,3 +147,23 @@ describe('BUG-382 페이지 내 검색어가 든 접힌 댓글은 잠시 펼친�
 		await vi.waitFor(() => expect(container.querySelector('.entry-list')).not.toBeNull());
 	});
 });
+
+describe('QuestCommentsSection — 편집 버튼 포커스 (DEV-475)', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		vi.mocked(commentsApi.listComments).mockResolvedValue({ entries: [entry(1)] });
+	});
+
+	it('편집을 누르면 입력칸에 포커스가 가고 글 끝에서 이어 쓴다', async () => {
+		const { container } = await renderSection();
+		const edit = [...container.querySelectorAll<HTMLButtonElement>('.link-btn')].find((b) =>
+			/편집|Edit/.test(b.textContent ?? '')
+		)!;
+		edit.click();
+		await vi.waitFor(() => expect(container.querySelector('.entry textarea')).not.toBeNull());
+		const ta = container.querySelector<HTMLTextAreaElement>('.entry textarea')!;
+		expect(document.activeElement).toBe(ta);
+		expect(ta.value).toBe('본문 1');
+		expect(ta.selectionStart).toBe(ta.value.length);
+	});
+});

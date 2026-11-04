@@ -67,3 +67,36 @@ describe('BUG-360 편집기 높이 넘겨받기', () => {
 		expect(localStorage.getItem(KEY)).toBe('520');
 	});
 });
+
+describe('DEV-475 편집기 포커스', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+	});
+
+	const open = async (props: object) => {
+		render(MarkdownEditor, { props: { value: '첫 줄\n끝 줄', onError: () => {}, ...props } });
+		await tick();
+		return document.querySelector('.cm-content') as HTMLElement;
+	};
+	const caret = () => {
+		const sel = window.getSelection();
+		return sel?.anchorNode?.textContent ?? '';
+	};
+
+	it('안 시키면 포커스를 가져가지 않는다 — 항상 떠 있는 입력칸이 화면을 끌고 가면 안 된다', async () => {
+		const cm = await open({});
+		expect(document.activeElement).not.toBe(cm);
+	});
+
+	it('문서 본문은 첫머리에서 시작한다', async () => {
+		const cm = await open({ autofocus: true });
+		expect(document.activeElement).toBe(cm);
+		expect(caret()).toContain('첫 줄');
+	});
+
+	it("댓글은 끝에서 이어 쓴다('end')", async () => {
+		const cm = await open({ autofocus: 'end' });
+		expect(document.activeElement).toBe(cm);
+		expect(caret()).toContain('끝 줄');
+	});
+});

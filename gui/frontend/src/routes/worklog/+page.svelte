@@ -262,6 +262,8 @@
 			],
 			parent: editorContainer
 		});
+		// DEV-475: 편집 버튼으로 열면 바로 쓴다.
+		editorView.focus();
 	}
 	$effect(() => {
 		const t = $effectiveTheme;
