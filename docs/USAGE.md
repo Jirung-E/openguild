@@ -378,7 +378,7 @@ fn on_comment(e, subject) {
 ```
 
 - 맞는 것이 없으면 함수를 부르지 않습니다.
-- `of = "comment"` 면 `e.items` 는 맞는 댓글이고, 본문도 들어 있습니다(`id quest campaign author body parent discussion created_at updated_at`).
+- `of = "comment"` 면 `e.items` 는 맞는 댓글이고, 본문도 들어 있습니다(`id quest campaign author body parent discussion reactions created_at updated_at`). `reactions` 는 `{ emoji, authors }` 목록이고, 댓글 이벤트의 `e.comment.reactions` 도 같은 모양입니다.
 - 앱 · 서버에서만 돕니다(CLI 는 명령이 끝나면 꺼집니다). 같은 기계에서 둘 다 열어도 한 번만 돕니다.
 - 처음 허용하면 곧 한 번, 그 뒤로 `every` 마다. 꺼져 있던 동안 놓친 것은 켤 때 한 번만 돕니다.
 - `1d` 는 **날짜**가 바뀌면 돕니다 — 그날 처음 켤 때 한 번(켜 둔 채면 자정에). 24시간마다는 `24h` 로 씁니다.

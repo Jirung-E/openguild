@@ -369,6 +369,8 @@ pub async fn toggle_reaction(
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
+    // 길드 전체 댓글 · 플러그인 시간 실행은 index 를 읽는다 — 반응도 같이 맞춘다.
+    upsert_entry_db(store, slug, &updated).await?;
     store.emit_post(
         ev::COMMENT_REACTION_CHANGED,
         || json!({ "target": payload::target("campaign", slug), "comment": payload::comment(&updated) }),

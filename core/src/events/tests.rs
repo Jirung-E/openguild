@@ -1401,3 +1401,27 @@ async fn post_events_carry_the_file_number_counted_separately() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 플러그인은 `e.comment.reactions[0].emoji` 로 읽는다 — 파일의 `👍:kim|lee` 를 쪼개서 넘긴다.
+#[test]
+fn comment_payload_spreads_reactions_for_scripts() {
+    let entry = crate::repo::comments::CommentEntry {
+        id: 1,
+        ts: "2026-11-04T10:00:00+09:00".into(),
+        author: "a".into(),
+        body: "본문".into(),
+        parent_id: None,
+        reactions: vec!["👍:kim|lee".into(), "✅".into()],
+        discussion: false,
+        resolved: false,
+        pinned: false,
+        edited_at: None,
+    };
+    assert_eq!(
+        super::payload::comment(&entry)["reactions"],
+        serde_json::json!([
+            { "emoji": "👍", "authors": ["kim", "lee"] },
+            { "emoji": "✅", "authors": [] },
+        ])
+    );
+}

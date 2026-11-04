@@ -40,9 +40,20 @@ pub fn comment(c: &CommentEntry) -> Value {
         "parent_id": c.parent_id,
         "discussion": c.discussion,
         "resolved": c.resolved,
-        "reactions": c.reactions,
+        "reactions": reactions(c.reactions.iter().map(String::as_str)),
         "pinned": c.pinned,
     })
+}
+
+/// 댓글 반응 — 파일의 `👍:kim|lee` 를 스크립트가 바로 쓸 수 있게 `{emoji, authors}` 로 편다.
+pub fn reactions<'a>(items: impl IntoIterator<Item = &'a str>) -> Value {
+    items
+        .into_iter()
+        .map(|r| {
+            let (emoji, authors) = crate::repo::comments::split_reaction(r);
+            json!({ "emoji": emoji, "authors": authors })
+        })
+        .collect()
 }
 
 /// 삭제처럼 대상이 이미 사라져 전체를 실을 수 없을 때.

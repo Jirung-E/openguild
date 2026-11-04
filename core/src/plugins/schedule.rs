@@ -336,6 +336,9 @@ async fn items(store: &crate::Store, of: Of, q: &str) -> crate::error::AppResult
                 "body": c.body,
                 "parent": c.parent_id,
                 "discussion": discussion,
+                "reactions": crate::events::payload::reactions(
+                    c.reactions.split(',').filter(|r| !r.is_empty()),
+                ),
                 "created_at": c.ts,
                 "updated_at": c.edited_at.as_deref().unwrap_or(&c.ts),
             })
@@ -731,6 +734,31 @@ mod tests {
         assert_eq!(found[0]["body"], "결정 필요");
         assert_eq!(found[0]["discussion"], "unresolved");
         assert_eq!(found[0]["updated_at"], found[0]["created_at"]);
+        assert_eq!(found[0]["reactions"], serde_json::json!([]));
+        // 반응은 파일에만 쓰고 끝내면 안 된다 — 이 목록은 index 를 읽는다.
+        crate::ops::comments::toggle_comment_reaction(&store, &q.quest_id, 1, "👍", "kim")
+            .await
+            .unwrap();
+        crate::ops::comments::toggle_comment_reaction(&store, &q.quest_id, 1, "👍", "lee")
+            .await
+            .unwrap();
+        let found = items(&store, Of::Comment, "discussion:unresolved")
+            .await
+            .unwrap();
+        assert_eq!(
+            found[0]["reactions"],
+            serde_json::json!([{ "emoji": "👍", "authors": ["kim", "lee"] }])
+        );
+        crate::ops::comments::toggle_comment_reaction(&store, &q.quest_id, 1, "👍", "kim")
+            .await
+            .unwrap();
+        crate::ops::comments::toggle_comment_reaction(&store, &q.quest_id, 1, "👍", "lee")
+            .await
+            .unwrap();
+        let found = items(&store, Of::Comment, "discussion:unresolved")
+            .await
+            .unwrap();
+        assert_eq!(found[0]["reactions"], serde_json::json!([]));
         assert!(
             items(&store, Of::Comment, "author:nobody")
                 .await
@@ -739,6 +767,41 @@ mod tests {
         );
         // 줄을 읽을 때 댓글의 키로 검사한다.
         assert!(crate::query::parse_for(Of::Comment.target(), "status:open").is_err());
+    }
+
+    #[tokio::test]
+    async fn campaign_comment_items_carry_reactions_too() {
+        let root = tmp("campaign-comment-reactions");
+        crate::repo::seed_guild_dir(&root).unwrap();
+        let store = crate::Store::open(&root).await.unwrap();
+        let c = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "캠페인".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::campaign_comments::add_entry(
+            &store,
+            &c.campaign_slug,
+            "claude".into(),
+            "확인".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        crate::ops::campaign_comments::toggle_reaction(&store, &c.campaign_slug, 1, "🎉", "lee")
+            .await
+            .unwrap();
+        let found = items(&store, Of::Comment, "author:claude").await.unwrap();
+        assert_eq!(
+            found[0]["reactions"],
+            serde_json::json!([{ "emoji": "🎉", "authors": ["lee"] }])
+        );
     }
 
     #[tokio::test]

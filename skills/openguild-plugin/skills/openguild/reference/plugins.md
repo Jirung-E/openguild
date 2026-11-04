@@ -113,7 +113,8 @@ The function gets `e` as usual: `e.event` is `"every"`, `e.items` the matching l
 `e.line`, `e.every`, `e.query`, `e.of`. Items are short summaries — quests: `id title status type
 urgency tags desired_due required_due campaign_due updated_at comment_count`; campaigns: `id title
 status start end`; library: `id title folder tags updated_at`; comments, with the body: `id quest campaign author body parent
-discussion created_at updated_at`. **Nothing matches → nothing is
+discussion reactions created_at updated_at`. Comment `reactions` is a list of `{ emoji, authors }`, the
+same on these items and on `e.comment` of comment events (`comment.reaction_changed` fires when one changes). **Nothing matches → nothing is
 called.** An `action` line sends that event JSON as the body. `pre`, `post`, `when`, `with`, `wait`,
 `group` and orders cannot be used on a scheduled line.
 

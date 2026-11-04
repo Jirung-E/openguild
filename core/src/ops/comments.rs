@@ -367,8 +367,8 @@ pub async fn toggle_comment_reaction(
         .map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
-    // reactions 는 file-only (DB 캐시 컬럼 없음 — read 경로가 file 직접이라
-    // 무방. 캐시 재구축도 file 에서 다시 파싱). body 등은 그대로라 UPSERT 생략.
+    // 길드 전체 댓글 · 플러그인 시간 실행은 index 를 읽는다 — 반응도 같이 맞춘다.
+    upsert_comment_entry_db(store, slug, &updated).await?;
     store.emit_post(
         ev::COMMENT_REACTION_CHANGED,
         || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
