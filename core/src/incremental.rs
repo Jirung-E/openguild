@@ -1564,6 +1564,29 @@ pub async fn sync_on_open(
 ) -> AppResult<(IncrementalReport, Option<crate::reindex::ReindexReport>)> {
     // BUG-342: 파일을 읽어 캐시에 옮기는 동안 다른 변경이 끼면 옮긴 것이 낡는다 — 길드 독점.
     let _g = store.lock_guild().await?;
+    sync_locked(store).await
+}
+
+/// BUG-389: 타입 · 상태 이름 바꾸기처럼 DB 값으로 여러 파일을 다시 쓰는 작업의 맨 앞. **길드 독점을 쥔 쪽만** 부른다.
+/// 못 읽는 파일이 있으면 거부한다 — 그대로 가면 그 파일을 DB 값으로 덮는다. 바뀐 것이 없으면 `stat` 뿐이다.
+pub(crate) async fn sync_before_guild_write(store: &Store) -> AppResult<()> {
+    let (inc, _) = sync_locked(store).await?;
+    if let Some((path, why)) = inc.skipped.first() {
+        return Err(crate::error::AppError::BadRequest(crate::tf!(
+            "{path} 파일을 읽을 수 없어 고치지 않았습니다 — 파일을 고치고 다시 하세요 ({why})",
+            "Cannot read {path}, so nothing was changed — fix the file and try again ({why})"
+        )));
+    }
+    // 위가 못 다루는 것(타입 · 상태 · 태그 정의)을 밖에서 고쳤으면 다시 만든다.
+    crate::drift::auto_resync_locked(store)
+        .await
+        .map_err(crate::error::AppError::Internal)?;
+    Ok(())
+}
+
+async fn sync_locked(
+    store: &Store,
+) -> AppResult<(IncrementalReport, Option<crate::reindex::ReindexReport>)> {
     let mut inc = sync_changed_quest_files(store).await?;
     // DEV-310: 캠페인 본문 → sibling 순서. 캠페인 행이 먼저 최신이어야 그 캠페인의
     // 댓글도 같은 열기에서 반영된다(순서가 반대면 소유자가 없어 full 로 넘어간다).

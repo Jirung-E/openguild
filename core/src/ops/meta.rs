@@ -142,6 +142,7 @@ pub async fn update_type(
     description: Option<Option<String>>, // outer None = 변경 없음, inner None = clear.
 ) -> AppResult<QuestType> {
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     let prefix = prefix.trim().to_string();
     if let Some(c) = &color {
         validate_color(c)?;
@@ -195,6 +196,7 @@ pub async fn update_type(
 /// type 삭제. 사용 중 quest 있으면 `BadRequest`.
 pub async fn delete_type(store: &Store, prefix: String) -> AppResult<()> {
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     let prefix = prefix.trim().to_string();
     let row = fetch_type_by_prefix(&store.index_pool, &prefix).await?;
     let count = count_quests_by_type(&store.index_pool, row.id).await?;
@@ -243,6 +245,7 @@ pub async fn rename_type(
     new_prefix: String,
 ) -> AppResult<QuestType> {
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     rename_type_locked(store, old_prefix, new_prefix).await
 }
 
@@ -457,6 +460,7 @@ pub async fn rename_status_slug(
     new_slug: String,
 ) -> AppResult<QuestStatus> {
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     rename_status_slug_locked(store, old_slug, new_slug).await
 }
 
@@ -839,6 +843,7 @@ pub async fn update_status(
     counts_as_done: Option<bool>,
 ) -> AppResult<QuestStatus> {
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     if let Some(c) = &color {
         validate_color(c)?;
     }
@@ -942,6 +947,7 @@ pub async fn update_status(
 /// status 삭제. 사용 중 quest 있으면 `BadRequest`.
 pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     let row = fetch_status_by_slug(&store.index_pool, &slug).await?;
     let count = count_quests_by_status(&store.index_pool, row.id).await?;
     if count > 0 {
@@ -2034,6 +2040,94 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── BUG-389: 길드 전체를 다시 쓰는 작업도 밖에서 고친 파일을 덮지 않는다 ───
+
+    async fn store_with_outside_edit(label: &str) -> (std::path::PathBuf, Store) {
+        let (dir, store) = fresh_store(label).await;
+        let dev_id: i64 = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        for title in ["one", "two"] {
+            quest_ops::create_quest(
+                &store,
+                CreateQuestRequest {
+                    quest_type_id: dev_id,
+                    title: title.into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: None,
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let path = dir.join(".guild/quests/DEV-001.md");
+        let raw = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, raw.replace("title = \"one\"", "title = \"outside\"")).unwrap();
+        (dir, store)
+    }
+
+    #[tokio::test]
+    async fn rename_type_keeps_outside_edit() {
+        let (dir, store) = store_with_outside_edit("bug389-type").await;
+        rename_type(&store, "DEV".into(), "ZED".into())
+            .await
+            .unwrap();
+        let raw = std::fs::read_to_string(dir.join(".guild/quests/ZED-001.md")).unwrap();
+        assert!(raw.contains("title = \"outside\""), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_status_keeps_outside_edit() {
+        let (dir, store) = store_with_outside_edit("bug389-status").await;
+        rename_status_slug(&store, "open".into(), "fresh".into())
+            .await
+            .unwrap();
+        let raw = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(raw.contains("title = \"outside\""), "{raw}");
+        assert!(raw.contains("status = \"fresh\""), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn guild_wide_write_refuses_when_a_quest_file_is_unreadable() {
+        let (dir, store) = store_with_outside_edit("bug389-broken").await;
+        let path = dir.join(".guild/quests/DEV-001.md");
+        let broken = "+++\nnot toml [[[\n+++\nhand written\n";
+        std::fs::write(&path, broken).unwrap();
+        assert!(
+            rename_status_slug(&store, "open".into(), "fresh".into())
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn update_type_keeps_outside_edit_of_its_file() {
+        let (dir, store) = fresh_store("bug389-toml").await;
+        let path = dir.join(".guild/types/DEV.toml");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let raw = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            raw.replace("description = \"", "description = \"outside "),
+        )
+        .unwrap();
+        update_type(&store, "DEV".into(), None, Some("#123456".into()), None)
+            .await
+            .unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("outside"), "{raw}");
+        assert!(raw.contains("#123456"), "{raw}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

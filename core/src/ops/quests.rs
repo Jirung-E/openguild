@@ -883,6 +883,7 @@ pub async fn change_quest_type(
 ) -> AppResult<QuestRow> {
     // DEV-432: 이름(번호)이 바뀌고 보드 위치 · 번호 파일까지 고친다 — 길드 독점.
     let _g = store.lock_guild().await?;
+    crate::incremental::sync_before_guild_write(store).await?;
     let _ = journal::append(
         &store.journal_pool,
         "change_quest_type",
@@ -3051,6 +3052,42 @@ mod tests {
         let raw = std::fs::read_to_string(&pulled).unwrap();
         assert!(raw.contains("title = \"pulled\""), "{raw}");
         assert!(raw.contains("urgency = 3"), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_type_keeps_outside_edit_of_a_related_quest() {
+        let dir = fresh_tmp("bug389-retype");
+        let store = setup_store(&dir).await;
+        let first = create_quest(&store, dev_request("first")).await.unwrap();
+        let second = create_quest(&store, dev_request("second")).await.unwrap();
+        add_prerequisite(
+            &store,
+            second.id,
+            AddPrerequisiteRequest {
+                prerequisite_id: first.id,
+            },
+        )
+        .await
+        .unwrap();
+        edit_file(
+            &dir.join(".guild/quests/DEV-002.md"),
+            "title = \"second\"",
+            "title = \"from outside\"",
+        );
+
+        change_quest_type(
+            &store,
+            first.id,
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let raw = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
+        assert!(raw.contains("title = \"from outside\""), "{raw}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
