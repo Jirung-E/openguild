@@ -702,6 +702,15 @@ pub fn list_quest_tags(store: &Store, slug: &str) -> AppResult<Vec<String>> {
     Ok(quest.frontmatter.tags)
 }
 
+/// BUG-389: 플러그인에게 보여 줄 현재 모습 — 밖에서 고친 파일을 먼저 읽는다. 답을 기다리는 동안 다른 작업을
+/// 세우지 않으려고 잠금은 바로 푼다. 파일을 못 읽으면 물을 것이 없다 — 곧이어 쓰기가 같은 이유로 거부된다.
+async fn fresh_row_for_pre(store: &Store, id: i64) -> Option<QuestRow> {
+    let q = sql::fetch_by_id(&store.index_pool, id).await.ok()?;
+    let lock = store.lock_docs(&[DocKey::quest(&q.quest_id)]).await.ok()?;
+    drop(lock);
+    sql::fetch_by_id(&store.index_pool, id).await.ok()
+}
+
 /// 상태 변경.
 /// DEV-407: 상태를 바꾸기 전에 플러그인에게 묻는다 — 막을 이유가 있으면 그 문장.
 ///
@@ -711,7 +720,7 @@ async fn ask_status_pre(store: &Store, id: i64, to: &str) -> Option<crate::error
     if !store.events_wanted(ev::QUEST_STATUS_CHANGED, Phase::Pre) {
         return None;
     }
-    let q = sql::fetch_by_id(&store.index_pool, id).await.ok()?;
+    let q = fresh_row_for_pre(store, id).await?;
     store
         .ask_pre(ev::QUEST_STATUS_CHANGED, || {
             json!({
@@ -1107,7 +1116,7 @@ async fn ask_delete_pre(store: &Store, id: i64) -> Option<crate::error::AppError
     if !store.events_wanted(ev::QUEST_DELETED, Phase::Pre) {
         return None;
     }
-    let q = sql::fetch_by_id(&store.index_pool, id).await.ok()?;
+    let q = fresh_row_for_pre(store, id).await?;
     store
         .ask_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(&q) }))
         .refusal()

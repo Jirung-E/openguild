@@ -416,6 +416,17 @@ pub(super) async fn tick(
         if due.is_empty() {
             continue;
         }
+        // BUG-389: 목록은 index 를 읽는다 — 켜 둔 앱 · 서버는 밖에서 고친 파일을 모르니, 넘기기 전에 맞춘다.
+        // 도는 줄이 있을 때만 하니 주기적으로 파일을 훑지 않는다. 못 맞춰도 줄은 있는 것으로 돈다.
+        if let Err(e) = crate::incremental::sync_if_changed(store).await {
+            note(
+                log,
+                crate::tf!(
+                    "플러그인 '{name}' — 파일을 다시 읽지 못해 있는 목록으로 돕니다: {e}",
+                    "plugin '{name}' — could not re-read the files, running on the list as it is: {e}"
+                ),
+            );
+        }
         let (cfg, subst) = super::runtime::values_for(p);
         for i in due {
             let h = &p.def.handlers[i];
@@ -750,6 +761,65 @@ mod tests {
         );
         // 줄을 읽을 때 댓글의 키로 검사한다.
         assert!(crate::query::parse_for(Of::Comment.target(), "status:open").is_err());
+    }
+
+    /// BUG-389: 켜 둔 앱이 모르는 사이 밖에서 고친 댓글도 다음 차례의 목록에 실린다.
+    #[tokio::test]
+    async fn tick_reads_the_files_before_handing_over_the_list() {
+        let root = tmp("tick-outside");
+        crate::repo::seed_guild_dir(&root).unwrap();
+        let store = crate::Store::open(&root).await.unwrap();
+        let q = crate::ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "퀘스트".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "claude".into(),
+            "원래".into(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+        let path = store.paths.comments_path(&q.quest_id);
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, text.replace("원래", "밖댓글")).unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(later).unwrap();
+
+        let p = plugin(
+            &format!(
+                "{HEAD}[[handlers]]\nid = \"댓글\"\nevery = \"1h\"\nof = \"comment\"\nquery = \"author:claude\"\naction = \"out\"\n"
+            ),
+            &root,
+        );
+        let rec = super::super::testing::Recorder::default();
+        let log = Mutex::new(Vec::new());
+        let state = root.join("state");
+        tick(
+            &store,
+            std::slice::from_ref(&p),
+            &rec,
+            &log,
+            5_000_000,
+            Some(&state),
+        )
+        .await;
+        let sent = rec.take();
+        assert_eq!(sent.len(), 1, "{:?}", log.lock().unwrap());
+        assert_eq!(sent[0]["body"]["items"][0]["body"], "밖댓글");
     }
 
     /// 같은 문서가 이벤트로 올 때와 시간으로 올 때 칸 이름 · 값의 모양이 같다. 목록은 칸을 더할 수만 있다.

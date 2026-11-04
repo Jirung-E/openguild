@@ -7,6 +7,9 @@
 //! - **고친 파일** — 쓰기가 성공하고, 밖에서 넣은 글이 남고, 다시 색인해도 조회가 같다.
 //! - **깨진 파일** — 깨진 파일을 덮지 않는다.
 //! - **지운 파일** — 지운 파일을 되살리지 않는다.
+//! - **쓰기만** — 파일을 건드리지 않고 쓰기만 해도, 다시 색인 전후로 목록까지 같다. 목록은 index 를 읽으므로,
+//!   쓰기가 파일만 고치고 행을 빠뜨리면 여기서 드러난다. (밖에서 고친 파일은 켜 둔 서버의 목록이 다음 동기화까지
+//!   모르는 것이 정상이라 위 첫 상황에서는 목록을 안 잰다.)
 //!
 //! 새 쓰기 경로를 더하면 [`every_write_route_is_in_the_matrix`] 가 실패한다 — [`cases`] 에 넣거나,
 //! 문서를 쓰지 않는 경로면 이유와 함께 [`EXEMPT`] 에 적는다.
@@ -897,6 +900,21 @@ fn edit_all(dot_guild: &Path) -> BTreeMap<String, Vec<&'static str>> {
     marks
 }
 
+/// index 를 읽는 목록들. 행 번호로만 말하는 `/api/quest-dependencies` 는 뺀다 — 내용은 퀘스트 상세가 잰다.
+/// `/api/tags/used` 는 지운 퀘스트의 태그를 다시 색인 전까지 보여 주는 것이 알려져 있어 아직 뺀다.
+const LISTS: &[&str] = &[
+    "/api/comments",
+    "/api/quests",
+    "/api/campaigns",
+    "/api/library",
+    "/api/library/folders",
+    "/api/search?q=%EC%9B%90%EB%9E%98",
+    "/api/deleted-quests",
+    "/api/admin/types",
+    "/api/admin/statuses",
+    "/api/tag-defs",
+];
+
 /// 깨뜨리거나 지울 파일.
 const TARGETS: &[&str] = &[
     "quests/DEV-001.md",
@@ -921,10 +939,12 @@ fn strip(v: &Value) -> Value {
         "file_version",
         "updated_at_local",
     ];
+    // 사람이 쓰는 `quest_id`("DEV-001") 는 남기고, 행 번호인 것만 뺀다.
+    let row_number = |k: &str, x: &Value| k == "quest_id" && x.is_number();
     match v {
         Value::Object(m) => Value::Object(
             m.iter()
-                .filter(|(k, _)| !SKIP.contains(&k.as_str()))
+                .filter(|(k, x)| !SKIP.contains(&k.as_str()) && !row_number(k, x))
                 .map(|(k, x)| (k.clone(), strip(x)))
                 .collect::<Map<_, _>>(),
         ),
@@ -933,7 +953,7 @@ fn strip(v: &Value) -> Value {
     }
 }
 
-async fn views(app: &Router, dot_guild: &Path) -> BTreeMap<String, Value> {
+async fn views(app: &Router, dot_guild: &Path, lists: bool) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
     let mut read = async |key: String, path: String| {
         let (status, value) = call(app, "GET", &path, None).await;
@@ -942,8 +962,21 @@ async fn views(app: &Router, dot_guild: &Path) -> BTreeMap<String, Value> {
         } else {
             json!(status.as_u16())
         };
+        // 행 번호가 다시 매겨지면 같은 내용도 순서가 바뀐다 — 목록은 내용만 잰다.
+        let shown = match shown {
+            Value::Array(mut items) if key.starts_with("목록 ") => {
+                items.sort_by_key(|x| x.to_string());
+                Value::Array(items)
+            }
+            other => other,
+        };
         out.insert(key, shown);
     };
+    if lists {
+        for path in LISTS {
+            read(format!("목록 {path}"), path.to_string()).await;
+        }
+    }
     let slugs = |sub: &str| -> Vec<String> {
         list_files(&dot_guild.join(sub), "md")
             .iter()
@@ -1003,6 +1036,7 @@ enum Mode {
     Edited,
     Broken,
     Gone,
+    WriteOnly,
 }
 
 /// 경우 하나를 돌려 문제 목록을 돌려준다.
@@ -1039,6 +1073,7 @@ async fn run_case(base: &Path, mode: Mode, case: Case) -> Vec<String> {
     let mut snapshot: Vec<(&str, Option<Vec<u8>>)> = Vec::new();
     match mode {
         Mode::Edited => marks = edit_all(&dot),
+        Mode::WriteOnly => {}
         Mode::Broken => {
             for rel in TARGETS {
                 let sibling = rel.contains(".comments.") || rel.contains(".memo.");
@@ -1064,7 +1099,8 @@ async fn run_case(base: &Path, mode: Mode, case: Case) -> Vec<String> {
     let path = fill_path(&case.path, &ids, &pre_id);
     let (status, value) = call(&app, case.method, &path, body.as_ref()).await;
 
-    if mode == Mode::Edited {
+    if matches!(mode, Mode::Edited | Mode::WriteOnly) {
+        let lists = mode == Mode::WriteOnly;
         if !status.is_success() {
             problems.push(format!("요청 실패: {status} {value}"));
         } else {
@@ -1086,11 +1122,11 @@ async fn run_case(base: &Path, mode: Mode, case: Case) -> Vec<String> {
                 }
             }
             // 조회가 게으르게 파일을 읽어 맞추는 곳이 있어, 한 번 읽고 나서 잰다.
-            views(&app, &dot).await;
-            let before = views(&app, &dot).await;
+            views(&app, &dot, lists).await;
+            let before = views(&app, &dot, lists).await;
             let (status, _) = call(&app, "POST", "/api/admin/reindex", Some(&json!({}))).await;
             assert!(status.is_success());
-            let after = views(&app, &dot).await;
+            let after = views(&app, &dot, lists).await;
             for (key, a) in &before {
                 let b = after.get(key).unwrap_or(&Value::Null);
                 if b != a {
@@ -1159,6 +1195,11 @@ async fn no_write_route_overwrites_a_broken_file() {
 #[tokio::test(flavor = "multi_thread")]
 async fn no_write_route_revives_a_deleted_file() {
     run_matrix(Mode::Gone, "지운 파일").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn no_write_route_leaves_the_lists_behind() {
+    run_matrix(Mode::WriteOnly, "쓰기만").await;
 }
 
 /// `routes/mod.rs` 의 `.route("경로", post(..).delete(..))` 에서 (메서드, 경로) 를 읽는다.

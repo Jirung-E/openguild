@@ -1425,3 +1425,75 @@ fn comment_payload_spreads_reactions_for_scripts() {
         ])
     );
 }
+
+/// BUG-389: 플러그인에게 넘기기 전에 파일을 확인한다 — 밖에서 고친 제목이 이벤트에 실려야 한다.
+#[tokio::test]
+async fn plugins_get_what_was_edited_outside() {
+    let (_dir, store, rec) = setup("outside").await;
+    let new = |title: &str| CreateQuestRequest {
+        title: title.into(),
+        ..new_quest(title)
+    };
+    let q = crate::ops::create_quest(&store, new("원래")).await.unwrap();
+    let p = crate::ops::create_quest(&store, new("원래")).await.unwrap();
+    let edit = |slug: &str| {
+        let path = store.paths.quest_path(slug);
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            text.replacen("title = \"원래\"", "title = \"밖제목\"", 1),
+        )
+        .unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(later).unwrap();
+    };
+    let title = |name: &str, phase: Phase, root: &str| {
+        rec.find(name, phase).unwrap().data[root]["title"].clone()
+    };
+
+    edit(&q.quest_id);
+    edit(&p.quest_id);
+    crate::ops::change_status(
+        &store,
+        q.id,
+        ChangeStatusRequest {
+            status_slug: "in_progress".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        title(super::names::QUEST_STATUS_CHANGED, Phase::Pre, "quest"),
+        "밖제목"
+    );
+    assert_eq!(
+        title(super::names::QUEST_STATUS_CHANGED, Phase::Post, "quest"),
+        "밖제목"
+    );
+
+    // 관계 이벤트는 다른 문서도 싣는다 — 그 문서도 밖에서 고친 그대로다.
+    crate::ops::add_prerequisite(
+        &store,
+        q.id,
+        crate::models::AddPrerequisiteRequest {
+            prerequisite_id: p.id,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        title(
+            super::names::QUEST_PREREQ_ADDED,
+            Phase::Post,
+            "prerequisite"
+        ),
+        "밖제목"
+    );
+
+    crate::ops::delete_quest(&store, q.id, &[]).await.unwrap();
+    assert_eq!(
+        title(super::names::QUEST_DELETED, Phase::Pre, "quest"),
+        "밖제목"
+    );
+}
