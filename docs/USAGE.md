@@ -622,8 +622,8 @@ CLI · 서버만 쓴다면 `openguild update --check` 로 새 버전이 나왔�
 
 | 상황 | 해결 |
 |------|------|
-| 파일을 직접 편집했는데 GUI 가 옛 상태 | 시동 시 자동 reindex 합니다. 또는 상단 reindex 버튼. |
-| 다른 PC 에서 git pull 후 quest 안 보임 | 위와 동일. 자동 / 수동 reindex. |
+| 파일을 직접 편집했는데 GUI 가 옛 상태 | 앱과 서버는 열 때와 상세 화면에 들어갈 때 파일을 다시 읽습니다. 켜 둔 채 목록이 옛 상태면 상단 reindex 버튼. CLI 는 명령마다 바뀐 파일을 읽습니다. 어느 쪽이든 문서를 고치기 전에 그 문서를 파일에서 다시 읽으므로 밖에서 고친 내용을 덮지 않습니다. |
+| 다른 PC 에서 git pull 후 quest 안 보임 | 위와 동일. 새 번호도 파일을 보고 정하므로, 받아 온 문서의 번호와 겹치지 않습니다. |
 | 캐시 손상 의심 | Settings → "Drift 검사" → 필요 시 Reindex. |
 | `database disk image is malformed` | `index.db`(캐시)가 망가진 것. 열 때 알아서 `backups/index.db.corrupt` 로 옮기고 파일에서 새로 만듭니다. `journal.db` 가 망가졌다고 나오면 그 파일을 다른 이름으로 옮기고 다시 여세요(변경 기록만 잃고 길드 파일은 그대로). |
 | 데이터 손실 의심 | Settings → Admin → 최근 snapshot 복원. |

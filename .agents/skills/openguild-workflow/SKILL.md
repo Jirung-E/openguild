@@ -148,7 +148,7 @@ ID 를 확인한다.
 - **커밋/푸시를 시키지 않았는데 실행.** 예외는 퀘스트 수명주기 3번(Testing 전환 직후) 커밋 + merge 뿐.
 - **설치된 데스크톱 앱 교체**(`just build-desktop` 으로 설치본 덮어쓰기) — 먼저 묻는다.
 - **퀘스트 작업을 develop 에 직접 커밋** — 퀘스트 작업은 `{QUEST_ID}` 브랜치에서. **chore 커밋(퀘스트 등록 · 완료 처리 · 스킬/문서 메타 변경)은 develop 에 바로 해도 된다**(2026-10-20 admin). 커밋 자체는 여전히 먼저 묻는다.
-- **`.guild` frontmatter(status/urgency/parent/prereq/deleted) 직접 편집** — 반드시 CLI. 본문(description)만 직접 편집 가능(직후 `openguild reindex`)
+- **`.guild` frontmatter(status/urgency/parent/prereq/deleted) 직접 편집** — 반드시 CLI. 본문(description)만 직접 편집 가능(다음 CLI 명령이 알아서 읽는다)
 - **조회도 CLI 우선 — `.guild/**` 파일을 직접 열람/grep 으로 뒤지지 말 것**
   (사용자 지적, BUG-154): 도서관은 `openguild library list` / `library show
   BOOK-N`, 댓글은 `openguild quest comment list {ID}`(전역 `comments` 는 검색 전용),

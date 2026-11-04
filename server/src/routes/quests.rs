@@ -271,6 +271,8 @@ pub async fn get_quest_by_slug(
     State(store): State<Store>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<QuestDetail>> {
+    // BUG-389: 앱의 상세와 같다 — 켜 둔 동안 밖에서 바뀐 파일을 본다.
+    let _ = openguild_core::incremental::refresh_quest_if_stale(&store, &slug).await;
     let mut detail = read::get_by_slug(&store.index_pool, &slug).await?;
     // frontmatter가 진리원이며 DB projection에는 순서 컬럼이 없다.
     detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &slug)?;

@@ -114,6 +114,15 @@ pub async fn list_history(
 /// 새 캠페인 생성. counter 자동 증가 후 `C-NNN` slug 할당.
 /// 트랜잭션 안에서: counter self-heal (max(last_number, current_max)) → +1 → INSERT.
 pub async fn create(pool: &SqlitePool, body: CreateCampaignRequest) -> AppResult<CampaignRow> {
+    create_after(pool, body, 0).await
+}
+
+/// BUG-389: `file_floor` = 파일에서 본 마지막 캠페인 번호. 이것보다 뒤에서 준다 — 캐시가 뒤처져도 있는 파일을 덮지 않게.
+pub async fn create_after(
+    pool: &SqlitePool,
+    body: CreateCampaignRequest,
+    file_floor: i64,
+) -> AppResult<CampaignRow> {
     let title = body.title.trim();
     if title.is_empty() {
         return Err(AppError::BadRequest("campaign title is required".into()));
@@ -126,11 +135,12 @@ pub async fn create(pool: &SqlitePool, body: CreateCampaignRequest) -> AppResult
     // Counter self-heal: 외부에서 파일을 미리 만들었을 가능성 대비.
     sqlx::query(
         "UPDATE campaign_counters
-            SET last_number = MAX(last_number,
+            SET last_number = MAX(last_number, ?,
                 COALESCE((SELECT MAX(SUBSTR(campaign_slug, 3) + 0)
                           FROM campaigns), 0))
           WHERE id = 1",
     )
+    .bind(file_floor)
     .execute(&mut *tx)
     .await?;
 

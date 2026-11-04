@@ -381,6 +381,8 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
     let mut new_paths: Vec<std::path::PathBuf> = Vec::new();
     let mut touched: Vec<(i64, QuestFile)> = Vec::new();
     let mut file_slugs = std::collections::HashSet::new();
+    // 내용은 같고 시각만 바뀐 파일(git checkout 등). 한 번에 적는다 — 하나씩 적으면 파일마다 디스크에 커밋한다.
+    let mut only_mtime: Vec<(i64, i64)> = Vec::new();
     for path in &quest_paths {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
@@ -407,11 +409,7 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                             // BUG-103: 파일 투영과 DB 가 동일하면(git checkout 등
                             // mtime 만 변경) cached_mtime 만 갱신해 재감지를 막는다.
                             if is_file_projection_identical_to_db(pool, id, &qf).await? {
-                                sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
-                                    .bind(file_mtime)
-                                    .bind(id)
-                                    .execute(pool)
-                                    .await?;
+                                only_mtime.push((file_mtime, id));
                                 continue;
                             }
                             // status_id 결정.
@@ -497,6 +495,18 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
         }
     }
 
+    if !only_mtime.is_empty() {
+        let mut tx = crate::db::begin_write(pool).await?;
+        for (mtime, id) in &only_mtime {
+            sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+                .bind(mtime)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+    }
+
     // DEV-246: 파일이 사라진 행은 직접 삭제한다(예전엔 풀 reindex 트리거).
     // quest_tags / quest_dependencies / quest_positions 는 FK ON DELETE CASCADE.
     for (slug, &(id, _)) in &db_map {
@@ -521,10 +531,10 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                 report.needs_full_reindex = true;
             }
             Err(e) => {
+                // BUG-389: 읽을 수 없는 파일은 전체 재구축으로도 못 고친다 — 그러면 명령마다 재구축이 돈다.
                 report
                     .skipped
                     .push((path.display().to_string(), format!("{e:#}")));
-                report.needs_full_reindex = true;
             }
         }
     }
@@ -533,6 +543,170 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
     }
 
     Ok(report)
+}
+
+/// BUG-389: 쓰기 직전 — **문서 잠금 안에서** 그 문서들의 파일이 캐시보다 새로운지 보고 맞춘다.
+///
+/// 시각이 그대로면 `stat` 하나로 끝난다. 읽을 수 없는 파일은 오류로 멈춘다 — 그대로 쓰면 그 파일을 덮는다.
+pub(crate) async fn refresh_docs_before_write(
+    store: &Store,
+    docs: &[crate::lock::DocKey],
+) -> anyhow::Result<()> {
+    for doc in docs {
+        if let Some(slug) = doc.is_quest() {
+            refresh_quest_before_write(store, slug).await?;
+        } else if let Some(slug) = doc.is_campaign() {
+            refresh_campaign_before_write(store, slug).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn refresh_quest_before_write(store: &Store, slug: &str) -> anyhow::Result<()> {
+    let path = store.paths.quest_path(slug);
+    let row: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT q.id, q.cached_mtime
+         FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+         WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+    )
+    .bind(slug)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    if !path.exists() {
+        // 밖에서 지운 문서 — 행을 두면 이번 쓰기가 옛 값으로 파일을 되살린다. 행을 지워 "없음" 으로 끝나게 한다.
+        // 파일을 본 적 없는 행(`cached_mtime` 0)은 지워진 게 아니다.
+        if let Some((id, cached)) = row
+            && cached > 0
+        {
+            sqlx::query("DELETE FROM quests WHERE id = ?")
+                .bind(id)
+                .execute(&store.index_pool)
+                .await?;
+        }
+        return Ok(());
+    }
+    let file_mtime = repo_fs::mtime_unix_nanos(&path);
+    match row {
+        // 캐시에 없는 문서 — 파일에서 넣는다.
+        None => {
+            if let Some((id, qf)) = insert_new_quest(store, &path).await? {
+                resync_quest_relations(store, id, &qf).await?;
+            }
+        }
+        Some((id, cached)) if file_mtime > cached => {
+            let qf = QuestFile::read(&path)?;
+            if !is_file_projection_identical_to_db(&store.index_pool, id, &qf).await?
+                && !project_quest_file(store, id, &qf, file_mtime).await?
+            {
+                anyhow::bail!(crate::tf!(
+                    "{slug} 파일의 상태 '{}' 가 정의되어 있지 않아 고치지 않았습니다 — 파일을 고치거나 `openguild reindex` 를 돌리세요",
+                    "{slug}: status '{}' in the file is not defined, so nothing was changed — fix the file or run `openguild reindex`",
+                    qf.frontmatter.status
+                ));
+            }
+        }
+        Some(_) => {}
+    }
+    Ok(())
+}
+
+async fn refresh_campaign_before_write(store: &Store, slug: &str) -> anyhow::Result<()> {
+    let path = store.paths.campaign_path(slug);
+    if !path.exists() {
+        // 밖에서 지운 문서 — 퀘스트와 같다. 캐시에 없으면 파일을 본 적 없는 행이다.
+        let rel = crate::file_mtime::rel_key(&store.paths, &path);
+        let seen: Option<i64> =
+            sqlx::query_scalar("SELECT mtime FROM file_mtime_cache WHERE rel_path = ?")
+                .bind(&rel)
+                .fetch_optional(&store.index_pool)
+                .await?;
+        if seen.is_some() {
+            sqlx::query("DELETE FROM campaigns WHERE campaign_slug = ?")
+                .bind(slug)
+                .execute(&store.index_pool)
+                .await?;
+            let _ = crate::file_mtime::touch(store, &path).await;
+        }
+        return Ok(());
+    }
+    let rel = crate::file_mtime::rel_key(&store.paths, &path);
+    let cached: Option<i64> =
+        sqlx::query_scalar("SELECT mtime FROM file_mtime_cache WHERE rel_path = ?")
+            .bind(&rel)
+            .fetch_optional(&store.index_pool)
+            .await?;
+    let known = cached.is_some_and(|c| repo_fs::mtime_unix_nanos(&path) <= c);
+    if known {
+        return Ok(());
+    }
+    // 읽을 수 없으면 `refresh_campaign` 은 조용히 넘어간다 — 쓰기 전에는 그러면 안 된다.
+    crate::repo::CampaignFile::read(&path)?;
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+            .bind(slug)
+            .fetch_optional(&store.index_pool)
+            .await?;
+    if exists.is_none() {
+        insert_new_campaign(store, &path).await?;
+    }
+    refresh_campaign(store, slug).await?;
+    let _ = crate::file_mtime::touch(store, &path).await;
+    Ok(())
+}
+
+/// 파일이 바뀐 것을 행 · 관계에 옮긴다. 상태 정의가 없으면 `false`.
+async fn project_quest_file(
+    store: &Store,
+    id: i64,
+    qf: &QuestFile,
+    file_mtime: i64,
+) -> AppResult<bool> {
+    let pool = &store.index_pool;
+    let status_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+        .bind(&qf.frontmatter.status)
+        .fetch_optional(pool)
+        .await?;
+    let Some(status_id) = status_id else {
+        return Ok(false);
+    };
+    let parent_id: Option<i64> = match &qf.frontmatter.parent {
+        Some(s) => {
+            sqlx::query_scalar(
+                "SELECT q.id FROM quests q
+                 JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+            )
+            .bind(s)
+            .fetch_optional(pool)
+            .await?
+        }
+        None => None,
+    };
+    let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
+    sqlx::query(
+        "UPDATE quests SET
+           title = ?, description = ?, status_id = ?, urgency = ?,
+           parent_quest_id = ?, created_at = ?, updated_at = ?,
+           deleted_at = ?, desired_due = ?, required_due = ?,
+           cached_mtime = ?
+         WHERE id = ?",
+    )
+    .bind(&qf.frontmatter.title)
+    .bind(&qf.description)
+    .bind(status_id)
+    .bind(qf.frontmatter.urgency)
+    .bind(parent_id)
+    .bind(crate::time::normalize_legacy_ts(&qf.frontmatter.created_at))
+    .bind(&updated_at)
+    .bind(qf.frontmatter.deleted.then(|| updated_at.clone()))
+    .bind(qf.frontmatter.desired_due.as_deref())
+    .bind(qf.frontmatter.required_due.as_deref())
+    .bind(file_mtime)
+    .bind(id)
+    .execute(pool)
+    .await?;
+    resync_quest_relations(store, id, qf).await?;
+    Ok(true)
 }
 
 /// DEV-137 (Phase 2): 단일 quest 의 lazy refresh — 상세 페이지 진입 시 호출.
@@ -864,10 +1038,10 @@ async fn sync_changed_campaign_files(
                     let _ = crate::file_mtime::touch(store, path).await;
                 }
                 Err(e) => {
+                    // BUG-389: 재색인해도 못 읽는 건 그대로다 — CLI 가 명령마다 재색인하게 된다.
                     report
                         .skipped
                         .push((path.display().to_string(), format!("{e:#}")));
-                    report.needs_full_reindex = true;
                 }
             }
             continue;
@@ -1018,10 +1192,10 @@ async fn sync_changed_library_files(
             match insert_new_library_doc(store, path).await {
                 Ok(_id) => report.library_inserted += 1,
                 Err(e) => {
+                    // BUG-389: 재색인해도 못 읽는 건 그대로다 — CLI 가 명령마다 재색인하게 된다.
                     report
                         .skipped
                         .push((path.display().to_string(), format!("{e:#}")));
-                    report.needs_full_reindex = true;
                     continue;
                 }
             }
@@ -1107,6 +1281,8 @@ async fn sync_changed_sibling_files(
     }
 
     let mut alive: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // 바뀐 파일은 한 트랜잭션에 넣는다 — 파일마다 커밋하면 git checkout 뒤 첫 열기가 파일 수만큼 디스크를 기다린다.
+    let mut changed: Vec<(SiblingKind, i64, String, i64, String, String)> = Vec::new();
     for (path, kind) in &targets {
         let rel = crate::file_mtime::rel_key(paths, path);
         alive.insert(rel.clone());
@@ -1129,15 +1305,31 @@ async fn sync_changed_sibling_files(
             report.needs_full_reindex = true;
             continue;
         };
-        match replace_sibling_rows(store, *kind, owner, path).await {
-            Ok(()) => {
-                let _ = crate::file_mtime::touch(store, path).await;
-                report.siblings_synced += 1;
+        match std::fs::read_to_string(path) {
+            Ok(raw) => {
+                let updated_at = rfs::mtime_iso8601(path).unwrap_or_default();
+                changed.push((*kind, owner, rel, file_mtime, raw, updated_at));
             }
             Err(e) => report
                 .skipped
                 .push((path.display().to_string(), e.to_string())),
         }
+    }
+    if !changed.is_empty() {
+        let mut tx = crate::db::begin_write(pool).await?;
+        for (kind, owner, rel, mtime, raw, updated_at) in &changed {
+            replace_sibling_rows(&mut tx, *kind, *owner, raw, updated_at).await?;
+            sqlx::query(
+                "INSERT INTO file_mtime_cache (rel_path, mtime) VALUES (?, ?)
+                 ON CONFLICT(rel_path) DO UPDATE SET mtime = excluded.mtime",
+            )
+            .bind(rel)
+            .bind(mtime)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        report.siblings_synced += changed.len();
     }
 
     // 캐시에 남아 있는데 파일은 사라진 sibling — 그 행을 지운다.
@@ -1237,22 +1429,19 @@ async fn delete_sibling_rows(
 /// 파일 1개 → 그 소유자의 캐시 행 전체 교체 (delete + insert). reindex 의
 /// 같은 부분(5b' / 6b)과 동일한 컬럼·의미를 유지해야 한다.
 async fn replace_sibling_rows(
-    store: &Store,
+    tx: &mut sqlx::SqliteConnection,
     kind: SiblingKind,
     owner: i64,
-    path: &std::path::Path,
+    raw: &str,
+    updated_at: &str,
 ) -> AppResult<()> {
-    let pool = &store.index_pool;
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
-    let mut tx = crate::db::begin_write(pool).await?;
     match kind {
         SiblingKind::QuestComments => {
             sqlx::query("DELETE FROM quest_comments WHERE quest_id = ?")
                 .bind(owner)
                 .execute(&mut *tx)
                 .await?;
-            for entry in crate::repo::comments::parse_entries(&raw) {
+            for entry in crate::repo::comments::parse_entries(raw) {
                 sqlx::query(
                     "INSERT INTO quest_comments
                         (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned, edited_at, reactions)
@@ -1278,7 +1467,7 @@ async fn replace_sibling_rows(
                 .bind(owner)
                 .execute(&mut *tx)
                 .await?;
-            for entry in crate::repo::comments::parse_entries(&raw) {
+            for entry in crate::repo::comments::parse_entries(raw) {
                 sqlx::query(
                     "INSERT INTO campaign_comments
                         (campaign_id, entry_id, ts, author, body, parent_id, pinned, edited_at, reactions)
@@ -1299,7 +1488,6 @@ async fn replace_sibling_rows(
         }
         SiblingKind::QuestMemo | SiblingKind::CampaignMemo => {
             // 메모는 파일 하나당 행 하나. updated_at 은 reindex 와 같이 mtime 근사.
-            let updated_at = crate::repo::fs::mtime_iso8601(path).unwrap_or_default();
             let (del, ins) = if kind == SiblingKind::QuestMemo {
                 (
                     "DELETE FROM quest_memos WHERE quest_id = ?",
@@ -1314,13 +1502,12 @@ async fn replace_sibling_rows(
             sqlx::query(del).bind(owner).execute(&mut *tx).await?;
             sqlx::query(ins)
                 .bind(owner)
-                .bind(&raw)
-                .bind(&updated_at)
+                .bind(raw)
+                .bind(updated_at)
                 .execute(&mut *tx)
                 .await?;
         }
     }
-    tx.commit().await?;
     Ok(())
 }
 
@@ -1335,6 +1522,43 @@ async fn replace_sibling_rows(
 /// 5. 위 중 하나라도 증분으로 표현 못 하는 변화를 만났으면 `drift::auto_resync`.
 ///
 /// 통합 호출자는 `Store::open_with_sync` (store.rs).
+///
+/// BUG-389: 캠페인 · 도서관 문서 중 캐시가 모르는 파일, 또는 캐시만 아는(지워진) 파일이 있나. `detect_drift` 는 시드된 정의
+/// 때문에 "캐시에 없음" 을 바뀐 것으로 안 본다 — 그래서 받아 온 문서와 `index.db` 를 지운 뒤의 문서를 여기서 본다.
+async fn has_unseen_doc_file(store: &Store) -> AppResult<bool> {
+    let paths = &store.paths;
+    let cache = crate::file_mtime::load_all(store).await;
+    let mut alive = std::collections::HashSet::new();
+    let files = repo_fs::list_quest_body_files(paths.campaigns_dir())
+        .unwrap_or_default()
+        .into_iter()
+        .chain(crate::repo::library::list_book_files(paths).unwrap_or_default());
+    for path in files {
+        let rel = crate::file_mtime::rel_key(paths, &path);
+        if !cache.contains_key(&rel) {
+            return Ok(true);
+        }
+        alive.insert(rel);
+    }
+    Ok(cache
+        .keys()
+        .any(|rel| (is_library_body_rel(rel) || is_campaign_body_rel(rel)) && !alive.contains(rel)))
+}
+
+/// BUG-389: 바뀐 것이 있을 때만 [`sync_on_open`] — CLI 처럼 명령마다 여는 쪽을 위해. 바뀐 것이 없으면 `stat` 뿐이고
+/// (퀘스트 1,300개 파일에 약 7ms) 길드 독점 잠금도 안 잡아 다른 명령을 세우지 않는다.
+pub async fn sync_if_changed(store: &Store) -> AppResult<()> {
+    let clean = crate::drift::detect_drift(store)
+        .await
+        .map_err(crate::error::AppError::Internal)?
+        .is_clean();
+    if !clean || has_unseen_doc_file(store).await? {
+        sync_on_open(store).await?;
+    }
+    Ok(())
+}
+
+/// 시동 때 밖에서 바뀐 파일을 캐시에 옮긴다.
 pub async fn sync_on_open(
     store: &Store,
 ) -> AppResult<(IncrementalReport, Option<crate::reindex::ReindexReport>)> {
@@ -2690,6 +2914,62 @@ mod tests {
             "본문 없는 sibling 은 풀 reindex 로 넘겨야"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-389: 밖에서 생기거나 지워진 캠페인 · 도서관 문서, `index.db` 를 지운 뒤의 문서도 CLI 의 다음 명령이 본다.
+    #[tokio::test]
+    async fn sync_if_changed_sees_unseen_and_deleted_campaign_and_book_files() {
+        let dir = fresh_tmp("unseen-docs");
+        let store = setup(&dir).await;
+        crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "camp".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let raw = std::fs::read_to_string(store.paths.campaign_path("C-001")).unwrap();
+        let campaign = store.paths.campaign_path("C-005");
+        std::fs::write(&campaign, raw.replace("C-001", "C-005")).unwrap();
+        let book = store.paths.book_path("BOOK-001");
+        std::fs::write(
+            &book,
+            "+++\nbook_id = \"BOOK-001\"\ntitle = \"pulled\"\npath = \"\"\ncreated_at = \"2026-11-04T10:00:00+09:00\"\nupdated_at = \"2026-11-04T10:00:00+09:00\"\ndeleted = false\nversion = 1\n+++\n",
+        )
+        .unwrap();
+        let counts = |pool: sqlx::SqlitePool| async move {
+            let c: i64 = sqlx::query_scalar("SELECT count(*) FROM campaigns")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            let b: i64 = sqlx::query_scalar("SELECT count(*) FROM library_docs")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            (c, b)
+        };
+
+        sync_if_changed(&store).await.unwrap();
+        assert_eq!(counts(store.index_pool.clone()).await, (2, 1));
+
+        store.index_pool.close().await;
+        drop(store);
+        for name in ["index.db", "index.db-wal", "index.db-shm"] {
+            let _ = std::fs::remove_file(dir.join(".guild").join(name));
+        }
+        let store = Store::open(&dir).await.unwrap();
+        sync_if_changed(&store).await.unwrap();
+        assert_eq!(counts(store.index_pool.clone()).await, (2, 1));
+
+        std::fs::remove_file(&campaign).unwrap();
+        std::fs::remove_file(&book).unwrap();
+        sync_if_changed(&store).await.unwrap();
+        assert_eq!(counts(store.index_pool.clone()).await, (1, 0));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

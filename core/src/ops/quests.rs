@@ -3,7 +3,7 @@
 //! 각 함수는 `&Store` 받고 `AppResult<T>` 반환.
 //! 호출자 (server routes / cli Backend::Local) 가 사용.
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::events::{Phase, names as ev, payload};
 use crate::lock::DocKey;
 use crate::models::{
@@ -235,7 +235,7 @@ pub fn file_version(store: &Store, slug: &str) -> u64 {
 /// DEV-435: 퀘스트 저장을 지금 상태와 맞춘다 — 이름이 바뀌었거나 지워졌으면 거부, 번호가 다르면 거부, 본문은
 /// 그사이 바뀐 것과 합친다. 확인용 칸은 비워서 돌려준다(journal 에 안 남게).
 async fn guard_quest_edit(store: &Store, id: i64, body: &mut UpdateQuestRequest) -> AppResult<()> {
-    use crate::error::{AppError, EditConflict};
+    use crate::error::EditConflict;
     let expected = body.expected_id.take();
     let base = body.base_description.take();
     let base_version = body.base_version.take();
@@ -349,7 +349,17 @@ pub async fn create_quest(store: &Store, mut body: CreateQuestRequest) -> AppRes
 
     // 2. SQL mutation (기존 검증 + INSERT 재사용).
     let parent_id = body.parent_quest_id;
-    let quest = sql::create(&store.index_pool, body).await?;
+    // BUG-389: 번호는 파일 기준 — 캐시가 뒤처져도 있는 파일을 덮어쓰지 않는다.
+    let floor = last_number_in_files(store, type_id).await?;
+    let quest = sql::create_after(&store.index_pool, body, floor).await?;
+    let path = store.paths.quest_path(&quest.quest_id);
+    if path.exists() {
+        sqlx::query("DELETE FROM quests WHERE id = ?")
+            .bind(quest.id)
+            .execute(&store.index_pool)
+            .await?;
+        return Err(refuse_existing_file(&quest.quest_id, &path));
+    }
 
     // 3. 새 파일 작성. description 은 create body 가 명시 (Some 또는 None).
     write_quest_file(store, &quest, true).await?;
@@ -373,6 +383,50 @@ pub async fn create_quest(store: &Store, mut body: CreateQuestRequest) -> AppRes
     );
     after_mutation(store, _g).await;
     Ok(quest)
+}
+
+/// BUG-389: 새 문서가 있는 파일을 덮으려 하면 멈춘다. 번호를 파일에서 받으니 나오지 않아야 할 일이고, 나오더라도
+/// 사라지는 것보다 실패가 낫다.
+pub(crate) fn refuse_existing_file(slug: &str, path: &std::path::Path) -> AppError {
+    AppError::BadRequest(crate::tf!(
+        "{slug} 파일이 이미 있어 새로 만들지 않았습니다: {} — `openguild reindex` 를 돌린 뒤 다시 하세요",
+        "{slug} already exists on disk, so nothing was created: {} — run `openguild reindex` and retry",
+        path.display()
+    ))
+}
+
+/// BUG-389: 이 타입의 마지막 번호를 **파일에서** — `types/{타입}.toml` 카운터와 `quests/{타입}-NNN.md` 중 큰 쪽
+/// (도서관의 `allocate_number` 와 같은 방식). soft-delete 된 문서도 파일이 남아 있으니 센다.
+async fn last_number_in_files(store: &Store, type_id: i64) -> AppResult<i64> {
+    let prefix: Option<String> = sqlx::query_scalar("SELECT prefix FROM quest_types WHERE id = ?")
+        .bind(type_id)
+        .fetch_optional(&store.index_pool)
+        .await?;
+    let Some(prefix) = prefix else {
+        return Ok(0); // 없는 타입 — 뒤의 INSERT 가 알린다.
+    };
+    last_number_of_prefix(store, &prefix)
+}
+
+fn last_number_of_prefix(store: &Store, prefix: &str) -> AppResult<i64> {
+    let counter = crate::repo::TypeFile::read(store.paths.type_path(prefix))
+        .map(|tf| tf.counter.last_number)
+        .unwrap_or(0);
+    let files = crate::repo::fs::list_quest_body_files(store.paths.quests_dir())
+        .map_err(AppError::Internal)?;
+    let wanted = format!("{}-", prefix.to_ascii_uppercase());
+    let in_files = files
+        .iter()
+        .filter_map(|p| p.file_stem()?.to_str())
+        .filter_map(|stem| {
+            stem.to_ascii_uppercase()
+                .strip_prefix(&wanted)?
+                .parse::<i64>()
+                .ok()
+        })
+        .max()
+        .unwrap_or(0);
+    Ok(counter.max(in_files))
 }
 
 /// DEV-242: `.guild/types/{prefix}.toml` 의 `[counter].last_number` 를 새로
@@ -838,8 +892,13 @@ pub async fn change_quest_type(
     .await
     .map_err(crate::error::AppError::Internal)?;
 
-    let (quest, old_slug, new_slug) =
-        sql::change_type(&store.index_pool, id, &body.new_type_prefix).await?;
+    let (quest, old_slug, new_slug) = sql::change_type_after(
+        &store.index_pool,
+        id,
+        &body.new_type_prefix,
+        last_number_of_prefix(store, &body.new_type_prefix)?,
+    )
+    .await?;
 
     // NoOp (같은 type) — 추가 작업 없이 반환.
     if old_slug == new_slug {
@@ -2859,6 +2918,186 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(saved.description.as_deref(), Some("B"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── BUG-389: 파일이 진실 — 인덱스가 뒤처져도 쓰기가 파일을 덮지 않는다 ─────────
+
+    fn dev_request(title: &str) -> CreateQuestRequest {
+        CreateQuestRequest {
+            quest_type_id: 1,
+            title: title.into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: None,
+            parent_quest_id: None,
+        }
+    }
+
+    fn urgency_only(urgency: i64) -> UpdateQuestRequest {
+        UpdateQuestRequest {
+            title: None,
+            description: None,
+            urgency: Some(urgency),
+            base_description: None,
+            base_version: None,
+            expected_id: None,
+        }
+    }
+
+    /// 인덱스를 거치지 않고 파일만 고친다(git pull · 다른 도구 · 손 편집).
+    fn edit_file(path: &std::path::Path, from: &str, to: &str) {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let raw = std::fs::read_to_string(path).unwrap();
+        assert!(raw.contains(from), "{from} 없음: {raw}");
+        std::fs::write(path, raw.replace(from, to)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn new_number_comes_from_files_when_index_is_behind() {
+        let dir = fresh_tmp("bug389-number");
+        let store = setup_store(&dir).await;
+        create_quest(&store, dev_request("one")).await.unwrap();
+
+        // 받아 온 문서 — 인덱스에는 아직 없다.
+        let raw = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        let pulled = dir.join(".guild/quests/DEV-007.md");
+        std::fs::write(&pulled, raw.replace("DEV-001", "DEV-007")).unwrap();
+        let before = std::fs::read_to_string(&pulled).unwrap();
+
+        let q = create_quest(&store, dev_request("next")).await.unwrap();
+        assert_eq!(q.quest_id, "DEV-008");
+        assert_eq!(std::fs::read_to_string(&pulled).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn create_without_index_keeps_files_and_deleted_number() {
+        let dir = fresh_tmp("bug389-noindex");
+        let store = setup_store(&dir).await;
+        create_quest(&store, dev_request("one")).await.unwrap();
+        create_quest(&store, dev_request("two")).await.unwrap();
+        let first = dir.join(".guild/quests/DEV-001.md");
+        let before = std::fs::read_to_string(&first).unwrap();
+        // 지운 번호도 다시 쓰지 않는다 — 번호 파일이 기억한다.
+        std::fs::remove_file(dir.join(".guild/quests/DEV-002.md")).unwrap();
+
+        store.index_pool.close().await;
+        drop(store);
+        for name in ["index.db", "index.db-wal", "index.db-shm"] {
+            let _ = std::fs::remove_file(dir.join(".guild").join(name));
+        }
+        let store = Store::open(&dir).await.unwrap();
+
+        let q = create_quest(&store, dev_request("three")).await.unwrap();
+        assert_eq!(q.quest_id, "DEV-003");
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn write_keeps_external_edit_of_the_same_quest() {
+        let dir = fresh_tmp("bug389-title");
+        let store = setup_store(&dir).await;
+        let q = create_quest(&store, dev_request("old")).await.unwrap();
+        let path = dir.join(".guild/quests/DEV-001.md");
+        edit_file(&path, "title = \"old\"", "title = \"from outside\"");
+
+        let saved = update_quest(&store, q.id, urgency_only(3)).await.unwrap();
+
+        assert_eq!(saved.title, "from outside");
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("title = \"from outside\""), "{raw}");
+        assert!(raw.contains("urgency = 3"), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn write_refuses_a_file_it_cannot_read() {
+        let dir = fresh_tmp("bug389-broken");
+        let store = setup_store(&dir).await;
+        let q = create_quest(&store, dev_request("old")).await.unwrap();
+        let path = dir.join(".guild/quests/DEV-001.md");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let broken = "+++\nnot toml [[[\n+++\nhand written\n";
+        std::fs::write(&path, broken).unwrap();
+
+        assert!(update_quest(&store, q.id, urgency_only(3)).await.is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn write_works_on_a_quest_the_index_has_not_seen() {
+        let dir = fresh_tmp("bug389-unseen");
+        let store = setup_store(&dir).await;
+        create_quest(&store, dev_request("one")).await.unwrap();
+        let raw = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        let pulled = dir.join(".guild/quests/DEV-007.md");
+        std::fs::write(
+            &pulled,
+            raw.replace("DEV-001", "DEV-007")
+                .replace("title = \"one\"", "title = \"pulled\""),
+        )
+        .unwrap();
+
+        crate::incremental::sync_if_changed(&store).await.unwrap();
+
+        let id: i64 = sqlx::query_scalar("SELECT id FROM quests WHERE title = 'pulled'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        update_quest(&store, id, urgency_only(3)).await.unwrap();
+        let raw = std::fs::read_to_string(&pulled).unwrap();
+        assert!(raw.contains("title = \"pulled\""), "{raw}");
+        assert!(raw.contains("urgency = 3"), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 앱 · 서버처럼 켜 둔 채 밖에서 지워진 문서 — 옛 행으로 되살리지 않는다.
+    #[tokio::test]
+    async fn write_does_not_bring_back_a_deleted_file() {
+        let dir = fresh_tmp("bug389-deleted");
+        let store = setup_store(&dir).await;
+        let q = create_quest(&store, dev_request("old")).await.unwrap();
+        let path = dir.join(".guild/quests/DEV-001.md");
+        std::fs::remove_file(&path).unwrap();
+
+        assert!(update_quest(&store, q.id, urgency_only(3)).await.is_err());
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 댓글 · 메모를 한 트랜잭션으로 옮겨도: 전부 반영되고, 못 읽는 파일 하나가 나머지를 막지 않고, 다음 열기에 다시 일하지 않는다.
+    #[tokio::test]
+    async fn sibling_batch_syncs_all_and_skips_only_the_unreadable_one() {
+        let dir = fresh_tmp("bug389-sibling");
+        let store = setup_store(&dir).await;
+        for t in ["one", "two", "three"] {
+            create_quest(&store, dev_request(t)).await.unwrap();
+        }
+        let quests = dir.join(".guild/quests");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(quests.join("DEV-001.memo.md"), "memo one").unwrap();
+        std::fs::write(quests.join("DEV-002.memo.md"), "memo two").unwrap();
+        std::fs::write(quests.join("DEV-003.memo.md"), [0xff, 0xfe, 0x00]).unwrap();
+
+        let (inc, full) = crate::incremental::sync_on_open(&store).await.unwrap();
+        assert!(!inc.needs_full_reindex && full.is_none(), "{inc:?}");
+        assert_eq!(inc.siblings_synced, 2, "{inc:?}");
+        assert_eq!(inc.skipped.len(), 1, "{inc:?}");
+        let memos: Vec<String> =
+            sqlx::query_scalar("SELECT content FROM quest_memos ORDER BY content")
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(memos, ["memo one", "memo two"]);
+
+        std::fs::write(quests.join("DEV-003.memo.md"), "memo three").unwrap();
+        let (inc, _) = crate::incremental::sync_on_open(&store).await.unwrap();
+        assert_eq!(inc.siblings_synced, 1, "{inc:?}");
+        let (inc, _) = crate::incremental::sync_on_open(&store).await.unwrap();
+        assert_eq!(inc.siblings_synced, 0, "{inc:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

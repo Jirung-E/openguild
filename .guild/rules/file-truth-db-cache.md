@@ -1,6 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-08-02T16:19:39+09:00"
+updated_at = "2026-11-04T10:02:02+09:00"
+version = 1
 +++
 # 파일 진리 / DB 캐시 (저장소 불변 규칙)
 
@@ -42,6 +43,9 @@ ops 경로(journal append → SQL → 파일 atomic write → auto-block 재생�
 | 시동 sync (DEV-121) | 변경된 quest 파일 (cheap) + 신규/삭제·관계 또는 캠페인 본문·types/statuses/tags 외부편집 시 drift→풀 reindex (DEV-178) | 앱 시작 / Welcome 로 길드 열 때 |
 | 상세 lazy (DEV-137 / DEV-178) | 그 quest 한 건 (DEV-137) / 그 campaign 한 건 (DEV-178) | 상세 진입 |
 | 수동 ⟲ (DEV-095) | 전체 | 사용자 클릭 |
+| CLI 명령마다 (BUG-389) | 바뀐 파일만. 바뀐 게 없으면 `stat` 뿐 (1,300개 파일에 약 7ms) | 명령 시작 (`reindex` · `index` · `check` · `restore` 는 빼고) |
+| 서버 시동 (BUG-389) | 앱 시동과 같다 | `host` 시작 |
+| 쓰기 직전 (BUG-389) | 잠근 문서 그 한 건 | `Store::lock_docs` — **모든 문서 쓰기** |
 
 DB 캐시로 읽는 엔티티의 외부편집 커버리지:
 
@@ -58,6 +62,13 @@ campaign 본문·메타는 per-row `cached_mtime` 컬럼이 없어 범용 `file_
 캐시에 없는 메타(시드만 된 상태)를 fresh 로 보면 오탐(§위 #4 의 last_indexed_at
 회귀와 동류). 신규 파일 적재는 reindex 가 담당. 이를 위해 모든 mutation ops 는
 파일 write 직후 `file_mtime::touch` 로 캐시를 갱신한다(오탐 방지).
+
+**쓰기는 eventually-consistent 가 아니다 (BUG-389).** 쓰기는 DB 값으로 파일을 다시 만들기 때문에, 뒤처진 DB 로
+쓰면 밖에서 고친 내용을 파일에서 지운다. 그래서:
+
+- 문서를 고치기 전에 그 문서를 파일에서 다시 읽는다 — `lock_docs` 가 잠근 뒤 한다. 새 쓰기 경로도 이 잠금을 지날 것.
+- 파일을 못 읽으면 **쓰기를 거부**한다. 무시하고 쓰면 그 파일을 덮는다.
+- 새 번호는 번호 파일(`types/*.toml`)과 문서 파일에서 정한다 — DB 는 하한일 뿐이다. `index.db` 가 비어 있어도 있는 번호를 다시 주면 안 된다.
 
 신선도가 필요한 **새 read 경로**를 추가하면 "어느 sync 지점이 이걸 덮나" 를 확인.
 목록/보드처럼 여러 파일을 보는 경로는 per-read lazy 가 비싸니 시동 sync / ⟲ 에 의존.

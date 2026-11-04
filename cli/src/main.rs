@@ -4381,6 +4381,22 @@ impl Backend {
         }
     }
 
+    /// BUG-389: 로컬이면 밖에서 바뀐 파일을 캐시에 옮긴다. 실패해도 명령은 돈다 — 쓰기는 문서 잠금에서 다시 맞춘다.
+    fn sync_with_files(&self) {
+        if let Backend::Local(l) = self
+            && let Err(e) =
+                l.rt.block_on(openguild_core::incremental::sync_if_changed(&l.store))
+        {
+            eprintln!(
+                "{}",
+                tf!(
+                    "⚠ 파일과 캐시를 맞추지 못했습니다: {e:#}",
+                    "⚠ could not sync the cache with files: {e:#}"
+                )
+            );
+        }
+    }
+
     /// DEV-095: 파일 → index.db 풀 reindex.
     fn reindex(&self) -> Result<openguild_core::reindex::ReindexReport> {
         match self {
@@ -8110,6 +8126,14 @@ fn run() -> Result<()> {
     }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
+    // BUG-389: 밖에서(git pull · 편집기) 바뀐 파일을 먼저 옮긴다. 바뀐 것이 없으면 stat 뿐이다. 재색인 · 복원은 스스로
+    // 맞추고, `check` 는 어긋난 것을 **보여 주는** 명령이라 뺀다.
+    if !matches!(
+        cli.command,
+        Command::Reindex | Command::Index { .. } | Command::Check { .. } | Command::Restore { .. }
+    ) {
+        c.sync_with_files();
+    }
 
     // DEV-378: 플러그인 관리는 길드 파일과 이 기계의 동의 파일만 본다.
     // 적재보다 **먼저** 처리한다 — 그 명령 자체가 적재 결과를 보여주는데

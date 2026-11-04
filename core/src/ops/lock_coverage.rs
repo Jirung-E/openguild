@@ -163,6 +163,7 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("positions", "update_position", Docs),
     ("positions", "update_positions", Docs),
     ("quests", "create_quest", Docs),
+    ("quests", "refuse_existing_file", Helper),
     ("quests", "list_quests", Read),
     ("quests", "update_quest", Docs),
     ("quests", "set_due_dates", Docs),

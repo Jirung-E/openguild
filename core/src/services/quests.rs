@@ -656,6 +656,16 @@ pub async fn list_dependencies(pool: &SqlitePool) -> AppResult<Vec<QuestDependen
 // ─────────────────────── 변경 ───────────────────────
 
 pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<QuestRow> {
+    create_after(pool, body, 0).await
+}
+
+/// BUG-389: `file_floor` = 파일에서 본 그 타입의 마지막 번호. 번호는 이것보다 뒤에서 준다 — 캐시가 뒤처져도
+/// (git pull · `index.db` 없음) 있는 파일의 번호를 다시 주면 그 파일을 덮어쓴다.
+pub async fn create_after(
+    pool: &SqlitePool,
+    body: CreateQuestRequest,
+    file_floor: i64,
+) -> AppResult<QuestRow> {
     // parent_quest_id 지정 시 부모가 alive 한지 검증
     if let Some(pid) = body.parent_quest_id {
         let exists: bool = sqlx::query_scalar(
@@ -690,10 +700,12 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
         "UPDATE quest_counters
             SET last_number = MAX(
                 last_number,
+                ?,
                 COALESCE((SELECT MAX(number) FROM quests WHERE quest_type_id = ?), 0)
             )
           WHERE quest_type_id = ?",
     )
+    .bind(file_floor)
     .bind(body.quest_type_id)
     .bind(body.quest_type_id)
     .execute(&mut *tx)
@@ -894,6 +906,16 @@ pub async fn change_type(
     id: i64,
     new_type_prefix: &str,
 ) -> AppResult<(QuestRow, String, String)> {
+    change_type_after(pool, id, new_type_prefix, 0).await
+}
+
+/// BUG-389: `file_floor` 는 [`create_after`] 와 같다 — 새 타입에서 파일에 있는 번호를 다시 주지 않는다.
+pub async fn change_type_after(
+    pool: &SqlitePool,
+    id: i64,
+    new_type_prefix: &str,
+    file_floor: i64,
+) -> AppResult<(QuestRow, String, String)> {
     let old = fetch_by_id(pool, id).await?;
     let old_slug = old.quest_id.clone();
 
@@ -919,10 +941,12 @@ pub async fn change_type(
         "UPDATE quest_counters
             SET last_number = MAX(
                 last_number,
+                ?,
                 COALESCE((SELECT MAX(number) FROM quests WHERE quest_type_id = ?), 0)
             )
           WHERE quest_type_id = ?",
     )
+    .bind(file_floor)
     .bind(new_type_id)
     .bind(new_type_id)
     .execute(&mut *tx)

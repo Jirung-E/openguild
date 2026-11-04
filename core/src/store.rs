@@ -125,7 +125,11 @@ impl Store {
         &self,
         docs: &[crate::lock::DocKey],
     ) -> Result<crate::lock::MutationGuard> {
-        self.lock(crate::lock::GuildMode::Shared, docs).await
+        let g = self.lock(crate::lock::GuildMode::Shared, docs).await?;
+        // BUG-389: 고치려는 문서가 밖에서(git pull · 편집기) 바뀌었으면 캐시부터 맞춘다 — 낡은 행으로 파일을 다시
+        // 쓰면 밖에서 고친 것이 되돌아간다. 쓰는 곳마다 부르지 않아도 되게 여기 둔다. 바뀐 문서만 읽어 싸다.
+        crate::incremental::refresh_docs_before_write(self, docs).await?;
+        Ok(g)
     }
 
     async fn lock(

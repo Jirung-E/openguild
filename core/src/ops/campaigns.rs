@@ -75,7 +75,20 @@ pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppR
     .await
     .map_err(AppError::Internal)?;
 
-    let camp = sql::create(&store.index_pool, body).await?;
+    // BUG-389: 번호는 파일 기준 — 캐시가 뒤처져도 있는 파일을 덮어쓰지 않는다.
+    let floor = last_campaign_number_in_files(store)?;
+    let camp = sql::create_after(&store.index_pool, body, floor).await?;
+    let path = store.paths.campaign_path(&camp.campaign_slug);
+    if path.exists() {
+        sqlx::query("DELETE FROM campaigns WHERE id = ?")
+            .bind(camp.id)
+            .execute(&store.index_pool)
+            .await?;
+        return Err(crate::ops::quests::refuse_existing_file(
+            &camp.campaign_slug,
+            &path,
+        ));
+    }
     write_campaign_file(store, &camp, true).await?;
     // DEV-388: DB 와 파일이 다 쓰인 **뒤에만** 낸다. journal 은 위에서 의도를
     // 먼저 적지만 이벤트는 일어난 일만 싣는다.
@@ -84,6 +97,25 @@ pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppR
         || json!({ "campaign": payload::campaign(&camp) }),
     );
     Ok(camp)
+}
+
+/// BUG-389: `campaigns/C-NNN.md` 중 가장 큰 번호. soft-delete 된 문서도 파일이 남아 있으니 센다.
+fn last_campaign_number_in_files(store: &Store) -> AppResult<i64> {
+    let dir = store.paths.campaigns_dir();
+    if !dir.exists() {
+        return Ok(0);
+    }
+    let mut last = 0;
+    for entry in std::fs::read_dir(dir)? {
+        let name = entry?.file_name();
+        let number = name
+            .to_str()
+            .and_then(|n| n.strip_prefix("C-"))
+            .and_then(|n| n.strip_suffix(".md"))
+            .and_then(|n| n.parse::<i64>().ok());
+        last = last.max(number.unwrap_or(0));
+    }
+    Ok(last)
 }
 
 pub async fn update_campaign(
@@ -1540,6 +1572,81 @@ mod tests {
                 op("quests_all_done", None, Some("2/2"))
             ]
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── BUG-389 ─────────────────────────────────────────────────────────────
+
+    fn campaign_request(title: &str) -> crate::models::CreateCampaignRequest {
+        crate::models::CreateCampaignRequest {
+            title: title.into(),
+            description: None,
+            started_at: None,
+            ended_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn new_campaign_number_comes_from_files_when_index_is_behind() {
+        let (dir, store) = banner_setup("bug389-number").await;
+        let slug: String = sqlx::query_scalar("SELECT campaign_slug FROM campaigns")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let raw = std::fs::read_to_string(store.paths.campaign_path(&slug)).unwrap();
+        let pulled = store.paths.campaign_path("C-007");
+        std::fs::write(&pulled, raw.replace(&slug, "C-007")).unwrap();
+        let before = std::fs::read_to_string(&pulled).unwrap();
+
+        let c = create_campaign(&store, campaign_request("next"))
+            .await
+            .unwrap();
+
+        assert_eq!(c.campaign_slug, "C-008");
+        assert_eq!(std::fs::read_to_string(&pulled).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn campaign_write_keeps_external_edit_and_refuses_unreadable_file() {
+        let (dir, store) = banner_setup("bug389-edit").await;
+        let (id, slug): (i64, String) = sqlx::query_as("SELECT id, campaign_slug FROM campaigns")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let path = store.paths.campaign_path(&slug);
+        let order = |n| UpdateCampaignRequest {
+            title: None,
+            description: None,
+            status: None,
+            started_at: None,
+            ended_at: None,
+            display_order: Some(n),
+        };
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("title = \"camp\""), "{raw}");
+        std::fs::write(
+            &path,
+            raw.replace("title = \"camp\"", "title = \"outside\""),
+        )
+        .unwrap();
+        let saved = update_campaign(&store, id, order(5)).await.unwrap();
+        assert_eq!(saved.title, "outside");
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("title = \"outside\""), "{raw}");
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let broken = "+++\nnot toml [[[\n+++\nhand written\n";
+        std::fs::write(&path, broken).unwrap();
+        assert!(update_campaign(&store, id, order(6)).await.is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+
+        // 밖에서 지운 문서는 옛 행으로 되살리지 않는다.
+        std::fs::remove_file(&path).unwrap();
+        assert!(update_campaign(&store, id, order(7)).await.is_err());
+        assert!(!path.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

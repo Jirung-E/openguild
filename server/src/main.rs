@@ -412,6 +412,10 @@ async fn run_host(
             aside.display()
         );
     }
+    // BUG-389: 앱처럼 열 때 밖에서 바뀐 파일을 옮긴다 — `index.db` 가 없어도(git 으로 받은 길드) 목록이 빈 채로 뜨지 않는다.
+    if let Err(e) = openguild_core::incremental::sync_on_open(&store).await {
+        eprintln!("⚠ 파일과 캐시를 맞추지 못했습니다: {e:#}");
+    }
     // DEV-299: 서버는 프로세스가 계속 살아 있으므로 auto-snapshot 을
     // 백그라운드로 — 임계치에 걸린 요청 하나가 ~2초 멈추던 것을 없앤다.
     store.set_background_snapshots(true);
