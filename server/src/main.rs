@@ -27,6 +27,8 @@ mod routes;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod write_matrix_tests;
 
 use openguild_core::guild_file;
 use openguild_core::locale::Locale;
