@@ -3284,6 +3284,77 @@ permissions = ["notify"]
 }
 
 /// 권한을 밝히면 백업이 실제로 만들어지고, 그 백업이 낸 이벤트는 **자기에게 돌아오지 않는다**.
+/// BUG-390: `pre` · `wait` 줄은 런타임 안에서 돈다 — 거기서 부른 `backup()` 도 실제로 백업을 만든다. 일반 줄도 그대로다.
+#[tokio::test]
+async fn backup_runs_from_every_kind_of_event_line() {
+    for (label, when) in [
+        ("pre", "pre = [\"quest.status_changed\"]"),
+        ("wait", "post = [\"quest.status_changed\"]\n    wait = true"),
+        ("post", "post = [\"quest.status_changed\"]"),
+    ] {
+        let home = fresh_tmp(&format!("bk-line-home-{label}"));
+        let g = fresh_tmp(&format!("bk-line-{label}"));
+        crate::repo::seed_guild_dir(&g).unwrap();
+        let dir = plugins_dir(&g).join("keeper");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(MANIFEST),
+            format!(
+                "name = \"keeper\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\npermissions = [\"backup\"]\n\n[[handlers]]\n    {when}\n    call = \"keep\"\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(dir.join("main.rhai"), "fn keep(e) { backup() }").unwrap();
+        let store = crate::Store::open(&g).await.unwrap();
+        {
+            let _guard = env_lock();
+            unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+            consent::enable_auto_allow(&g).unwrap();
+            let l = store.install_plugins_with(
+                Scope::Cli,
+                std::sync::Arc::new(runtime::DropDelivery),
+                std::sync::Arc::new(super::guild::Stderr),
+            );
+            assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+            unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        }
+        let q = crate::ops::quests::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "대상".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::quests::change_status(
+            &store,
+            q.id,
+            crate::models::ChangeStatusRequest {
+                status_slug: "done".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(store.drain_events(std::time::Duration::from_secs(20)));
+        assert!(
+            store.plugin_problems().is_empty(),
+            "{label}: {:?}",
+            store.plugin_problems()
+        );
+        let snaps = std::fs::read_dir(g.join(".guild/backups/snapshots"))
+            .map(|d| d.count())
+            .unwrap_or(0);
+        assert_eq!(snaps, 1, "{label}: 백업이 안 만들어졌다");
+        // 비동기 작업 안에서 버려도 패닉하지 않는다 — 플러그인을 다시 불러올 때와 같다.
+        store.events.clear_sink();
+    }
+}
+
 #[tokio::test]
 async fn a_permitted_backup_runs_and_does_not_call_itself() {
     #[derive(Default)]

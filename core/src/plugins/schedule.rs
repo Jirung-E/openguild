@@ -764,6 +764,56 @@ mod tests {
     }
 
     /// BUG-389: 켜 둔 앱이 모르는 사이 밖에서 고친 댓글도 다음 차례의 목록에 실린다.
+    /// BUG-390: 시간 줄은 런타임 안에서 돈다 — 거기서 부른 `backup()` 도 실제로 백업을 만든다.
+    #[tokio::test]
+    async fn backup_runs_from_a_timed_line() {
+        let root = tmp("tick-backup");
+        crate::repo::seed_guild_dir(&root).unwrap();
+        let store = crate::Store::open(&root).await.unwrap();
+        crate::ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "퀘스트".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let mut p = plugin(
+            "name = \"s\"\nscope = [\"gui\"]\nscripts = [\"main.rhai\"]\npermissions = [\"backup\"]\n[[handlers]]\nid = \"백업\"\nevery = \"1h\"\nquery = \"status:open\"\ncall = \"keep\"\n",
+            &root,
+        );
+        p.compiled = Some(Arc::new(
+            super::super::script::Script::compile_source("fn keep(e) { backup() }").unwrap(),
+        ));
+        let delivery = super::super::guild::WithGuild::new(
+            Arc::new(super::super::testing::Recorder::default()),
+            store.clone(),
+            Arc::new(super::super::guild::Stderr),
+        );
+        let log = Mutex::new(Vec::new());
+        let state = root.join("state");
+        tick(
+            &store,
+            std::slice::from_ref(&p),
+            &delivery,
+            &log,
+            5_000_000,
+            Some(&state),
+        )
+        .await;
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+        assert_eq!(
+            crate::snapshot::list_snapshots(&store.paths).unwrap().len(),
+            1,
+            "백업이 안 만들어졌다"
+        );
+    }
+
     #[tokio::test]
     async fn tick_reads_the_files_before_handing_over_the_list() {
         let root = tmp("tick-outside");

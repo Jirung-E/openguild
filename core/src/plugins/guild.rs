@@ -74,6 +74,30 @@ impl WithGuild {
             })?;
         Ok(self.rt.get_or_init(|| rt))
     }
+
+    /// 길드 일을 돌리고 끝날 때까지 기다린다. **런타임 밖의 스레드에서** 돌린다 — 시간 실행 · `wait` · `pre` 줄은 이미
+    /// 런타임 안에서 도는데, 그 자리에서 `block_on` 하면 tokio 가 패닉한다(BUG-390).
+    fn block_on<T: Send>(
+        &self,
+        work: impl std::future::Future<Output = T> + Send,
+    ) -> Result<T, String> {
+        let rt = self.runtime()?;
+        std::thread::scope(|s| s.spawn(|| rt.block_on(work)).join()).map_err(|_| {
+            crate::tf!(
+                "길드 명령을 돌리다 패닉했습니다",
+                "a guild command panicked"
+            )
+        })
+    }
+}
+
+impl Drop for WithGuild {
+    /// 플러그인을 다시 불러오면 비동기 작업 안에서 버려질 수 있다 — 그대로 버리면 런타임이 기다리려다 패닉한다.
+    fn drop(&mut self) {
+        if let Some(rt) = self.rt.take() {
+            rt.shutdown_background();
+        }
+    }
 }
 
 impl Delivery for WithGuild {
@@ -104,13 +128,12 @@ impl Delivery for WithGuild {
                 self.notifier.notify(&plugin.def.name, &text)
             }
             CommandKind::Backup => {
-                let rt = self.runtime()?;
                 let store = self.store.clone();
                 // DEV-401: 이 백업이 내는 `backup.created` 에 "이 플러그인이 일으켰다" 를 단다.
                 let origin = event.origin.then(&plugin.def.name);
-                rt.block_on(crate::events::origin::scope(origin, async move {
+                self.block_on(crate::events::origin::scope(origin, async move {
                     crate::snapshot::create_snapshot(&store).await
-                }))
+                }))?
                 .map(|_| ())
                 .map_err(|e| {
                     crate::tf!(
