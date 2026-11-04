@@ -479,6 +479,23 @@ pub async fn update_book_with(
         keys.push(DocKey::single("library-folders"));
     }
     let _g = store.lock_docs(&keys).await?;
+    // BUG-389: 아래는 행 값으로 파일을 다시 쓴다 — 밖에서 지운 문서를 되살리거나 못 읽는 파일을 덮으면 안 된다.
+    let book_path = store.paths.book_path(book_id);
+    if !book_path.exists() {
+        if let Some(number) = repo::parse_book_slug(book_id) {
+            sqlx::query("DELETE FROM library_docs WHERE number = ?")
+                .bind(number)
+                .execute(&store.index_pool)
+                .await?;
+        }
+        return Err(AppError::NotFound(format!("book not found: {book_id}")));
+    }
+    if let Err(e) = BookFile::read(&book_path) {
+        return Err(AppError::BadRequest(crate::tf!(
+            "{book_id} 파일을 읽을 수 없어 고치지 않았습니다 — 파일을 고치고 다시 하세요 ({e})",
+            "Cannot read {book_id}, so nothing was changed — fix the file and try again ({e})"
+        )));
+    }
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;

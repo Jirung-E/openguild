@@ -127,6 +127,7 @@ pub async fn add_entry(
         body_trimmed = t;
     }
     let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
+    super::require_campaign(store, slug).await?;
     let _ = journal::append(
         &store.journal_pool,
         "add_campaign_comment",
@@ -426,6 +427,7 @@ pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
 /// 이유로 제외했다.
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {
     let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
+    super::require_campaign(store, slug).await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_campaign_memo",
@@ -463,6 +465,13 @@ mod tests {
     #[tokio::test]
     async fn add_list_update_delete_roundtrip() {
         let (dir, store) = setup("crud").await;
+        sqlx::query(
+            "INSERT INTO campaigns (campaign_slug, title, status, created_at, updated_at)
+             VALUES ('C-001', 'c', 'active', '', '')",
+        )
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
         let e1 = add_entry(&store, "C-001", "alice".into(), "first".into(), None)
             .await
             .unwrap();
@@ -540,6 +549,13 @@ mod tests {
     #[tokio::test]
     async fn reaction_toggle_and_memo() {
         let (dir, store) = setup("react").await;
+        sqlx::query(
+            "INSERT INTO campaigns (campaign_slug, title, status, created_at, updated_at)
+             VALUES ('C-001', 'c', 'active', '', '')",
+        )
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
         add_entry(&store, "C-001", "a".into(), "x".into(), None)
             .await
             .unwrap();

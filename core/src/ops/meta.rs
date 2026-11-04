@@ -422,11 +422,50 @@ async fn rename_type_locked(
             }
         }
         let quest = sql::fetch_by_id(&store.index_pool, *qid).await?;
+        // BUG-389: `quest retype` 와 같다 — 옮긴 **뒤** 쓴다. 새 경로에 새로 쓰면 파일의 태그 · 번호를 잃는다.
+        let new_quest_path = store.paths.quest_path(&quest.quest_id);
+        if old_quest_path != new_quest_path && old_quest_path.exists() && !new_quest_path.exists() {
+            std::fs::rename(&old_quest_path, &new_quest_path)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+        }
         crate::ops::quests::write_quest_file(store, &quest, true).await?;
-        if old_quest_path != store.paths.quest_path(&quest.quest_id) && old_quest_path.exists() {
+        if old_quest_path != new_quest_path && old_quest_path.exists() {
             let _ = std::fs::remove_file(&old_quest_path);
         }
     }
+
+    // BUG-389: 지운 퀘스트 · 옆 파일 · 이력 · 캠페인 연결도 같은 이름을 쓴다. 안 옮기면 댓글과 메모가 아무 퀘스트에도 안 붙고,
+    // 지운 퀘스트는 없는 타입의 파일로 남고, 연결은 다음 재색인에 끊긴다.
+    let numbers: Vec<(i64, i64, bool)> = sqlx::query_as(
+        "SELECT id, number, deleted_at IS NOT NULL FROM quests WHERE quest_type_id = ?",
+    )
+    .bind(old_row.id)
+    .fetch_all(&store.index_pool)
+    .await?;
+    let mut slug_renames: Vec<(String, String)> = Vec::new();
+    for (id, number, deleted) in numbers {
+        let old_slug = format!("{old_prefix}-{number:03}");
+        let new_slug = format!("{new_prefix}-{number:03}");
+        if deleted {
+            let old_path = store.paths.quest_path(&old_slug);
+            let new_path = store.paths.quest_path(&new_slug);
+            if old_path.exists() && !new_path.exists() {
+                std::fs::rename(&old_path, &new_path)
+                    .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+            }
+            crate::ops::quests::rewrite_deleted_quest_file(store, id, &new_slug, |f| {
+                f.quest_id = new_slug.clone();
+            })
+            .await?;
+        }
+        slug_renames.push((old_slug, new_slug));
+    }
+    for (old_slug, new_slug) in &slug_renames {
+        crate::repo::history::rename(&store.paths, old_slug, new_slug)
+            .map_err(AppError::Internal)?;
+        crate::ops::quests::move_sidecars(store, old_slug, new_slug)?;
+    }
+    crate::ops::campaigns::rename_linked_quests(store, &slug_renames).await?;
 
     // 3. 관련 다른 quest 의 auto-block 재생성
     //    (parent / sub / prerequisite / successor mention).
@@ -543,6 +582,21 @@ async fn rename_status_slug_locked(
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, *qid).await {
             crate::ops::quests::write_quest_file(store, &q, false).await?;
         }
+    }
+    // BUG-389: 지운 퀘스트 파일도 이 상태를 적고 있다 — 안 고치면 없는 상태를 가리켜 되살릴 수 없다.
+    let deleted: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT q.id, qt.prefix || '-' || printf('%03d', q.number)
+           FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+          WHERE q.status_id = ? AND q.deleted_at IS NOT NULL",
+    )
+    .bind(old_row.id)
+    .fetch_all(&store.index_pool)
+    .await?;
+    for (id, slug) in &deleted {
+        crate::ops::quests::rewrite_deleted_quest_file(store, *id, slug, |f| {
+            f.status = new_slug.clone();
+        })
+        .await?;
     }
 
     let renamed = fetch_status_by_slug(&store.index_pool, &new_slug).await?;
@@ -2128,6 +2182,84 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("outside"), "{raw}");
         assert!(raw.contains("#123456"), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-389: 타입 이름을 바꿔도 태그 · 댓글 · 메모 · 지운 퀘스트 · 캠페인 연결이 이어진다 — 재색인 뒤에도.
+    #[tokio::test]
+    async fn rename_type_carries_everything_attached_to_the_quest() {
+        let (dir, store) = store_with_outside_edit("bug389-carry").await;
+        let q1: i64 = sqlx::query_scalar("SELECT id FROM quests WHERE number = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let q2: i64 = sqlx::query_scalar("SELECT id FROM quests WHERE number = 2")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        crate::ops::quests::set_quest_tags(&store, q1, vec!["keep".into()])
+            .await
+            .unwrap();
+        let quests = dir.join(".guild/quests");
+        std::fs::write(quests.join("DEV-001.memo.md"), "memo").unwrap();
+        let campaign = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "c".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::campaigns::link_quest_by_slug(&store, campaign.id, "DEV-001")
+            .await
+            .unwrap();
+        crate::ops::quests::delete_quest(&store, q2, &[])
+            .await
+            .unwrap();
+
+        rename_type(&store, "DEV".into(), "ZED".into())
+            .await
+            .unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let raw = std::fs::read_to_string(quests.join("ZED-001.md")).unwrap();
+        assert!(raw.contains("keep"), "{raw}");
+        assert!(quests.join("ZED-001.memo.md").exists());
+        assert!(!quests.join("DEV-001.memo.md").exists());
+        assert!(quests.join("ZED-002.md").exists());
+        assert!(!quests.join("DEV-002.md").exists());
+        let memos: i64 = sqlx::query_scalar("SELECT count(*) FROM quest_memos WHERE quest_id = ?")
+            .bind(q1)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(memos, 1);
+        let links: i64 = sqlx::query_scalar("SELECT count(*) FROM campaign_quests")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(links, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_status_also_rewrites_deleted_quest_files() {
+        let (dir, store) = store_with_outside_edit("bug389-status-deleted").await;
+        let q2: i64 = sqlx::query_scalar("SELECT id FROM quests WHERE number = 2")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        crate::ops::quests::delete_quest(&store, q2, &[])
+            .await
+            .unwrap();
+        rename_status_slug(&store, "open".into(), "fresh".into())
+            .await
+            .unwrap();
+        let raw = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
+        assert!(raw.contains("status = \"fresh\""), "{raw}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

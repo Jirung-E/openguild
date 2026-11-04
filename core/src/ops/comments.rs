@@ -207,6 +207,7 @@ pub async fn add_comment_entry(
         body = t;
     }
     let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
+    super::require_quest(store, slug).await?;
     let _ = journal::append(
         &store.journal_pool,
         "add_comment_entry",
@@ -607,6 +608,7 @@ pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
 
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {
     let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
+    super::require_quest(store, slug).await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_memo",

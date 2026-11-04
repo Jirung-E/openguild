@@ -65,6 +65,41 @@ where
     Ok(store.lock_guild().await?)
 }
 
+/// BUG-389: 댓글 · 메모를 달 문서가 있나. 파일도 행도 없으면 지워진 문서다 — 달면 주인 없는 옆 파일이 생긴다.
+pub(crate) async fn require_quest(
+    store: &crate::store::Store,
+    slug: &str,
+) -> crate::error::AppResult<()> {
+    if store.paths.quest_path(slug).exists() {
+        return Ok(());
+    }
+    let row: Option<i64> = sqlx::query_scalar(
+        "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+          WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+    )
+    .bind(slug)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    row.map(|_| ())
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("quest {slug} not found")))
+}
+
+/// 캠페인 쪽 [`require_quest`].
+pub(crate) async fn require_campaign(
+    store: &crate::store::Store,
+    slug: &str,
+) -> crate::error::AppResult<()> {
+    if store.paths.campaign_path(slug).exists() {
+        return Ok(());
+    }
+    let row: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+        .bind(slug)
+        .fetch_optional(&store.index_pool)
+        .await?;
+    row.map(|_| ())
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("campaign {slug} not found")))
+}
+
 /// DEV-435: 편집을 시작할 때 본 것 — 본문 저장이 그사이 남이 한 변경을 조용히 덮지 않게.
 ///
 /// - `text`: 시작할 때 본 본문. 있으면 지금 본문과 3방향 병합한다(앱).

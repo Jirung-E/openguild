@@ -62,6 +62,31 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
 
 // ─────────────────────── 생성 / 수정 / 삭제 ───────────────────────
 
+/// BUG-389: 퀘스트 이름이 바뀌면 캠페인 파일의 `linked_quests` 도 옮긴다(파일이 진실 — 행의 연결은 id 라 그대로지만
+/// 다음 재색인이 파일의 이름으로 다시 잇는다). 길드 독점을 쥔 쪽만 부른다.
+pub(crate) async fn rename_linked_quests(
+    store: &Store,
+    renames: &[(String, String)],
+) -> AppResult<()> {
+    let files = crate::repo::fs::list_quest_body_files(store.paths.campaigns_dir())
+        .map_err(AppError::Internal)?;
+    for path in files {
+        let mut file = crate::repo::CampaignFile::read(&path).map_err(AppError::Internal)?;
+        let mut changed = false;
+        for slug in &mut file.frontmatter.linked_quests {
+            if let Some((_, new)) = renames.iter().find(|(old, _)| old == slug) {
+                *slug = new.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            file.write(&path).map_err(AppError::Internal)?;
+            let _ = crate::file_mtime::touch(store, &path).await;
+        }
+    }
+    Ok(())
+}
+
 pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppResult<CampaignRow> {
     let _g = store
         .lock_docs(&[DocKey::new("counter", "campaign")])

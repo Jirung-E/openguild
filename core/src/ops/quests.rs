@@ -91,7 +91,7 @@ fn report_snapshot(result: anyhow::Result<Option<crate::snapshot::SnapshotInfo>>
 ///
 /// 새 이름에 이미 파일이 있으면 **덮지 않는다** — 옛 파일은 그대로 두고 이유를 남긴다. 번호는 다시 안 주므로
 /// 보통은 일어나지 않는다(손으로 만든 파일 정도). 이름은 이미 DB 에서 바뀌었으므로 여기서 전체를 실패시키지 않는다.
-fn move_sidecars(store: &Store, old_slug: &str, new_slug: &str) -> AppResult<()> {
+pub(crate) fn move_sidecars(store: &Store, old_slug: &str, new_slug: &str) -> AppResult<()> {
     let p = &store.paths;
     for (from, to) in [
         (p.comments_path(old_slug), p.comments_path(new_slug)),
@@ -937,6 +937,9 @@ pub async fn change_quest_type(
         .map_err(crate::error::AppError::Internal)?;
     // BUG-343: 댓글 · 메모 · 첨부 목록도 같은 문서다 — 안 옮기면 옛 이름에 남아 아무 퀘스트에도 안 붙는다.
     move_sidecars(store, &old_slug, &new_slug)?;
+    // BUG-389: 캠페인 파일의 연결도 이름으로 적혀 있다 — 안 고치면 다음 재색인에 끊긴다.
+    crate::ops::campaigns::rename_linked_quests(store, &[(old_slug.clone(), new_slug.clone())])
+        .await?;
     crate::repo::history::append(
         &store.paths,
         &new_slug,
@@ -1351,6 +1354,29 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
 }
 
 // ─────────────────────────── 내부 헬퍼 ───────────────────────────
+
+/// BUG-389: 지운 퀘스트 파일의 칸 하나를 고친다(타입 · 상태 이름 바꾸기). 행으로는 못 읽으니 파일을 읽어 고친다.
+pub(crate) async fn rewrite_deleted_quest_file(
+    store: &Store,
+    id: i64,
+    slug: &str,
+    edit: impl FnOnce(&mut QuestFrontmatter),
+) -> AppResult<()> {
+    let path = store.paths.quest_path(slug);
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut file = QuestFile::read(&path).map_err(crate::error::AppError::Internal)?;
+    edit(&mut file.frontmatter);
+    file.write(&path)
+        .map_err(crate::error::AppError::Internal)?;
+    sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+        .bind(crate::repo::fs::mtime_unix_nanos(&path))
+        .bind(id)
+        .execute(&store.index_pool)
+        .await?;
+    Ok(())
+}
 
 /// soft-deleted quest 의 파일을 frontmatter `deleted: true` 로 작성.
 /// 본인은 더 이상 alive 가 아니므로 `write_quest_file` 의 fetch_relations 가
@@ -3088,6 +3114,102 @@ mod tests {
 
         let raw = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
         assert!(raw.contains("title = \"from outside\""), "{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_type_keeps_campaign_link_after_reindex() {
+        let dir = fresh_tmp("bug389-retype-link");
+        let store = setup_store(&dir).await;
+        let q = create_quest(&store, dev_request("q")).await.unwrap();
+        let c = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "c".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::campaigns::link_quest_by_slug(&store, c.id, &q.quest_id)
+            .await
+            .unwrap();
+        change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
+        )
+        .await
+        .unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+        let links: i64 = sqlx::query_scalar("SELECT count(*) FROM campaign_quests")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(links, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn comment_and_memo_refuse_a_deleted_document() {
+        let dir = fresh_tmp("bug389-orphan");
+        let store = setup_store(&dir).await;
+        create_quest(&store, dev_request("q")).await.unwrap();
+        std::fs::remove_file(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        for _ in 0..2 {
+            let c = crate::ops::comments::add_comment_entry(
+                &store,
+                "DEV-001",
+                "a".into(),
+                "x".into(),
+                None,
+                false,
+            )
+            .await;
+            assert!(c.is_err());
+            assert!(
+                crate::ops::comments::set_memo(&store, "DEV-001", "x".into())
+                    .await
+                    .is_err()
+            );
+        }
+        assert!(!dir.join(".guild/quests/DEV-001.comments.md").exists());
+        assert!(!dir.join(".guild/quests/DEV-001.memo.md").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn book_update_refuses_deleted_and_unreadable_files() {
+        let dir = fresh_tmp("bug389-book");
+        let store = setup_store(&dir).await;
+        crate::ops::library::create_book(&store, "one", "body", "")
+            .await
+            .unwrap();
+        crate::ops::library::create_book(&store, "two", "body", "")
+            .await
+            .unwrap();
+        let broken_path = store.paths.book_path("BOOK-001");
+        let broken = "+++\nnot toml [[[\n+++\nhand\n";
+        std::fs::write(&broken_path, broken).unwrap();
+        assert!(
+            crate::ops::library::update_book(&store, "BOOK-001", Some("z"), None, None)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&broken_path).unwrap(), broken);
+
+        let gone = store.paths.book_path("BOOK-002");
+        std::fs::remove_file(&gone).unwrap();
+        assert!(
+            crate::ops::library::update_book(&store, "BOOK-002", Some("z"), None, None)
+                .await
+                .is_err()
+        );
+        assert!(!gone.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

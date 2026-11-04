@@ -538,7 +538,7 @@ async fn all_declared_events_fire_with_a_usable_payload() {
     )
     .await
     .unwrap();
-    crate::ops::quests::change_quest_type(
+    let q = crate::ops::quests::change_quest_type(
         &store,
         q.id,
         crate::models::ChangeTypeRequest {
