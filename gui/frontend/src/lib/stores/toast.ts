@@ -195,3 +195,14 @@ export function dismissSchema(sig: string) {
 	}
 	dismissNotif('schema');
 }
+
+/** 앱이 보내는 플러그인 알림을 받는다. 모양은 `gui/src/lib.rs` 의 `notice_payload` 와 같다. */
+export async function listenPluginNotices(): Promise<() => void> {
+	const { listen } = await import('@tauri-apps/api/event');
+	return listen<{ plugin: string; text: string; options?: PluginNoticeOptions }>(
+		'plugin-notify',
+		(e) => {
+			showPluginNotice(e.payload.plugin, e.payload.text, e.payload.options);
+		}
+	);
+}

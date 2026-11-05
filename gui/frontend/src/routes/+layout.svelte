@@ -38,7 +38,7 @@
 	// 스택으로. 업데이트·스키마 watcher 도 이 호스트가 내장(이전의 UpdateBanner/
 	// SchemaAheadBanner 껍데기 컴포넌트 제거).
 	import ToastHost from '$lib/components/ToastHost.svelte';
-	import { showPluginNotice, showToast, type PluginNoticeOptions } from '$lib/stores/toast';
+	import { listenPluginNotices, showToast } from '$lib/stores/toast';
 	import { isLocalTauri } from '$lib/api/transport';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
@@ -126,11 +126,7 @@
 		let stop: (() => void) | undefined;
 		void (async () => {
 			try {
-				const { listen } = await import('@tauri-apps/api/event');
-				stop = await listen<{ plugin: string; text: string; options?: PluginNoticeOptions }>(
-					'plugin-notify',
-					(e) => showPluginNotice(e.payload.plugin, e.payload.text, e.payload.options)
-				);
+				stop = await listenPluginNotices();
 			} catch {
 				// 앱이 아니면 이벤트 통로가 없다 — 알림도 없다.
 			}

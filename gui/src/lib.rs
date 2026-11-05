@@ -339,6 +339,15 @@ static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
 pub struct AppNotifier;
 
+/// 화면으로 보내는 알림의 모양. 화면 쪽 `listenPluginNotices` 의 시험이 같은 모양을 쓴다 — 고치면 둘 다 고친다.
+fn notice_payload(
+    plugin: &str,
+    text: &str,
+    options: &openguild_core::plugins::guild::NoticeOptions,
+) -> serde_json::Value {
+    serde_json::json!({ "plugin": plugin, "text": text, "options": options })
+}
+
 impl openguild_core::plugins::guild::Notifier for AppNotifier {
     fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
         self.notify_with(plugin, text, &Default::default())
@@ -353,10 +362,7 @@ impl openguild_core::plugins::guild::Notifier for AppNotifier {
         use tauri::Emitter;
         match APP.get() {
             Some(app) => app
-                .emit(
-                    "plugin-notify",
-                    serde_json::json!({ "plugin": plugin, "text": text, "options": options }),
-                )
+                .emit("plugin-notify", notice_payload(plugin, text, options))
                 .map_err(|e| format!("알림을 화면에 못 보냈습니다: {e}")),
             None => openguild_core::plugins::guild::Stderr.notify(plugin, text),
         }
@@ -985,6 +991,30 @@ mod plugin_ipc_tests;
 
 #[cfg(test)]
 mod tests {
+    /// 없는 옵션은 칸째 빠져야 한다. `null` 로 가면 화면이 `seconds: null` 을 0초(닫을 때까지)로,
+    /// `comment: null` 을 `?comment=null` 로 읽는다.
+    #[test]
+    fn notice_payload_is_what_the_screen_reads() {
+        use openguild_core::plugins::guild::NoticeOptions;
+        assert_eq!(
+            super::notice_payload("p", "글", &NoticeOptions::default()),
+            serde_json::json!({ "plugin": "p", "text": "글", "options": {} })
+        );
+        let full = NoticeOptions {
+            seconds: Some(10.0),
+            open: Some("DEV-001".into()),
+            comment: Some(3),
+        };
+        assert_eq!(
+            super::notice_payload("p", "글", &full),
+            serde_json::json!({
+                "plugin": "p",
+                "text": "글",
+                "options": { "seconds": 10.0, "open": "DEV-001", "comment": 3 }
+            })
+        );
+    }
+
     // BUG-260: 메인 창을 닫으면 자식 창도 닫힌다.
     //
     // 창 이벤트 자체는 GUI 없이 못 돌리므로, **판정 두 개**를 고정한다.

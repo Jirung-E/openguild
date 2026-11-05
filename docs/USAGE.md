@@ -345,7 +345,7 @@ fn on_comment(e, subject) {
   `seconds` 는 초(0 = 닫을 때까지, 최대 3600, 없으면 기본 시간), `open` 은 퀘스트 · 캠페인 · 도서관 문서 번호,
   `comment` 는 그 문서의 댓글 번호입니다(`open` 과 함께, 도서관 제외). 틀린 값은 스크립트 오류입니다. CLI · 서버는 글만 남깁니다.
 - `query(대상, 쿼리)` — 길드를 읽어 목록을 받습니다. **`permissions = ["query"]`** 로 밝혀야 합니다. 아래 참고.
-- `config("키")` — 사용자가 설정 화면에 넣은 값.
+- `config("키")` — 사용자가 설정 화면에 넣은 값. 넣은 적이 없고 기본값도 없으면 `()` 입니다.
 - `guild_name()`, `status_name("in_progress")`, `type_name("DEV")`, `link("quest", "DEV-001")`,
   `now()`, `ago(시각)`, `truncate(글, 수)`, `plain_text(마크다운)`.
   - 언어는 골라 쓸 수 있습니다 — `status_name("done", "en")`. 안 주면 이 기계의 언어 설정을

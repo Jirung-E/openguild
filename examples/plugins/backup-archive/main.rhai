@@ -8,7 +8,9 @@ fn copy_backup(e) {
     // 자동 백업(ops 50개 / 24시간마다)까지 쌓을지는 설정에서 고른다.
     if config("ONLY_MANUAL") && e.automatic { return; }
     // 쌓아 둘 곳을 안 정했으면 아무것도 안 한다 — 어디로 복사할지 모른다.
-    if config("ARCHIVE_DIR") == "" { return; }
+    // 넣은 적이 없으면 `()`, 지웠으면 빈 글자다.
+    let dir = config("ARCHIVE_DIR");
+    if dir == () || dir == "" { return; }
     // 셸이 한 줄로 받는다(JSON 문자열이라 따옴표가 붙는다). 경로는 절대 경로다.
     run("archive", e.path);
 }

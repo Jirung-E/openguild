@@ -902,6 +902,39 @@ fn shipped_powershell_scripts_are_ascii_or_have_a_bom() {
     );
 }
 
+/// 예제는 복사해 쓰는 본보기다. 시험도 함께 있어야 따라 쓰고, 고칠 때 깨진 것을 안다.
+#[test]
+fn shipped_examples_all_have_passing_tests() {
+    let _guard = env_lock();
+    let home = fresh_tmp("examples-test-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
+    let g = fresh_tmp("examples-test");
+    let dest = plugins_dir(&g);
+    std::fs::create_dir_all(&dest).unwrap();
+    for e in std::fs::read_dir(&src).unwrap().flatten() {
+        if !e.path().is_dir() {
+            continue;
+        }
+        let to = dest.join(e.file_name());
+        std::fs::create_dir_all(&to).unwrap();
+        for f in std::fs::read_dir(e.path()).unwrap().flatten() {
+            std::fs::copy(f.path(), to.join(f.file_name())).unwrap();
+        }
+    }
+    consent::enable_auto_allow(&g).unwrap();
+    let l = load_all(&g);
+    assert!(l.errors.is_empty(), "{:?}", l.errors);
+    assert!(l.active.len() >= 3, "예제가 {}개뿐이다", l.active.len());
+    for p in &l.active {
+        let results = testing::run_tests(p).unwrap();
+        assert!(!results.is_empty(), "{}: 시험이 없다", p.def.name);
+        for r in results {
+            assert!(r.failure.is_none(), "{}: {r:?}", p.def.name);
+        }
+    }
+}
+
 /// **예제가 안 도는 건 없느니만 못하다.**
 ///
 /// `examples/plugins/` 는 사용자가 복사해 쓰라고 두는 것이다. 정의가 검증을 못
