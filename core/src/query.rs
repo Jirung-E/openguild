@@ -644,7 +644,7 @@ fn read_value(
     let n = chars.len();
     let stop = |c: char| ends_word(c, depth) || (in_list && (c == ',' || c == ')'));
     let after = |end: usize| -> Result<(), QueryError> {
-        if end < n && !stop(chars[end]) && !(chars[end] == ')') {
+        if end < n && !stop(chars[end]) && chars[end] != ')' {
             return Err(QueryError::at(
                 end,
                 crate::tf!(
