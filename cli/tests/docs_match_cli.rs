@@ -347,11 +347,11 @@ const REMOVED: [(&str, &str); 7] = [
     ),
     (
         r#"\bof\s*=\s*"(quest|campaign|library|comment)""#,
-        "줄의 `of` 는 없어졌다 — query(대상, 쿼리) 로 읽는다",
+        "줄에 `of` 는 없다 — query(대상, 쿼리) 로 읽는다",
     ),
     (
         r"\b(status|tag|type|title|body|campaign|folder|child|parent|prereq|successor|id|quest):=?\[",
-        "`key:[a, b]` 는 없어졌다 — any · all · only 로 적는다",
+        "`key:[a, b]` 문법은 없다 — any · all · only 로 적는다",
     ),
     (
         r"--has-sub\b|--no-sub\b",

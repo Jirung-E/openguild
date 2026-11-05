@@ -874,8 +874,8 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                 out.errors.push((
                     label,
                     crate::tf!(
-                        "plugin.json 은 더 이상 읽지 않습니다 — plugin.toml 의 [[handlers]] 형식으로 옮기세요",
-                        "plugin.json is no longer read — move it to plugin.toml with [[handlers]]"
+                        "플러그인 정의는 plugin.json 이 아니라 plugin.toml 입니다 — [[handlers]] 형식으로 적으세요",
+                        "A plugin is defined in plugin.toml, not plugin.json — write it with [[handlers]]"
                     ),
                 ));
             }

@@ -522,8 +522,8 @@ fn read_term(
         return Err(QueryError::at(
             k,
             crate::tf!(
-                "'{name}:[ ]' 는 없어졌습니다 — 뜻을 낱말로 적으세요: {name}:any(a, b) 하나라도 · {name}:all(a, b) 모두 · {name}:only(a, b) 정확히 이것들만",
-                "'{name}:[ ]' is gone — say what you mean: {name}:any(a, b) for one of them, {name}:all(a, b) for all of them, {name}:only(a, b) for exactly these"
+                "'{name}:[ ]' 라는 문법은 없습니다 — 여러 값은 뜻을 낱말로 적으세요: {name}:any(a, b) 하나라도 · {name}:all(a, b) 모두 · {name}:only(a, b) 정확히 이것들만",
+                "There is no '{name}:[ ]' syntax — for several values, say what you mean: {name}:any(a, b) for one of them, {name}:all(a, b) for all of them, {name}:only(a, b) for exactly these"
             ),
         ));
     }
