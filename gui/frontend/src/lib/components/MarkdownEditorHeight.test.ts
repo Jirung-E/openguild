@@ -100,3 +100,31 @@ describe('DEV-475 편집기 포커스', () => {
 		expect(caret()).toContain('끝 줄');
 	});
 });
+
+describe('DEV-475 조합 중에 밖을 누르면', () => {
+	const press = async (scrollAfter: number) => {
+		const { container } = render(MarkdownEditor, { props: { value: '본문', onError: () => {} } });
+		await tick();
+		const box = container.parentElement as HTMLElement;
+		box.scrollTop = 300;
+		return async (composing: boolean) => {
+			const content = container.querySelector('.cm-content') as HTMLElement;
+			if (composing)
+				content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+			document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+			box.scrollTop = scrollAfter;
+			await new Promise((r) => requestAnimationFrame(r));
+			return box.scrollTop;
+		};
+	};
+
+	it('누르던 버튼이 밀리지 않게 스크롤을 되돌린다', async () => {
+		const go = await press(100);
+		expect(await go(true)).toBe(300);
+	});
+
+	it('조합 중이 아니면 건드리지 않는다', async () => {
+		const go = await press(100);
+		expect(await go(false)).toBe(100);
+	});
+});

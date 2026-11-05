@@ -401,7 +401,20 @@
 			}
 			view.focus();
 		}
+		// DEV-475: 한글 조합 중에 저장 · 취소를 누르면 브라우저가 조합을 확정하며 커서로 스크롤한다. 그러면 버튼이 밀려
+		// 손을 뗄 때 빗나가 눌리지 않는다. 밖을 누른 것이면 스크롤을 그 자리로 되돌린다.
+		const holdScroll = (e: MouseEvent) => {
+			if (!view?.compositionStarted || view.dom.contains(e.target as Node)) return;
+			const saved: [Element, number][] = [[view.scrollDOM, view.scrollDOM.scrollTop]];
+			for (let el = view.dom.parentElement; el; el = el.parentElement)
+				saved.push([el, el.scrollTop]);
+			requestAnimationFrame(() => {
+				for (const [el, top] of saved) el.scrollTop = top;
+			});
+		};
+		document.addEventListener('mousedown', holdScroll, true);
 		return () => {
+			document.removeEventListener('mousedown', holdScroll, true);
 			cmScroller = null;
 			view?.destroy();
 			view = null;
