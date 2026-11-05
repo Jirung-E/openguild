@@ -6763,8 +6763,8 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
             ),
             (
                 tf!(
-                    "sibling(.comments/.memo) 가 더 새것",
-                    "sibling (.comments/.memo) is newer"
+                    "댓글 · 메모 · 정의 파일이 더 새것",
+                    "comment, memo or definition files are newer"
                 ),
                 &report.fresh_siblings,
             ),

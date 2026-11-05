@@ -1520,6 +1520,7 @@ async fn replace_sibling_rows(
 /// 4. `sync_changed_library_files` — 도서관 문서의 수정/신규/삭제 (DEV-311).
 ///    quest/campaign 과 독립(참조 관계 없음) — 순서 무관.
 /// 5. 위 중 하나라도 증분으로 표현 못 하는 변화를 만났으면 `drift::auto_resync`.
+/// 6. 타입 · 상태 · 태그 정의가 바뀌었으면 다시 색인 — 정의는 증분 경로가 없다.
 ///
 /// 통합 호출자는 `Store::open_with_sync` (store.rs).
 ///
@@ -1545,6 +1546,34 @@ async fn has_unseen_doc_file(store: &Store) -> AppResult<bool> {
         .any(|rel| (is_library_body_rel(rel) || is_campaign_body_rel(rel)) && !alive.contains(rel)))
 }
 
+/// 타입 · 상태 · 태그 정의 파일의 rel 인가.
+fn is_definition_rel(rel: &str) -> bool {
+    rel.ends_with(".toml")
+        && ["types/", "statuses/", "tags/"]
+            .iter()
+            .any(|dir| rel.starts_with(dir))
+}
+
+/// 정의 파일이 캐시와 다른가 — 고쳤거나, 받아 왔거나(캐시에 없음), 지웠거나(캐시에만 있음).
+async fn has_changed_definition(store: &Store) -> bool {
+    let paths = &store.paths;
+    let cache = crate::file_mtime::load_all(store).await;
+    let mut alive = std::collections::HashSet::new();
+    for dir in [paths.types_dir(), paths.statuses_dir(), paths.tags_dir()] {
+        for path in repo_fs::list_with_extension(&dir, "toml").unwrap_or_default() {
+            let rel = crate::file_mtime::rel_key(paths, &path);
+            match cache.get(&rel) {
+                Some(&cached) if repo_fs::mtime_unix_nanos(&path) <= cached => {}
+                _ => return true,
+            }
+            alive.insert(rel);
+        }
+    }
+    cache
+        .keys()
+        .any(|rel| is_definition_rel(rel) && !alive.contains(rel))
+}
+
 /// BUG-389: 바뀐 것이 있을 때만 [`sync_on_open`] — CLI 처럼 명령마다 여는 쪽을 위해. 바뀐 것이 없으면 `stat` 뿐이고
 /// (퀘스트 1,300개 파일에 약 7ms) 길드 독점 잠금도 안 잡아 다른 명령을 세우지 않는다.
 pub async fn sync_if_changed(store: &Store) -> AppResult<()> {
@@ -1552,7 +1581,7 @@ pub async fn sync_if_changed(store: &Store) -> AppResult<()> {
         .await
         .map_err(crate::error::AppError::Internal)?
         .is_clean();
-    if !clean || has_unseen_doc_file(store).await? {
+    if !clean || has_unseen_doc_file(store).await? || has_changed_definition(store).await {
         sync_on_open(store).await?;
     }
     Ok(())
@@ -1598,6 +1627,8 @@ async fn sync_locked(
         crate::drift::auto_resync_locked(store)
             .await
             .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?
+    } else if has_changed_definition(store).await {
+        Some(crate::reindex::reindex_locked(store).await?)
     } else {
         None
     };
@@ -1624,6 +1655,85 @@ mod tests {
         let store = Store::open(dir).await.unwrap();
         crate::reindex::reindex(&store).await.unwrap();
         store
+    }
+
+    /// 밖에서 고치거나 더하거나 지운 정의가 다음 동기화로 들어온다. 그 뒤로는 다시 색인하지 않는다.
+    #[tokio::test]
+    async fn definitions_changed_outside_reach_the_index() {
+        let dir = fresh_tmp("defs");
+        let store = setup(&dir).await;
+        assert!(
+            !has_changed_definition(&store).await,
+            "방금 색인했는데 바뀌었다고 한다"
+        );
+        let color = |prefix: &'static str| {
+            let pool = store.index_pool.clone();
+            async move {
+                sqlx::query_scalar::<_, String>("SELECT color FROM quest_types WHERE prefix = ?")
+                    .bind(prefix)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap()
+            }
+        };
+        let types = store.paths.types_dir();
+        let dev = types.join("DEV.toml");
+        let original = std::fs::read_to_string(&dev).unwrap();
+
+        // 고침
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let edited: String = original
+            .lines()
+            .map(|l| {
+                if l.starts_with("color") {
+                    "color = \"#111111\"\n".to_string()
+                } else {
+                    format!("{l}\n")
+                }
+            })
+            .collect();
+        std::fs::write(&dev, &edited).unwrap();
+        sync_if_changed(&store).await.unwrap();
+        assert_eq!(color("DEV").await.as_deref(), Some("#111111"));
+        assert!(crate::drift::detect_drift(&store).await.unwrap().is_clean());
+        assert!(!has_changed_definition(&store).await);
+
+        // 더함
+        let ops = edited.replace("prefix = \"DEV\"", "prefix = \"OPS\"");
+        std::fs::write(types.join("OPS.toml"), ops).unwrap();
+        sync_if_changed(&store).await.unwrap();
+        assert_eq!(color("OPS").await.as_deref(), Some("#111111"));
+        assert!(!has_changed_definition(&store).await);
+
+        // 지움
+        std::fs::remove_file(types.join("OPS.toml")).unwrap();
+        sync_if_changed(&store).await.unwrap();
+        assert_eq!(color("OPS").await, None);
+        assert!(!has_changed_definition(&store).await);
+    }
+
+    /// 앱 · CLI 로 정의를 고치거나 새 번호를 받는 것은 밖에서 바꾼 것이 아니다 — 명령마다 다시 색인하면 안 된다.
+    #[tokio::test]
+    async fn own_writes_do_not_count_as_changed_definitions() {
+        let dir = fresh_tmp("defs-own");
+        let store = setup(&dir).await;
+        crate::ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "새 번호".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            !has_changed_definition(&store).await,
+            "새 번호 때문에 바뀌었다고 한다"
+        );
     }
 
     fn mk_quest(

@@ -3241,6 +3241,8 @@ mod tests {
     async fn sibling_batch_syncs_all_and_skips_only_the_unreadable_one() {
         let dir = fresh_tmp("bug389-sibling");
         let store = setup_store(&dir).await;
+        // 실제 길드처럼 정의 파일을 캐시가 안다 — 모르면 새 정의로 보고 다시 색인한다(BUG-391).
+        crate::file_mtime::sync_all(&store).await.unwrap();
         for t in ["one", "two", "three"] {
             create_quest(&store, dev_request(t)).await.unwrap();
         }
