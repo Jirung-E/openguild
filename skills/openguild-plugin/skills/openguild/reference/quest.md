@@ -131,8 +131,8 @@ D=2026-10-20
 format as `--updated-after`), so "after D" = at least one comment since D and "before D" = quiet
 since D (quests with no comments are left out). The query form is `commented:>=D` / `commented:<D`
 / `commented:none`. `quest list --json` rows carry `last_comment_at`.
-Campaigns work the same way, with queries: `openguild campaign list -q 'updated:>=D'` and
-`openguild comments -q 'campaign:* created:>=D'`.
+Campaigns work the same way, with queries: `openguild campaign list -q 'updated:>=2026-11-01'` and
+`openguild comments -q 'campaign:* created:>=2026-11-01'`.
 
 ### Attachments — read what is already there
 

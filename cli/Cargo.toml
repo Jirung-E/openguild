@@ -27,6 +27,7 @@ unicode-width = "0.2.2"
 
 [dev-dependencies]
 toml = "0.8"
+regex = "1"
 
 [build-dependencies]
 # DEV-169: Windows exe 아이콘 임베드 (cfg(windows) 에서만 동작 — 다른 OS 는 no-op).

@@ -2998,6 +2998,7 @@ dependencies = [
  "async_zip",
  "clap",
  "openguild-core",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
