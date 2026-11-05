@@ -209,12 +209,13 @@ openguild quest list --tag backend
 openguild quest list --tag backend,api
 openguild library list --tag 설계
 
-# 쿼리로 거르기 — 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - = 아닌 것, ( ) 로 묶기, 키 없는 낱말 = 검색
+# 쿼리로 거르기 — 띄어 쓰면 그리고(& · AND), | 나 OR = 또는, 앞의 - 나 NOT = 아닌 것(값이 없는 문서도 든다), ( ) 로 묶기, 키 없는 낱말 = 검색
 #   여러 값 = any(a, b) 하나라도 · all(a, b) 모두 · only(a, b) 정확히 이것들만, 범위 a..b(끝 제외) · a..=b(끝 포함) · a.. · ..=b, * = 아무 글(tag:ui-*),
 #   /정규식/ = 대소문자 무시(낱말 · id · status · tag · type · folder · author · title · body). 키 있는 값은 완전일치(대소문자 무시), title · body 는
 #   부분일치(=값 은 완전일치). 결과의 제목에서 낱말 · title · body · 정규식에 걸린 글자가 칠해진다
 #   화면(퀘스트 목록 · 보드 설정 · 캠페인 · 도서관)은 검색칸 앞의 [검색 | 쿼리] 에서 '쿼리' 를 고른다
-#   키: id(DEV-001 · DEV-001.. · DEV-* · /정규식/) · status · type · tag · campaign(번호 · none) · urgency(2 · 1..=3 · <=2)
+#   없는 상태 · 타입(status:opn), 뜻 없는 비교 · 범위(tag:<=a, urgency:3..1), 값을 잇다 만 tag:a|b 는 오류로 알려 준다
+#   키: id(DEV-001 · DEV-001.. · DEV-* · /정규식/) · status · type · tag(none = 태그 없음, "none" = 그 이름의 태그) · campaign(번호 · none) · urgency(2 · 1..=3 · <=2)
 #       · due(overdue · none · <=날짜 · 날짜..날짜) · required_due · desired_due · campaign_end(값은 due 와 같음)
 #       · parent · child · prereq · successor(번호 · none — child:DEV-001 = DEV-001 을 자식으로 둔 퀘스트)
 #       · discussion(unresolved · resolved · none) · created · updated(날짜 — 이 기계 시간대, 시각은 비교 · 범위로
@@ -236,8 +237,8 @@ openguild quest list -q 'prereq:none child:none discussion:none'  # 선행 · �
 
 # 캠페인 · 도서관도 같은 문법 — 키만 다르다(다른 키를 쓰면 쓸 수 있는 키를 알려 준다)
 #   캠페인: status(active · done) · start · end(날짜 · <=날짜 · >=날짜 · none; end:overdue = 끝 날이 지났는데 진행 중)
-#           · quest(그 퀘스트가 연결된 캠페인) · checklist(open · done · none) · created · updated. 낱말은 제목 · 설명 · 번호
-#   도서관: tag · folder(하위 폴더까지, none = 최상위만) · created · updated. 낱말은 제목 · 본문 · 번호
+#           · quest(그 퀘스트가 연결된 캠페인, none = 연결된 퀘스트 없음) · checklist(open · done · none) · created · updated. 낱말은 제목 · 설명 · 번호
+#   도서관: tag(none = 태그 없음) · folder(하위 폴더까지, 대소문자 무시, none = 최상위만) · created · updated. 낱말은 제목 · 본문 · 번호
 #   셋 다 id · title · body 를 쓸 수 있다
 #   댓글: id(문서 안의 번호) · quest · campaign(달린 문서 — 번호 · 범위 · * · none) · author · parent(답글을 받은 번호, none = 답글이 아닌 것)
 #         · discussion(unresolved · resolved · none) · created · updated · body. 서버는 /api/comments?q=
@@ -401,9 +402,9 @@ list[0].status == "open"                   // 글자 · 숫자 비교
 list[0].required_due < "2027-01-01"        // 날짜는 글자로 비교
 list[0].desired_due == ()                  // 값 없음
 
-// 'test' 만 달린 것 — 정확히 그 태그들인지는 스크립트에서 봅니다
-let only = query("quest", "tag:test").filter(|q| q.tags == ["test"]);
-let both = query("quest", "tag:test tag:ui").filter(|q| q.tags.len() == 2);
+// 'test' 만 달린 것 · 정확히 'test' 와 'ui' 만 달린 것
+let only = query("quest", "tag:only(test)");
+let both = query("quest", "tag:only(test, ui)");
 ```
 
 - 없으면 빈 배열입니다. 쿼리가 틀리면 오류이고, `try` 로 받지 않으면 그 함수의 일을 버리고 멈춥니다.

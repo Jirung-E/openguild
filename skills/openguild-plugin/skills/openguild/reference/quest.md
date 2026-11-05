@@ -82,6 +82,8 @@ openguild quest list -q 'parent:none type:BUG'
 - Separate terms = AND (`&` / `AND` also work); `|` / `OR` = OR (uppercase only — `or` is a word);
   a leading `-` = NOT; group with `( )`. AND binds tighter: `a b | c` = `(a b) | c`.
 - Several values say what they mean: `status:any(open, in_progress)` one of them, `tag:all(a, b)` all of them, `tag:only(a, b)` exactly these. `all` and `only` work for keys with several values per document (`tag`, `campaign`, `child`, `prereq`, `successor`). A bare comma or `[a, b]` is an error that suggests these.
+- `-x` and `NOT x` also return documents with no value for that key. `tag:none` means no tags (`tag:"none"` is a tag with that name).
+- These are errors instead of empty results: an unknown status or type (`status:opn`), a comparison or range on a text key (`tag:<=a`), an empty or reversed range (`urgency:3..1`), and `tag:a|b` (use `tag:any(a, b)`, or put spaces around `|` to mean a search word).
 - Ranges: `a..b` (end excluded), `a..=b` (end included), `a..`, `..=b` — for `urgency` and every date key.
   Comparisons (`<=2`, `>=2026-11-01`) still work.
 - Keyed text values match the whole value, ignoring case; `*` = any text (`tag:ui-*`); `/regex/` = a case-insensitive regex

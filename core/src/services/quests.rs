@@ -269,7 +269,21 @@ pub async fn list_with_attachment_matches(
 
     // DEV-446: 쿼리 문법 — 맨 뒤에 붙이고 값도 맨 뒤에 끼운다.
     let (query_sql, query_binds) = match trimmed_opt(&query.q) {
-        Some(text) => crate::query::parse(text)?.to_sql()?,
+        Some(text) => {
+            let parsed = crate::query::parse(text)?;
+            let statuses: Vec<String> = sqlx::query_scalar(
+                "SELECT name_en FROM quest_statuses
+                 UNION SELECT slug FROM quest_statuses WHERE slug IS NOT NULL
+                 UNION SELECT name_ko FROM quest_statuses",
+            )
+            .fetch_all(pool)
+            .await?;
+            let types: Vec<String> = sqlx::query_scalar("SELECT prefix FROM quest_types")
+                .fetch_all(pool)
+                .await?;
+            parsed.check_names(&statuses, &types)?;
+            parsed.to_sql()?
+        }
         None => (String::new(), Vec::new()),
     };
     sql.push_str(&query_sql);

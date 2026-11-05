@@ -5,7 +5,8 @@
 //! ```
 //!
 //! - 띄어 쓴 조건 = 그리고(`&` · `AND` 도 된다), `|` · `OR` = 또는, 앞에 `-` = 아닌 것, `( )` 로 묶는다.
-//!   그리고가 또는보다 먼저 묶인다 — `a b | c` 는 `(a b) | c`. 키워드는 대문자만(`or` 는 낱말이다).
+//!   `NOT` 도 `-` 와 같다. 그리고가 또는보다 먼저 묶인다 — `a b | c` 는 `(a b) | c`. 키워드는 대문자만(`or` 는 낱말이다).
+//! - 값이 없는 문서도 "아닌 것" 에 든다 — `-parent:DEV-1` 은 부모가 없는 퀘스트도 낸다.
 //! - 여러 값은 뜻을 낱말로 적는다(DEV-476 — `[a, b]` 는 "하나라도" 인지 "모두" 인지 안 읽혔다): `any(a, b)` 하나라도,
 //!   `all(a, b)` 모두, `only(a, b)` 정확히 이것들만. `all` · `only` 는 한 문서에 값이 여럿일 수 있는 키에만 뜻이 있다.
 //! - 범위는 `..`(끝 제외) · `..=`(끝 포함) — `urgency:1..=2` · `due:2026-11-01..2026-12-01` · `updated:2026-10-01..`.
@@ -13,7 +14,8 @@
 //! - 글 값은 키 있는 것이 완전일치(대소문자 무시), `*` 를 쓰면 그 자리에 아무 글이나(`tag:ui-*`), `/…/` 는 정규식(대소문자 무시).
 //!   `title:` · `body:` 는 부분일치가 기본이고 `=` 를 붙이면 완전일치(`title:="로그인 화면"`).
 //! - 키 없는 낱말은 목록 검색과 같다(제목 · 본문 · 번호, 부분일치). `"두 낱말"` 처럼 따옴표로 묶는다.
-//! - 모르는 키는 오류다 — 오타(`stauts:`)를 조용히 검색어로 삼으면 "없음" 으로 보여 헷갈린다.
+//! - 모르는 키는 오류다 — 오타(`stauts:`)를 조용히 검색어로 삼으면 "없음" 으로 보여 헷갈린다. 없는 상태 · 타입
+//!   (`status:opn`), 뜻 없는 비교 · 범위(`tag:<=a`, `urgency:3..1`), 값을 잇다 만 `tag:a|b` 도 같은 까닭으로 오류다.
 //!
 //! 해석은 **여기 한 곳**에만 둔다. CLI · 서버 · 앱이 같은 [`crate::models::ListQuery`] 의 `q` 로
 //! 넘기고, 목록 조회(`services::quests`)가 [`Query::to_sql`] 로 조건을 붙인다. 정규식은 SQLite 의 `REGEXP`
@@ -376,8 +378,8 @@ fn lex(target: Target, chars: &[char]) -> Result<Vec<Token>, QueryError> {
             i += 1;
             continue;
         }
-        // 대문자 `OR` · `AND` — 낱말 하나로 서 있을 때만.
-        for (word, tok) in [("OR", Tok::Or), ("AND", Tok::And)] {
+        // 대문자 `OR` · `AND` · `NOT` — 낱말 하나로 서 있을 때만.
+        for (word, tok) in [("OR", Tok::Or), ("AND", Tok::And), ("NOT", Tok::Not)] {
             let w: Vec<char> = word.chars().collect();
             if chars[i..].starts_with(&w)
                 && (i + w.len() == n
@@ -410,6 +412,7 @@ fn lex(target: Target, chars: &[char]) -> Result<Vec<Token>, QueryError> {
             continue;
         }
         let (term, end) = read_term(target, chars, i, depth)?;
+        check_joined_word(target, chars, &term, end, depth)?;
         out.push(Token {
             tok: Tok::Term(term),
             pos: start,
@@ -417,6 +420,53 @@ fn lex(target: Target, chars: &[char]) -> Result<Vec<Token>, QueryError> {
         i = end;
     }
     Ok(out)
+}
+
+/// `tag:a|b` — 띄어쓰기 없이 낱말이 이어지면 값을 더 적은 것처럼 보이지만 실제로는 "`a` 태그, 또는 어디든 `b`" 다.
+/// 조용히 다른 것을 찾지 않게 막는다. 키를 다시 적은 `tag:a|tag:b` 와 띄어 쓴 `tag:a | b` 는 뜻이 분명하다.
+fn check_joined_word(
+    target: Target,
+    chars: &[char],
+    term: &Term,
+    end: usize,
+    depth: usize,
+) -> Result<(), QueryError> {
+    let Some(key) = term.key else { return Ok(()) };
+    let Some(&op) = chars.get(end).filter(|c| matches!(c, '|' | '&')) else {
+        return Ok(());
+    };
+    let next = end + 1;
+    if chars
+        .get(next)
+        .is_none_or(|c| c.is_whitespace() || matches!(c, '(' | ')' | '-' | '|' | '&'))
+    {
+        return Ok(());
+    }
+    let (word, _) = read_term(target, chars, next, depth)?;
+    if word.key.is_some() {
+        return Ok(());
+    }
+    let head: String = chars[term.pos..end].iter().collect();
+    let name = head.split(':').next().unwrap_or_default();
+    let b = word.values[0].text();
+    let a = term
+        .values
+        .iter()
+        .map(Val::text)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let list = match op {
+        '|' => format!("{name}:any({a}, {b})"),
+        _ if has_many_values(target, key) => format!("{name}:all({a}, {b})"),
+        _ => format!("{head} {op} {name}:{b}"),
+    };
+    Err(QueryError::at(
+        end,
+        crate::tf!(
+            "'{op}' 뒤의 '{b}' 는 {name} 값이 아니라 검색 낱말이 됩니다 — 값이면 {list}, 검색 낱말이면 '{head} {op} {b}' 처럼 띄어 쓰세요",
+            "'{b}' after '{op}' is a search word, not a {name} value — for a value use {list}, for a search word put spaces: '{head} {op} {b}'"
+        ),
+    ))
 }
 
 /// 조건 하나 — 키 있는 것(`tag:any(a, b)`) 또는 낱말(`로그인` · `"두 낱말"` · `/정규식/`).
@@ -794,12 +844,7 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                 ),
             ));
         }
-        if term
-            .values
-            .iter()
-            .any(|v| matches!(v, Val::Bare(s) if s.eq_ignore_ascii_case("none")))
-            && term.key.is_some_and(|k| k != Key::Tag)
-        {
+        if term.values.iter().any(is_bare_none) {
             return Err(QueryError::at(
                 pos,
                 crate::tf!(
@@ -852,6 +897,34 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
         }
         let Some(key) = term.key else { continue };
         let s = v.text();
+        // 비교 · 범위는 글에 뜻이 없다 — 글자 그대로 찾아 조용히 "없음" 이 된다.
+        if let Val::Bare(s) = v
+            && matches!(
+                key,
+                Key::Status | Key::Type | Key::Tag | Key::Folder | Key::Author
+            )
+            && (s.starts_with(['<', '>']) || s.contains(".."))
+        {
+            return Err(QueryError::at(
+                pos,
+                crate::tf!(
+                    "'{s}' — 이 키는 글을 맞춰서 비교 · 범위를 못 씁니다. 그런 글을 찾으려면 따옴표로 묶으세요",
+                    "'{s}' — this key matches text, so comparisons and ranges do not work. Quote text that looks like one"
+                ),
+            ));
+        }
+        if let Val::Bare(s) = v
+            && !matches!(key, Key::Title | Key::Body)
+            && range_is_empty(s)
+        {
+            return Err(QueryError::at(
+                pos,
+                crate::tf!(
+                    "'{s}' — 범위가 비어 있습니다. 앞 값을 뒤 값보다 작게 적으세요",
+                    "'{s}' — the range is empty. Put the smaller value first"
+                ),
+            ));
+        }
         let ok = match (key, v) {
             // 댓글의 번호는 그 문서 안의 번호고, `quest` · `campaign` 은 달린 문서다.
             (Key::Id, _) if target == Target::Comment => entry_cond("x", v).is_some(),
@@ -874,7 +947,7 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
             }
             // 캠페인 상태는 둘뿐이다 — 퀘스트처럼 길드가 정하지 않는다.
             (Key::Status, _) if target == Target::Campaign => {
-                ["active", "done"].iter().any(|x| s.eq_ignore_ascii_case(x))
+                is_wild(v) || ["active", "done"].iter().any(|x| s.eq_ignore_ascii_case(x))
             }
             (Key::Discussion, _) => ["unresolved", "resolved", "none"]
                 .iter()
@@ -885,7 +958,7 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
             (Key::Start, _) => date_cond("x", s).is_some(),
             (Key::Created | Key::Updated, _) => moment_cond("x", s).is_some(),
             (Key::End, _) => s.eq_ignore_ascii_case("overdue") || date_cond("x", s).is_some(),
-            (Key::Quest, _) => split_slug(s).is_some(),
+            (Key::Quest, _) => s.eq_ignore_ascii_case("none") || split_slug(s).is_some(),
             (Key::Status | Key::Type | Key::Tag | Key::Folder | Key::Title | Key::Body, _) => true,
         };
         if !ok {
@@ -947,8 +1020,8 @@ fn check_values(target: Target, term: &Term, pos: usize) -> Result<(), QueryErro
                     "updated is a date (2026-11-01), <=date, >=time (2026-11-01T10:00) or a range (2026-10-01..) — compared with when it was edited"
                 ),
                 Key::Quest => crate::tf!(
-                    "quest 는 퀘스트 번호(DEV-012)",
-                    "quest is a quest id (DEV-012)"
+                    "quest 는 퀘스트 번호(DEV-012) 또는 none",
+                    "quest is a quest id (DEV-012) or none"
                 ),
                 Key::Urgency => crate::tf!(
                     "urgency 는 1~4 — 2 · 1..=3 · <=2 · >=3 처럼",
@@ -1041,6 +1114,37 @@ fn split_range(v: &str) -> Option<Option<(Option<&str>, Option<&str>, bool)>> {
         return Some(None);
     }
     Some(Some((lo, hi, inclusive)))
+}
+
+/// 아무것도 안 맞는 범위인가 — `3..1` · `2..2` · 거꾸로 적은 날짜 · 번호. 끝값의 모양은 키마다 따로 본다.
+fn range_is_empty(v: &str) -> bool {
+    let Some(Some((Some(lo), Some(hi), inclusive))) = split_range(v) else {
+        return false;
+    };
+    let order = if let (Ok(a), Ok(b)) = (lo.parse::<i64>(), hi.parse::<i64>()) {
+        a.cmp(&b)
+    } else if let (Some((_, a)), Some((_, b))) = (split_slug(lo), split_slug(hi)) {
+        a.cmp(&b)
+    } else if is_date(lo) && is_date(hi) {
+        lo.cmp(hi)
+    } else if let (Some(a), Some(b)) = (moment_utc(lo), moment_utc(hi)) {
+        a.cmp(&b)
+    } else {
+        return false;
+    };
+    order.is_gt() || (order.is_eq() && !inclusive)
+}
+
+/// 시각 끝값을 서로 잴 수 있게 — 시간대가 달라도 같은 순간이면 같다.
+fn moment_utc(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    if !is_moment(s) {
+        return None;
+    }
+    let t = crate::time::normalize_filter_ts(s).replace('Z', "+00:00");
+    ["%Y-%m-%dT%H:%M:%S%:z", "%Y-%m-%dT%H:%M%:z"]
+        .iter()
+        .find_map(|f| chrono::DateTime::parse_from_str(&t, f).ok())
+        .map(|d| d.with_timezone(&chrono::Utc))
 }
 
 /// 범위 → `col >= ? AND col < ?` 따위. 끝값은 `ok` 로 검사한다.
@@ -1192,6 +1296,9 @@ const LAST_COMMENT: &str = "(SELECT MAX(datetime(c.ts)) FROM quest_comments c WH
 
 /// commented 값 하나 → 조건. `>=날짜` 는 "그날 이후 하나라도 달렸다" 와 같다(마지막 것이 그 뒤이므로).
 fn commented_cond(v: &str) -> Option<(String, Vec<Bind>)> {
+    if v.eq_ignore_ascii_case("none") {
+        return Some((format!("{LAST_COMMENT} IS NULL"), vec![]));
+    }
     moment_cond(LAST_COMMENT, v)
 }
 
@@ -1209,9 +1316,6 @@ fn is_moment(s: &str) -> bool {
 /// 시각까지 적힌 칸(`created` · `updated` · `commented`)과 비교. 날짜면 이 기계 시간대의 날짜로, 시각이면 그
 /// 순간으로 잰다 — 저장된 값은 `Z` 와 `+09:00` 이 섞여 글자로는 못 잰다. 시각은 딱 맞을 일이 없어 비교 · 범위로만.
 fn moment_cond(col: &str, v: &str) -> Option<(String, Vec<Bind>)> {
-    if v.eq_ignore_ascii_case("none") {
-        return Some((format!("{col} IS NULL"), vec![]));
-    }
     let one = |op: &str, s: &str| -> Option<(String, Bind)> {
         let s = s.trim();
         if is_date(s) {
@@ -1263,6 +1367,16 @@ fn date_cond(col: &str, v: &str) -> Option<(String, Vec<Bind>)> {
     }
     let (op, rest) = split_op(v);
     is_date(rest).then(|| (format!("{col} {op} ?"), vec![Bind::Text(rest.to_string())]))
+}
+
+/// `*` · 정규식 — 글 칸 전체에 맞추는 값.
+fn is_wild(v: &Val) -> bool {
+    matches!(v, Val::Regex(_)) || matches!(v, Val::Bare(s) if s.contains('*'))
+}
+
+/// `none` — 값이 없다는 뜻. 따옴표로 묶으면(`tag:"none"`) 그런 이름의 값이다.
+fn is_bare_none(v: &Val) -> bool {
+    matches!(v, Val::Bare(s) if s.eq_ignore_ascii_case("none"))
 }
 
 /// LIKE 의 와일드카드를 글자 그대로 — 폴더 이름에 `_` 가 흔하다.
@@ -1358,7 +1472,8 @@ impl Query {
                     format!("({})", alts.join(op))
                 }
             }
-            Expr::Not(inner) => format!("NOT {}", self.expr_sql(inner, binds)?),
+            // SQL 의 `NOT NULL` 은 NULL 이라 값이 없는 문서가 "아닌 것" 에서 빠진다.
+            Expr::Not(inner) => format!("({}) IS NOT TRUE", self.expr_sql(inner, binds)?),
             Expr::And(parts) | Expr::Or(parts) => {
                 let op = if matches!(e, Expr::And(_)) {
                     " AND "
@@ -1372,6 +1487,47 @@ impl Query {
                 format!("({})", out.join(op))
             }
         })
+    }
+
+    /// 없는 상태 · 타입을 짚는다(`status:opn`) — 해석 때는 길드를 몰라서 조회 앞에 따로 부른다. 오타가 조용히
+    /// "없음" 이 되지 않게. `statuses` 는 비교에 쓰는 이름들(영어 이름 · slug · 한국어 이름), `*` · 정규식은 안 본다.
+    pub fn check_names(&self, statuses: &[String], types: &[String]) -> Result<(), QueryError> {
+        fn norm(s: &str) -> String {
+            s.to_ascii_lowercase().replace([' ', '-'], "_")
+        }
+        fn walk(e: &Expr, statuses: &[String], types: &[String]) -> Result<(), QueryError> {
+            match e {
+                Expr::Not(inner) => walk(inner, statuses, types),
+                Expr::And(parts) | Expr::Or(parts) => {
+                    parts.iter().try_for_each(|p| walk(p, statuses, types))
+                }
+                Expr::Term(t) => {
+                    let (word, names) = match t.key {
+                        Some(Key::Status) => (crate::tf!("상태", "status"), statuses),
+                        Some(Key::Type) => (crate::tf!("타입", "type"), types),
+                        _ => return Ok(()),
+                    };
+                    for v in t.values.iter().filter(|v| !is_wild(v)) {
+                        let s = v.text();
+                        if !names.iter().any(|n| norm(n) == norm(s)) {
+                            return Err(QueryError::at(
+                                t.pos,
+                                crate::tf!(
+                                    "'{s}' — 없는 {word}입니다. 있는 {word}: {}",
+                                    "'{s}' — no such {word}. Available: {}",
+                                    names.join(", ")
+                                ),
+                            ));
+                        }
+                    }
+                    Ok(())
+                }
+            }
+        }
+        match (self.target, &self.expr) {
+            (Target::Quest, Some(e)) => walk(e, statuses, types),
+            _ => Ok(()),
+        }
     }
 
     /// REQ-040: 결과에 칠할 말 — 키 없는 낱말 · `title:` · `body:` 의 값(아닌 것 `-` 아래는 빼고). `*` 는 칠할
@@ -1520,6 +1676,10 @@ fn value_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
             vec![t(s), t(s), t(s)],
         ),
         Some(Key::Type) => text_cond(&["qt.prefix"], v, Match::Exact),
+        Some(Key::Tag) if is_bare_none(v) => (
+            "NOT EXISTS (SELECT 1 FROM quest_tags tg WHERE tg.quest_id = q.id)".into(),
+            vec![],
+        ),
         Some(Key::Tag) => {
             let (c, b) = text_cond(&["tg.tag"], v, Match::Exact);
             (
@@ -1594,6 +1754,7 @@ fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         )?,
         Some(Key::Title) => text_cond(&["campaigns.title"], v, Match::Partial),
         Some(Key::Body) => text_cond(&[DESC], v, Match::Partial),
+        Some(Key::Status) if is_wild(v) => text_cond(&["campaigns.status"], v, Match::Exact),
         Some(Key::Status) => (
             "LOWER(campaigns.status) = LOWER(?)".into(),
             vec![Bind::Text(s.to_string())],
@@ -1617,6 +1778,9 @@ fn campaign_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
                 _ => return None,
             };
             (cond, vec![])
+        }
+        Some(Key::Quest) if s.eq_ignore_ascii_case("none") => {
+            (format!("NOT EXISTS (SELECT 1 {CAMPAIGN_QUESTS})"), vec![])
         }
         Some(Key::Quest) => {
             let (prefix, num) = split_slug(s)?;
@@ -1646,6 +1810,10 @@ fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         Some(Key::Id) => id_cond(SLUG, "'BOOK'", "library_docs.number", v)?,
         Some(Key::Title) => text_cond(&["library_docs.title"], v, Match::Partial),
         Some(Key::Body) => text_cond(&["library_docs.body"], v, Match::Partial),
+        Some(Key::Tag) if is_bare_none(v) => (
+            "NOT EXISTS (SELECT 1 FROM library_tags lt WHERE lt.book_id = library_docs.id)".into(),
+            vec![],
+        ),
         Some(Key::Tag) => {
             let (c, b) = text_cond(&["lt.tag"], v, Match::Exact);
             (
@@ -1667,7 +1835,8 @@ fn library_cond(key: Option<Key>, v: &Val) -> Option<(String, Vec<Bind>)> {
         Some(Key::Folder) => {
             let f = s.trim_end_matches('/');
             (
-                "library_docs.path = ? OR library_docs.path LIKE ? ESCAPE '\\'".into(),
+                "LOWER(library_docs.path) = LOWER(?) OR LOWER(library_docs.path) LIKE LOWER(?) ESCAPE '\\'"
+                    .into(),
                 vec![t(f), Bind::Text(format!("{}/%", like_escape(f)))],
             )
         }
@@ -1907,7 +2076,8 @@ mod tests {
             .unwrap()
             .to_sql()
             .unwrap();
-        assert!(sql.starts_with(" AND (NOT (("), "{sql}");
+        assert!(sql.starts_with(" AND (((("), "{sql}");
+        assert!(sql.contains(" IS NOT TRUE AND "), "{sql}");
         assert_eq!(binds.len(), 7); // status 3개씩 두 값 + 캠페인 하나
         assert_eq!(binds[6], Bind::Text("c-003".into()));
         let (sql, _) = parse("a | b").unwrap().to_sql().unwrap();
@@ -1985,7 +2155,10 @@ mod tests {
             .unwrap()
             .to_sql()
             .unwrap();
-        assert!(sql.contains("library_docs.path LIKE ? ESCAPE"), "{sql}");
+        assert!(
+            sql.contains("LOWER(library_docs.path) LIKE LOWER(?) ESCAPE"),
+            "{sql}"
+        );
         assert_eq!(
             binds,
             vec![Bind::Text("a_b".into()), Bind::Text("a\\_b/%".into())]
@@ -1994,11 +2167,105 @@ mod tests {
             .unwrap()
             .to_sql()
             .unwrap();
-        assert!(sql.starts_with(" AND NOT (EXISTS"), "{sql}");
+        assert!(sql.starts_with(" AND ((EXISTS"), "{sql}");
+        assert!(sql.ends_with(" IS NOT TRUE"), "{sql}");
         assert_eq!(binds, vec![Bind::Text("DEV".into()), Bind::Int(12)]);
     }
 
     /// 뜻을 낱말로 — 조용히 글자로 찾아 "없음" 이 되지 않고 고칠 길을 듣는다.
+    #[test]
+    fn joined_words_and_meaningless_values_are_errors() {
+        let msg = |s: &str| parse(s).unwrap_err().message;
+        assert!(msg("tag:test|ui").contains("tag:any(test, ui)"));
+        assert!(msg("tag:test&ui").contains("tag:all(test, ui)"));
+        assert!(msg("status:open|done").contains("status:any(open, done)"));
+        // 뜻이 분명한 것은 그대로다.
+        for ok in [
+            "tag:a|tag:b",
+            "tag:a | ui",
+            "tag:a |ui",
+            "tag:a| ui",
+            "a|b",
+            "tag:a|(b)",
+            "tag:a|-b",
+            "body:/a|b/",
+            "NOT tag:a",
+            "NOT (tag:a tag:b)",
+            "tag:none",
+            "tag:any(a, none)",
+            "tag:\"none\"",
+            "tag:only(\"none\")",
+            "tag:\"a..b\"",
+            "title:a..b",
+            "urgency:1..=1",
+            "due:2026-01-01..2026-02-01",
+            "commented:none",
+        ] {
+            assert!(parse(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "NOT",
+            "tag:<=a",
+            "tag:>a",
+            "tag:a..b",
+            "status:<open",
+            "type:A..B",
+            "urgency:3..1",
+            "urgency:2..2",
+            "id:DEV-3..DEV-1",
+            "due:2030-01-01..2020-01-01",
+            "created:2030-01-01..2020-01-01",
+            "created:2026-01-02T10:00..2026-01-01T10:00",
+            "created:none",
+            "updated:none",
+            "tag:all(none, a)",
+            "tag:only(none)",
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+        // 시간대가 달라도 순간으로 잰다 — 글자로는 거꾸로지만 비어 있지 않다.
+        assert!(parse("created:2026-01-01T10:00+09:00..2026-01-01T09:00Z").is_ok());
+        assert!(parse_for(Target::Library, "folder:a..b").is_err());
+        assert!(parse_for(Target::Comment, "author:a..b").is_err());
+        assert!(parse_for(Target::Comment, "id:3..1").is_err());
+        assert!(parse_for(Target::Campaign, "status:/act/").is_ok());
+        assert!(parse_for(Target::Campaign, "status:act*").is_ok());
+        assert!(parse_for(Target::Campaign, "status:zz").is_err());
+        assert!(parse_for(Target::Campaign, "quest:none").is_ok());
+        assert!(parse_for(Target::Campaign, "quest:only(none)").is_err());
+    }
+
+    #[test]
+    fn check_names_finds_only_missing_status_and_type() {
+        let statuses = ["Open", "In Progress", "in_progress", "진행 중"].map(String::from);
+        let types = ["DEV", "BUG"].map(String::from);
+        let check = |s: &str| parse(s).unwrap().check_names(&statuses, &types);
+        for ok in [
+            "status:open",
+            "status:in-progress",
+            "status:\"In Progress\"",
+            "status:\"진행 중\"",
+            "status:any(open, IN_PROGRESS)",
+            "status:zz*",
+            "status:/zz/",
+            "type:dev",
+            "type:any(DEV, BUG)",
+            "type:ZZ*",
+            "tag:opn",
+        ] {
+            assert!(check(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "status:opn",
+            "type:BGU",
+            "-status:opn",
+            "tag:a | (type:BGU tag:b)",
+            "status:any(open, opn)",
+        ] {
+            assert!(check(bad).is_err(), "{bad}");
+        }
+    }
+
     #[test]
     fn several_values_say_what_they_mean() {
         assert_eq!(show(&parse("tag:any(a, b)").unwrap()), "tag:any(a,b)");
@@ -2095,6 +2362,44 @@ mod tests {
         assert_eq!(quest("tag:only(ui, test)").await, [2]);
         assert_eq!(quest("-tag:only(test)").await, [2, 3, 4]);
         assert_eq!(quest("tag:only(te*)").await, [1]);
+        assert_eq!(quest("tag:none").await, [4]);
+        assert_eq!(quest("tag:any(ui, none)").await, [2, 3, 4]);
+        assert_eq!(quest("-tag:none").await, [1, 2, 3]);
+        assert!(quest("tag:\"none\"").await.is_empty());
+        assert_eq!(quest("NOT tag:test").await, [3, 4]);
+
+        // 값이 없는 문서도 "아닌 것" 에 든다. 두 번 뒤집으면 원래대로다.
+        crate::ops::change_parent(
+            &store,
+            quests[1].id,
+            crate::models::ChangeParentRequest {
+                parent_quest_id: Some(quests[0].id),
+            },
+        )
+        .await
+        .unwrap();
+        let parent = Box::leak(format!("parent:{}", quests[0].quest_id).into_boxed_str());
+        let not_parent = Box::leak(format!("-parent:{}", quests[0].quest_id).into_boxed_str());
+        let not_not = Box::leak(format!("-(-parent:{})", quests[0].quest_id).into_boxed_str());
+        assert_eq!(quest(parent).await, [2]);
+        assert_eq!(quest(not_parent).await, [1, 3, 4]);
+        assert_eq!(quest(not_not).await, [2]);
+        assert_eq!(quest("-required_due:2030-01-01").await, [1, 2, 3, 4]);
+        assert_eq!(quest("-commented:>=2020-01-01").await, [1, 2, 3, 4]);
+
+        // 없는 상태 · 타입은 빈 결과가 아니라 오류다.
+        for bad in ["status:opn", "-status:opn", "type:BGU"] {
+            let query = crate::models::ListQuery {
+                q: Some(bad.into()),
+                ..Default::default()
+            };
+            assert!(
+                crate::services::quests::list(&store.index_pool, &query)
+                    .await
+                    .is_err(),
+                "{bad}"
+            );
+        }
 
         for prereq in [&quests[0], &quests[1]] {
             crate::ops::add_prerequisite(
@@ -2135,6 +2440,7 @@ mod tests {
         };
         assert_eq!(books("tag:only(설계)").await, ["하나"]);
         assert_eq!(books("tag:all(설계, 결정)").await, ["둘"]);
+        assert!(books("tag:none").await.is_empty());
 
         // 캠페인의 퀘스트.
         let mut slugs = Vec::new();
@@ -2167,6 +2473,8 @@ mod tests {
         };
         assert_eq!(campaigns(format!("quest:only({a})")).await, ["하나"]);
         assert_eq!(campaigns(format!("quest:all({a}, {b})")).await, ["둘"]);
+        assert!(campaigns("quest:none".to_string()).await.is_empty());
+        assert_eq!(campaigns("status:/act/".to_string()).await.len(), 2);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
