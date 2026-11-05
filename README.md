@@ -15,7 +15,7 @@ A project issue tracker.
 | **Quest Board** | A node-based board where quests are arranged by status in swim lanes. |
 | **Quest List** | A list view of all quests, with sub-quests shown as a collapsible tree. |
 | **Home** | Dashboard: active campaigns carousel, upcoming / overdue campaigns, imminent / overdue quests, recently added or updated quests. |
-| **Settings** | Per-app preferences page (`⚙` icon, top-right). Currently: app info + manual update check. |
+| **Settings** | Preferences for this machine (`⚙` icon, top-right): app info and update check, display, editor. |
 | **Guild Master** | The administrator of a guild. |
 | **Quest Holder** | The person assigned to a quest. |
 | **Requester** | The person who created the quest. |
@@ -78,7 +78,7 @@ The board has a grid-snap toggle (G key) and an Arrange action with two modes (`
 All quests are shown in a flat list. Sub-quests appear as a collapsible tree under their parent. Status cannot be changed from this view — use the Quest Board or Quest Detail page.
 
 ### Query and search
-Filter any list with one line of query. The quest, board, campaign and library screens, the comment tab of the search page and the CLI's `-q` share the same grammar.
+Filter any list with one line of query. The quest, board, campaign and library screens, the search page and the CLI's `-q` share the same grammar.
 
 ```bash
 openguild quest list -q 'status:any(open, in_progress) (tag:ui | due:overdue) -tag:wip'
@@ -178,7 +178,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 Requires Xcode Command Line Tools (`xcode-select --install`) and Node 20+.
 
 ```bash
-cargo install tauri-cli --version '^2' --locked
+cargo install tauri-cli --version '=2.11.4' --locked
 cd gui && cargo tauri build          # → target/release/bundle/{dmg,macos}
 ```
 
@@ -222,7 +222,7 @@ doesn't use that table.
 | **Quest Board (의뢰게시판)** | 퀘스트를 상태별 레인으로 배치하는 노드 기반 보드. |
 | **Quest List (퀘스트 목록)** | 모든 퀘스트를 리스트로 보여주는 뷰. 서브퀘스트는 접기/펼치기 트리로 표시. |
 | **Home (홈)** | 대시보드: 진행 중 캠페인 carousel, 곧 시작 / 마감 지난 캠페인, 마감 임박 / 지난 퀘스트, 최근 추가·수정된 퀘스트. |
-| **Settings (설정)** | 앱 설정 페이지 (`⚙` 아이콘, 우상단). 현재: 앱 정보 + 수동 업데이트 확인. |
+| **Settings (설정)** | 이 기계의 설정 페이지 (`⚙` 아이콘, 우상단): 앱 정보 · 업데이트 확인, 표시, 편집기. |
 | **Guild Master (길드마스터)** | 길드 관리자. |
 | **Quest Holder (담당자)** | 퀘스트를 담당하는 사람. |
 | **Requester (의뢰인)** | 퀘스트를 생성한 사람. |
@@ -285,7 +285,7 @@ openguild-server --version
 모든 퀘스트를 단일 리스트로 표시한다. 서브퀘스트는 부모 퀘스트 하위에 접기/펼치기 트리로 나타난다. 이 뷰에서는 상태를 변경할 수 없으며, Quest Board 또는 Quest Detail 페이지에서 변경한다.
 
 ### 쿼리와 검색
-목록은 쿼리 한 줄로 거릅니다. 퀘스트 · 보드 · 캠페인 · 도서관 화면, 검색 페이지의 댓글 탭, CLI `-q` 가 같은 문법을 씁니다.
+목록은 쿼리 한 줄로 거릅니다. 퀘스트 · 보드 · 캠페인 · 도서관 화면, 검색 페이지, CLI `-q` 가 같은 문법을 씁니다.
 
 ```bash
 openguild quest list -q 'status:any(open, in_progress) (tag:ui | due:overdue) -tag:wip'
@@ -384,7 +384,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 Xcode Command Line Tools (`xcode-select --install`) 와 Node 20+ 필요.
 
 ```bash
-cargo install tauri-cli --version '^2' --locked
+cargo install tauri-cli --version '=2.11.4' --locked
 cd gui && cargo tauri build          # → target/release/bundle/{dmg,macos}
 ```
 

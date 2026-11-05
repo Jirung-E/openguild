@@ -53,10 +53,11 @@ Only use the dry-run/re-run pattern for commands that actually expose
 
 ### Never edit `.guild/**` frontmatter by hand
 
-`.guild/**` markdown files are the source of truth, but a SQL cache is
-derived from them for fast queries. Hand-editing frontmatter (status,
-urgency, parent, etc.) desyncs the cache from the files and silently breaks
-listing/filtering until a `reindex`.
+`.guild/**` markdown files are the source of truth, and a SQL cache is
+derived from them for fast queries. The CLI picks up edited files on its next
+command, but hand-editing frontmatter (status, urgency, parent, etc.) skips the
+journal, the history and the plugins, a running app or server can show the old
+value until it re-reads, and a typo drops the document out of every list.
 
 | Field | Command |
 |---|---|

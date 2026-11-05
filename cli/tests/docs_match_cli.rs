@@ -336,7 +336,15 @@ fn documented_commands_options_and_queries_exist() {
 
 /// 없애거나 이름을 바꾼 것. 뺄 때 여기에 더한다 — 시험은 코드만 보므로 문서의 옛 이름은 못 잡는다.
 /// CHANGELOG 는 안 본다 — 무엇이 무엇으로 바뀌었는지 옛 이름을 적는 곳이다.
-const REMOVED: [(&str, &str); 7] = [
+const REMOVED: [(&str, &str); 9] = [
+    (
+        r"--remote\s+\S+/api\b|OPENGUILD_REMOTE\s*=\s*\S*/api\b",
+        "CLI 가 `/api` 를 붙인다 — 서버 주소만 적는다",
+    ),
+    (
+        r"Settings\s*→\s*(Admin|\S*Drift)",
+        "백업 · 복원 · Drift 는 설정이 아니라 관리 화면에 있다",
+    ),
     (
         r"\be\.items\b",
         "시간 실행 함수는 받는 것이 없다 — query() 로 읽는다",

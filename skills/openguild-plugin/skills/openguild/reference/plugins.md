@@ -99,7 +99,7 @@ permissions = ["notify", "query"]
 
 [[handlers]]
     id    = "overdue"
-    every = "1h"        # s · m · h · d, at least 1m
+    every = "1h"        # s · m · h (elapsed time) · d (calendar date), at least 1m
     call  = "overdue"   # fn overdue()
 ```
 
@@ -111,7 +111,7 @@ fn overdue() {
 }
 ```
 
-`every` runs only in the **app (`gui`) and the server** — the CLI exits when a command ends. `plugin check` warns when `scope` has neither. `action`, `pre`, `post`, `when`, `with`, `wait`, `group` and orders cannot be used on a scheduled line; to reach outside, call `send()` or `run()` from the function.
+`1d` fires when the local date changes, so the first start of the day or midnight; for every 24 hours write `24h`. `every` runs only in the **app (`gui`) and the server** — the CLI exits when a command ends. `plugin check` warns when `scope` has neither. `action`, `pre`, `post`, `when`, `with`, `wait`, `group` and orders cannot be used on a scheduled line; to reach outside, call `send()` or `run()` from the function.
 
 Each line's last run time is kept per machine in `~/.openguild/plugin-schedule/` and claimed under a
 file lock, so an app and a server open on the same guild run it **once**. Other machines run their

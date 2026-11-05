@@ -17,7 +17,7 @@ openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 | `claude-session` | 하나 (**댓글 명령**) | `run` | 있음 | — | **pre** |
 | `overdue-digest` | 하나 (**시간마다** — `every` + 함수 안의 `query()`) | `notify`(길드에 시킴), `query`(길드를 읽음) | 있음 | — | **every** |
 
-`telegram-quest-status` · `deleted-audit` · `claude-session` · `overdue-digest` 에는 **시험 파일**(`main.test.rhai`)이 함께 있다.
+모든 예제에 **시험 파일**(`main.test.rhai`)이 함께 있다.
 `openguild plugin test examples/plugins/<이름>` 으로 돌려 본다 — 아무것도 밖으로 안 나간다.
 
 ---
@@ -46,7 +46,7 @@ POST /bot123456:AA.../sendMessage
 두 가지가 눈여겨볼 만하다:
 
 - **토큰은 URL 에, chat_id 는 `body_env` 에.** 스크립트에는 I/O 가 없어서
-  `payload()` 가 환경변수를 못 읽는다 — 그게 rhai 샌드박스의 요점이다. 그래서
+  스크립트가 환경변수를 못 읽는다 — 그게 rhai 샌드박스의 요점이다. 그래서
   본문에 넣을 값은 정의가 `body_env = { chat_id = "TELEGRAM_CHAT_ID" }` 로
   지목하고 코어가 채운다.
 - **리터럴로 적으면 적재가 거부된다.** `.guild/plugins/` 는 git 에 커밋되므로

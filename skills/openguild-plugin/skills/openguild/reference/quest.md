@@ -85,7 +85,7 @@ openguild quest list -q 'parent:none type:BUG'
 - `-x` and `NOT x` also return documents with no value for that key. `tag:none` means no tags (`tag:"none"` is a tag with that name).
 - These are errors instead of empty results: an unknown status or type (`status:opn`), a comparison or range on a text key (`tag:<=a`), an empty or reversed range (`urgency:3..1`), and `tag:a|b` (use `tag:any(a, b)`, or put spaces around `|` to mean a search word).
 - Ranges: `a..b` (end excluded), `a..=b` (end included), `a..`, `..=b` — for `urgency` and every date key.
-  Comparisons (`<=2`, `>=2026-11-01`) still work.
+  Comparisons (`<=2`, `>=2026-11-01`) also work.
 - Keyed text values match the whole value, ignoring case; `*` = any text (`tag:ui-*`); `/regex/` = a case-insensitive regex
   (bare words, `id`, `status`, `tag`, `type`, `folder`, `author`, `title`, `body`). `title:` / `body:` match a part by default;
   `=` makes them exact (`title:="Login screen"`).

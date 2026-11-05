@@ -145,7 +145,7 @@ Only write a `.rhai` file if the answer is yes.
   equality, or when the line is `pre` and must produce a reason to block.
 
 There is **no I/O in a script** — no files, no network, no processes. The one way to
-read the guild is `query()`, which needs a permission. It records
+read the guild is `query()`, which needs a permission. A script records
 work (`send` / `run` / `notify` / `backup`) and the core performs it after the
 function returns, outside the guild lock. That is the sandbox, not a gap to work
 around.

@@ -144,7 +144,7 @@ CLI 는 `quest show <번호> --field version` 으로 번호를 읽고 `quest upd
 ### git 안 써도 안전
 
 `backups/journal.db` (모든 변경 의도 기록) + `backups/snapshots/*.db` (시점별
-사본) 으로 시점 복원 가능. 설정 화면의 "백업 / 복구" 메뉴 사용.
+사본) 으로 시점 복원 가능. 관리 → 백업 에서 합니다.
 
 ---
 
@@ -561,7 +561,7 @@ openguild 서버를 부르는 중계라면 그 헤더를 그대로 전달하세�
 바뀌기 전(`pre`) 이벤트에는 번호가 없습니다. 번호는 순서만 알려 줍니다 — 파일을 직접 고치거나
 git 으로 합치면 건너뛰거나 겹칠 수 있으니 "바뀌었나" 를 판단하는 데는 쓰지 마세요.
 
-훅이 나가는 동안 명령이 멈추지는 않습니다. 느린 훅 하나가 `openguild comment
+훅이 나가는 동안 명령이 멈추지는 않습니다. 느린 훅 하나가 `openguild quest comment
 add` 를 붙잡지 않도록 따로 보내고, 명령이 끝나기 직전에 잠깐만 기다립니다.
 플러그인 하나가 실패해도 길드 동작과 다른 플러그인은 멀쩡합니다.
 
@@ -586,9 +586,9 @@ openguild plugin allow telegram-quest-status --yes
 서버 모드로 띄운 다른 곳의 길드를 조작하려면:
 
 ```bash
-openguild --remote https://my-team.example/api quest list
+openguild --remote https://my-team.example quest list
 # 또는 환경변수
-$env:OPENGUILD_REMOTE = "https://my-team.example/api"
+$env:OPENGUILD_REMOTE = "https://my-team.example"
 openguild quest list
 ```
 
@@ -600,7 +600,7 @@ openguild quest list
 |------|------|
 | **Home** | 진행 중 캠페인 carousel / 마감 임박 / 최근 quest. |
 | **Quests** | 오른쪽 위 [보드 \| 목록] 으로 보기를 고른다 — 보드는 상태별 레인의 노드 그래프(선행 / 서브 관계), 목록은 트리 / 평면 목록 + 필터. 메뉴는 마지막에 본 쪽으로 간다. |
-| **Quest Detail** | 본문 편집 / 댓글 / 메모 / 상태 변경 / 권장 브랜치명 / 캠페인 링크. |
+| **Quest Detail** | 본문 편집 / 댓글 / 메모 / 상태 변경 / 캠페인 링크. |
 | **Campaigns** | 캠페인 목록 + 체크리스트 + 링크된 quest. 새 캠페인은 모달, 퀘스트 연결에서 바로 새 퀘스트를 만들어 붙일 수 있습니다. |
 | **Rules** | 길드 규칙 다중 파일 편집. |
 | **문서 검색** (`/search`) | 퀘스트 · 캠페인 · 도서관 · 규칙의 제목 · 본문 · 댓글 · 첨부 이름을 한 번에 찾고 종류 탭으로 나눠 봅니다(제목에서 맞은 것 먼저, 맞은 곳과 발췌). 한 종류를 고르면 그 목록의 쿼리도 씁니다. 댓글 탭의 쿼리는 맞는 댓글을 한 줄씩 보여 주고, 누르면 그 댓글로 갑니다. 검색 팔레트(위쪽 길드 이름)에서 글을 치고 맨 아래 "모든 결과 보기" 로 오거나, 상단바에 올려 둡니다. `/정규식/` 도 됩니다. |
@@ -630,7 +630,7 @@ openguild quest list
   웹(서버) 화면에서는 아직 안 됩니다.
 
 설치된 사본 위치 기본값:
-`C:\Program Files\openguild\` (Windows) — 단 사용자 설정으로 변경 가능.
+`%LOCALAPPDATA%\openguild\` (Windows) — 설치할 때 바꿀 수 있습니다.
 macOS 는 `/Applications/openguild.app`.
 
 ---
@@ -652,11 +652,11 @@ CLI · 서버만 쓴다면 `openguild update --check` 로 새 버전이 나왔�
 
 | 상황 | 해결 |
 |------|------|
-| 파일을 직접 편집했는데 GUI 가 옛 상태 | 앱과 서버는 열 때와 상세 화면에 들어갈 때 파일을 다시 읽습니다. 켜 둔 채 목록이 옛 상태면 상단 reindex 버튼. CLI 는 명령마다 바뀐 파일을 읽습니다. 어느 쪽이든 문서를 고치기 전에 그 문서를 파일에서 다시 읽으므로 밖에서 고친 내용을 덮지 않습니다. |
+| 파일을 직접 편집했는데 GUI 가 옛 상태 | 앱과 서버는 열 때와 상세 화면에 들어갈 때 파일을 다시 읽습니다. 켜 둔 채 목록이 옛 상태면 상단 reindex 버튼. CLI 는 명령마다 바뀐 파일을 읽습니다. 타입 · 상태 · 태그 정의도 같습니다. 어느 쪽이든 문서를 고치기 전에 그 문서를 파일에서 다시 읽으므로 밖에서 고친 내용을 덮지 않습니다. |
 | 다른 PC 에서 git pull 후 quest 안 보임 | 위와 동일. 새 번호도 파일을 보고 정하므로, 받아 온 문서의 번호와 겹치지 않습니다. |
-| 캐시 손상 의심 | Settings → "Drift 검사" → 필요 시 Reindex. |
+| 캐시 손상 의심 | 관리 → 진단 → Drift 검사, 필요하면 Reindex. |
 | `database disk image is malformed` | `index.db`(캐시)가 망가진 것. 열 때 알아서 `backups/index.db.corrupt` 로 옮기고 파일에서 새로 만듭니다. `journal.db` 가 망가졌다고 나오면 그 파일을 다른 이름으로 옮기고 다시 여세요(변경 기록만 잃고 길드 파일은 그대로). |
-| 데이터 손실 의심 | Settings → Admin → 최근 snapshot 복원. |
+| 데이터 손실 의심 | 관리 → 백업 → 최근 snapshot 복원. |
 | CLI 가 인식 안 됨 | 설치 시 "Add to PATH" 체크 안 했을 가능성. 재설치 또는 수동 PATH 등록. |
 
 문의 / 버그 보고: https://github.com/Jirung-E/openguild
