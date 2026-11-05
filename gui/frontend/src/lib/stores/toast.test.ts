@@ -131,3 +131,49 @@ describe('toast store — DEV-266 동시 다발 알림 정책', () => {
 		expect(list).toHaveLength(2);
 	});
 });
+
+describe('플러그인 알림 — 표시 시간 · 갈 곳', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	it('문서 번호로 갈 주소를 고른다', async () => {
+		const { noticeHref } = await loadFreshStore();
+		expect(noticeHref({})).toBeUndefined();
+		expect(noticeHref({ comment: 3 })).toBeUndefined();
+		expect(noticeHref({ open: 'DEV-001' })).toBe('/quests/DEV-001');
+		expect(noticeHref({ open: 'DEV-001', comment: 3 })).toBe('/quests/DEV-001?comment=3');
+		expect(noticeHref({ open: 'C-002', comment: 1 })).toBe('/campaigns/C-002?comment=1');
+		expect(noticeHref({ open: 'BOOK-004' })).toBe('/library?id=BOOK-004');
+	});
+
+	it('seconds 만큼 떠 있고, 0 이면 닫을 때까지, 없으면 기본 시간', async () => {
+		const store = await loadFreshStore();
+		store.showPluginNotice('p', '짧게', { seconds: 1 });
+		store.showPluginNotice('p', '길게', { seconds: 10 });
+		store.showPluginNotice('p', '계속', { seconds: 0 });
+		store.showPluginNotice('p', '기본');
+		const left = () => get(store.notifications).map((n) => (n as ToastNotif).message);
+		expect(left()).toHaveLength(4);
+		vi.advanceTimersByTime(1000);
+		expect(left()).toEqual(['p: 길게', 'p: 계속', 'p: 기본']);
+		vi.advanceTimersByTime(3000);
+		expect(left()).toEqual(['p: 길게', 'p: 계속']);
+		vi.advanceTimersByTime(6000);
+		expect(left()).toEqual(['p: 계속']);
+		vi.advanceTimersByTime(3_600_000);
+		expect(left()).toEqual(['p: 계속']);
+	});
+
+	it('글이 같아도 갈 곳이 다르면 합치지 않는다', async () => {
+		const store = await loadFreshStore();
+		store.showPluginNotice('p', '새 댓글', { open: 'DEV-001' });
+		store.showPluginNotice('p', '새 댓글', { open: 'DEV-002' });
+		store.showPluginNotice('p', '새 댓글', { open: 'DEV-002' });
+		const list = get(store.notifications) as ToastNotif[];
+		expect(list.map((n) => [n.href, n.count])).toEqual([
+			['/quests/DEV-001', 1],
+			['/quests/DEV-002', 2]
+		]);
+	});
+});

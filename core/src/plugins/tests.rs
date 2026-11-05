@@ -3184,6 +3184,117 @@ scope = ["cli"]
 
 /// 알림과 백업이 **함수가 끝난 뒤** 실행된다. 권한에 없는 것은 그 일만 거절하고 기록한다.
 /// 백업이 낸 이벤트는 자기에게 돌아오지 않는다([[DEV-401]]).
+/// 표시 시간 · 갈 곳이 알림까지 온다. 옵션 없는 `notify(글)` 은 그대로다.
+#[tokio::test]
+async fn notify_carries_how_long_and_where_to() {
+    use super::guild::NoticeOptions;
+    #[derive(Default)]
+    struct Said(std::sync::Mutex<Vec<(String, NoticeOptions)>>);
+    impl super::guild::Notifier for Said {
+        fn notify(&self, _plugin: &str, text: &str) -> Result<(), String> {
+            let mut said = self.0.lock().unwrap();
+            said.push((text.to_string(), NoticeOptions::default()));
+            Ok(())
+        }
+        fn notify_with(
+            &self,
+            _plugin: &str,
+            text: &str,
+            options: &NoticeOptions,
+        ) -> Result<(), String> {
+            let mut said = self.0.lock().unwrap();
+            said.push((text.to_string(), options.clone()));
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("notice-home");
+    let g = fresh_tmp("notice");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("hand");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name        = "hand"
+scope       = ["cli"]
+scripts     = ["main.rhai"]
+permissions = ["notify"]
+
+[[handlers]]
+    id   = "생성"
+    post = ["quest.created"]
+    call = "on_created"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"
+        fn on_created(e) {
+            notify("그냥");
+            notify("빈 옵션", #{});
+            notify("시간", #{ seconds: 2.5 });
+            notify("계속", #{ seconds: 0 });
+            notify("문서", #{ open: "dev-1" });
+            notify("댓글", #{ seconds: 10, open: e.quest.id, comment: 3 });
+        }
+        "#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let said = std::sync::Arc::new(Said::default());
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins_with(
+            Scope::Cli,
+            std::sync::Arc::new(runtime::DropDelivery),
+            said.clone(),
+        );
+        assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    }
+    let q = crate::ops::quests::create_quest(
+        &store,
+        crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "훅".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(10)));
+
+    let opts = |seconds, open: Option<&str>, comment| NoticeOptions {
+        seconds,
+        open: open.map(String::from),
+        comment,
+    };
+    assert_eq!(
+        said.0.lock().unwrap().clone(),
+        vec![
+            ("그냥".to_string(), NoticeOptions::default()),
+            ("빈 옵션".to_string(), NoticeOptions::default()),
+            ("시간".to_string(), opts(Some(2.5), None, None)),
+            ("계속".to_string(), opts(Some(0.0), None, None)),
+            ("문서".to_string(), opts(None, Some("DEV-001"), None)),
+            (
+                "댓글".to_string(),
+                opts(Some(10.0), Some(q.quest_id.as_str()), Some(3))
+            ),
+        ]
+    );
+    assert!(store.plugin_problems().is_empty());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 #[tokio::test]
 async fn a_script_can_notify_and_back_up_within_its_permissions() {
     #[derive(Default)]

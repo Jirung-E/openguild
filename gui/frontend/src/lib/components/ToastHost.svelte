@@ -14,6 +14,7 @@
 	import Icon from './Icon.svelte';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { goto } from '$app/navigation';
 	import {
 		notifications,
 		upsertNotif,
@@ -204,10 +205,16 @@
 		{#if n.kind === 'toast'}
 			<button
 				class="card toast {n.variant}"
-				onclick={() => dismissNotif(n.id)}
-				title={t('update.close', $locale)}
+				onclick={() => {
+					dismissNotif(n.id);
+					if (n.href) void goto(n.href);
+				}}
+				title={t(n.href ? 'notif.open' : 'update.close', $locale)}
 			>
 				{n.message}
+				{#if n.href}
+					<span class="open">{t('notif.open', $locale)}</span>
+				{/if}
 				{#if n.count > 1}
 					<!-- DEV-266: 중복 억제 — 같은 알림 재발생 횟수 뱃지. -->
 					<!-- glyph-ok: 횟수 표시(×3) — 아이콘이 아니라 곱셈 기호다 -->
@@ -354,6 +361,12 @@
 	.toast.success {
 		border-left-color: var(--success-strong);
 		color: var(--success);
+	}
+	.toast .open {
+		margin-left: var(--sp-6);
+		font-size: var(--fs-xs);
+		color: var(--accent);
+		text-decoration: underline;
 	}
 	/* DEV-266: 같은 알림 재발생 횟수 뱃지. */
 	.toast .count {

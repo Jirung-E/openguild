@@ -341,12 +341,21 @@ pub struct AppNotifier;
 
 impl openguild_core::plugins::guild::Notifier for AppNotifier {
     fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
+        self.notify_with(plugin, text, &Default::default())
+    }
+
+    fn notify_with(
+        &self,
+        plugin: &str,
+        text: &str,
+        options: &openguild_core::plugins::guild::NoticeOptions,
+    ) -> Result<(), String> {
         use tauri::Emitter;
         match APP.get() {
             Some(app) => app
                 .emit(
                     "plugin-notify",
-                    serde_json::json!({ "plugin": plugin, "text": text }),
+                    serde_json::json!({ "plugin": plugin, "text": text, "options": options }),
                 )
                 .map_err(|e| format!("알림을 화면에 못 보냈습니다: {e}")),
             None => openguild_core::plugins::guild::Stderr.notify(plugin, text),

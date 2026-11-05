@@ -341,6 +341,9 @@ fn on_comment(e, subject) {
 - `send(이름, 본문)` / `run(이름, 입력)` — `[actions]` 의 동작을 부릅니다.
 - `notify(글)` / `backup()` — 길드에 시키는 일. **`permissions = ["notify", "backup"]`** 으로
   밝혀야 합니다(허용 화면에 그대로 보입니다).
+- `notify(글, #{ seconds: 10, open: "DEV-001", comment: 3 })` — 앱 알림의 표시 시간과 누르면 갈 곳을 정합니다.
+  `seconds` 는 초(0 = 닫을 때까지, 최대 3600, 없으면 기본 시간), `open` 은 퀘스트 · 캠페인 · 도서관 문서 번호,
+  `comment` 는 그 문서의 댓글 번호입니다(`open` 과 함께, 도서관 제외). 틀린 값은 스크립트 오류입니다. CLI · 서버는 글만 남깁니다.
 - `query(대상, 쿼리)` — 길드를 읽어 목록을 받습니다. **`permissions = ["query"]`** 로 밝혀야 합니다. 아래 참고.
 - `config("키")` — 사용자가 설정 화면에 넣은 값.
 - `guild_name()`, `status_name("in_progress")`, `type_name("DEV")`, `link("quest", "DEV-001")`,

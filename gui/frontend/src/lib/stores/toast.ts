@@ -22,6 +22,8 @@ export interface ToastNotif extends NotifBase {
 	kind: 'toast';
 	message: string;
 	variant: ToastVariant;
+	/** 누르면 갈 앱 안 주소. 없으면 눌러도 닫히기만 한다. */
+	href?: string;
 	/** DEV-266: 중복 억제 — 같은 message+variant 재발생 시 새 카드 대신 이
 	 *  값이 올라간다(카드에 ×N 뱃지). */
 	count: number;
@@ -72,16 +74,18 @@ let toastSeq = 1;
  * DEV-266 중복 억제: 같은 message+variant 의 토스트가 이미 떠 있으면 새
  * 카드를 쌓는 대신 그 카드의 count 를 올리고(×N 뱃지) 수명을 리셋한다 —
  * 루프에서 같은 에러가 연발할 때 스택이 같은 문구로 도배되는 것 방지.
+ * 갈 곳(`href`)이 다르면 글이 같아도 다른 알림이다.
  */
 export function showToast(
 	message: string,
 	variant: ToastVariant = 'info',
-	durationMs = 4000
+	durationMs = 4000,
+	href?: string
 ): string {
 	let id: string | null = null;
 	notifications.update((list) => {
 		const i = list.findIndex(
-			(x) => x.kind === 'toast' && x.message === message && x.variant === variant
+			(x) => x.kind === 'toast' && x.message === message && x.variant === variant && x.href === href
 		);
 		if (i < 0) return list;
 		id = list[i].id;
@@ -92,7 +96,7 @@ export function showToast(
 	});
 	if (id === null) {
 		id = `toast-${toastSeq++}`;
-		upsertNotif({ id, kind: 'toast', message, variant, count: 1 });
+		upsertNotif({ id, kind: 'toast', message, variant, href, count: 1 });
 	}
 	const old = toastTimers.get(id);
 	if (old) clearTimeout(old);
@@ -104,6 +108,32 @@ export function showToast(
 		);
 	}
 	return id;
+}
+
+/** 플러그인 `notify` 의 옵션. 값은 코어가 부를 때 검사했다. */
+export interface PluginNoticeOptions {
+	seconds?: number;
+	open?: string;
+	comment?: number;
+}
+
+/** 알림을 눌렀을 때 갈 앱 안 주소 — 번호로 문서 종류를 가른다. */
+export function noticeHref({ open, comment }: PluginNoticeOptions): string | undefined {
+	if (!open) return undefined;
+	const id = encodeURIComponent(open);
+	if (/^BOOK-\d+$/.test(open)) return `/library?id=${id}`;
+	const base = /^C-\d+$/.test(open) ? `/campaigns/${id}` : `/quests/${id}`;
+	return comment === undefined ? base : `${base}?comment=${comment}`;
+}
+
+/** 플러그인이 보낸 알림을 띄운다. `seconds` 가 0 이면 닫을 때까지, 없으면 기본 시간. */
+export function showPluginNotice(
+	plugin: string,
+	text: string,
+	options: PluginNoticeOptions = {}
+): string {
+	const ms = options.seconds === undefined ? undefined : options.seconds * 1000;
+	return showToast(`${plugin}: ${text}`, 'info', ms, noticeHref(options));
 }
 
 // ── DEV-266: 표시 상한 + 우선순위 ────────────────────────────────────

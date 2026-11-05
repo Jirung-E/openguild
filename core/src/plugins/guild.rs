@@ -26,6 +26,30 @@ use std::sync::Arc;
 pub trait Notifier: Send + Sync {
     /// `plugin` 이 보낸 한 줄.
     fn notify(&self, plugin: &str, text: &str) -> Result<(), String>;
+
+    /// 표시 시간 · 갈 곳이 있는 알림. 화면이 없는 곳(CLI · 서버)은 글만 남긴다.
+    fn notify_with(
+        &self,
+        plugin: &str,
+        text: &str,
+        _options: &NoticeOptions,
+    ) -> Result<(), String> {
+        self.notify(plugin, text)
+    }
+}
+
+/// `notify(글, #{ … })` 의 옵션 — 값은 스크립트가 부를 때 이미 검사했다.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NoticeOptions {
+    /// 표시 시간(초). 0 이면 닫을 때까지, 없으면 화면의 기본값.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<f64>,
+    /// 누르면 열 문서 — `DEV-001` · `C-003` · `BOOK-002`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<String>,
+    /// 그 문서의 댓글 번호까지 이동.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<i64>,
 }
 
 /// 기본 — 표준 오류로 한 줄. CLI 와 서버가 쓴다(서버 로그에 그대로 남는다).
@@ -140,6 +164,13 @@ impl Delivery for WithGuild {
     ) -> Result<(), String> {
         match kind {
             CommandKind::Notify => {
+                if let Value::Object(fields) = body
+                    && let Some(Value::String(text)) = fields.get("text")
+                {
+                    let options = serde_json::from_value(fields["options"].clone())
+                        .map_err(|e| e.to_string())?;
+                    return self.notifier.notify_with(&plugin.def.name, text, &options);
+                }
                 let text = match body {
                     Value::String(s) => s.clone(),
                     other => other.to_string(),

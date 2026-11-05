@@ -73,7 +73,7 @@ pub enum CommandKind {
     Send,
     /// `run(이름, 입력)` — `run` 동작.
     Run,
-    /// DEV-406: `notify(글)` — 이 기계에 알린다(앱은 알림, CLI 는 stderr, 서버는 로그).
+    /// DEV-406: `notify(글[, 옵션])` — 이 기계에 알린다(앱은 알림, CLI 는 stderr, 서버는 로그).
     Notify,
     /// DEV-406: `backup()` — 길드 백업을 만든다.
     Backup,
@@ -94,6 +94,85 @@ impl CommandKind {
     pub fn needs_permission(self) -> bool {
         matches!(self, CommandKind::Notify | CommandKind::Backup)
     }
+}
+
+/// 표시 시간의 상한(초) — 더 오래 둘 알림은 `seconds: 0`(닫을 때까지)이다.
+const MAX_NOTICE_SECONDS: f64 = 3600.0;
+
+/// `notify` 의 옵션을 읽는다. 틀린 값을 조용히 넘기면 "왜 안 가지" 만 남으니 부를 때 알린다.
+fn notice_options(map: &rhai::Map) -> Result<super::guild::NoticeOptions, String> {
+    let mut out = super::guild::NoticeOptions::default();
+    for (key, v) in map {
+        match key.as_str() {
+            "seconds" => {
+                let s = v
+                    .as_float()
+                    .ok()
+                    .or_else(|| v.as_int().ok().map(|n| n as f64))
+                    .filter(|s| (0.0..=MAX_NOTICE_SECONDS).contains(s))
+                    .ok_or_else(|| {
+                        crate::tf!(
+                            "seconds 는 0 ~ {MAX_NOTICE_SECONDS} 사이의 숫자입니다(0 = 닫을 때까지): {v}",
+                            "seconds is a number from 0 to {MAX_NOTICE_SECONDS} (0 = until closed): {v}"
+                        )
+                    })?;
+                out.seconds = Some(s);
+            }
+            "open" => {
+                let id = v.clone().into_string().ok().and_then(|s| notice_doc_id(&s));
+                out.open = Some(id.ok_or_else(|| {
+                    crate::tf!(
+                        "open 은 문서 번호입니다(DEV-001 · C-003 · BOOK-002): {v}",
+                        "open is a document id (DEV-001, C-003, BOOK-002): {v}"
+                    )
+                })?);
+            }
+            "comment" => {
+                let n = v.as_int().ok().filter(|n| *n > 0).ok_or_else(|| {
+                    crate::tf!(
+                        "comment 는 댓글 번호입니다: {v}",
+                        "comment is a comment number: {v}"
+                    )
+                })?;
+                out.comment = Some(n);
+            }
+            other => {
+                return Err(crate::tf!(
+                    "모르는 옵션 '{other}' — 쓸 수 있는 옵션: seconds, open, comment",
+                    "unknown option '{other}' — available options: seconds, open, comment"
+                ));
+            }
+        }
+    }
+    if out.comment.is_some() {
+        match out.open.as_deref() {
+            None => {
+                return Err(crate::tf!(
+                    "comment 는 어느 문서의 댓글인지 open 과 같이 적습니다",
+                    "comment needs open to say which document it is on"
+                ));
+            }
+            Some(id) if id.starts_with("BOOK-") => {
+                return Err(crate::tf!(
+                    "도서관 문서에는 댓글이 없습니다: {id}",
+                    "library documents have no comments: {id}"
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(out)
+}
+
+/// `dev-1` → `DEV-001`. 문서 번호 꼴이 아니면 `None`.
+fn notice_doc_id(s: &str) -> Option<String> {
+    let (prefix, num) = s.trim().rsplit_once('-')?;
+    let num = num.parse::<u32>().ok()?;
+    (!prefix.is_empty()
+        && prefix
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_'))
+    .then(|| format!("{}-{num:03}", prefix.to_ascii_uppercase()))
 }
 
 /// 컴파일된 스크립트(한 플러그인의 파일 전부). 적재 때 한 번 컴파일하고 이벤트마다 재사용한다 —
@@ -479,6 +558,20 @@ fn sandboxed_engine(
             },
         );
         let cmds = commands.clone();
+        e.register_fn(
+            "notify",
+            move |text: &str, options: rhai::Map| -> Result<(), Box<rhai::EvalAltResult>> {
+                let options = notice_options(&options)
+                    .map_err(|m| -> Box<rhai::EvalAltResult> { format!("notify: {m}").into() })?;
+                push(
+                    &cmds,
+                    CommandKind::Notify,
+                    String::new(),
+                    serde_json::json!({ "text": text, "options": options }),
+                )
+            },
+        );
+        let cmds = commands.clone();
         e.register_fn("backup", move || -> Result<(), Box<rhai::EvalAltResult>> {
             push(&cmds, CommandKind::Backup, String::new(), Value::Null)
         });
@@ -809,6 +902,43 @@ fn from_dynamic(d: &Dynamic) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn notice_options_refuse_what_would_silently_do_nothing() {
+        let check = |src: &str| {
+            let map: rhai::Map = rhai::Engine::new().eval(src).unwrap();
+            super::notice_options(&map)
+        };
+        for ok in [
+            "#{}",
+            "#{ seconds: 0 }",
+            "#{ seconds: 1.5 }",
+            "#{ seconds: 3600 }",
+            "#{ open: \"BOOK-2\" }",
+            "#{ open: \"C-3\", comment: 1 }",
+        ] {
+            assert!(check(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "#{ nope: 1 }",
+            "#{ seconds: -1 }",
+            "#{ seconds: 3601 }",
+            "#{ seconds: \"10\" }",
+            "#{ open: \"DEV\" }",
+            "#{ open: \"../admin-1\" }",
+            "#{ open: 3 }",
+            "#{ comment: 3 }",
+            "#{ open: \"DEV-1\", comment: 0 }",
+            "#{ open: \"DEV-1\", comment: \"3\" }",
+            "#{ open: \"BOOK-1\", comment: 3 }",
+        ] {
+            assert!(check(bad).is_err(), "{bad}");
+        }
+        assert_eq!(
+            check("#{ open: \"dev-1\" }").unwrap().open.unwrap(),
+            "DEV-001"
+        );
+    }
+
     use super::*;
     use crate::events::Phase;
     use serde_json::json;
