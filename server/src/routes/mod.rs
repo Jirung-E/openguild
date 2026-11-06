@@ -368,6 +368,7 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/notices", get(notices::get))
         .route("/api/notices/seen", post(notices::seen))
         .route("/api/notices/dismiss", post(notices::dismiss))
+        .route("/api/notices/clear", post(notices::clear))
         .route("/api/plugin-asks", get(plugin_asks::wait))
         .route("/api/plugin-asks/{id}", post(plugin_asks::answer))
         // DEV-443: 개인 형광펜 — 대상은 `?target=quest:DEV-001` 처럼.

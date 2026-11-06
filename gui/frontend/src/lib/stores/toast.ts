@@ -28,6 +28,13 @@ export interface ToastNotif extends NotifBase {
 	/** DEV-266: 중복 억제 — 같은 message+variant 재발생 시 새 카드 대신 이
 	 *  값이 올라간다(카드에 ×N 뱃지). */
 	count: number;
+	/** DEV-478: 뜬 시각(ISO) — 알림함을 열면 지나간 알림과 이 시각 순으로 섞인다. */
+	at?: string;
+	/** DEV-478: 플러그인 알림이면 보낸 플러그인과 그 글(`message` 는 `플러그인: 글`). */
+	plugin?: string;
+	text?: string;
+	/** DEV-478: 알림함의 같은 알림(앱 알림의 key). 성공 알림은 알림함에 없어 비어 있다. */
+	inboxKey?: string;
 }
 export interface UpdateNotif extends NotifBase {
 	kind: 'update';
@@ -84,8 +91,9 @@ export function showToast(
 	href?: string
 ): string {
 	// DEV-478: 사라져도 알림함에서 다시 본다. "저장됨" 같은 성공 알림은 남기지 않는다.
-	if (variant !== 'success') recordAppNotice(message, variant === 'error', href);
-	return pushToast(message, variant, durationMs, href);
+	const inboxKey =
+		variant !== 'success' ? recordAppNotice(message, variant === 'error', href) : undefined;
+	return pushToast(message, variant, durationMs, href, { inboxKey });
 }
 
 /** 토스트만 띄운다 — 알림함에는 안 남긴다(길드 알림은 코어가 이미 적었다). */
@@ -93,9 +101,11 @@ function pushToast(
 	message: string,
 	variant: ToastVariant,
 	durationMs: number,
-	href?: string
+	href?: string,
+	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey'> = {}
 ): string {
 	let id: string | null = null;
+	const at = new Date().toISOString();
 	notifications.update((list) => {
 		const i = list.findIndex(
 			(x) => x.kind === 'toast' && x.message === message && x.variant === variant && x.href === href
@@ -104,12 +114,12 @@ function pushToast(
 		id = list[i].id;
 		const copy = [...list];
 		const prev = copy[i] as ToastNotif;
-		copy[i] = { ...prev, count: prev.count + 1 };
+		copy[i] = { ...prev, ...extra, at, count: prev.count + 1 };
 		return copy;
 	});
 	if (id === null) {
 		id = `toast-${toastSeq++}`;
-		upsertNotif({ id, kind: 'toast', message, variant, href, count: 1 });
+		upsertNotif({ id, kind: 'toast', message, variant, href, count: 1, at, ...extra });
 	}
 	const old = toastTimers.get(id);
 	if (old) clearTimeout(old);
@@ -140,7 +150,7 @@ export function showPluginNotice(
 	options: PluginNoticeOptions = {}
 ): string {
 	const ms = options.seconds === undefined ? 4000 : options.seconds * 1000;
-	return pushToast(`${plugin}: ${text}`, 'info', ms, noticeHref(options));
+	return pushToast(`${plugin}: ${text}`, 'info', ms, noticeHref(options), { plugin, text });
 }
 
 // ── DEV-266: 표시 상한 + 우선순위 ────────────────────────────────────

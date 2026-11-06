@@ -285,4 +285,9 @@ fn notice_list_shows_unread_and_read_clears_it() {
     let got = g.json(&["notice", "list"]);
     assert_eq!(got["notices"].as_array().unwrap().len(), 1);
     assert_eq!(got["notices"][0]["text"], "하나");
+    g.ok(&["notice", "clear"], None);
+    assert_eq!(
+        g.json(&["notice", "list"])["notices"],
+        serde_json::json!([])
+    );
 }

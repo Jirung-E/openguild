@@ -44,6 +44,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "POST",
+        "/api/notices/clear",
+        "알림함을 비운다 — 문서가 아니고 index 에도 없다",
+    ),
+    (
+        "POST",
         "/api/plugin-asks/{id}",
         "플러그인 확인 창의 답 — 메모리의 질문에 답할 뿐 파일을 안 쓴다",
     ),

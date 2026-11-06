@@ -5137,6 +5137,9 @@ async fn test_notices_list_and_mark_seen() {
     let (_, got) = get(app.clone(), "/api/notices").await;
     assert_eq!(got["notices"].as_array().unwrap().len(), 1);
     assert_eq!(got["notices"][0]["open"], "DEV-1");
+    let (status, out) = post(app.clone(), "/api/notices/clear", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(out["removed"], 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

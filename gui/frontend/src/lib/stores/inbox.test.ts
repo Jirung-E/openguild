@@ -154,3 +154,25 @@ describe('알림함', () => {
 		expect(get(inboxItems)).toHaveLength(MAX_APP_NOTICES);
 	});
 });
+
+describe('알림함 열고 닫기 · 모두 지우기', () => {
+	it('닫을 때 모두 읽음, 모두 지우기는 파일도 비운다', async () => {
+		const { openInbox, closeInbox, inboxOpen, clearAllNotices } = await import('./inbox');
+		inboxApi.get.mockResolvedValue({
+			notices: [{ at: '2026-11-06T10:00:02.000+09:00', kind: 'notify', plugin: 'p', text: 'a' }],
+			unread: 1,
+			unread_problems: 0
+		});
+		openInbox();
+		expect(get(inboxOpen)).toBe(true);
+		await refreshInbox();
+		closeInbox();
+		expect(get(inboxOpen)).toBe(false);
+		await Promise.resolve();
+		expect(inboxApi.markSeen).toHaveBeenCalledWith('2026-11-06T10:00:02.000+09:00');
+		(inboxApi as unknown as { clear: ReturnType<typeof vi.fn> }).clear = vi.fn(async () => ({}));
+		recordAppNotice('x', true);
+		await clearAllNotices();
+		expect(get(inboxItems)).toEqual([]);
+	});
+});

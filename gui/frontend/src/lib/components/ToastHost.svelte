@@ -5,6 +5,8 @@
    - toast : 텍스트(자동 소멸). showToast() 로 추가.
    - update: 업데이터 상태 카드.
    - schema: DB schema-ahead 경고 카드.
+  DEV-478: 토스트는 알림함과 같은 카드(`NoticeCard`)로 그린다. 종을 누르면(`inboxOpen`) 이 스택이 그대로 알림함이
+  된다 — 지금 떠 있는 카드는 제자리에 두고, 그 사이 사라졌던 알림이 시각 순으로 끼어 들어온다. 닫으면 그것들만 빠진다.
   업데이트·스키마 알림의 소스 watcher(주기 체크 / schema 조회 → 스토어
   upsert)도 이 호스트가 내장한다(이전의 UpdateBanner/SchemaAheadBanner
   껍데기 컴포넌트를 흡수·제거).
@@ -36,7 +38,19 @@
 	import { isAutoUpdateCheckEnabled } from '$lib/stores/updateSettings';
 	import { detectEnvironment } from '$lib/api/transport';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	import NoticeCard from './NoticeCard.svelte';
 	import { locale, t } from '$lib/stores/locale';
+	import { tick } from 'svelte';
+	import { cubicOut } from 'svelte/easing';
+	import {
+		clearAllNotices,
+		closeInbox,
+		dismissItem,
+		inboxItems,
+		inboxOpen
+	} from '$lib/stores/inbox';
+	import { stackCards, type NoticeCardData } from '$lib/utils/noticeCard';
+	import type { ToastNotif } from '$lib/stores/toast';
 
 	const RELEASE_URL = 'https://github.com/Jirung-E/openguild/releases/latest';
 	const isTauri = detectEnvironment() === 'tauri';
@@ -156,6 +170,83 @@
 		if ($notifications.length <= MAX_VISIBLE_NOTIFS) expanded = false;
 	});
 
+	// ── DEV-478: 알림 카드 · 알림함 ─────────────────────────────────────
+	const shownToasts = $derived(
+		($inboxOpen ? $notifications : view.visible).filter((n) => n.kind === 'toast') as ToastNotif[]
+	);
+	const persistent = $derived(view.visible.filter((n) => n.kind !== 'toast'));
+	// 알림함 줄 → 그 줄이 떴던 토스트의 key. 카드가 같은 알림이면 같은 key 를 쓰게(`stackCards`).
+	const seenKeys = new Map<string, string>();
+	const cards = $derived(stackCards(shownToasts, $inboxItems, $inboxOpen, seenKeys));
+
+	function openCard(card: NoticeCardData) {
+		if (card.href) {
+			if (card.toast) dismissNotif(card.toast.id);
+			closeInbox();
+			void goto(card.href);
+			return;
+		}
+		// 갈 곳이 없는 토스트는 눌러서 닫는다(알림함에는 남는다). 알림함의 지나간 줄은 누를 일이 없다.
+		if (card.toast && !$inboxOpen) dismissNotif(card.toast.id);
+	}
+
+	function dismissCard(card: NoticeCardData) {
+		if (card.toast) dismissNotif(card.toast.id);
+		if (card.item) void dismissItem(card.item);
+	}
+
+	async function clearAll() {
+		for (const n of $notifications) if (n.kind === 'toast') dismissNotif(n.id);
+		await clearAllNotices();
+		closeInbox();
+	}
+
+	/** CSS 의 움직임 시간(`--dur-mid`) — '동작 줄이기' 면 0 이다. */
+	function cssMs(name: string): number {
+		if (typeof window === 'undefined') return 0;
+		const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+		const n = parseFloat(v);
+		if (!Number.isFinite(n)) return 0;
+		return v.endsWith('ms') ? n : n * 1000;
+	}
+
+	/** 올 때 · 갈 때 — 오른쪽에서 미끄러져 들어오며 높이가 열리고, 나갈 때는 그 반대. */
+	function cardMotion(node: HTMLElement) {
+		const h = node.offsetHeight;
+		return {
+			duration: cssMs('--dur-mid'),
+			easing: cubicOut,
+			css: (t: number, u: number) =>
+				`overflow: hidden; opacity: ${t}; max-height: ${t * h}px; transform: translateX(${u * 1.5}rem);`
+		};
+	}
+
+	// 알림함 — 열면 맨 아래(가장 최근)가 보이게, 밖을 누르거나 Esc 면 닫는다.
+	let stackEl: HTMLDivElement | undefined = $state(undefined);
+	$effect(() => {
+		if (!$inboxOpen) return;
+		const toBottom = () => stackEl && (stackEl.scrollTop = stackEl.scrollHeight);
+		void tick().then(toBottom);
+		const late = setTimeout(toBottom, cssMs('--dur-mid') + 30);
+		// BUG-322 와 같은 이유 — 타이틀바 클릭은 오버레이가 못 받으니 capture 로 받는다.
+		const onDown = (e: MouseEvent) => {
+			const el = e.target;
+			if (el instanceof Element && (el.closest('.notif-stack') || el.closest('.inbox-wrap')))
+				return;
+			closeInbox();
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') closeInbox();
+		};
+		window.addEventListener('mousedown', onDown, { capture: true });
+		window.addEventListener('keydown', onKey);
+		return () => {
+			clearTimeout(late);
+			window.removeEventListener('mousedown', onDown, { capture: true });
+			window.removeEventListener('keydown', onKey);
+		};
+	});
+
 	onMount(() => {
 		checkSchema();
 		// DEV-266: dev 전용 알림 트리거 — schema-ahead 는 '구버전 binary + 신버전
@@ -193,35 +284,43 @@
 	});
 </script>
 
-<div class="notif-stack" role="status" aria-live="polite">
+<div
+	class="notif-stack"
+	class:open={$inboxOpen}
+	role="status"
+	aria-live="polite"
+	bind:this={stackEl}
+>
+	<!-- DEV-478: 알림함 머리 — 열 때 펼쳐진다. -->
+	{#if $inboxOpen}
+		<div class="slot" transition:cardMotion>
+			<div class="ib-head">
+				<span class="ib-title">{t('inbox.title', $locale)}</span>
+				<button class="btn btn-sm" onclick={() => void clearAll()} disabled={cards.length === 0}
+					>{t('inbox.clearAll', $locale)}</button
+				>
+			</div>
+		</div>
+		{#if cards.length === 0}
+			<div class="slot" transition:cardMotion>
+				<p class="card ib-empty">{t('inbox.empty', $locale)}</p>
+			</div>
+		{/if}
+	{/if}
 	<!-- DEV-266: 상한 초과분 축약 칩 — 클릭 시 전체 펼침. 스택 맨 위(코너
 	     반대쪽)에 둬 최신/지속 알림을 가리지 않는다. -->
-	{#if view.hidden > 0}
+	{#if view.hidden > 0 && !$inboxOpen}
 		<button class="card more-chip" onclick={() => (expanded = true)}>
 			{t('notif.more', $locale).replace('{n}', String(view.hidden))}
 		</button>
 	{/if}
-	{#each view.visible as n (n.id)}
-		{#if n.kind === 'toast'}
-			<button
-				class="card toast {n.variant}"
-				onclick={() => {
-					dismissNotif(n.id);
-					if (n.href) void goto(n.href);
-				}}
-				title={t(n.href ? 'notif.open' : 'update.close', $locale)}
-			>
-				{n.message}
-				{#if n.href}
-					<span class="open">{t('notif.open', $locale)}</span>
-				{/if}
-				{#if n.count > 1}
-					<!-- DEV-266: 중복 억제 — 같은 알림 재발생 횟수 뱃지. -->
-					<!-- glyph-ok: 횟수 표시(×3) — 아이콘이 아니라 곱셈 기호다 -->
-					<span class="count">×{n.count}</span>
-				{/if}
-			</button>
-		{:else if n.kind === 'update'}
+	{#each cards as card (card.key)}
+		<div class="slot" transition:cardMotion>
+			<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
+		</div>
+	{/each}
+	{#each persistent as n (n.id)}
+		{#if n.kind === 'update'}
 			<div class="card upd" class:err={$updateState.status === 'error'} role="status">
 				<button class="card-x" title={t('update.close', $locale)} onclick={() => dismissUpdate()}
 					><Icon name="close" size="1em" /></button
@@ -296,17 +395,33 @@
 	/* DEV-259: 우하단 단일 스택. bottom 고정 + column → 새 항목이 코너에,
 	   기존은 위로 밀림. */
 	.notif-stack {
+		/* DEV-478: 카드 모서리에 걸친 × · 점이 잘리지 않게 안쪽 여백을 두고, 그만큼 바깥으로 낸다. */
+		--edge: 0.75rem; /* token-ok: 모서리 표시가 들어갈 자리 */
 		position: fixed;
-		right: 1.5rem;
-		bottom: 1.5rem;
+		right: calc(1.5rem - var(--edge));
+		bottom: calc(1.5rem - var(--edge));
 		z-index: 2000;
 		display: flex;
 		flex-direction: column;
-		gap: var(--sp-8);
 		align-items: stretch;
+		box-sizing: content-box;
+		padding: 0 var(--edge) var(--edge);
 		width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		max-width: calc(100vw - 3rem);
 		pointer-events: none;
+	}
+	/* 알림함 — 배경은 없고(카드마다의 그림자로 가른다), 길면 이 안에서 스크롤. */
+	.notif-stack.open {
+		max-height: calc(100vh - var(--nav-h, 3.25rem) - 3rem);
+		max-height: calc(100dvh - var(--nav-h, 3.25rem) - 3rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: thin;
+		pointer-events: auto;
+	}
+	/* 간격은 위 여백으로 — 카드 자리(.slot)와 업데이트 · 스키마 카드가 같은 간격으로 쌓인다. */
+	.notif-stack > .card {
+		margin-top: var(--sp-12);
 	}
 	.card {
 		position: relative;
@@ -346,37 +461,34 @@
 		color: var(--text);
 	}
 
-	/* ── toast ── */
-	.toast {
+	/* ── DEV-478: 알림 카드 자리 · 알림함 ── */
+	/* 카드 사이 간격은 자리의 위 여백으로 — 들고 날 때 높이와 함께 접혀 튀지 않는다. */
+	.slot {
+		padding-top: var(--sp-12);
+		pointer-events: none;
+	}
+	.slot > :global(*) {
+		pointer-events: auto;
+	}
+	.ib-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--sp-8);
+		padding: var(--sp-4) var(--sp-4) 0;
+	}
+	.ib-title {
+		font-size: var(--fs-sm);
+		font-weight: var(--fw-semibold);
+		color: var(--text);
+		text-shadow: 0 0 var(--sp-4) var(--bg);
+	}
+	.ib-empty {
+		margin: 0;
 		padding: var(--sp-12) var(--sp-16);
-		border-left: 3px solid var(--accent);
-		line-height: var(--lh-snug);
-		cursor: pointer;
-		white-space: pre-wrap;
-	}
-	.toast.error {
-		border-left-color: var(--danger);
-		color: var(--danger);
-	}
-	.toast.success {
-		border-left-color: var(--success-strong);
-		color: var(--success);
-	}
-	.toast .open {
-		margin-left: var(--sp-6);
-		font-size: var(--fs-xs);
-		color: var(--accent);
-		text-decoration: underline;
-	}
-	/* DEV-266: 같은 알림 재발생 횟수 뱃지. */
-	.toast .count {
-		margin-left: var(--sp-6);
-		font-size: var(--fs-xs);
-		font-weight: var(--fw-bold);
+		font-size: var(--fs-sm);
 		color: var(--text-muted);
-		background: color-mix(in srgb, var(--text) 10%, transparent);
-		border-radius: var(--r-pill);
-		padding: 0.05rem var(--sp-6);
+		text-align: center;
 	}
 	/* DEV-266: "+N개 더" 축약 칩. */
 	.more-chip {

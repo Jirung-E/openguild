@@ -23,10 +23,8 @@
 	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
-	// DEV-478: 알림함 — 사라진 알림을 다시 본다.
-	import NoticeInbox from './NoticeInbox.svelte';
-	import { inboxBadge, refreshInbox } from '$lib/stores/inbox';
-	let inboxOpen = $state(false);
+	// DEV-478: 알림함 — 사라진 알림을 다시 본다. 따로 그리지 않고 오른쪽 아래 알림 스택이 펼쳐진다(ToastHost).
+	import { inboxBadge, inboxOpen, refreshInbox, toggleInbox } from '$lib/stores/inbox';
 	// 다른 곳(같은 기계의 서버 · CLI, 원격 서버)에서 난 알림은 이벤트로 안 온다 — 켤 때와 창으로 돌아올 때 다시 읽는다.
 	onMount(() => {
 		void refreshInbox();
@@ -470,22 +468,19 @@
 		<div class="inbox-wrap">
 			<button
 				class="btn-inbox"
-				class:active={inboxOpen}
-				onclick={() => (inboxOpen = !inboxOpen)}
+				class:active={$inboxOpen}
+				onclick={toggleInbox}
 				title={t('inbox.title', $locale)}
 				aria-label={$inboxBadge.count > 0
 					? `${t('inbox.title', $locale)} (${$inboxBadge.count})`
 					: t('inbox.title', $locale)}
-				aria-expanded={inboxOpen}
+				aria-expanded={$inboxOpen}
 				><Icon name="bell" size="1em" />{#if $inboxBadge.count > 0}<span
 						class="inbox-badge"
 						class:error={$inboxBadge.error}
 						>{$inboxBadge.count > 99 ? '99+' : $inboxBadge.count}</span
 					>{/if}</button
 			>
-			{#if inboxOpen}
-				<NoticeInbox onclose={() => (inboxOpen = false)} />
-			{/if}
 		</div>
 		<!-- DEV-084 → DEV-138: ⚙ 가 바로 페이지 이동 대신 퀵메뉴 dropdown.
 		     자주 쓰는 표시 설정은 메뉴에서 즉시, 전체 설정은 링크로. -->

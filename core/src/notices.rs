@@ -210,6 +210,16 @@ pub fn dismiss(paths: &GuildPaths, at: &str, text: &str) -> Result<usize> {
     Ok(gone)
 }
 
+/// 모두 지운다(읽음 표시는 둔다). 지운 개수를 돌려준다.
+pub fn clear(paths: &GuildPaths) -> Result<usize> {
+    let _g = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let n = read_all(paths)?.len();
+    if n > 0 {
+        crate::repo::fs::write_atomic(file(paths), "")?;
+    }
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,6 +316,9 @@ mod tests {
             0,
             "이미 없다"
         );
+        assert_eq!(clear(&p).unwrap(), 2);
+        assert!(inbox(&p).unwrap().notices.is_empty());
+        assert_eq!(clear(&p).unwrap(), 0);
     }
 
     #[test]

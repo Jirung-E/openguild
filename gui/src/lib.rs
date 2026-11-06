@@ -816,6 +816,7 @@ pub fn run() {
             commands::get_notices,
             commands::mark_notices_seen,
             commands::dismiss_notice,
+            commands::clear_notices,
             commands::plugin_notices_ready,
             commands::wait_plugin_asks,
             commands::answer_plugin_ask,

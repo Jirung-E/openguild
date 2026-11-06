@@ -55,8 +55,8 @@ const appSeen = writable(0);
 const guild = writable<Inbox>({ notices: [], unread: 0, unread_problems: 0 });
 let seq = 1;
 
-/** 앱 토스트를 알림함에 남긴다 — `showToast` 가 부른다. */
-export function recordAppNotice(text: string, error: boolean, href?: string) {
+/** 앱 토스트를 알림함에 남긴다 — `showToast` 가 부른다. 돌려주는 것은 그 줄의 key(같은 오류가 잇달으면 묶인 줄). */
+export function recordAppNotice(text: string, error: boolean, href?: string): string {
 	const item: AppNotice = {
 		key: `app-${seq++}`,
 		at: new Date().toISOString(),
@@ -65,14 +65,17 @@ export function recordAppNotice(text: string, error: boolean, href?: string) {
 		href,
 		count: 1
 	};
+	let key = item.key;
 	appNotices.update((list) => {
 		// 같은 오류가 잇달아 나면 한 줄로 — 맨 위 것을 새 시각으로 올리고 횟수를 센다(토스트의 ×N 과 같다).
 		const top = list[0];
 		if (top && top.text === text && top.error === error && top.href === href) {
+			key = top.key;
 			return [{ ...top, at: item.at, count: top.count + 1 }, ...list.slice(1)];
 		}
 		return [item, ...list].slice(0, MAX_APP_NOTICES);
 	});
+	return key;
 }
 
 /** 길드 알림을 다시 읽는다. 못 읽으면(길드 없음 · 서버 끊김) 있던 것을 둔다. */
@@ -160,10 +163,43 @@ export async function dismissItem(item: InboxItem): Promise<void> {
 	}
 }
 
+/** 알림함이 열려 있나 — 열리면 오른쪽 아래 알림 스택이 지나간 알림까지 펼쳐 보인다. */
+export const inboxOpen = writable(false);
+
+export function openInbox() {
+	if (get(inboxOpen)) return;
+	inboxOpen.set(true);
+	void refreshInbox();
+}
+
+/** 닫는다 — 연 동안 본 것은 모두 읽음. */
+export function closeInbox() {
+	if (!get(inboxOpen)) return;
+	inboxOpen.set(false);
+	void markAllRead();
+}
+
+export function toggleInbox() {
+	if (get(inboxOpen)) closeInbox();
+	else openInbox();
+}
+
+/** 모두 지운다 — 길드 알림은 파일에서도, 앱 알림은 목록에서. */
+export async function clearAllNotices(): Promise<void> {
+	appNotices.set([]);
+	guild.set({ notices: [], unread: 0, unread_problems: 0 });
+	try {
+		await noticesApi.clear();
+	} catch {
+		await refreshInbox();
+	}
+}
+
 /** 시험용 — 상태를 비운다. */
 export function resetInboxForTest() {
 	appNotices.set([]);
 	appSeen.set(0);
 	guild.set({ notices: [], unread: 0, unread_problems: 0 });
+	inboxOpen.set(false);
 	seq = 1;
 }

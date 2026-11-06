@@ -36,6 +36,11 @@ pub async fn dismiss(
     Ok(Json(serde_json::json!({ "ok": true, "removed": removed })))
 }
 
+pub async fn clear(State(store): State<Store>) -> AppResult<Json<serde_json::Value>> {
+    let removed = notices::clear(&store.paths)?;
+    Ok(Json(serde_json::json!({ "ok": true, "removed": removed })))
+}
+
 pub async fn seen(
     State(store): State<Store>,
     Json(body): Json<SeenBody>,

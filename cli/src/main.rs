@@ -1405,6 +1405,8 @@ enum NoticeCmd {
     },
     #[command(about = tf!("모두 읽음으로 표시 — 앱의 종 표시도 꺼진다", "Mark all as read — the app's bell badge clears too"))]
     Read,
+    #[command(about = tf!("알림을 모두 지운다", "Remove all notices"))]
+    Clear,
     #[command(about = tf!("알림을 지운다 — 번호는 `notice list` 의 앞 번호(1 이 가장 최근)", "Remove notices — numbers as `notice list` shows them (1 is the newest)"))]
     Remove {
         #[arg(required = true, help = tf!("지울 번호", "Numbers to remove"))]
@@ -3715,6 +3717,16 @@ impl Backend {
             Backend::Local(l) => {
                 openguild_core::notices::dismiss(&l.store.paths, at, text).map(|_| ())
             }
+        }
+    }
+
+    fn notices_clear(&self) -> Result<usize> {
+        match self {
+            Backend::Http(c) => {
+                let v: serde_json::Value = c.post("/api/notices/clear", &serde_json::json!({}))?;
+                Ok(v["removed"].as_u64().unwrap_or(0) as usize)
+            }
+            Backend::Local(l) => openguild_core::notices::clear(&l.store.paths),
         }
     }
 
@@ -10198,6 +10210,14 @@ fn handle_notice(c: &Backend, json: bool, sub: NoticeCmd) -> Result<()> {
                         inbox.unread
                     )
                 );
+            }
+        }
+        NoticeCmd::Clear => {
+            let n = c.notices_clear()?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "removed": n }));
+            } else {
+                println!("{}", tf!("{} 개를 지웠습니다", "removed {}", n));
             }
         }
         NoticeCmd::Remove { numbers } => {

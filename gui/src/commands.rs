@@ -2258,6 +2258,11 @@ pub async fn answer_plugin_ask(id: u64, yes: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn clear_notices(store: State<'_, Store>) -> Result<usize, String> {
+    openguild_core::notices::clear(&store.paths).map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
 pub async fn dismiss_notice(
     store: State<'_, Store>,
     at: String,

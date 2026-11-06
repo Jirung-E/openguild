@@ -190,16 +190,17 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'nav.more': { ko: '더 보기', en: 'More' },
 	// DEV-478: 알림함.
 	'inbox.title': { ko: '알림', en: 'Notifications' },
-	'inbox.markRead': { ko: '모두 읽음', en: 'Mark all read' },
+	'inbox.clearAll': { ko: '모두 지우기', en: 'Clear all' },
 	'inbox.empty': { ko: '알림이 없습니다', en: 'No notifications' },
-	'inbox.fromApp': { ko: '앱', en: 'App' },
-	'inbox.fromPlugin': { ko: '플러그인', en: 'Plugin' },
-	'inbox.fromProblem': { ko: '플러그인 실패', en: 'Plugin failure' },
 	'inbox.dismiss': { ko: '이 알림 지우기', en: 'Remove this notification' },
-	'inbox.hint': {
-		ko: '플러그인 알림은 최근 200개 · 30일, 앱 알림은 앱이 켜진 동안 남습니다.',
-		en: 'Plugin notifications are kept for the last 200 or 30 days; app notifications while the app is open.'
-	},
+	// DEV-478: 알림 카드의 종류 줄 · 제목.
+	'notice.kind.plugin': { ko: '플러그인', en: 'Plugin' },
+	'notice.kind.problem': { ko: '실패', en: 'Failed' },
+	'notice.kind.app': { ko: '앱', en: 'App' },
+	'notice.kind.error': { ko: '오류 · 앱', en: 'Error · App' },
+	'notice.lineFailed': { ko: "플러그인 '{line}' 실행 실패", en: "Plugin line '{line}' failed" },
+	'notice.expand': { ko: '펼치기', en: 'Expand' },
+	'notice.collapse': { ko: '접기', en: 'Collapse' },
 	// DEV-266: 알림 스택 상한 초과 축약 칩 — {n} 은 렌더 시 치환.
 	'notif.more': { ko: '+{n}개 더 보기', en: '+{n} more' },
 	'notif.open': { ko: '열기', en: 'Open' },

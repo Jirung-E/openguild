@@ -528,6 +528,9 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			};
 		}
 	}
+	if (method === 'POST' && pathOnly === '/api/notices/clear') {
+		return { cmd: 'clear_notices', args: {} };
+	}
 	if (method === 'POST' && pathOnly === '/api/notices/dismiss') {
 		const b = body as { at: string; text: string };
 		return { cmd: 'dismiss_notice', args: { at: b.at, text: b.text } };
