@@ -191,6 +191,7 @@ fn permission_name(p: &str) -> String {
         "notify" => crate::tf!("알림 띄우기", "show notifications"),
         "backup" => crate::tf!("백업 만들기", "make backups"),
         "query" => crate::tf!("길드 내용 읽기", "read the guild"),
+        "ask" => crate::tf!("확인 창 띄우기", "ask yes or no"),
         other => other.to_string(),
     }
 }

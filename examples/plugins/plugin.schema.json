@@ -423,7 +423,8 @@
         "enum": [
           "notify",
           "backup",
-          "query"
+          "query",
+          "ask"
         ]
       },
       "type": "array"

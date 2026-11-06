@@ -44,6 +44,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "POST",
+        "/api/plugin-asks/{id}",
+        "플러그인 확인 창의 답 — 메모리의 질문에 답할 뿐 파일을 안 쓴다",
+    ),
+    (
+        "POST",
         "/api/admin/restore",
         "스냅샷으로 되돌려 덮는 것이 그 일이다",
     ),

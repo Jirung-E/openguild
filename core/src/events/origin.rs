@@ -28,10 +28,16 @@ pub const ENV: &str = "OPENGUILD_PLUGIN_CHAIN";
 /// 플러그인 이름에는 한글이 올 수 있다.
 pub const HEADER: &str = "x-openguild-plugin-chain";
 
+/// DEV-479: 요청을 보낸 앱 · CLI · 웹 창 하나. 서버의 플러그인이 `ask()` 하면 **이 창에** 묻는다.
+/// 값은 보내는 쪽이 정한 아무 글(창마다 하나). 글자는 영문 · 숫자 · `-` 만, 64자까지.
+pub const CLIENT_HEADER: &str = "x-openguild-client";
+
 /// 거쳐 온 플러그인들. 비어 있으면 사람이 일으킨 변경.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Origin {
     chain: Vec<String>,
+    /// DEV-479: 이 변경을 일으킨 요청을 보낸 곳([`CLIENT_HEADER`]). 서버 밖에서는 없다.
+    client: Option<String>,
 }
 
 impl Origin {
@@ -51,7 +57,27 @@ impl Origin {
                 chain.push(n);
             }
         }
-        Self { chain }
+        Self {
+            chain,
+            client: None,
+        }
+    }
+
+    /// DEV-479: 요청을 보낸 곳을 붙인다. 모양이 틀린 값은 버린다(헤더는 아무나 보낼 수 있다).
+    pub fn with_client(mut self, client: Option<&str>) -> Self {
+        self.client = client
+            .map(str::trim)
+            .filter(|c| {
+                !c.is_empty()
+                    && c.len() <= 64
+                    && c.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            })
+            .map(str::to_string);
+        self
+    }
+
+    pub fn client(&self) -> Option<&str> {
+        self.client.as_deref()
     }
 
     pub fn chain(&self) -> &[String] {
@@ -70,6 +96,7 @@ impl Origin {
     /// `plugin` 이 이 이벤트를 받아 무언가를 일으킬 때 넘길 체인.
     pub fn then(&self, plugin: &str) -> Origin {
         Origin::from_chain(self.chain.iter().cloned().chain([plugin.to_string()]))
+            .with_client(self.client())
     }
 
     /// 플러그인이 받는 모양.

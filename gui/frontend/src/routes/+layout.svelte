@@ -39,6 +39,7 @@
 	// SchemaAheadBanner 껍데기 컴포넌트 제거).
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import { listenPluginNotices, showToast } from '$lib/stores/toast';
+	import { answerPluginAsk, pluginAsks, startPluginAsks } from '$lib/stores/pluginAsks';
 	import { isLocalTauri } from '$lib/api/transport';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
@@ -133,6 +134,10 @@
 		})();
 		return () => stop?.();
 	});
+
+	// DEV-479: 플러그인 확인 창 — 앱은 로컬 길드의 플러그인이, 웹 · 원격은 서버의 플러그인이 이 창에 묻는다.
+	onMount(() => startPluginAsks());
+	const ask = $derived($pluginAsks[0]);
 
 	// DEV-255: 검색 팔레트 "새 창으로 열기"가 만든 자식윈도우는 항상 `/`
 	// (어떤 서빙 방식에서도 항상 존재가 보장되는 경로)로 뜬 뒤, 이 쿼리
@@ -736,6 +741,22 @@
 <!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
      업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->
 <ToastHost />
+
+<!-- DEV-479: 플러그인이 `ask()` 로 묻는 확인 창 — 하나씩. 제목은 묻는 플러그인 이름. -->
+{#if ask}
+	{#key ask.id}
+		<ConfirmDialog
+			open
+			title={ask.plugin}
+			message={ask.text}
+			confirmLabel={ask.options.yes}
+			cancelLabel={ask.options.no}
+			danger={ask.options.danger ?? false}
+			onconfirm={() => void answerPluginAsk(ask, true)}
+			oncancel={() => void answerPluginAsk(ask, false)}
+		/>
+	{/key}
+{/if}
 
 <!-- DEV-153: 미저장 변경 시 라우트 이동 확인 (모든 페이지 공통). -->
 <ConfirmDialog

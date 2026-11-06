@@ -15,6 +15,7 @@ import type { HttpMethod } from './types';
 // DEV-113: 원격 서버 모드 — Tauri 환경에서도 사용자가 설정한 URL 이 있으면
 // HTTP 로 우회.
 import { getRemoteServerUrl } from '$lib/stores/remoteServer';
+import { ASK_CLIENT_HEADER, askClientId } from './askClient';
 
 /** transport 가 처리하는 한 호출의 명세. */
 export interface ApiCall {
@@ -88,7 +89,8 @@ export class HttpTransport implements Transport {
 	async call<T>(req: ApiCall): Promise<T> {
 		const res = await fetch(`${this.base}${req.path}`, {
 			method: req.method,
-			headers: { 'Content-Type': 'application/json' },
+			// DEV-479: 이 창의 이름 — 서버 플러그인의 `ask()` 가 여기로 묻는다.
+			headers: { 'Content-Type': 'application/json', [ASK_CLIENT_HEADER]: askClientId },
 			body: req.body !== undefined ? JSON.stringify(req.body) : undefined
 		});
 
@@ -215,7 +217,9 @@ export async function getWithEtag<T>(path: string): Promise<T> {
 	const hit = etagCache.get(url);
 	const res = await fetch(url, {
 		method: 'GET',
-		headers: hit ? { 'If-None-Match': hit.etag } : {},
+		headers: hit
+			? { 'If-None-Match': hit.etag, [ASK_CLIENT_HEADER]: askClientId }
+			: { [ASK_CLIENT_HEADER]: askClientId },
 		// 브라우저 HTTP 캐시가 우리 대신 304 를 삼켜버리면 위 분기가 죽는다.
 		// 우리가 직접 조건부 요청을 관리하므로 브라우저 캐시는 끈다.
 		cache: 'no-store'
@@ -506,6 +510,23 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	}
 	if (method === 'POST' && pathOnly === '/api/notices/seen') {
 		return { cmd: 'mark_notices_seen', args: { at: (body as { at: string }).at } };
+	}
+	// ───── DEV-479: 플러그인 확인 창 — 서버의 /api/plugin-asks 와 짝 ─────
+	if (method === 'GET' && pathOnly === '/api/plugin-asks') {
+		const known = (query.get('known') ?? '')
+			.split(',')
+			.map((s) => Number(s))
+			.filter((n) => Number.isInteger(n) && n > 0);
+		return { cmd: 'wait_plugin_asks', args: { known } };
+	}
+	{
+		const m = pathOnly.match(/^\/api\/plugin-asks\/(\d+)$/);
+		if (method === 'POST' && m) {
+			return {
+				cmd: 'answer_plugin_ask',
+				args: { id: Number(m[1]), yes: (body as { yes: boolean }).yes }
+			};
+		}
 	}
 	if (method === 'POST' && pathOnly === '/api/notices/dismiss') {
 		const b = body as { at: string; text: string };
@@ -1095,6 +1116,7 @@ export async function postWithUploadProgress<T>(
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', url, true);
 		xhr.setRequestHeader('Content-Type', raw ? 'application/octet-stream' : 'application/json');
+		xhr.setRequestHeader(ASK_CLIENT_HEADER, askClientId);
 		xhr.upload.onprogress = (e) => {
 			// lengthComputable 이 false 면 총량을 모른다 — 보고하지 않는다
 			// (0 을 total 로 넘기면 호출부에서 0 나눗셈/NaN 이 된다).

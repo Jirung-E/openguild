@@ -4962,3 +4962,67 @@ fn shipped_scripts_do_not_splice_text_into_applescript() {
         "AppleScript 글자에 변수를 끼워 넣는다: {bad:?}"
     );
 }
+
+/// DEV-479: `ask()` 로 사람의 답을 기다린 시간은 줄의 시한에 세지 않는다 — 늦게 "예" 했다고 막히면 안 된다.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn waiting_for_an_answer_does_not_count_against_the_time_limit() {
+    struct Slow;
+    impl guild::Notifier for Slow {
+        fn notify(&self, _: &str, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn ask(
+            &self,
+            _: &str,
+            text: &str,
+            _: &guild::AskOptions,
+            _: Option<&str>,
+        ) -> Result<bool, String> {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            Ok(!text.contains("아니요"))
+        }
+    }
+    let home = fresh_tmp("ask-slow-home");
+    let g = fresh_tmp("ask-slow");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("gate");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\npermissions = [\"ask\"]\n\n[[handlers]]\npre = [\"quest.created\"]\ncall = \"guard\"\ntimeout_ms = 100\non_error = \"block\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        "fn guard(e) { if !ask(e.quest.title) { \"그만뒀습니다\" } }",
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins_with(
+            Scope::Cli,
+            std::sync::Arc::new(runtime::DropDelivery),
+            std::sync::Arc::new(Slow),
+        );
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        assert!(l.errors.is_empty(), "{:?}", l.errors);
+    }
+    crate::ops::quests::create_quest(&store, quest_req("늦은 예"))
+        .await
+        .expect("400ms 기다린 '예' 가 100ms 시한에 막혔다");
+    let err = crate::ops::quests::create_quest(&store, quest_req("늦은 아니요"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("그만뒀습니다"), "{err}");
+    assert!(
+        store.plugin_problems().iter().all(|p| !p.contains("100ms")),
+        "{:?}",
+        store.plugin_problems()
+    );
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -120,6 +120,8 @@ struct Fire {
     overrides: Mutex<BTreeMap<String, Value>>,
     /// `set_query` 가 정한 목록. 설정값과 같은 이유로 시험마다 비운다.
     queries: std::sync::Arc<GivenQueries>,
+    /// DEV-479: `set_answer` 가 정한 `ask()` 의 답. 시험마다 아니요로 돌린다.
+    answer: std::sync::Arc<GivenAnswer>,
 }
 
 impl Fire {
@@ -130,6 +132,24 @@ impl Fire {
         if let Ok(mut q) = self.queries.0.lock() {
             q.clear();
         }
+        self.answer
+            .0
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// 시험의 `ask()` — 묻지 않고 시험이 `set_answer` 로 정한 답을 돌려준다(정하지 않으면 아니요).
+#[derive(Default)]
+struct GivenAnswer(std::sync::atomic::AtomicBool);
+
+impl script::Asker for GivenAnswer {
+    fn ask(
+        &self,
+        _text: &str,
+        _options: &super::guild::AskOptions,
+        _client: Option<&str>,
+    ) -> Result<bool, String> {
+        Ok(self.0.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -169,6 +189,12 @@ impl Hooks for Fire {
         if let Ok(mut m) = self.queries.0.lock() {
             m.insert((of.to_string(), q.to_string()), items);
         }
+    }
+
+    fn set_answer(&self, yes: bool) {
+        self.answer
+            .0
+            .store(yes, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn tick(&self, line: &str) -> Result<Value, String> {
@@ -349,10 +375,17 @@ pub fn run_tests(p: &Plugin) -> Result<Vec<TestResult>, String> {
     {
         sc.set_query_source(queries.clone());
     }
+    let answer = std::sync::Arc::new(GivenAnswer::default());
+    if let Some(sc) = p.compiled.as_deref()
+        && p.def.permissions.iter().any(|x| x == "ask")
+    {
+        sc.set_asker(answer.clone());
+    }
     let hooks = std::sync::Arc::new(Fire {
         plugin: p.clone(),
         overrides: Mutex::new(BTreeMap::new()),
         queries,
+        answer,
     });
     let script =
         script::Script::compile_test(&sources, hooks.clone()).map_err(|e| e.to_string())?;
@@ -587,6 +620,48 @@ fn test_a_query_the_test_did_not_set_is_reported() {
         assert!(tick_with(&p, "없음", &BTreeMap::new()).is_err());
         let results = run_tests(&p).unwrap();
         assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|t| t.failure.is_none()), "{results:?}");
+        let _ = std::fs::remove_dir_all(&g);
+    }
+
+    /// DEV-479: 시험에서 `ask()` 는 묻지 않고 `set_answer` 로 정한 답을 받는다 — 정하지 않으면 아니요.
+    #[test]
+    fn ask_gets_the_answer_the_test_set() {
+        let def = r#"
+name = "p"
+scope = ["gui"]
+scripts = ["main.rhai"]
+permissions = ["ask"]
+
+[[handlers]]
+pre = ["quest.deleted"]
+call = "guard"
+"#;
+        let script = r#"
+fn guard(e) { if !ask(`${e.quest.id} 을 지울까요?`, #{ yes: "지우기", danger: true }) { "그만뒀습니다" } }
+"#;
+        let test_src = r#"
+fn test_yes_lets_it_through() {
+    set_answer(true);
+    let r = fire("pre:quest.deleted", #{ quest: #{ id: "DEV-1" } });
+    assert_eq(r.blocked, ());
+}
+fn test_no_by_default() {
+    let r = fire("pre:quest.deleted", #{ quest: #{ id: "DEV-1" } });
+    assert_eq(r.blocked, "그만뒀습니다");
+}
+"#;
+        let g = guild(
+            "ask",
+            &[
+                (MANIFEST, def),
+                ("main.rhai", script),
+                ("main.test.rhai", test_src),
+            ],
+        );
+        let p = loaded(&g);
+        let results = run_tests(&p).unwrap();
+        assert_eq!(results.len(), 2);
         assert!(results.iter().all(|t| t.failure.is_none()), "{results:?}");
         let _ = std::fs::remove_dir_all(&g);
     }

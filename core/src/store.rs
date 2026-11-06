@@ -322,11 +322,13 @@ impl Store {
         scope: crate::plugins::Scope,
         delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery>,
     ) -> crate::plugins::Loaded {
-        self.install_plugins_with(
-            scope,
-            delivery,
-            std::sync::Arc::new(crate::plugins::guild::Stderr),
-        )
+        // DEV-479: CLI 는 터미널에서 묻고, 서버는 그 일을 일으킨 창(원격 앱 · 웹 · CLI)에 묻는다.
+        let notifier: std::sync::Arc<dyn crate::plugins::guild::Notifier> = match scope {
+            crate::plugins::Scope::Cli => std::sync::Arc::new(crate::plugins::guild::Terminal),
+            crate::plugins::Scope::Server => std::sync::Arc::new(crate::plugins::asks::Remote),
+            _ => std::sync::Arc::new(crate::plugins::guild::Stderr),
+        };
+        self.install_plugins_with(scope, delivery, notifier)
     }
 
     /// DEV-406: 알림을 어디에 띄울지 컴포넌트가 정한다 — 앱은 알림창, CLI·서버는 기본(stderr).

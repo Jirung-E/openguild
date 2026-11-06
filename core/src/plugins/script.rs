@@ -96,6 +96,45 @@ impl CommandKind {
     }
 }
 
+/// DEV-479: `ask` 의 옵션을 읽는다 — 단추 이름과 위험 표시.
+fn ask_options(map: &rhai::Map) -> Result<super::guild::AskOptions, String> {
+    let mut out = super::guild::AskOptions::default();
+    let label = |v: &Dynamic, key: &str| -> Result<String, String> {
+        v.clone()
+            .into_string()
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && s.chars().count() <= 40)
+            .ok_or_else(|| {
+                crate::tf!(
+                    "{key} 는 40자 안의 글입니다: {v}",
+                    "{key} is text of up to 40 characters: {v}"
+                )
+            })
+    };
+    for (key, v) in map {
+        match key.as_str() {
+            "yes" => out.yes = Some(label(v, "yes")?),
+            "no" => out.no = Some(label(v, "no")?),
+            "danger" => {
+                out.danger = v.as_bool().map_err(|_| {
+                    crate::tf!(
+                        "danger 는 true · false 입니다: {v}",
+                        "danger is true or false: {v}"
+                    )
+                })?
+            }
+            other => {
+                return Err(crate::tf!(
+                    "모르는 옵션 `{other}` — yes · no · danger 만 씁니다",
+                    "unknown option `{other}` — only yes, no and danger"
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// 표시 시간의 상한(초) — 더 오래 둘 알림은 `seconds: 0`(닫을 때까지)이다.
 const MAX_NOTICE_SECONDS: f64 = 3600.0;
 
@@ -201,11 +240,29 @@ pub trait QuerySource: Send + Sync {
     fn query(&self, of: &str, q: &str, fresh: bool) -> Result<Value, String>;
 }
 
+/// DEV-479: `ask()` 가 묻는 곳 — 앱은 확인 창, CLI 는 터미널, 서버는 "아니요", 시험은 시험이 정한 답.
+pub trait Asker: Send + Sync {
+    /// 예면 `true`. 물을 곳이 없으면 `false` 다 — 묻지 못한 채 "예" 로 넘어가면 안 된다.
+    /// `client` 는 이 일을 일으킨 요청을 보낸 창 — 서버는 거기에 묻는다. 없으면(시간 실행 등) 물을 사람이 없다.
+    fn ask(
+        &self,
+        text: &str,
+        options: &super::guild::AskOptions,
+        client: Option<&str>,
+    ) -> Result<bool, String>;
+}
+
 /// 호출마다 값이 달라지는 `query()` 의 상태 — `config` 와 같은 방식으로 엔진과 셀을 나눈다.
 #[derive(Default)]
 struct QueryCell {
     /// `permissions` 에 `query` 를 적은 플러그인만 있다.
     source: Mutex<Option<std::sync::Arc<dyn QuerySource>>>,
+    /// DEV-479: `permissions` 에 `ask` 를 적은 플러그인만 있다.
+    asker: Mutex<Option<std::sync::Arc<dyn Asker>>>,
+    /// DEV-479: 이번 호출의 일을 일으킨 창(이벤트의 `origin`). `ask()` 가 거기에 묻는다.
+    client: Mutex<Option<String>>,
+    /// DEV-479: 이번 호출에서 `ask()` 가 답을 기다린 시간.
+    asking: Mutex<std::time::Duration>,
     /// 이번 호출에서 파일을 이미 맞췄나.
     checked: std::sync::atomic::AtomicBool,
 }
@@ -355,6 +412,18 @@ impl Script {
         }
     }
 
+    /// DEV-479: 방금 호출에서 `ask()` 가 사람의 답을 기다린 시간 — 줄의 시한에서 뺀다.
+    pub fn time_asking(&self) -> std::time::Duration {
+        self.query.asking.lock().map(|w| *w).unwrap_or_default()
+    }
+
+    /// DEV-479: `ask()` 가 물을 곳. **`permissions` 에 `ask` 를 적은 플러그인에만** 부른다 — 안 부르면 `ask()` 는 오류다.
+    pub fn set_asker(&self, asker: std::sync::Arc<dyn Asker>) {
+        if let Ok(mut s) = self.query.asker.lock() {
+            *s = Some(asker);
+        }
+    }
+
     /// DEV-409: 이름·링크를 어느 길드에서 읽을지. 적재 때 한 번 정한다 — 이걸 안 부르면
     /// `status_name()` 은 슬러그를 그대로 돌려준다(빈칸이 되지는 않는다).
     pub fn set_guild(&self, root: &Path) {
@@ -425,7 +494,7 @@ impl Script {
         let args: Vec<Dynamic> = std::iter::once(to_dynamic(&event.to_json()))
             .chain(extra.iter().map(to_dynamic))
             .collect();
-        self.call_with_args(func, args, config)
+        self.call_with_args(func, args, config, event.origin.client())
     }
 
     /// 시간마다 도는 줄의 함수 — 일어난 일이 없으니 받는 것도 없다. 읽을 것은 함수가 `query()` 로 고른다.
@@ -434,7 +503,7 @@ impl Script {
         func: &str,
         config: &std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<(Value, Vec<Command>), String> {
-        self.call_with_args(func, Vec::new(), config)
+        self.call_with_args(func, Vec::new(), config, None)
     }
 
     fn call_with_args(
@@ -442,7 +511,14 @@ impl Script {
         func: &str,
         args: Vec<Dynamic>,
         config: &std::collections::BTreeMap<String, serde_json::Value>,
+        client: Option<&str>,
     ) -> Result<(Value, Vec<Command>), String> {
+        if let Ok(mut c) = self.query.client.lock() {
+            *c = client.map(str::to_string);
+        }
+        if let Ok(mut w) = self.query.asking.lock() {
+            *w = std::time::Duration::ZERO;
+        }
         // REQ-021: 이번 호출이 볼 설정값. **I/O 가 아니다** — 코어가 미리 읽어
         // 넘겨주는 값이라 샌드박스(파일·네트워크 없음)는 그대로다.
         if let Ok(mut c) = self.config.lock() {
@@ -517,6 +593,7 @@ fn sandboxed_engine(
     // 샌드박스에서 길드를 읽는 유일한 길 — 읽기뿐이고, 권한을 적은 플러그인만 열린다.
     {
         let deadline = deadline.clone();
+        let query = query.clone();
         e.register_fn(
             "query",
             move |of: &str, q: &str| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
@@ -542,6 +619,48 @@ fn sandboxed_engine(
                 Ok(to_dynamic(&found))
             },
         );
+    }
+    // DEV-479: 확인 창 — `query()` 처럼 함수 **도중에** 답을 받는다. 기다린 시간은 시간 상한에 안 센다.
+    for with_options in [false, true] {
+        let query = query.clone();
+        let deadline = deadline.clone();
+        let ask = move |text: &str,
+                        options: Option<rhai::Map>|
+              -> Result<bool, Box<rhai::EvalAltResult>> {
+            let options = match options {
+                Some(m) => ask_options(&m)
+                    .map_err(|m| -> Box<rhai::EvalAltResult> { format!("ask: {m}").into() })?,
+                None => Default::default(),
+            };
+            let asker = query.asker.lock().ok().and_then(|s| s.clone()).ok_or_else(
+                || -> Box<rhai::EvalAltResult> {
+                    crate::tf!(
+                        "`ask()` 는 권한에 없습니다. 정의에 `permissions = [\"ask\"]` 를 적으면 다시 묻고 돕니다",
+                        "`ask()` is not in its permissions. Add `permissions = [\"ask\"]` to the definition; it will ask again and then run"
+                    )
+                    .into()
+                },
+            )?;
+            let client = query.client.lock().ok().and_then(|c| c.clone());
+            let asked = Instant::now();
+            let yes = asker.ask(text, &options, client.as_deref());
+            if let Ok(mut w) = query.asking.lock() {
+                *w += asked.elapsed();
+            }
+            let yes =
+                yes.map_err(|m| -> Box<rhai::EvalAltResult> { format!("ask: {m}").into() })?;
+            if let Ok(mut d) = deadline.lock() {
+                *d = Instant::now() + MAX_WALL_TIME;
+            }
+            Ok(yes)
+        };
+        if with_options {
+            e.register_fn("ask", move |text: &str, options: rhai::Map| {
+                ask(text, Some(options))
+            });
+        } else {
+            e.register_fn("ask", move |text: &str| ask(text, None));
+        }
     }
     // DEV-406: 길드에 시키는 일 — 이름만 받거나(알림) 인자가 없다(백업).
     {
@@ -639,6 +758,9 @@ pub trait Hooks: Send + Sync {
     /// `query(of, q)` 가 이 시험 동안 돌려줄 목록을 정한다 — 시험은 길드 없이 돈다.
     fn set_query(&self, _of: &str, _q: &str, _items: Value) {}
 
+    /// DEV-479: `ask()` 가 이 시험 동안 받을 답. 정하지 않으면 아니요.
+    fn set_answer(&self, _yes: bool) {}
+
     /// DEV-458: 시간마다 도는 줄(`every`) 하나를 돌린다.
     fn tick(&self, _line: &str) -> Result<Value, String> {
         Err(crate::tf!(
@@ -678,6 +800,8 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
             Ok(to_dynamic(&out))
         },
     );
+    let h = hooks.clone();
+    e.register_fn("set_answer", move |yes: bool| h.set_answer(yes));
     let h = hooks.clone();
     e.register_fn(
         "set_query",

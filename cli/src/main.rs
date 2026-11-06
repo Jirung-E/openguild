@@ -1580,10 +1580,88 @@ fn chain_aware_client(origin: openguild_core::events::origin::Origin) -> reqwest
     {
         headers.insert(HEADER, v);
     }
+    // DEV-479: 터미널에서 친 명령이면 이 CLI 의 이름을 붙인다 — 서버 플러그인의 `ask()` 가 여기로 묻는다.
+    if let Some(id) = remote_ask_client()
+        && let Ok(v) = reqwest::header::HeaderValue::from_str(id)
+    {
+        headers.insert(openguild_core::events::origin::CLIENT_HEADER, v);
+    }
     reqwest::blocking::Client::builder()
         .default_headers(headers)
         .build()
         .unwrap_or_else(|_| reqwest::blocking::Client::new())
+}
+
+/// DEV-479: 원격 모드 CLI 의 이름 — 터미널일 때만(물을 수 있을 때만) 있다. 없으면 서버는 아니요로 친다.
+fn remote_ask_client() -> Option<&'static str> {
+    use std::io::IsTerminal;
+    static ID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        (std::io::stdin().is_terminal() && std::io::stderr().is_terminal()).then(|| {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default();
+            format!("cli-{}-{nanos:x}", std::process::id())
+        })
+    })
+    .as_deref()
+}
+
+/// DEV-479: 서버 플러그인이 이 CLI 에 묻는 것을 가져와 터미널에서 묻고 답한다. 명령이 도는 동안 뒤에서 돈다 —
+/// 명령이 끝나면 프로세스와 함께 멈추고, 서버는 한동안 안 오는 창을 닫힌 것으로 보고 아니요로 친다.
+fn start_remote_asks(base: &str) {
+    use openguild_core::events::origin::CLIENT_HEADER;
+    use openguild_core::plugins::guild::{AskOptions, Notifier, Terminal};
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    let Some(id) = remote_ask_client() else {
+        return;
+    };
+    let base = base.trim_end_matches('/').to_string();
+    STARTED.call_once(|| {
+        let _ = std::thread::Builder::new()
+            .name("openguild-asks".into())
+            .spawn(move || {
+                #[derive(Deserialize)]
+                struct Question {
+                    id: u64,
+                    plugin: String,
+                    text: String,
+                    options: AskOptions,
+                }
+                let http = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(40))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::blocking::Client::new());
+                let mut answered = std::collections::BTreeSet::new();
+                loop {
+                    let got = http
+                        .get(format!("{base}/api/plugin-asks"))
+                        .header(CLIENT_HEADER, id)
+                        .send()
+                        .and_then(|r| r.error_for_status())
+                        .and_then(|r| r.json::<Vec<Question>>());
+                    let Ok(qs) = got else {
+                        // 옛 서버(경로 없음)나 끊김 — 잠시 쉬고 다시. 못 물은 질문은 서버가 아니요로 친다.
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        continue;
+                    };
+                    for q in qs {
+                        if !answered.insert(q.id) {
+                            continue;
+                        }
+                        let yes = Terminal
+                            .ask(&q.plugin, &q.text, &q.options, None)
+                            .unwrap_or(false);
+                        let _ = http
+                            .post(format!("{base}/api/plugin-asks/{}", q.id))
+                            .header(CLIENT_HEADER, id)
+                            .json(&serde_json::json!({ "yes": yes }))
+                            .send();
+                    }
+                }
+            });
+    });
 }
 
 struct HttpClient {
@@ -1593,6 +1671,7 @@ struct HttpClient {
 
 impl HttpClient {
     fn new(base: String) -> Self {
+        start_remote_asks(&base);
         Self {
             base,
             http: chain_aware_client(openguild_core::events::origin::current()),

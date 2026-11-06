@@ -6,6 +6,7 @@ pub mod highlights;
 pub mod library;
 pub mod meta;
 pub mod notices;
+pub mod plugin_asks;
 pub mod quests;
 pub mod rules;
 pub mod templates;
@@ -367,6 +368,8 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/notices", get(notices::get))
         .route("/api/notices/seen", post(notices::seen))
         .route("/api/notices/dismiss", post(notices::dismiss))
+        .route("/api/plugin-asks", get(plugin_asks::wait))
+        .route("/api/plugin-asks/{id}", post(plugin_asks::answer))
         // DEV-443: 개인 형광펜 — 대상은 `?target=quest:DEV-001` 처럼.
         .route(
             "/api/highlights",
@@ -452,7 +455,16 @@ async fn plugin_origin(
         .get(origin::HEADER)
         .and_then(|v| v.to_str().ok())
         .map(Origin::parse)
-        .unwrap_or_default();
+        .unwrap_or_default()
+        // DEV-479: 이 요청을 보낸 창 — 서버 플러그인의 `ask()` 가 여기에 묻는다.
+        .with_client(
+            req.headers()
+                .get(origin::CLIENT_HEADER)
+                .and_then(|v| v.to_str().ok()),
+        );
+    if let Some(c) = chain.client() {
+        openguild_core::plugins::asks::touch(c);
+    }
     origin::scope(chain, next.run(req)).await
 }
 

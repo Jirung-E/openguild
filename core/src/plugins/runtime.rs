@@ -71,6 +71,17 @@ pub trait Delivery: Send + Sync {
         ))
     }
 
+    /// DEV-479: 스크립트의 `ask()` — 함수 **도중에** 불려 답을 기다린다. 기본은 물을 곳이 없다 — 아니요.
+    fn ask(
+        &self,
+        _plugin: &str,
+        _text: &str,
+        _options: &super::guild::AskOptions,
+        _client: Option<&str>,
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
     /// DEV-406: 스크립트가 시킨 **길드 일**(알림·백업). 함수가 끝난 뒤, 길드 잠금 밖에서 불린다.
     ///
     /// 기본은 "이 컴포넌트는 못 한다" 다 — 시험용 구현이 전부 이걸 쓴다. 코어가 `Store` 를 들고
@@ -360,6 +371,8 @@ pub(super) fn run_lines(
             } else {
                 sc.call_handler_with(func, event, &extra, cfg)
             };
+            // DEV-479: `ask()` 로 사람의 답을 기다린 시간 — 줄의 시한에 세지 않는다(늦게 답했다고 막히면 안 된다).
+            let waited = sc.time_asking();
             let (value, cmds) = match called {
                 Ok(v) => v,
                 Err(e) => {
@@ -485,7 +498,7 @@ pub(super) fn run_lines(
             }
             // DEV-407: 시간이 넘었으면 정의가 정한 대로. 스크립트에는 자체 상한이 있고 동작에도
             // 시한이 있으므로, 여기서는 **다 끝난 뒤** 넘었는지 본다.
-            let spent = started.elapsed();
+            let spent = started.elapsed().saturating_sub(waited);
             if spent > h.timeout() {
                 note(
                     log,
@@ -609,14 +622,38 @@ impl super::script::QuerySource for ViaDelivery {
     }
 }
 
+/// DEV-479: 스크립트의 `ask()` 를 전달 구현으로 잇는다 — 누가 묻는지(플러그인 이름)를 붙여서.
+struct AskVia {
+    delivery: Arc<dyn Delivery>,
+    plugin: String,
+}
+
+impl super::script::Asker for AskVia {
+    fn ask(
+        &self,
+        text: &str,
+        options: &super::guild::AskOptions,
+        client: Option<&str>,
+    ) -> Result<bool, String> {
+        self.delivery.ask(&self.plugin, text, options, client)
+    }
+}
+
 impl PluginRuntime {
     pub fn new(plugins: Vec<Plugin>, delivery: Arc<dyn Delivery>) -> Self {
-        // `query()` 는 권한을 적은 플러그인에게만 열린다.
+        // `query()` · `ask()` 는 권한을 적은 플러그인에게만 열린다.
         for p in &plugins {
-            if let Some(sc) = p.compiled.as_deref()
-                && p.def.permissions.iter().any(|x| x == "query")
-            {
+            let Some(sc) = p.compiled.as_deref() else {
+                continue;
+            };
+            if p.def.permissions.iter().any(|x| x == "query") {
                 sc.set_query_source(Arc::new(ViaDelivery(delivery.clone())));
+            }
+            if p.def.permissions.iter().any(|x| x == "ask") {
+                sc.set_asker(Arc::new(AskVia {
+                    delivery: delivery.clone(),
+                    plugin: p.def.name.clone(),
+                }));
             }
         }
         let plugins = Arc::new(plugins);

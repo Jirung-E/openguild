@@ -34,6 +34,7 @@
 //! 아무도 답하지 않으면 그 플러그인은 **돌지 않는다**.
 
 // DEV-411: 돌리기 전에 정의를 검사한다 — `openguild plugin check`.
+pub mod asks;
 pub mod check;
 pub mod consent;
 pub mod delivery;
@@ -1323,7 +1324,7 @@ fn is_inside_rel(rel: &str) -> bool {
 }
 
 /// DEV-406: 정의가 밝힐 수 있는 권한 — 스크립트가 길드에 시키는 일과 길드를 읽는 일.
-pub const PERMISSIONS: &[&str] = &["notify", "backup", "query"];
+pub const PERMISSIONS: &[&str] = &["notify", "backup", "query", "ask"];
 
 /// DEV-403: 줄마다 "언제" 하나, "무엇" 하나. 가리키는 것이 다 있어야 한다.
 fn validate_handlers(def: &PluginDef) -> AppResult<()> {

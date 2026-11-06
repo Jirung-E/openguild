@@ -39,6 +39,32 @@ pub trait Notifier: Send + Sync {
 
     /// DEV-478: 플러그인이 돌다 실패했다. 화면이 있는 곳만 띄운다 — CLI · 서버는 따로 찍는다.
     fn problem(&self, _text: &str) {}
+
+    /// DEV-479: 확인 창 — 예면 `true`. 답을 받을 때까지 기다린다. `client` 는 이 일을 일으킨 요청을 보낸 창
+    /// (서버만 쓴다 — 앱 · CLI 는 자기 화면 · 터미널에 묻는다). 물을 곳이 없으면 아니요.
+    fn ask(
+        &self,
+        _plugin: &str,
+        _text: &str,
+        _options: &AskOptions,
+        _client: Option<&str>,
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+}
+
+/// `ask(글, #{ … })` 의 옵션 — 값은 스크립트가 부를 때 이미 검사했다.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AskOptions {
+    /// "예" 단추의 이름. 없으면 화면의 기본값("확인").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yes: Option<String>,
+    /// "아니요" 단추의 이름.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no: Option<String>,
+    /// 되돌릴 수 없는 일 — 빨간 단추, 포커스는 "아니요" 에서 시작.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub danger: bool,
 }
 
 /// `notify(글, #{ … })` 의 옵션 — 값은 스크립트가 부를 때 이미 검사했다.
@@ -62,6 +88,52 @@ impl Notifier for Stderr {
     fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
         eprintln!("[plugin:{plugin}] {text}");
         Ok(())
+    }
+}
+
+/// DEV-479: CLI — 알림은 [`Stderr`] 와 같고, `ask()` 는 **터미널이면** 터미널에서 묻는다. 터미널이 없으면
+/// (에이전트 · 스크립트 · 파이프) 아니요 — 아무도 못 본 질문에 "예" 로 넘어가지 않는다.
+pub struct Terminal;
+
+impl Notifier for Terminal {
+    fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
+        Stderr.notify(plugin, text)
+    }
+
+    fn ask(
+        &self,
+        plugin: &str,
+        text: &str,
+        options: &AskOptions,
+        _client: Option<&str>,
+    ) -> Result<bool, String> {
+        use std::io::{BufRead, IsTerminal, Write};
+        if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
+            eprintln!(
+                "{}",
+                crate::tf!(
+                    "[plugin:{plugin}] {text} — 터미널이 아니라 물을 수 없어 아니요로 답했습니다",
+                    "[plugin:{plugin}] {text} — not a terminal, so answered no"
+                )
+            );
+            return Ok(false);
+        }
+        // 여러 줄(전달 스레드 · 시간 실행)이 한꺼번에 물어도 질문과 답이 섞이지 않게.
+        static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        let yes = options.yes.as_deref().unwrap_or("y");
+        let no = options.no.as_deref().unwrap_or("N");
+        eprint!("[plugin:{plugin}] {text} ({yes}/{no}) ");
+        let _ = std::io::stderr().flush();
+        let mut line = String::new();
+        std::io::stdin()
+            .lock()
+            .read_line(&mut line)
+            .map_err(|e| e.to_string())?;
+        let a = line.trim();
+        // 단추 이름을 그대로 쳐도 예다(`yes: "지우기"` 면 "지우기").
+        Ok(matches!(a.to_lowercase().as_str(), "y" | "yes")
+            || options.yes.as_deref().is_some_and(|y| a == y))
     }
 }
 
@@ -154,6 +226,16 @@ impl Delivery for WithGuild {
                 .map(Value::Array)
                 .map_err(|e| e.to_string())
         })?
+    }
+
+    fn ask(
+        &self,
+        plugin: &str,
+        text: &str,
+        options: &AskOptions,
+        client: Option<&str>,
+    ) -> Result<bool, String> {
+        self.notifier.ask(plugin, text, options, client)
     }
 
     fn deliver(

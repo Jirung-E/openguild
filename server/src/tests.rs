@@ -5139,3 +5139,128 @@ async fn test_notices_list_and_mark_seen() {
     assert_eq!(got["notices"][0]["open"], "DEV-1");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// DEV-479: 서버 플러그인의 `ask()` 는 **그 일을 일으킨 창에** 묻는다 — 창은 질문을 가져가 답하고, 그 답으로
+/// 일이 되거나 막힌다. 창 이름이 없는 요청(물을 곳이 없다)은 아니요다.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_server_plugin_asks_the_window_that_caused_it() {
+    use openguild_core::events::origin::CLIENT_HEADER;
+    let ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("og-srv-ask-{ns}"));
+    let home = std::env::temp_dir().join(format!("og-srv-ask-home-{ns}"));
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    let d = dir.join(".guild/plugins/guard");
+    std::fs::create_dir_all(&d).unwrap();
+    std::fs::write(
+        d.join("plugin.toml"),
+        "name = \"guard\"\nscope = [\"server\"]\nscripts = [\"main.rhai\"]\npermissions = [\"ask\"]\n\n[[handlers]]\npre = [\"quest.created\"]\ncall = \"guard\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        d.join("main.rhai"),
+        "fn guard(e) { if !ask(`'${e.quest.title}' 을 만들까요?`, #{ yes: \"만들기\" }) { \"그만뒀습니다\" } }",
+    )
+    .unwrap();
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+    let loaded = {
+        let _guard = HOME_LOCK.lock().await;
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
+        let loaded = store.install_plugins(
+            openguild_core::plugins::Scope::Server,
+            std::sync::Arc::new(openguild_core::plugins::runtime::DropDelivery),
+        );
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        loaded
+    };
+    assert_eq!(loaded.active.len(), 1, "{:?}", loaded.errors);
+    let app = routes::create_router(store);
+
+    let create = |client: Option<&'static str>, title: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            let mut req = Request::post("/api/quests").header("content-type", "application/json");
+            if let Some(c) = client {
+                req = req.header(CLIENT_HEADER, c);
+            }
+            let res = app
+                .oneshot(
+                    req.body(Body::from(
+                        json!({ "quest_type_id": 1, "title": title, "status_slug": "open" })
+                            .to_string(),
+                    ))
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
+            res.status()
+        })
+    };
+    // 창이 질문을 가져가 답한다.
+    let answer_next = |client: &'static str, yes: bool| {
+        let app = app.clone();
+        async move {
+            let res = app
+                .clone()
+                .oneshot(
+                    Request::get("/api/plugin-asks")
+                        .header(CLIENT_HEADER, client)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let bytes = res.into_body().collect().await.unwrap().to_bytes();
+            let qs: Value = serde_json::from_slice(&bytes).unwrap();
+            let q = qs[0].clone();
+            assert_eq!(q["plugin"], "guard");
+            assert_eq!(q["options"]["yes"], "만들기");
+            let res = app
+                .oneshot(
+                    Request::post(format!("/api/plugin-asks/{}", q["id"]))
+                        .header("content-type", "application/json")
+                        .header(CLIENT_HEADER, client)
+                        .body(Body::from(json!({ "yes": yes }).to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::NO_CONTENT);
+            q["text"].as_str().unwrap().to_string()
+        }
+    };
+
+    let made = create(Some("c-ask-yes"), "예");
+    assert_eq!(answer_next("c-ask-yes", true).await, "'예' 을 만들까요?");
+    assert!(made.await.unwrap().is_success());
+
+    let refused = create(Some("c-ask-no"), "아니요");
+    answer_next("c-ask-no", false).await;
+    assert!(!refused.await.unwrap().is_success());
+
+    let nobody = create(None, "묻지 못함");
+    assert!(
+        !nobody.await.unwrap().is_success(),
+        "물을 창이 없으면 아니요"
+    );
+
+    let (_, list) = get(app.clone(), "/api/quests").await;
+    let titles: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|q| q["title"].as_str())
+        .collect();
+    assert_eq!(titles, ["예"]);
+
+    // 이름 없는 창은 질문을 가져갈 수 없다.
+    let (st, _) = get(app, "/api/plugin-asks").await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&home);
+}

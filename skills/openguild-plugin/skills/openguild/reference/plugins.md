@@ -39,7 +39,7 @@ name        = "ai-notify"
 description = "Sends new quests and discussion comments to my service."
 scope       = ["cli", "gui"]
 scripts     = ["main.rhai"]
-permissions = ["notify"]          # only for notify()/backup()/query()
+permissions = ["notify"]          # only for notify()/backup()/query()/ask()
 
 # Where things go lives **here only** — the script knows names, not addresses.
 [actions.out.post]
@@ -68,7 +68,7 @@ permissions = ["notify"]          # only for notify()/backup()/query()
 | `description` | Optional. One sentence, in the author's own words, shown in Admin → Plugins and `openguild plugin list`. Every other field is machine-readable, so without this a person deciding whether to allow the plugin has nothing saying what it is *for*. Max 500 characters; scanned for secrets like every other field. |
 | `scope` | **Required, no default.** Where it runs: `cli` / `gui` / `server`. Putting `server` in it applies the plugin to everyone using that server. |
 | `scripts` | `.rhai` files. Their functions share one namespace; a duplicate name (same arity) is a load error. |
-| `permissions` | `notify` / `backup` / `query` — what the script may ask the *guild* to do or read. Calling one that is not declared fails that line and is reported. `send`/`run` need no permission: `[actions]` already shows where they go. |
+| `permissions` | `notify` / `backup` / `query` / `ask` — what the script may ask the *guild* to do or read. Calling one that is not declared fails that line and is reported. `send`/`run` need no permission: `[actions]` already shows where they go. |
 | `actions` | Named destinations: `post` (HTTP) or `run` (process, event JSON on **stdin**). |
 | `handlers` | The lines, in written order unless `run_after` / `run_before` say otherwise. |
 | `run_after` / `run_before` (top level) | Other **plugins** (`name`) that must run before / after this one when both fire on the same event. Without them plugins run in load order: the guild's `.guild/plugins/` folders by name, then source plugins. Matters most for `pre`: a plugin that blocks or handles instead stops the later ones. Unknown names are skipped (that plugin may not be in this guild); naming itself is a load error; a circle is not — those plugins keep load order and Admin → Plugins / `plugin check` warn. |
@@ -172,6 +172,7 @@ fn on_comment(e, subject) {
 | `send(name, body)` / `run(name, input)` | Queue an `[actions]` action. The script never sees the url. |
 | `notify(text)` / `backup()` | Ask the guild itself. Must be declared in `permissions`. |
 | `notify(text, #{ seconds, open, comment })` | An app notification with options, all optional. `seconds`: how long it shows (0 = until closed, at most 3600). `open`: the document a click opens (`DEV-001`, `C-003`, `BOOK-002`). `comment`: scroll to that comment number, e.g. `e.comment.id` (needs `open`; not for library documents). A wrong option is a script error. The CLI and the server only log the text. Every notice, and every plugin failure, is also kept in the guild's inbox (`.guild/notices/`, last 200 / 30 days, not in git) — the app's bell and `openguild notice list` show it from any of them. |
+| `ask(text)` / `ask(text, #{ yes, no, danger })` | Show a yes/no dialog and **wait for the answer**: `true` for yes, `false` otherwise. Must be declared in `permissions` (`ask`). `yes`/`no` are button labels (up to 40 chars), `danger` makes the yes button red and starts focus on no. Where it asks follows where the plugin runs: `gui` — the app window (the first window to answer wins); `cli` — the terminal, `(y/N)`, and no when it is not a terminal (agents, scripts, pipes); `server` — **the window whose request caused the event** (a remote app, the web UI, or a terminal CLI in remote mode). No one to ask means no: a scheduled line, a client that sent no name, a window gone for 40 s. A remote CLI exits when its command ends, so ask from a `pre` line. No answer in 10 minutes is no; waiting does not count against the script time limit. |
 | `query(of, q)` | Read a list from any line's function. Must be declared in `permissions`. `of` is `quest`, `campaign`, `library` or `comment`; `q` is the list query syntax with that list's keys. Returns an array (empty when nothing matches); a bad query throws. The first call in a function picks up files edited outside first. **An item has the same fields as that document in an event**: quests `e.quest` (`id title type status urgency tags created_at updated_at`) plus `desired_due required_due campaign_due comment_count`; campaigns `e.campaign` (`id title status started_at ended_at created_at updated_at`); library `e.book` (`id title path tags created_at updated_at`); comments `e.comment` (`id author body ts parent_id discussion resolved reactions pinned edited_at`) plus `target` — `{ kind, id }`, what `e.target` is on an event. `discussion` and `resolved` are true/false, and `reactions` is a list of `{ emoji, authors }`. The query keys are a separate thing (`start:`, `folder:`, `discussion:unresolved`). A `pre` line sees the guild before the change, `post` and `wait` after it; a `post` line that does not wait may also see later changes, so read that moment's values from `e`. |
 | `config("KEY")` | A value the user configured. `()` when it was never set and has no default — check `v == () \|\| v == ""` before using an optional text value. |
 | `guild_name()`, `status_name(slug[, "ko"\|"en"])`, `type_name(prefix)`, `link(kind, id)` | Guild facts read by the core — events carry slugs, people read names. Unknown slugs come back unchanged. `link` uses `OPENGUILD_WEB_BASE` when set, otherwise an in-app path. |
@@ -213,7 +214,7 @@ before phase. It returns `#{ lines, commands, blocked, instead, changes, problem
 failures that are otherwise only reported (undeclared permission, unknown action name, a throwing
 script).
 
-`tick("line id")` runs a scheduled (`every`) line, and `set_query(of, q, [items])` sets what `query(of, q)` returns in this test — a query the test did not set shows up in `problems`. `tick` returns `#{ lines, commands, problems }`. Both work without a guild.
+`tick("line id")` runs a scheduled (`every`) line, and `set_query(of, q, [items])` sets what `query(of, q)` returns in this test — a query the test did not set shows up in `problems`. `set_answer(true)` sets what `ask()` returns in this test (no when not set; nothing is shown). `tick` returns `#{ lines, commands, problems }`. Both work without a guild.
 
 ## CLI
 

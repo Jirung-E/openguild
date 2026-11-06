@@ -148,7 +148,8 @@ A script file is code only once `plugin.toml` lists it — `scripts = ["main.rha
 without it is a load error (`plugin check` names it). Test files (`*.test.rhai`) stay out of the list.
 
 There is **no I/O in a script** — no files, no network, no processes. The one way to
-read the guild is `query()`, which needs a permission. A script records
+read the guild is `query()`, and the one way to ask the user is `ask()` (a yes/no dialog that returns
+the answer); each needs a permission. A script records
 work (`send` / `run` / `notify` / `backup`) and the core performs it after the
 function returns, outside the guild lock. That is the sandbox, not a gap to work
 around.
@@ -156,6 +157,13 @@ around.
 A `pre` function speaks through its **return value**: a string is the reason to
 block, `false` blocks without one, a map is the fields to change, and returning
 nothing lets it through.
+
+To confirm before a change, ask in a `pre` line and block on no:
+`fn guard(e) { if !ask(`Delete ${e.quest.id}?`, #{ yes: "Delete", danger: true }) { "cancelled" } }`
+with `permissions = ["ask"]`. In the app it shows a dialog, in a terminal CLI a `(y/N)` prompt, and on a
+server it shows on the remote window that made the request. Where nobody can answer (agents, scripts,
+scheduled lines) the answer is no — so the guarded change is blocked there; say so in `description`.
+Test it with `set_answer(true)` / the default no.
 
 ### 4. Where do the secrets go?
 

@@ -339,6 +339,9 @@ static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
 pub struct AppNotifier;
 
+/// DEV-479: 이 앱의 창들이 함께 쓰는 이름 — 로컬 길드의 플러그인은 어느 창이 일으켰는지 모르니 아무 창이나 답한다.
+pub const LOCAL_ASK_CLIENT: &str = "app-local";
+
 /// 화면이 듣기 전에 난 알림. 길드는 화면이 뜨기 전에 열리고 시간마다 도는 줄은 그 5초 뒤에 처음 도는데,
 /// 화면이 아직 `plugin-notify` 를 듣지 않으면 보낸 알림은 그냥 사라진다 — 그 줄은 돈 것으로 적혀
 /// 다음 차례(예: 내일)까지 다시 안 돈다. 그래서 화면이 준비됐다고 할 때까지([`take_early_notices`]) 모아 둔다.
@@ -401,6 +404,29 @@ impl openguild_core::plugins::guild::Notifier for AppNotifier {
                 .map_err(|e| format!("알림을 화면에 못 보냈습니다: {e}")),
             None => openguild_core::plugins::guild::Stderr.notify(plugin, text),
         }
+    }
+
+    /// DEV-479: 확인 창 — 서버와 같은 중계(`plugins::asks`)에 이 앱의 이름([`LOCAL_ASK_CLIENT`])으로 묻는다.
+    /// 화면은 창마다 질문을 가져가고(`wait_plugin_asks`) 먼저 답한 창의 답을 쓴다.
+    fn ask(
+        &self,
+        plugin: &str,
+        text: &str,
+        options: &openguild_core::plugins::guild::AskOptions,
+        _client: Option<&str>,
+    ) -> Result<bool, String> {
+        // 화면을 그리는 스레드에서 기다리면 창도 같이 멈춰 답할 수가 없다.
+        if std::thread::current().name() == Some("main") {
+            return Err(
+                "화면 스레드에서는 확인 창을 기다릴 수 없습니다 — 아니요로 답했습니다".to_string(),
+            );
+        }
+        Ok(openguild_core::plugins::asks::ask(
+            LOCAL_ASK_CLIENT,
+            plugin,
+            text,
+            options,
+        ))
     }
 
     /// DEV-478: 플러그인 실패 — 알림함에는 코어가 이미 적었다. 화면이 바로 알게만 한다.
@@ -657,6 +683,8 @@ pub fn run() {
     // DEV-379: `scope: ["gui"]` 플러그인을 꽂는다. 동의 전인 것은 여기서
     // 걸러지고, 설정 화면에서 허용하면 즉시 다시 꽂힌다.
     install_plugins_for_gui(&store);
+    // DEV-479: 화면이 질문을 가지러 오기 전(시동 직후의 `every` 줄)에도 물을 수 있게 — 화면은 곧 온다.
+    openguild_core::plugins::asks::touch(LOCAL_ASK_CLIENT);
 
     // BUG-236 후속: 이미 등록돼 버린 placeholder 항목과, 예전 빌드가 남긴 마커
     // 잔재를 시동 때 한 번 치운다.
@@ -789,6 +817,8 @@ pub fn run() {
             commands::mark_notices_seen,
             commands::dismiss_notice,
             commands::plugin_notices_ready,
+            commands::wait_plugin_asks,
+            commands::answer_plugin_ask,
             // DEV-443: 개인 형광펜
             commands::list_highlights,
             commands::add_highlight,

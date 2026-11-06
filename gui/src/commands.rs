@@ -2233,6 +2233,30 @@ pub fn plugin_notices_ready() -> Vec<serde_json::Value> {
     crate::take_early_notices()
 }
 
+/// DEV-479: 플러그인 확인 창 — 서버의 `GET /api/plugin-asks` 와 짝. 바뀔 때까지(최대 25초) 기다린다.
+#[tauri::command]
+pub async fn wait_plugin_asks(
+    known: Vec<u64>,
+) -> Result<Vec<openguild_core::plugins::asks::Question>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        openguild_core::plugins::asks::wait_for(crate::LOCAL_ASK_CLIENT, &known)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// DEV-479: 서버의 `POST /api/plugin-asks/{id}` 와 짝. 이미 끝난 질문이면 오류.
+#[tauri::command]
+pub async fn answer_plugin_ask(id: u64, yes: bool) -> Result<(), String> {
+    if openguild_core::plugins::asks::answer(crate::LOCAL_ASK_CLIENT, id, yes) {
+        Ok(())
+    } else {
+        Err(format!(
+            "질문 {id} 이 없습니다 — 이미 답했거나 시간이 지났습니다"
+        ))
+    }
+}
+
 #[tauri::command]
 pub async fn dismiss_notice(
     store: State<'_, Store>,
