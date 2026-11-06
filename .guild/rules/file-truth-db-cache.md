@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-04T21:05:51+09:00"
-version = 4
+updated_at = "2026-11-06T09:53:54+09:00"
+version = 5
 +++
 # 파일 진리 / DB 캐시 (저장소 불변 규칙)
 
@@ -90,6 +90,6 @@ DB 에 권위 상태가 새거나, 파일/DB 를 따로 갱신하거나, 캐시�
 
 ## 관련 문서
 
-- `docs/storage-design.md` § "파일 진리 ↔ 캐시 신선도 정책" — 상세 + 커버리지 표.
-- `docs/guild-rules.md` § 저장소 — 동일 규칙 요약.
+- [[BOOK-001]] — index.db 불변식과 DB→파일 역류 지도.
+- [[BOOK-006]] § "캐시 — `index.db`" — 언제 맞추나.
 - DEV-121 / DEV-137 / DEV-095 / DEV-122(fs watcher 보류).

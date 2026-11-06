@@ -3,8 +3,9 @@ book_id = "BOOK-001"
 title = "index.db 는 파일의 일방향·폐기가능 투영이다 (아키텍처 불변식)"
 path = "아키텍처"
 created_at = "2026-07-22T22:30:00+09:00"
-updated_at = "2026-09-23T11:50:12+09:00"
+updated_at = "2026-11-06T09:20:58+09:00"
 deleted = false
+version = 1
 +++
 
 # index.db 는 파일의 일방향·폐기가능 투영이다
@@ -65,7 +66,7 @@ mutation 의 파일 쓰기(파일=진리 정상 경로).
 ## 운영 규칙
 
 - **퀘스트/캠페인/규칙/도서관 등 `.guild` 변경은 develop(추적 브랜치)에서만.**
-- 브랜치 전환 후에는 `rm .guild/index.db && openguild reindex` 로 투영 재생성.
+- 브랜치 전환 뒤 투영은 저절로 맞는다 — CLI 는 다음 명령에서, 앱 · 서버는 열 때(BUG-389 · BUG-391, [[BOOK-006]] "언제 맞추나"). 어긋났다고 의심되면 `openguild check drift`, 그래도 이상하면 `rm .guild/index.db && openguild reindex`.
 
 ### release 브랜치와 `.guild` (2026-07-22 결정)
 

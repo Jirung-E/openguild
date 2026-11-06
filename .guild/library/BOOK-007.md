@@ -3,8 +3,9 @@ book_id = "BOOK-007"
 title = "플러그인 · 이벤트"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-10-01T02:51:18+09:00"
+updated_at = "2026-11-06T09:20:41+09:00"
 deleted = false
+version = 1
 +++
 
 # 플러그인 · 이벤트
@@ -30,7 +31,7 @@ graph LR
 |---|---|
 | **이벤트** (`events/`) | `ops` 가 **성공·실패 지점에서 직접** 낸다. 이름과 페이로드가 공개 계약이다 — 내부 함수명·구조체를 그대로 내보내지 않는다 |
 | **적재** (`plugins/mod.rs` 외) | 정의를 찾아 읽고, 검사하고, 이 기계의 동의가 있는 것만 꽂는다 |
-| **실행** (`plugins/runtime.rs` · `script.rs`) | 이벤트마다 줄을 고르고, `when` 으로 거르고, `with` 를 읽어 함수에 넘긴다. 스크립트는 **판단만** 하고 할 일을 기록한다 |
+| **실행** (`plugins/runtime.rs` · `script.rs`) | 이벤트마다 줄을 고르고, `when` 으로 거르고, `with` 를 읽어 함수에 넘긴다. 스크립트는 **판단만** 하고 할 일을 기록한다. 시간마다 도는 줄(`every`)은 `schedule.rs` 가 부른다 |
 | **전달** (`plugins/delivery.rs` · `guild.rs`) | 기록된 일을 실제로 한다 — 밖으로(`post` · `run`), 길드에(`notify` · `backup`) |
 
 ## 이벤트
@@ -117,6 +118,18 @@ ops 변경 함수
 - **격리** — 플러그인 하나의 패닉은 `catch_unwind` 로 끊는다. 실패는 삼키지 않고 문제 목록에
   모은다(`Store::plugin_problems`) — 앱의 관리 → 플러그인 '문제' 칸, CLI 의 stderr.
 
+## 시간마다 도는 줄 — `every` (DEV-458)
+
+이벤트가 아니라 시간이 되면 돈다. 줄에는 `every`(`m` · `h` 는 경과 시간, `d` 는 날짜, 최소 `1m`)와 `call` 만 적고,
+함수는 **아무것도 받지 않는다** — 읽을 것은 함수가 `query("quest", "due:overdue")` 로 고른다(권한 `query`).
+
+- **앱과 서버만 잰다.** CLI 는 명령이 끝나면 꺼지므로 안 돈다. `Ticker` 가 전용 스레드에서 30초마다 보고, 런타임이 버려지면
+  (다시 불러오기 · 길드 바꾸기) 함께 멈춘다.
+- **한 기계에서 한 번.** 줄마다 마지막으로 돈 시각을 `~/.openguild/plugin-schedule/{길드}/{플러그인}.json` 에 적고 옆의
+  `.lock` 을 잠근 채 고른다 — 같은 기계의 앱과 서버가 둘 다 열어도 한쪽만 돈다. 다른 기계는 각자 돈다. 훅이 보는 데이터
+  폴더에 두지 않은 것은 훅이 지우면 몰래 다시 돌기 때문이다.
+- 처음 허용하면 곧 한 번 돈다. 꺼져 있던 동안 놓친 것은 켜질 때 **한 번만** 돈다.
+
 ## 전달
 
 | | `post` | `run` |
@@ -136,12 +149,12 @@ ops 변경 함수
 | `OPENGUILD_GUILD_DIR` | 길드 루트 — 훅이 `openguild` 를 다시 부를 수 있게(BUG-330) |
 | `OPENGUILD_PLUGIN_CHAIN` | 거쳐 온 플러그인 — 되돌이 막기 |
 
-**작업 폴더는 데이터 폴더다.** 플러그인 폴더면 안 된다 — 동의 지문이 그 폴더의 모든 파일을 보므로
-훅이 출력을 옆에 쓰는 순간 자기 동의를 깨고 한 번 돌고 멈췄다(BUG-279). 길드 폴더로 옮기기로
-정해져 있다(DEV-425).
+**작업 폴더는 길드 루트다**(DEV-425). AI 를 부르는 훅에서는 작업 폴더가 곧 AI 가 보는 세상이라, 데이터 폴더에서
+띄우면 길드를 못 봤다. 플러그인 폴더로는 되돌리지 않는다 — 동의 지문이 그 폴더의 모든 파일을 보므로 훅이 출력을 옆에
+쓰는 순간 자기 동의를 깨고 한 번 돌고 멈췄다(BUG-279). 출력은 `$OPENGUILD_PLUGIN_DATA_DIR` 에 절대경로로 쓴다.
 
-stdout · stderr 는 지금 **버린다**(`Stdio::null()`) — CLI 의 표준출력에 섞이면 파이프가 깨지기
-때문이다. 그래서 실패 이유가 종료 코드만 남는다(BUG-336).
+stdout · stderr 는 CLI 의 표준출력에 섞지 않는다(파이프가 깨진다). 대신 끝까지 읽으며 **마지막 4KB · 8줄만** 쥐었다가,
+실패하면 그 끝부분을 실패 메시지에 싣는다(BUG-336) — 종료 코드만으로는 이유를 알 수 없었다.
 
 ## 되돌이 막기
 
@@ -166,7 +179,8 @@ stdout · stderr 는 지금 **버린다**(`Stdio::null()`) — CLI 의 표준출
 | 적재 | **명령마다** 새로 읽는다 | 길드를 열 때 한 번 | 시작할 때 한 번 |
 | 정의가 바뀌면 | 다음 명령에 바로 | 관리 → 플러그인 **[다시 읽기]** (자동 감지 없음). 허용·철회·길드 전환 때도 다시 꽂는다 | `openguild plugin reload --remote …` (서버 기계에서만) |
 | 끝날 때 | 전달을 **2초만** 기다리고 나간다(`OPENGUILD_PLUGIN_DRAIN_MS`). 못 끝내면 경고 — `run` 자식은 부모가 죽어도 혼자 끝낸다 | 계속 산다 | 종료 때 유예 |
-| `notify` 가 가는 곳 | stderr | 앱 알림(`AppNotifier`) | stderr |
+| `notify` 가 가는 곳 | stderr | 앱 알림(`AppNotifier` → `plugin-notify` 이벤트) — 표시 시간(`seconds`, 0 이면 닫을 때까지)과 누르면 열 문서 · 댓글(`open` · `comment`)을 받는다(DEV-477) | stderr |
+| 시간마다 도는 줄 | 안 돈다 | 30초마다 확인 | 30초마다 확인 |
 | 동의 받는 곳 | `plugin allow` | 관리 → 플러그인 | 받지 않는다(그 기계의 CLI) |
 | 길드를 안 열었을 때 | — | 적재 자체를 막는다 — 임시 자리(Welcome)가 신뢰 목록에 들어가지 않게 | — |
 
@@ -174,10 +188,7 @@ stdout · stderr 는 지금 **버린다**(`Stdio::null()`) — CLI 의 표준출
 
 | | |
 |---|---|
-| 자식의 출력을 버린다 | BUG-336 |
-| 작업 폴더 | DEV-425 — 길드 폴더로 |
 | 시험 파일도 지문에 든다 | REQ-029 |
-| 주기 실행이 없다 | REQ-026 |
 
 ## 파일 지도
 
@@ -201,12 +212,15 @@ stdout · stderr 는 지금 **버린다**(`Stdio::null()`) — CLI 의 표준출
 | `consent.rs` | 동의 · 지문 · 자동 허용 |
 | `values.rs` | 설정값 저장과 풀기 |
 | `runtime.rs` | `PluginRuntime` — `EventSink` 구현, 줄 고르기, 전용 스레드, drain |
+| `order.rs` | 줄 순서 — `run_after` · `run_before`, 플러그인끼리의 순서 (DEV-414 · DEV-469) |
+| `groups.rs` | 줄 묶음 `[[groups]]` — 같은 조건 · 데이터 · 순서를 한 번만 (DEV-415) |
+| `schedule.rs` | 시간마다 도는 줄 — `every`, `Ticker`, 기계마다 한 번 (DEV-458) |
 | `when.rs` | 줄의 조건 |
 | `related.rs` | 줄의 `with` — 대상과 연결된 데이터 읽기 |
 | `script.rs` | rhai 샌드박스 · 명령 기록 |
 | `info.rs` | 스크립트용 읽기 함수(상태 이름 · 링크 …) |
 | `delivery.rs` | `post` · `run` 실제 전달 |
-| `guild.rs` | `notify` · `backup` — 스크립트가 시킨 길드 일 |
+| `guild.rs` | `notify` · `backup` — 스크립트가 시킨 길드 일, 함수 도중의 `query()` 읽기 |
 | `summary.rs` | 무엇에 동의하는지 사람 말로 |
 | `view.rs` | 컴포넌트가 보여 줄 상태(`PluginStatus`) — 앱과 서버가 같은 모양 |
 | `check.rs` · `schema.rs` · `testing.rs` | `plugin check` · `plugin schema` · `plugin test` |

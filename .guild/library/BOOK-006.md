@@ -3,9 +3,9 @@ book_id = "BOOK-006"
 title = "저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-10-02T13:06:15+09:00"
+updated_at = "2026-11-06T09:20:58+09:00"
 deleted = false
-version = 2
+version = 3
 +++
 
 # 저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금
@@ -70,8 +70,10 @@ version = 2
 |---|---|
 | `ops` 로 바꿀 때 | 그 자리에서 — 흐름의 4단계 |
 | 앱이 길드를 열 때 | `incremental::sync_on_open` — mtime 이 바뀐 파일만 다시 읽는다. 타입·상태·태그 정의가 바뀌었으면 해석 자체가 달라지므로 풀 `reindex` 로 넘긴다 |
-| CLI · 서버 시작 | **안 맞춘다.** 밖에서 파일을 고쳤다면 `openguild check drift --resync` 또는 `reindex` |
-| `git pull` · 브랜치 전환 · 복원 뒤 | `reindex` (복원은 스스로 한다) |
+| CLI 명령마다 | `incremental::sync_if_changed` — 바뀐 파일만 다시 읽는다. 바뀐 게 없으면 `stat` 뿐. 정의가 바뀌었으면 풀 `reindex`(BUG-389 · BUG-391). `reindex` · `index` · `check` · `restore` 는 빼고 |
+| 서버 시작 | 앱이 열 때와 같다(`sync_on_open`) |
+| 문서를 쓰기 직전 | `Store::lock_docs` 가 잠근 그 문서를 파일에서 다시 읽는다. 못 읽으면 쓰지 않는다(BUG-389) |
+| `git pull` · 브랜치 전환 뒤 | CLI 는 다음 명령에서, 앱 · 서버는 열 때 맞춘다. 켜 둔 앱의 목록은 ⟲(다시 색인). 복원은 스스로 `reindex` 한다 |
 
 `drift` 는 파일과 캐시가 어긋났는지 **알려 주는** 쪽이고, `health` 는 파일 자체가 이상한지
 (정의되지 않은 상태 등) 읽기만 하는 쪽이다.

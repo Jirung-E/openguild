@@ -144,6 +144,9 @@ Only write a `.rhai` file if the answer is yes.
   (Telegram wants `{chat_id, text}`), when the decision needs more than field
   equality, or when the line is `pre` and must produce a reason to block.
 
+A script file is code only once `plugin.toml` lists it — `scripts = ["main.rhai"]`. A `call`
+without it is a load error (`plugin check` names it). Test files (`*.test.rhai`) stay out of the list.
+
 There is **no I/O in a script** — no files, no network, no processes. The one way to
 read the guild is `query()`, which needs a permission. A script records
 work (`send` / `run` / `notify` / `backup`) and the core performs it after the
