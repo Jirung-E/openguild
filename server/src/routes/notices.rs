@@ -20,6 +20,22 @@ pub struct SeenBody {
     pub at: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DismissBody {
+    /// 지울 알림의 `at` · `text` 그대로 — 둘이 같은 줄을 지운다.
+    pub at: String,
+    pub text: String,
+}
+
+pub async fn dismiss(
+    State(store): State<Store>,
+    Json(body): Json<DismissBody>,
+) -> AppResult<Json<serde_json::Value>> {
+    let removed = notices::dismiss(&store.paths, &body.at, &body.text)?;
+    Ok(Json(serde_json::json!({ "ok": true, "removed": removed })))
+}
+
 pub async fn seen(
     State(store): State<Store>,
     Json(body): Json<SeenBody>,

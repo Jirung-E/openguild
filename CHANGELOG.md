@@ -69,9 +69,9 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   - **길드에 시키는 일** — `notify(글)`(앱 알림 / CLI stderr), `backup()`. 정의가
     `permissions` 로 밝혀야 하고, 허용 화면에 그대로 보인다 (DEV-406)
 - **알림함** — 상단바의 종. 잠깐 떴다 사라진 알림을 최근 것부터 다시 보고, 갈 곳이 있으면 눌러서 간다.
-  안 읽은 개수를, 그 가운데 오류가 있으면 빨갛게 붙인다. 플러그인 알림과 **플러그인 실패**는
+  알림마다 × 로 그 하나를 지운다. 안 읽은 개수를, 그 가운데 오류가 있으면 빨갛게 붙인다. 플러그인 알림과 **플러그인 실패**는
   `.guild/notices/` 에 남아 앱을 껐다 켜도 · 같은 기계의 서버 · CLI 에서 난 것도 보인다(최근 200개 · 30일, git 에
-  안 올라감). 앱 자체 알림은 앱이 켜진 동안만. CLI 는 `notice list` · `notice read`, 서버는 `/api/notices` (DEV-478)
+  안 올라감). 앱 자체 알림은 앱이 켜진 동안만. CLI 는 `notice list` · `notice read` · `notice remove`, 서버는 `/api/notices` (DEV-478)
   - **연결 데이터**(`with`) — `subject`, `parent`, `children`, `prereqs`, `campaigns`,
     `quests`. 이벤트 대상의 종류가 받을 수 있는 것을 정한다. 캐시가 아니라 `.guild/`
     파일에서 바로 읽는다 (DEV-405)

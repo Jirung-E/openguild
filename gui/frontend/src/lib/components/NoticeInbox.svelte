@@ -3,13 +3,20 @@
 
   길드 알림(플러그인 `notify` · 실패)은 `.guild/notices/` 에서, 앱 알림은 앱이 켜진 동안 들고 있는 것에서.
   열면 다시 읽고, 닫을 때 모두 읽음으로 적는다 — 연 동안은 무엇이 새것인지 보이게 둔다.
+  × 는 그 하나를 지운다 — 갈 곳이 있는 알림도 눌러 가지 않고 치울 수 있게.
 -->
 <script lang="ts">
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { locale, t } from '$lib/stores/locale';
-	import { inboxItems, markAllRead, refreshInbox, type InboxItem } from '$lib/stores/inbox';
+	import {
+		dismissItem,
+		inboxItems,
+		markAllRead,
+		refreshInbox,
+		type InboxItem
+	} from '$lib/stores/inbox';
 	import { formatRelative, formatTs } from '$lib/utils/datetime';
 
 	let { onclose }: { onclose: () => void } = $props();
@@ -70,7 +77,7 @@
 	{:else}
 		<ul class="ib-list">
 			{#each $inboxItems as item (item.key)}
-				<li>
+				<li class="ib-row">
 					<button
 						class="ib-item"
 						class:unread={item.unread}
@@ -91,6 +98,12 @@
 						</span>
 						<span class="ib-text">{item.text}</span>
 					</button>
+					<button
+						class="ib-x"
+						title={t('inbox.dismiss', $locale)}
+						aria-label={t('inbox.dismiss', $locale)}
+						onclick={() => void dismissItem(item)}><Icon name="close" size={12} /></button
+					>
 				</li>
 			{/each}
 		</ul>
@@ -144,12 +157,16 @@
 		overflow-y: auto;
 		flex: 1;
 	}
+	.ib-row {
+		position: relative;
+	}
 	.ib-item {
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-2);
 		width: 100%;
-		padding: var(--sp-8) var(--sp-12);
+		/* 오른쪽은 × 자리 */
+		padding: var(--sp-8) calc(var(--sp-12) + var(--sp-24)) var(--sp-8) var(--sp-12);
 		background: transparent;
 		border: none;
 		border-bottom: var(--bw) solid var(--bg-subtle);
@@ -164,6 +181,26 @@
 		background: var(--nav-hover-bg);
 	}
 	.ib-item.unread {
+		color: var(--text);
+	}
+	.ib-x {
+		position: absolute;
+		top: var(--sp-4);
+		right: var(--sp-4);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: var(--sp-24);
+		height: var(--sp-24);
+		padding: 0;
+		background: transparent;
+		border: none;
+		border-radius: var(--r-sm);
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.ib-x:hover {
+		background: var(--nav-hover-bg);
 		color: var(--text);
 	}
 	.ib-meta {

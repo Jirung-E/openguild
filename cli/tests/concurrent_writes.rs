@@ -274,4 +274,15 @@ fn notice_list_shows_unread_and_read_clears_it() {
             .len(),
         2
     );
+
+    // 1 이 가장 최근 — "둘" 을 지우면 "하나" 만 남는다. 없는 번호는 아무것도 안 지우고 실패한다.
+    let bad = g
+        .spawn(&["notice", "remove", "1", "3"], None)
+        .wait_with_output()
+        .unwrap();
+    assert!(!bad.status.success());
+    g.ok(&["notice", "remove", "1"], None);
+    let got = g.json(&["notice", "list"]);
+    assert_eq!(got["notices"].as_array().unwrap().len(), 1);
+    assert_eq!(got["notices"][0]["text"], "하나");
 }

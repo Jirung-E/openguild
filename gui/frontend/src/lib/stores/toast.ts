@@ -206,13 +206,21 @@ export function dismissSchema(sig: string) {
 /** 앱이 보내는 플러그인 알림을 받는다. 모양은 `gui/src/lib.rs` 의 `notice_payload` 와 같다. */
 export async function listenPluginNotices(): Promise<() => void> {
 	const { listen } = await import('@tauri-apps/api/event');
-	const stopNotify = await listen<{ plugin: string; text: string; options?: PluginNoticeOptions }>(
-		'plugin-notify',
-		(e) => {
-			showPluginNotice(e.payload.plugin, e.payload.text, e.payload.options);
-			void refreshInbox();
-		}
-	);
+	type Payload = { plugin: string; text: string; options?: PluginNoticeOptions };
+	const stopNotify = await listen<Payload>('plugin-notify', (e) => {
+		showPluginNotice(e.payload.plugin, e.payload.text, e.payload.options);
+		void refreshInbox();
+	});
+	// 듣기 전에 난 것 — 앱은 길드를 화면보다 먼저 열고, 시간마다 도는 줄은 그 몇 초 뒤에 돈다. 화면이 늦게 뜨면
+	// 그 알림이 버려져 "하루 한 번" 알림이 그날 안 왔다. 앱이 모아 둔 것을 듣기 시작한 뒤에 받아 간다.
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		const early = (await invoke<Payload[]>('plugin_notices_ready')) ?? [];
+		for (const p of early) showPluginNotice(p.plugin, p.text, p.options);
+		if (early.length > 0) void refreshInbox();
+	} catch {
+		/* 옛 앱 · 시험 — 모아 둔 것이 없다. */
+	}
 	// DEV-478: 플러그인이 돌다 실패했다 — 토스트는 띄우지 않는다(DEV-381: 시끄럽다). 알림함의 종이 빨개진다.
 	const stopProblem = await listen<{ text: string }>('plugin-problem', () => {
 		void refreshInbox();

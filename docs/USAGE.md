@@ -613,6 +613,7 @@ openguild quest list
 
 **알림함(상단바의 종).** 오른쪽 아래에 잠깐 떴다 사라진 알림을 다시 봅니다. 안 읽은 것이 있으면 개수가,
 그 가운데 오류가 있으면 빨갛게 붙습니다. 열었다 닫으면 읽은 것으로 칩니다. 갈 곳이 있는 알림은 눌러서 그 문서로 갑니다.
+알림마다 오른쪽 위의 × 로 그 하나를 지웁니다.
 
 - **플러그인 알림 · 실패** — `.guild/notices/` 에 남아 앱을 껐다 켜도, 같은 기계의 서버 · CLI 에서 난 것도 보입니다.
   최근 200개 · 30일만 남깁니다. 폴더 안 `.gitignore` 로 git 에 안 올라가고 백업에도 안 담깁니다.
@@ -623,6 +624,7 @@ openguild quest list
 openguild notice list            # 최근 것부터, 안 읽은 것에 *
 openguild notice list --unread   # 안 읽은 것만
 openguild notice read            # 모두 읽음 — 앱의 종 표시도 꺼짐
+openguild notice remove 1 3      # 지우기 — 번호는 notice list 의 앞 번호(1 이 가장 최근)
 ```
 
 상단바의 페이지(기본: 홈 · 퀘스트 · 규칙 · 도서관)는 **설정 → 표시 → 상단바 메뉴** 에서 고르고 순서를 바꿉니다. 홈은 빠질

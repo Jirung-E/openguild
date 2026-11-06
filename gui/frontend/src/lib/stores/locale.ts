@@ -195,6 +195,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'inbox.fromApp': { ko: '앱', en: 'App' },
 	'inbox.fromPlugin': { ko: '플러그인', en: 'Plugin' },
 	'inbox.fromProblem': { ko: '플러그인 실패', en: 'Plugin failure' },
+	'inbox.dismiss': { ko: '이 알림 지우기', en: 'Remove this notification' },
 	'inbox.hint': {
 		ko: '플러그인 알림은 최근 200개 · 30일, 앱 알림은 앱이 켜진 동안 남습니다.',
 		en: 'Plugin notifications are kept for the last 200 or 30 days; app notifications while the app is open.'

@@ -20,5 +20,7 @@ export interface Inbox {
 
 export const noticesApi = {
 	get: () => api.get<Inbox>('/api/notices'),
-	markSeen: (at: string) => api.post<unknown>('/api/notices/seen', { at })
+	markSeen: (at: string) => api.post<unknown>('/api/notices/seen', { at }),
+	/** 하나 지운다 — 시각과 글이 같은 줄. */
+	dismiss: (at: string, text: string) => api.post<unknown>('/api/notices/dismiss', { at, text })
 };

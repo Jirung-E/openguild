@@ -507,6 +507,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	if (method === 'POST' && pathOnly === '/api/notices/seen') {
 		return { cmd: 'mark_notices_seen', args: { at: (body as { at: string }).at } };
 	}
+	if (method === 'POST' && pathOnly === '/api/notices/dismiss') {
+		const b = body as { at: string; text: string };
+		return { cmd: 'dismiss_notice', args: { at: b.at, text: b.text } };
+	}
 	// ───── DEV-443: 개인 형광펜 — 서버의 /api/highlights 와 짝 ─────
 	if (pathOnly === '/api/highlights') {
 		const target = query.get('target') ?? '';

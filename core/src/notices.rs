@@ -187,6 +187,29 @@ pub fn mark_seen(paths: &GuildPaths, at: &str) -> Result<()> {
     crate::repo::fs::write_atomic(&p, at.trim())
 }
 
+/// 하나를 지운다 — 시각과 글이 같은 줄. 지운 개수를 돌려준다(이미 없으면 0).
+///
+/// 알림에 따로 번호가 없어서 둘로 가른다. 같은 밀리초에 같은 글이 둘이면 함께 지워지는데, 그 둘은 화면에서도 가를 수 없다.
+pub fn dismiss(paths: &GuildPaths, at: &str, text: &str) -> Result<usize> {
+    let _g = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let all = read_all(paths)?;
+    let before = all.len();
+    let kept: Vec<Notice> = all
+        .into_iter()
+        .filter(|n| !(n.at == at && n.text == text))
+        .collect();
+    let gone = before - kept.len();
+    if gone > 0 {
+        let mut body = String::new();
+        for n in &kept {
+            body.push_str(&serde_json::to_string(n).context("serialize notice")?);
+            body.push('\n');
+        }
+        crate::repo::fs::write_atomic(file(paths), &body)?;
+    }
+    Ok(gone)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,6 +271,41 @@ mod tests {
         mark_seen(&p, "2026-11-06T09:00:00.000+09:00").unwrap();
         assert_eq!(inbox(&p).unwrap().unread, 0, "앞 시각으로 되돌아갔다");
         assert!(mark_seen(&p, "어제").is_err());
+    }
+
+    #[test]
+    fn dismiss_takes_out_only_that_one() {
+        let p = fresh();
+        let base = Notice::now(Kind::Notify, Some("p"), "x");
+        record(&p, &at(&base, "2026-11-06T10:00:00.000+09:00")).unwrap();
+        record(&p, &at(&base, "2026-11-06T10:00:01.000+09:00")).unwrap();
+        let other = Notice {
+            text: "y".into(),
+            ..at(&base, "2026-11-06T10:00:01.000+09:00")
+        };
+        record(&p, &other).unwrap();
+        assert_eq!(
+            dismiss(&p, "2026-11-06T10:00:01.000+09:00", "x").unwrap(),
+            1
+        );
+        let left: Vec<_> = inbox(&p)
+            .unwrap()
+            .notices
+            .into_iter()
+            .map(|n| (n.at, n.text))
+            .collect();
+        assert_eq!(
+            left,
+            [
+                ("2026-11-06T10:00:01.000+09:00".to_string(), "y".to_string()),
+                ("2026-11-06T10:00:00.000+09:00".to_string(), "x".to_string()),
+            ]
+        );
+        assert_eq!(
+            dismiss(&p, "2026-11-06T10:00:01.000+09:00", "x").unwrap(),
+            0,
+            "이미 없다"
+        );
     }
 
     #[test]

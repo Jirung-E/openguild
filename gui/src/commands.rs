@@ -2227,6 +2227,21 @@ pub async fn mark_notices_seen(store: State<'_, Store>, at: String) -> Result<()
     openguild_core::notices::mark_seen(&store.paths, &at).map_err(|e| format!("{e:#}"))
 }
 
+/// 화면이 플러그인 알림을 듣기 시작했다 — 그 전에 난 것을 받아 간다(시동 직후의 `every` 줄 등).
+#[tauri::command]
+pub fn plugin_notices_ready() -> Vec<serde_json::Value> {
+    crate::take_early_notices()
+}
+
+#[tauri::command]
+pub async fn dismiss_notice(
+    store: State<'_, Store>,
+    at: String,
+    text: String,
+) -> Result<usize, String> {
+    openguild_core::notices::dismiss(&store.paths, &at, &text).map_err(|e| format!("{e:#}"))
+}
+
 // ─────────────────────── DEV-443: 개인 형광펜 ───────────────────────
 // 서버의 `/api/highlights` 와 짝 — 따지는 일과 저장은 core(`ops::highlights`).
 

@@ -1405,6 +1405,11 @@ enum NoticeCmd {
     },
     #[command(about = tf!("모두 읽음으로 표시 — 앱의 종 표시도 꺼진다", "Mark all as read — the app's bell badge clears too"))]
     Read,
+    #[command(about = tf!("알림을 지운다 — 번호는 `notice list` 의 앞 번호(1 이 가장 최근)", "Remove notices — numbers as `notice list` shows them (1 is the newest)"))]
+    Remove {
+        #[arg(required = true, help = tf!("지울 번호", "Numbers to remove"))]
+        numbers: Vec<usize>,
+    },
 }
 
 /// 작업 기록 — 활동은 캐시 조회(quest 이력/댓글/생성), 노트는
@@ -3616,6 +3621,21 @@ impl Backend {
         match self {
             Backend::Http(c) => c.get("/api/notices"),
             Backend::Local(l) => openguild_core::notices::inbox(&l.store.paths),
+        }
+    }
+
+    fn notices_dismiss(&self, at: &str, text: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => {
+                let _: serde_json::Value = c.post(
+                    "/api/notices/dismiss",
+                    &serde_json::json!({ "at": at, "text": text }),
+                )?;
+                Ok(())
+            }
+            Backend::Local(l) => {
+                openguild_core::notices::dismiss(&l.store.paths, at, text).map(|_| ())
+            }
         }
     }
 
@@ -10081,7 +10101,7 @@ fn handle_notice(c: &Backend, json: bool, sub: NoticeCmd) -> Result<()> {
                         None => format!("  → {o}"),
                     })
                     .unwrap_or_default();
-                println!("{mark} {at}  [{from}] {}{to}", n.text);
+                println!("{mark}{:>3}  {at}  [{from}] {}{to}", i + 1, n.text);
             }
         }
         NoticeCmd::Read => {
@@ -10099,6 +10119,28 @@ fn handle_notice(c: &Backend, json: bool, sub: NoticeCmd) -> Result<()> {
                         inbox.unread
                     )
                 );
+            }
+        }
+        NoticeCmd::Remove { numbers } => {
+            // 먼저 다 확인한다 — 틀린 번호가 섞였는데 앞엣것만 지워지면 다시 고를 번호가 밀린다.
+            let total = inbox.notices.len();
+            if let Some(bad) = numbers.iter().find(|&&k| k == 0 || k > total) {
+                anyhow::bail!(tf!(
+                    "{bad} 번 알림이 없습니다 — `openguild notice list` 의 앞 번호(1~{total})를 쓰세요",
+                    "no notice #{bad} — use a number from `openguild notice list` (1-{total})"
+                ));
+            }
+            let mut picked: Vec<usize> = numbers;
+            picked.sort_unstable();
+            picked.dedup();
+            for k in &picked {
+                let n = &inbox.notices[k - 1];
+                c.notices_dismiss(&n.at, &n.text)?;
+            }
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "removed": picked.len() }));
+            } else {
+                println!("{}", tf!("{} 개를 지웠습니다", "removed {}", picked.len()));
             }
         }
     }

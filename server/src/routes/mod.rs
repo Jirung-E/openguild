@@ -366,6 +366,7 @@ pub fn create_router(store: Store) -> Router {
         // DEV-478: 알림함 — 이 서버에서 난 플러그인 알림 · 실패.
         .route("/api/notices", get(notices::get))
         .route("/api/notices/seen", post(notices::seen))
+        .route("/api/notices/dismiss", post(notices::dismiss))
         // DEV-443: 개인 형광펜 — 대상은 `?target=quest:DEV-001` 처럼.
         .route(
             "/api/highlights",

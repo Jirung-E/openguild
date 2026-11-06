@@ -4,11 +4,13 @@ import { get } from 'svelte/store';
 
 const inboxApi = vi.hoisted(() => ({
 	get: vi.fn(),
-	markSeen: vi.fn(async () => ({}))
+	markSeen: vi.fn(async () => ({})),
+	dismiss: vi.fn(async () => ({}))
 }));
 vi.mock('$lib/api/notices', () => ({ noticesApi: inboxApi }));
 
 import {
+	dismissItem,
 	inboxBadge,
 	inboxItems,
 	markAllRead,
@@ -24,6 +26,47 @@ describe('알림함', () => {
 		resetInboxForTest();
 		inboxApi.get.mockReset();
 		inboxApi.markSeen.mockClear();
+		inboxApi.dismiss.mockReset();
+		inboxApi.dismiss.mockResolvedValue({});
+	});
+
+	it('× 는 그 하나만 지운다 — 길드 알림은 파일에서도, 앱 알림은 목록에서만', async () => {
+		inboxApi.get.mockResolvedValue({
+			notices: [
+				{ at: '2026-11-06T10:00:02.000+09:00', kind: 'problem', text: '실패' },
+				{
+					at: '2026-11-06T10:00:00.000+09:00',
+					kind: 'notify',
+					plugin: 'p',
+					text: 'a',
+					open: 'DEV-1'
+				}
+			],
+			unread: 2,
+			unread_problems: 1
+		});
+		await refreshInbox();
+		recordAppNotice('저장 실패', true);
+		const items = get(inboxItems);
+		await dismissItem(items.find((i) => i.source === 'problem')!);
+		expect(inboxApi.dismiss).toHaveBeenCalledWith('2026-11-06T10:00:02.000+09:00', '실패');
+		await dismissItem(get(inboxItems).find((i) => i.source === 'app')!);
+		expect(inboxApi.dismiss).toHaveBeenCalledTimes(1);
+		expect(get(inboxItems).map((i) => i.text)).toEqual(['a']);
+		expect(get(inboxBadge)).toEqual({ count: 1, error: false });
+	});
+
+	it('못 지우면 파일에 있는 그대로 다시 보인다', async () => {
+		const one = {
+			notices: [{ at: '2026-11-06T10:00:00.000+09:00', kind: 'notify', text: 'a' }],
+			unread: 0,
+			unread_problems: 0
+		};
+		inboxApi.get.mockResolvedValue(one);
+		await refreshInbox();
+		inboxApi.dismiss.mockRejectedValueOnce(new Error('끊김'));
+		await dismissItem(get(inboxItems)[0]);
+		expect(get(inboxItems)).toHaveLength(1);
 	});
 
 	it('길드 알림과 앱 알림을 최근 것부터 합치고, 갈 곳을 만든다', async () => {

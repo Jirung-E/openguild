@@ -39,6 +39,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "POST",
+        "/api/notices/dismiss",
+        "알림함에서 한 줄 지운다 — 문서가 아니고 index 에도 없다",
+    ),
+    (
+        "POST",
         "/api/admin/restore",
         "스냅샷으로 되돌려 덮는 것이 그 일이다",
     ),

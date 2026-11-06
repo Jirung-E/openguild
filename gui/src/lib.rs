@@ -339,6 +339,38 @@ static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
 pub struct AppNotifier;
 
+/// 화면이 듣기 전에 난 알림. 길드는 화면이 뜨기 전에 열리고 시간마다 도는 줄은 그 5초 뒤에 처음 도는데,
+/// 화면이 아직 `plugin-notify` 를 듣지 않으면 보낸 알림은 그냥 사라진다 — 그 줄은 돈 것으로 적혀
+/// 다음 차례(예: 내일)까지 다시 안 돈다. 그래서 화면이 준비됐다고 할 때까지([`take_early_notices`]) 모아 둔다.
+/// `None` 이면 이미 준비됐다.
+static EARLY: std::sync::Mutex<Option<Vec<serde_json::Value>>> =
+    std::sync::Mutex::new(Some(Vec::new()));
+/// 화면이 끝내 안 뜰 때 쌓이기만 하지 않게.
+const MAX_EARLY: usize = 50;
+
+/// 아직 화면이 듣지 않으면 모아 두고 `None`, 들으면 그대로 돌려준다.
+fn hold_until_ready(payload: serde_json::Value) -> Option<serde_json::Value> {
+    let mut early = EARLY.lock().unwrap_or_else(|e| e.into_inner());
+    match early.as_mut() {
+        Some(list) => {
+            if list.len() < MAX_EARLY {
+                list.push(payload);
+            }
+            None
+        }
+        None => Some(payload),
+    }
+}
+
+/// 화면이 `plugin-notify` 를 듣기 시작했다 — 모아 둔 것을 넘기고, 그 뒤로는 바로 보낸다.
+pub fn take_early_notices() -> Vec<serde_json::Value> {
+    EARLY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        .unwrap_or_default()
+}
+
 /// 화면으로 보내는 알림의 모양. 화면 쪽 `listenPluginNotices` 의 시험이 같은 모양을 쓴다 — 고치면 둘 다 고친다.
 fn notice_payload(
     plugin: &str,
@@ -360,9 +392,12 @@ impl openguild_core::plugins::guild::Notifier for AppNotifier {
         options: &openguild_core::plugins::guild::NoticeOptions,
     ) -> Result<(), String> {
         use tauri::Emitter;
+        let Some(payload) = hold_until_ready(notice_payload(plugin, text, options)) else {
+            return Ok(());
+        };
         match APP.get() {
             Some(app) => app
-                .emit("plugin-notify", notice_payload(plugin, text, options))
+                .emit("plugin-notify", payload)
                 .map_err(|e| format!("알림을 화면에 못 보냈습니다: {e}")),
             None => openguild_core::plugins::guild::Stderr.notify(plugin, text),
         }
@@ -752,6 +787,8 @@ pub fn run() {
             // DEV-478: 알림함
             commands::get_notices,
             commands::mark_notices_seen,
+            commands::dismiss_notice,
+            commands::plugin_notices_ready,
             // DEV-443: 개인 형광펜
             commands::list_highlights,
             commands::add_highlight,
@@ -1002,6 +1039,16 @@ mod plugin_ipc_tests;
 
 #[cfg(test)]
 mod tests {
+    /// 화면이 듣기 전의 알림은 모아 두었다가 한 번 넘기고, 그 뒤로는 바로 보낸다.
+    #[test]
+    fn notices_before_the_screen_listens_are_kept_for_it() {
+        let a = serde_json::json!({ "plugin": "daily", "text": "a" });
+        assert_eq!(super::hold_until_ready(a.clone()), None);
+        assert_eq!(super::take_early_notices(), vec![a.clone()]);
+        assert_eq!(super::hold_until_ready(a.clone()), Some(a));
+        assert!(super::take_early_notices().is_empty());
+    }
+
     /// 없는 옵션은 칸째 빠져야 한다. `null` 로 가면 화면이 `seconds: null` 을 0초(닫을 때까지)로,
     /// `comment: null` 을 `?comment=null` 로 읽는다.
     #[test]

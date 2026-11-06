@@ -16,6 +16,17 @@ vi.mock('@tauri-apps/api/event', () => ({
 		return heard.stops[event];
 	}
 }));
+// 화면이 듣기 전에 앱이 모아 둔 알림.
+const early = vi.hoisted(() => ({ list: [] as unknown[], calls: 0 }));
+vi.mock('@tauri-apps/api/core', () => ({
+	invoke: async (cmd: string) => {
+		if (cmd !== 'plugin_notices_ready') throw new Error(cmd);
+		early.calls++;
+		const out = early.list;
+		early.list = [];
+		return out;
+	}
+}));
 // DEV-478: 알림이 오면 알림함을 다시 읽는다 — 여기서는 부른 것만 본다.
 const inboxApi = vi.hoisted(() => ({
 	get: vi.fn(async () => ({ notices: [], unread: 0, unread_problems: 0 })),
@@ -43,6 +54,14 @@ describe('listenPluginNotices', () => {
 		stop();
 		expect(heard.stops['plugin-notify']).toHaveBeenCalled();
 		expect(heard.stops['plugin-problem']).toHaveBeenCalled();
+	});
+
+	it('듣기 전에 난 알림도 듣기 시작하면 띄운다 — 시동 직후의 하루 한 번 알림', async () => {
+		early.list = [{ plugin: 'daily', text: '오늘 할 일', options: {} }];
+		await listenPluginNotices();
+		expect(toasts().map((n) => n.message)).toEqual(['daily: 오늘 할 일']);
+		await listenPluginNotices();
+		expect(toasts()).toHaveLength(1);
 	});
 
 	// DEV-478: 길드 알림은 코어가 파일에 적었다 — 화면은 앱 알림으로 또 남기지 않고 알림함을 다시 읽는다.

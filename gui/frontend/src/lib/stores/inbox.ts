@@ -135,6 +135,31 @@ export async function markAllRead(): Promise<void> {
 	}
 }
 
+/** 하나 지운다(×). 길드 알림은 파일에서도 지운다 — 다른 창 · CLI 에서도 사라진다. */
+export async function dismissItem(item: InboxItem): Promise<void> {
+	if (item.source === 'app') {
+		appNotices.update((list) => list.filter((a) => a.key !== item.key));
+		return;
+	}
+	const g = get(guild);
+	const i = g.notices.findIndex((n) => n.at === item.at && n.text === item.text);
+	if (i >= 0) {
+		const n = g.notices[i];
+		const wasUnread = i < g.unread;
+		guild.set({
+			notices: g.notices.filter((_, k) => k !== i),
+			unread: g.unread - (wasUnread ? 1 : 0),
+			unread_problems: g.unread_problems - (wasUnread && n.kind === 'problem' ? 1 : 0)
+		});
+	}
+	try {
+		await noticesApi.dismiss(item.at, item.text);
+	} catch {
+		// 못 지웠다 — 파일에 있는 그대로 다시 보여 준다.
+		await refreshInbox();
+	}
+}
+
 /** 시험용 — 상태를 비운다. */
 export function resetInboxForTest() {
 	appNotices.set([]);
