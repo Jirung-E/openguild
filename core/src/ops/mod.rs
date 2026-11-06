@@ -135,7 +135,10 @@ pub(crate) fn resolve_edit(
         return Ok(mine);
     }
     match crate::merge::merge3(b, c, m) {
-        crate::merge::Merge::Clean(merged) => Ok(merged),
+        // 비교는 끝 공백을 떼고 했다 — 결과의 끝은 내 글을 따른다. 안 그러면 합칠 때마다 끝 줄바꿈이 사라진다.
+        crate::merge::Merge::Clean(merged) => {
+            Ok(format!("{}{}", merged.trim_end(), &mine[m.len()..]))
+        }
         crate::merge::Merge::Conflict(segments) => Err(crate::error::AppError::EditConflict(
             Box::new(crate::error::EditConflict {
                 reason: "text",
@@ -227,6 +230,18 @@ pub use quests::{
     add_prerequisite, change_parent, change_quest_type, change_status, create_quest, delete_quest,
     remove_prerequisite, restore_quest, set_due_dates, set_quest_tags, update_quest,
 };
+
+#[cfg(test)]
+mod resolve_edit_tests {
+    /// DEV-435: 합친 글의 끝은 내 글을 따른다 — 끝 줄바꿈이 합칠 때마다 사라지던 것.
+    #[test]
+    fn merged_text_keeps_my_trailing_newline() {
+        let merged = super::resolve_edit("A\nb\nc\n", Some("a\nb\nc\n"), "a\nb\nC\n".into(), "r");
+        assert_eq!(merged.unwrap(), "A\nb\nC\n");
+        let merged = super::resolve_edit("A\nb\nc\n", Some("a\nb\nc\n"), "a\nb\nC".into(), "r");
+        assert_eq!(merged.unwrap(), "A\nb\nC");
+    }
+}
 
 #[cfg(test)]
 mod tag_edit_tests {

@@ -139,7 +139,8 @@ my-app/
 
 CLI 는 `quest show <번호> --field version` 으로 번호를 읽고 `quest update … --base-version <번호>`
 로 보내면, 그사이 바뀌었을 때 저장하지 않고 지금 내용을 보여 줍니다(종료 코드 1). `library update`,
-`rule set` 도 같습니다. 안 보내면 예전처럼 덮어씁니다.
+`rule set` 도 같습니다 — 번호는 `library show` 의 `version:` 줄, `rule show --json` 의 `version` 에 있습니다.
+안 보내면 예전처럼 덮어씁니다.
 
 ### git 안 써도 안전
 

@@ -218,3 +218,26 @@ fn quest_files(root: &Path) -> Vec<String> {
     v.sort();
     v
 }
+
+/// DEV-435: `rule set --base-version` 에 넘길 번호를 CLI 로 알 수 있다 — `rule show --json` 의 `version`.
+/// 예전엔 규칙 파일을 직접 열거나 일부러 충돌을 내야만 번호를 알았다.
+#[test]
+fn rule_show_json_gives_the_version_rule_set_takes() {
+    let g = Guild::new("rulever");
+    g.ok(&["rule", "new", "r"], Some("a\n"));
+    let v = g.json(&["rule", "show", "r"])["version"].as_u64().unwrap();
+    assert!(v > 0, "번호가 0 이면 아직 안 실은 것");
+
+    let v = v.to_string();
+    g.ok(&["rule", "set", "r", "--base-version", &v], Some("b\n"));
+    let after = g.json(&["rule", "show", "r"]);
+    assert_eq!(after["content"], "b\n");
+
+    // 같은 번호로 또 쓰면 그사이 바뀐 것이라 거부된다.
+    let out = g
+        .spawn(&["rule", "set", "r", "--base-version", &v], Some("c\n"))
+        .wait_with_output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(g.json(&["rule", "show", "r"])["content"], "b\n");
+}

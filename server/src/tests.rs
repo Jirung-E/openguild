@@ -4179,6 +4179,47 @@ async fn test_rules_multi_file_crud() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
+/// DEV-435: 규칙 응답이 번호를 싣고, 저장 응답은 보낸 본문이 아니라 **합쳐 저장된** 본문을 돌려준다.
+#[tokio::test]
+async fn test_rule_response_carries_version_and_saved_merge() {
+    let app = setup().await;
+    post(
+        app.clone(),
+        "/api/rules",
+        json!({ "slug": "r", "content": "a\nb\nc\n" }),
+    )
+    .await;
+    let (_, got) = get(app.clone(), "/api/rules/r").await;
+    let v = got["version"].as_u64().unwrap();
+    assert!(v > 0);
+
+    // 남이 첫 줄을 고친 사이 내가 끝 줄을 고쳤다 — 합쳐진다.
+    put(
+        app.clone(),
+        "/api/rules/r",
+        json!({ "content": "A\nb\nc\n" }),
+    )
+    .await;
+    let (status, saved) = put(
+        app.clone(),
+        "/api/rules/r",
+        json!({ "content": "a\nb\nC\n", "base_content": "a\nb\nc\n" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["content"], "A\nb\nC\n");
+    assert_eq!(saved["version"].as_u64().unwrap(), v + 2);
+
+    // 옛 번호로는 거부된다.
+    let (status, _) = put(
+        app,
+        "/api/rules/r",
+        json!({ "content": "x\n", "base_version": v }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
 /// DEV-243: 규칙 태그 — PUT /api/rules/{slug}/tags, 본문 저장은 보존.
 #[tokio::test]
 async fn test_rule_tags_set_and_preserved_on_body_save() {

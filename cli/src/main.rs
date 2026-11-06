@@ -1207,8 +1207,8 @@ enum RulesCmd {
         #[arg(long, help = tf!("본문이 들어있는 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음. rule show 로 확인했을 때 깨져 보이면 이 경우임.",
                               "File containing the body. Defaults to stdin. --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding. If `rule show` looks garbled, this is why."))]
         file: Option<std::path::PathBuf>,
-        #[arg(long = "base-version", help = tf!("편집을 시작할 때 본 번호(show 의 version) — 그사이 바뀌었으면 저장하지 않고 0 아닌 종료 코드로 지금 내용을 보여 준다.",
-              "The version you started from (`show` prints it) — if it changed since, nothing is saved and the current content is shown with a non-zero exit code."))]
+        #[arg(long = "base-version", help = tf!("편집을 시작할 때 본 번호(`rule show --json` 의 version) — 그사이 바뀌었으면 저장하지 않고 0 아닌 종료 코드로 지금 내용을 보여 준다.",
+              "The version you started from (`version` in `rule show --json`) — if it changed since, nothing is saved and the current content is shown with a non-zero exit code."))]
         base_version: Option<u64>,
     },
     // DEV-227/BUG-111/DEV-232: quest/campaign/template/backup 이 전부
@@ -2320,6 +2320,9 @@ struct RulesListDto {
 struct RuleDto {
     /// 파일 부재 시 null — 로컬 모드의 `Option<String>` 과 같은 의미.
     content: Option<String>,
+    /// DEV-435: 파일 번호. 이 필드가 없던 서버는 0.
+    #[serde(default)]
+    version: u64,
 }
 
 /// DEV-333: 규칙 1건 — 태그 조회/설정 응답용(원격 모드).
@@ -3310,6 +3313,25 @@ impl Backend {
             Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
                 openguild_core::ops::rules::get_rule(&l.store, slug)?,
             )),
+        }
+    }
+
+    /// DEV-435: [`Self::rules_get`] + 파일 번호 — `rule show --json` 이 `rule set --base-version` 에 넘길 값을 준다.
+    fn rules_get_versioned(&self, slug: &str) -> Result<Option<(String, u64)>> {
+        match self {
+            Backend::Http(c) => {
+                let resp: RuleDto = c.get(&format!("/api/rules/{}", urlenc(slug)))?;
+                Ok(resp.content.map(|s| (s, resp.version)))
+            }
+            Backend::Local(l) => {
+                let Some(content) =
+                    Self::map_err(openguild_core::ops::rules::get_rule(&l.store, slug))?
+                else {
+                    return Ok(None);
+                };
+                let v = Self::map_err(openguild_core::ops::rules::rule_version(&l.store, slug))?;
+                Ok(Some((content, v)))
+            }
         }
     }
 
@@ -9587,11 +9609,13 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             }
         }
         RulesCmd::Show { slug } => {
-            let content = c.rules_get(&slug)?.ok_or_else(|| {
+            let (content, version) = c.rules_get_versioned(&slug)?.ok_or_else(|| {
                 anyhow::anyhow!(tf!("규칙 '{slug}' 없음", "rule '{slug}' not found"))
             })?;
             if json {
-                json_println!(serde_json::json!({ "slug": slug, "content": content }));
+                json_println!(
+                    serde_json::json!({ "slug": slug, "content": content, "version": version })
+                );
             } else {
                 print!("{content}");
                 if !content.ends_with('\n') {

@@ -161,7 +161,8 @@ openguild quest update DEV-002 --description-file body.md --base-version "$V"
 ```
 
 `library update <BOOK-ID> --base-version N` and `rule set <slug> --base-version N` work the same way
-(`library show` prints `version:`).
+(`library show` prints `version:`; for a rule it is `version` in `rule show <slug> --json` — plain `rule show`
+prints only the body).
 
 ### Moving to testing — attach a test plan first
 

@@ -59,6 +59,15 @@ pub fn history(store: &Store, slug: &str) -> AppResult<Vec<hist::HistoryEntry>> 
     Ok(v)
 }
 
+/// DEV-435: 규칙 파일의 번호 — `rule set --base-version` 에 넘길 값. 파일이 없으면 0.
+pub fn rule_version(store: &Store, slug: &str) -> AppResult<u64> {
+    repo::validate_slug(slug).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(crate::repo::version::read(
+        &store.paths.rule_path(slug),
+        crate::repo::version::Place::Frontmatter,
+    ))
+}
+
 /// DEV-243: 태그 포함 전체 조회.
 pub fn get_rule_entry(store: &Store, slug: &str) -> AppResult<Option<RuleEntry>> {
     repo::read_rule_entry(&store.paths, slug).map_err(AppError::Internal)

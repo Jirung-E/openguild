@@ -1805,10 +1805,11 @@ pub async fn set_rule(
         .await
         .map_err(edit_err)?;
     // BUG-134 패턴: 본문 저장은 tags 를 보존하지만, 응답엔 실제 현재 tags/시각을 재조회.
+    // 본문도 파일에서 — 그사이 바뀐 본문과 합쳤으면 보낸 것과 다르다(화면은 이것을 다음 편집의 출발점으로 쓴다).
     let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(RuleResponse {
         slug,
-        content: Some(content),
+        content: Some(entry.as_ref().map_or(content, |e| e.content.clone())),
         tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
         created_at: entry
             .as_ref()

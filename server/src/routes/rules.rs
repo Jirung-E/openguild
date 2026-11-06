@@ -35,6 +35,8 @@ pub struct RuleResponse {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: String,
+    /// DEV-435: 파일 번호 — `base_version` 에 돌려줄 값. 파일 부재 시 0.
+    pub version: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,14 +71,23 @@ pub async fn get_rule(
     State(store): State<Store>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<RuleResponse>> {
-    let entry = ops::get_rule_entry(&store, &slug)?;
-    Ok(Json(match entry {
+    Ok(Json(read_response(&store, slug)?))
+}
+
+/// 파일에서 다시 읽은 응답. 파일 부재 시 `content: null`.
+///
+/// DEV-435: 쓴 뒤에도 보낸 값이 아니라 파일을 돌려준다 — 저장은 그사이 바뀐 본문과 합칠 수 있어, 보낸 본문이 곧 저장된
+/// 본문이 아니다. 번호도 여기서 싣는다.
+fn read_response(store: &Store, slug: String) -> AppResult<RuleResponse> {
+    let version = ops::rule_version(store, &slug)?;
+    Ok(match ops::get_rule_entry(store, &slug)? {
         Some(e) => RuleResponse {
             slug: e.slug,
             content: Some(e.content),
             tags: e.tags,
             created_at: e.created_at,
             updated_at: e.updated_at,
+            version,
         },
         None => RuleResponse {
             slug,
@@ -84,8 +95,9 @@ pub async fn get_rule(
             tags: vec![],
             created_at: String::new(),
             updated_at: String::new(),
+            version,
         },
-    }))
+    })
 }
 
 /// DEV-290: GET /api/rules/{slug}/history — 규칙 변경 이력(최신→과거).
@@ -113,17 +125,7 @@ pub async fn set_rule(
     .await?;
     // BUG-134 패턴: 본문 저장은 tags 를 안 건드리지만(보존), 응답엔 실제
     // 현재 tags/시각을 정직하게 실어야 함 — 재조회.
-    let entry = ops::get_rule_entry(&store, &slug)?;
-    Ok(Json(RuleResponse {
-        slug,
-        content: Some(body.content),
-        tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
-        created_at: entry
-            .as_ref()
-            .map(|e| e.created_at.clone())
-            .unwrap_or_default(),
-        updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
-    }))
+    Ok(Json(read_response(&store, slug)?))
 }
 
 pub async fn create_rule(
@@ -131,20 +133,7 @@ pub async fn create_rule(
     Json(body): Json<CreateRuleRequest>,
 ) -> AppResult<(StatusCode, Json<RuleResponse>)> {
     ops::create_rule(&store, &body.slug, body.content.clone()).await?;
-    let entry = ops::get_rule_entry(&store, &body.slug)?;
-    Ok((
-        StatusCode::CREATED,
-        Json(RuleResponse {
-            slug: body.slug,
-            content: Some(body.content),
-            tags: vec![],
-            created_at: entry
-                .as_ref()
-                .map(|e| e.created_at.clone())
-                .unwrap_or_default(),
-            updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(read_response(&store, body.slug)?)))
 }
 
 pub async fn delete_rule(
@@ -161,23 +150,7 @@ pub async fn rename_rule(
     Json(body): Json<RenameRuleRequest>,
 ) -> AppResult<Json<RuleResponse>> {
     ops::rename_rule(&store, &slug, &body.new_slug).await?;
-    let entry = ops::get_rule_entry(&store, &body.new_slug)?;
-    Ok(Json(match entry {
-        Some(e) => RuleResponse {
-            slug: e.slug,
-            content: Some(e.content),
-            tags: e.tags,
-            created_at: e.created_at,
-            updated_at: e.updated_at,
-        },
-        None => RuleResponse {
-            slug: body.new_slug,
-            content: None,
-            tags: vec![],
-            created_at: String::new(),
-            updated_at: String::new(),
-        },
-    }))
+    Ok(Json(read_response(&store, body.new_slug)?))
 }
 
 /// DEV-243: tag 전체 교체. body: `{ "tags": ["a", "b", ...] }`.
@@ -196,14 +169,8 @@ pub async fn set_tags(
                 .collect()
         })
         .unwrap_or_default();
-    let entry = ops::set_rule_tags(&store, &slug, tags).await?;
-    Ok(Json(RuleResponse {
-        slug: entry.slug,
-        content: Some(entry.content),
-        tags: entry.tags,
-        created_at: entry.created_at,
-        updated_at: entry.updated_at,
-    }))
+    ops::set_rule_tags(&store, &slug, tags).await?;
+    Ok(Json(read_response(&store, slug)?))
 }
 
 /// BUG-287: 태그 붙이기·떼기. body: `{ "add": [...], "remove": [...] }`.
@@ -212,14 +179,8 @@ pub async fn edit_tags(
     Path(slug): Path<String>,
     Json(edit): Json<openguild_core::ops::TagEdit>,
 ) -> AppResult<Json<RuleResponse>> {
-    let entry = ops::edit_rule_tags(&store, &slug, edit).await?;
-    Ok(Json(RuleResponse {
-        slug: entry.slug,
-        content: Some(entry.content),
-        tags: entry.tags,
-        created_at: entry.created_at,
-        updated_at: entry.updated_at,
-    }))
+    ops::edit_rule_tags(&store, &slug, edit).await?;
+    Ok(Json(read_response(&store, slug)?))
 }
 
 // ─── (deprecated) 단일 파일 endpoint — backward compat ───

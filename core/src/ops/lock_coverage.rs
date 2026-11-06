@@ -186,6 +186,7 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("rules", "get_rule", Read),
     ("rules", "history", Read),
     ("rules", "get_rule_entry", Read),
+    ("rules", "rule_version", Read),
     ("rules", "set_rule", Composes),
     ("rules", "set_rule_with", Docs),
     ("rules", "create_rule", Docs),

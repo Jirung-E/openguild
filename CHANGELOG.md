@@ -142,9 +142,10 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   `quest|campaign|rule|library highlight list|add|remove` — 에이전트는 사용자가 시킬 때만
   칠한다 (DEV-443, DEV-449)
 - **같은 본문 동시 편집** — 편집을 시작할 때 본 원문과 저장할 때의 파일을 비교해, 겹치지 않으면
-  합치고 같은 줄만 충돌 화면에서 고른다. 조용히 덮어쓰지 않는다. CLI `quest update
-  --base-version N` 은 그사이 바뀌었으면 거절한다. 문서 파일에 `version = N` 이 생겼다
-  (DEV-435, DEV-433)
+  합치고 같은 줄만 충돌 화면에서 고른다. 조용히 덮어쓰지 않는다. CLI `quest update` · `library
+  update` · `rule set` 의 `--base-version N` 은 그사이 바뀌었으면 거절한다 — 번호는 `quest show
+  --field version` · `library show` · `rule show --json` 이 알려 준다. 문서 파일에 `version = N` 이
+  생겼다 (DEV-435, DEV-433)
 - **길드 밖 백업 파일로 복원** — backup-archive 예제로 쌓아 둔 것 같은 길드 밖 `.db` 를 골라
   되돌린다(앱 · CLI `restore --file`) (DEV-436)
 - `openguild check sidecars` — 주인 없는 댓글·메모·첨부 파일을 알려 준다 (DEV-434)
