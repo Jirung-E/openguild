@@ -195,7 +195,7 @@ pub fn tick_with(
         ));
     };
     let recorder = Recorder::default();
-    let log = Mutex::new(Vec::new());
+    let log = super::runtime::Problems::default();
     let mut probe = Probe::default();
     let mut cfg: BTreeMap<String, Value> = super::values::resolve(&p.guild_root, &p.def)
         .into_iter()
@@ -279,7 +279,7 @@ pub fn fire_with(
     };
 
     let recorder = Recorder::default();
-    let log = Mutex::new(Vec::new());
+    let log = super::runtime::Problems::default();
     let mut probe = Probe {
         given: Some(&given),
         ..Default::default()

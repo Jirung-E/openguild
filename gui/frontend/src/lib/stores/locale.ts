@@ -188,6 +188,17 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'nav.search': { ko: '검색', en: 'Search' },
 	'nav.settings': { ko: '설정', en: 'Settings' },
 	'nav.more': { ko: '더 보기', en: 'More' },
+	// DEV-478: 알림함.
+	'inbox.title': { ko: '알림', en: 'Notifications' },
+	'inbox.markRead': { ko: '모두 읽음', en: 'Mark all read' },
+	'inbox.empty': { ko: '알림이 없습니다', en: 'No notifications' },
+	'inbox.fromApp': { ko: '앱', en: 'App' },
+	'inbox.fromPlugin': { ko: '플러그인', en: 'Plugin' },
+	'inbox.fromProblem': { ko: '플러그인 실패', en: 'Plugin failure' },
+	'inbox.hint': {
+		ko: '플러그인 알림은 최근 200개 · 30일, 앱 알림은 앱이 켜진 동안 남습니다.',
+		en: 'Plugin notifications are kept for the last 200 or 30 days; app notifications while the app is open.'
+	},
 	// DEV-266: 알림 스택 상한 초과 축약 칩 — {n} 은 렌더 시 치환.
 	'notif.more': { ko: '+{n}개 더 보기', en: '+{n} more' },
 	'notif.open': { ko: '열기', en: 'Open' },

@@ -63,7 +63,9 @@ export type IconName =
 	| 'minus-circle'
 	| 'expand'
 	| 'shrink'
-	| 'dot';
+	| 'dot'
+	// DEV-478: 알림함.
+	| 'bell';
 
 /** 아이콘별 SVG 도형(16×16). `<svg>` 래퍼 없이 자식 엘리먼트만. */
 export const ICON_SHAPES: Record<IconName, string> = {
@@ -154,7 +156,9 @@ export const ICON_SHAPES: Record<IconName, string> = {
 	expand: '<path d="M9.6 2.8h3.6v3.6M13.2 2.8 9.2 6.8M6.4 13.2H2.8V9.6M2.8 13.2l4-4"/>',
 	shrink: '<path d="M9.2 3.2v3.6h3.6M9.2 6.8l4-4M6.8 12.8V9.2H3.2M6.8 9.2l-4 4"/>',
 	// ● — 켜져 있음 · 미해결 · 강조 종류(글자색을 따른다).
-	dot: '<circle cx="8" cy="8" r="2.6" fill="currentColor" stroke="none"/>'
+	dot: '<circle cx="8" cy="8" r="2.6" fill="currentColor" stroke="none"/>',
+	// 알림함 — 종.
+	bell: '<path d="M4.2 11.4V7.4a3.8 3.8 0 0 1 7.6 0v4l1.2 1.2H3z"/><path d="M6.7 13.6a1.4 1.4 0 0 0 2.6 0"/>'
 };
 
 /**

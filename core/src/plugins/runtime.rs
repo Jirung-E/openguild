@@ -214,7 +214,7 @@ fn ask_handlers(
     cfg: &std::collections::BTreeMap<String, serde_json::Value>,
     subst: &std::collections::BTreeMap<String, String>,
     delivery: &dyn Delivery,
-    log: &Mutex<Vec<String>>,
+    log: &Problems,
     out: &mut crate::events::PreOutcome,
 ) {
     run_lines(p, event, cfg, subst, delivery, log, Some(out), None, |h| {
@@ -230,7 +230,7 @@ fn run_handlers(
     cfg: &std::collections::BTreeMap<String, serde_json::Value>,
     subst: &std::collections::BTreeMap<String, String>,
     delivery: &dyn Delivery,
-    log: &Mutex<Vec<String>>,
+    log: &Problems,
     with: &WithSnap,
 ) {
     // 전용 스레드에서 도는 몫 — 기다리는 줄(`wait`)은 잠금이 풀린 뒤 따로 돈다(BUG-339).
@@ -270,7 +270,7 @@ pub(super) fn run_lines(
     cfg: &std::collections::BTreeMap<String, serde_json::Value>,
     subst: &std::collections::BTreeMap<String, String>,
     delivery: &dyn Delivery,
-    log: &Mutex<Vec<String>>,
+    log: &Problems,
     mut answer: Option<&mut crate::events::PreOutcome>,
     mut probe: Option<&mut Probe<'_>>,
     pick: impl Fn(&super::Handler) -> bool,
@@ -552,7 +552,7 @@ pub struct PluginRuntime {
     delivery: Option<Arc<dyn Delivery>>,
     /// 전달 중 발생한 문제 — 조용히 삼키지 않는다. 어디에 보여줄지는
     /// 컴포넌트가 정한다(GUI 토스트는 CLI 에 없다).
-    problems: Arc<Mutex<Vec<String>>>,
+    problems: Arc<Problems>,
     worker: Option<Worker>,
     /// BUG-339: 끝날 때까지 기다리라고 적은 줄 — 변경 안에서 모아 두고 길드 잠금이 풀린 뒤 돌린다.
     ///
@@ -568,13 +568,36 @@ pub struct PluginRuntime {
 /// 끝없이 자란다. 오래된 것부터 버린다 — 최근 것이 고치는 데 쓸모 있다.
 const MAX_PROBLEMS: usize = 200;
 
-fn note(problems: &Mutex<Vec<String>>, msg: String) {
-    if let Ok(mut p) = problems.lock() {
-        if p.len() >= MAX_PROBLEMS {
-            p.remove(0);
+/// 전달 중 생긴 문제 목록. DEV-478: 듣는 쪽이 있으면 생기는 즉시 넘긴다 — 앱이 알림함에 올린다.
+/// 문제가 생길 때마다 부를 것.
+pub type ProblemListener = Arc<dyn Fn(&str) + Send + Sync>;
+
+#[derive(Default)]
+pub struct Problems {
+    list: Mutex<Vec<String>>,
+    listener: std::sync::OnceLock<ProblemListener>,
+}
+
+impl Problems {
+    pub(super) fn note(&self, msg: String) {
+        if let Some(f) = self.listener.get() {
+            f(&msg);
         }
-        p.push(msg);
+        if let Ok(mut p) = self.list.lock() {
+            if p.len() >= MAX_PROBLEMS {
+                p.remove(0);
+            }
+            p.push(msg);
+        }
     }
+
+    pub(super) fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, Vec<String>>> {
+        self.list.lock()
+    }
+}
+
+fn note(problems: &Problems, msg: String) {
+    problems.note(msg);
 }
 
 /// 스크립트의 `query()` 를 전달 구현으로 잇는다.
@@ -597,7 +620,7 @@ impl PluginRuntime {
             }
         }
         let plugins = Arc::new(plugins);
-        let problems = Arc::new(Mutex::new(Vec::new()));
+        let problems = Arc::new(Problems::default());
         let worker = if plugins.is_empty() {
             None
         } else {
@@ -625,7 +648,7 @@ impl PluginRuntime {
     fn spawn(
         plugins: &Arc<Vec<Plugin>>,
         delivery: Arc<dyn Delivery>,
-        problems: &Arc<Mutex<Vec<String>>>,
+        problems: &Arc<Problems>,
     ) -> Worker {
         let (tx, rx) = channel::<Job>();
         let pending = Arc::new(Pending::default());
@@ -682,6 +705,11 @@ impl PluginRuntime {
 
     pub fn problems(&self) -> Vec<String> {
         self.problems.lock().map(|p| p.clone()).unwrap_or_default()
+    }
+
+    /// DEV-478: 문제가 생길 때마다 부를 것 — 한 번만 정한다.
+    pub fn on_problem(&self, f: ProblemListener) {
+        let _ = self.problems.listener.set(f);
     }
 
     /// 아직 안 나간 것들을 기다린다. 시간 안에 다 나갔으면 `true`.

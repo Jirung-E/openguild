@@ -94,6 +94,11 @@ impl GuildPaths {
         self.highlights_dir().join("highlights.json")
     }
 
+    /// DEV-478: 알림함(`.guild/notices/`) — 형광펜처럼 폴더 안 `.gitignore` 로 git 에서 빠진다.
+    pub fn notices_dir(&self) -> PathBuf {
+        self.dot_guild().join("notices")
+    }
+
     pub fn backups_dir(&self) -> PathBuf {
         self.dot_guild().join("backups")
     }

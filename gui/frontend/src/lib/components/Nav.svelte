@@ -23,6 +23,17 @@
 	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
+	// DEV-478: 알림함 — 사라진 알림을 다시 본다.
+	import NoticeInbox from './NoticeInbox.svelte';
+	import { inboxBadge, refreshInbox } from '$lib/stores/inbox';
+	let inboxOpen = $state(false);
+	// 다른 곳(같은 기계의 서버 · CLI, 원격 서버)에서 난 알림은 이벤트로 안 온다 — 켤 때와 창으로 돌아올 때 다시 읽는다.
+	onMount(() => {
+		void refreshInbox();
+		const onFocus = () => void refreshInbox();
+		window.addEventListener('focus', onFocus);
+		return () => window.removeEventListener('focus', onFocus);
+	});
 
 	// DEV-271: 검색 팔레트(전 문서 검색)와 ☰ 메뉴(캠페인/작업기록/태그)는
 	// TitleBar.svelte 안에만 있는데, TitleBar 는 usesCustomTitlebar() 가
@@ -455,6 +466,27 @@
 				<Icon name="refresh" size="1em" />
 			{/if}
 		</button>
+		<!-- DEV-478: 알림함. 안 읽은 것이 있으면 개수, 그 가운데 오류가 있으면 빨갛게. -->
+		<div class="inbox-wrap">
+			<button
+				class="btn-inbox"
+				class:active={inboxOpen}
+				onclick={() => (inboxOpen = !inboxOpen)}
+				title={t('inbox.title', $locale)}
+				aria-label={$inboxBadge.count > 0
+					? `${t('inbox.title', $locale)} (${$inboxBadge.count})`
+					: t('inbox.title', $locale)}
+				aria-expanded={inboxOpen}
+				><Icon name="bell" size="1em" />{#if $inboxBadge.count > 0}<span
+						class="inbox-badge"
+						class:error={$inboxBadge.error}
+						>{$inboxBadge.count > 99 ? '99+' : $inboxBadge.count}</span
+					>{/if}</button
+			>
+			{#if inboxOpen}
+				<NoticeInbox onclose={() => (inboxOpen = false)} />
+			{/if}
+		</div>
 		<!-- DEV-084 → DEV-138: ⚙ 가 바로 페이지 이동 대신 퀵메뉴 dropdown.
 		     자주 쓰는 표시 설정은 메뉴에서 즉시, 전체 설정은 링크로. -->
 		<div class="settings-wrap">
@@ -641,6 +673,50 @@
 	/* DEV-138: 퀵메뉴 anchor — dropdown 의 position:absolute 기준점. */
 	.settings-wrap {
 		position: relative;
+	}
+
+	/* DEV-478: 알림함 — 모양은 옆의 다시 색인 · 설정 버튼과 같다. */
+	.inbox-wrap {
+		position: relative;
+	}
+	.btn-inbox {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: var(--r-md);
+		font-size: 1.05rem; /* token-ok: 아이콘 글리프 크기 */
+		line-height: var(--lh-tight);
+		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+	}
+	.btn-inbox:hover,
+	.btn-inbox.active {
+		background: var(--nav-hover-bg);
+		color: var(--text);
+	}
+	.inbox-badge {
+		position: absolute;
+		top: 0.1rem;
+		right: 0.05rem;
+		min-width: 1rem;
+		height: 1rem;
+		padding: 0 var(--sp-4);
+		border-radius: 0.5rem;
+		font-size: 0.625rem; /* token-ok: 뱃지 숫자 */
+		line-height: 1rem;
+		font-weight: var(--fw-semibold);
+		text-align: center;
+		color: var(--bg);
+		background: var(--accent);
+		pointer-events: none;
+	}
+	.inbox-badge.error {
+		background: var(--danger);
 	}
 
 	/* DEV-084: 설정 진입 — 톱니바퀴 아이콘. DEV-138 부터 button (퀵메뉴 토글). */

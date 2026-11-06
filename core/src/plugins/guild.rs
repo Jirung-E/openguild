@@ -36,6 +36,9 @@ pub trait Notifier: Send + Sync {
     ) -> Result<(), String> {
         self.notify(plugin, text)
     }
+
+    /// DEV-478: 플러그인이 돌다 실패했다. 화면이 있는 곳만 띄운다 — CLI · 서버는 따로 찍는다.
+    fn problem(&self, _text: &str) {}
 }
 
 /// `notify(글, #{ … })` 의 옵션 — 값은 스크립트가 부를 때 이미 검사했다.
@@ -115,6 +118,15 @@ impl WithGuild {
     }
 }
 
+impl WithGuild {
+    /// DEV-478: 알림함에 남긴다. 못 남겨도 알림은 띄운다 — 남기는 것은 덤이다.
+    fn keep(&self, n: &crate::notices::Notice) {
+        if let Err(e) = crate::notices::record(&self.store.paths, n) {
+            eprintln!("[notices] {e:#}");
+        }
+    }
+}
+
 impl Drop for WithGuild {
     /// 플러그인을 다시 불러오면 비동기 작업 안에서 버려질 수 있다 — 그대로 버리면 런타임이 기다리려다 패닉한다.
     fn drop(&mut self) {
@@ -164,18 +176,29 @@ impl Delivery for WithGuild {
     ) -> Result<(), String> {
         match kind {
             CommandKind::Notify => {
+                let name = &plugin.def.name;
                 if let Value::Object(fields) = body
                     && let Some(Value::String(text)) = fields.get("text")
                 {
-                    let options = serde_json::from_value(fields["options"].clone())
+                    let options: NoticeOptions = serde_json::from_value(fields["options"].clone())
                         .map_err(|e| e.to_string())?;
-                    return self.notifier.notify_with(&plugin.def.name, text, &options);
+                    let mut n =
+                        crate::notices::Notice::now(crate::notices::Kind::Notify, Some(name), text);
+                    n.open = options.open.clone();
+                    n.comment = options.comment;
+                    self.keep(&n);
+                    return self.notifier.notify_with(name, text, &options);
                 }
                 let text = match body {
                     Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
-                self.notifier.notify(&plugin.def.name, &text)
+                self.keep(&crate::notices::Notice::now(
+                    crate::notices::Kind::Notify,
+                    Some(name),
+                    &text,
+                ));
+                self.notifier.notify(name, &text)
             }
             CommandKind::Backup => {
                 let store = self.store.clone();

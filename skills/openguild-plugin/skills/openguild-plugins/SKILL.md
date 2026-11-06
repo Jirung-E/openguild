@@ -530,8 +530,10 @@ In this order:
    `openguild plugin reload --remote …` on the server's machine).
 7. Did the CLI exit before delivery finished? Raise `OPENGUILD_PLUGIN_DRAIN_MS`,
    or check stderr for the cut-short warning.
-8. Delivery failures are reported — stderr on the CLI, startup lines on the
-   server, "recent delivery failures" in the desktop app's Plugins tab.
+8. Delivery failures are reported — stderr on the CLI, shutdown lines on the
+   server, "recent delivery failures" in the desktop app's Plugins tab. They
+   are also kept in the guild's inbox wherever they happened: the app's bell
+   turns red, and `openguild notice list` shows them.
 
 ## Reference
 

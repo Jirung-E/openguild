@@ -2212,6 +2212,21 @@ pub fn worklog_notes(
         .collect())
 }
 
+// ─────────────────────── DEV-478: 알림함 ───────────────────────
+// 서버의 `/api/notices` 와 짝 — 저장은 core(`notices`).
+
+#[tauri::command]
+pub async fn get_notices(
+    store: State<'_, Store>,
+) -> Result<openguild_core::notices::Inbox, String> {
+    openguild_core::notices::inbox(&store.paths).map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+pub async fn mark_notices_seen(store: State<'_, Store>, at: String) -> Result<(), String> {
+    openguild_core::notices::mark_seen(&store.paths, &at).map_err(|e| format!("{e:#}"))
+}
+
 // ─────────────────────── DEV-443: 개인 형광펜 ───────────────────────
 // 서버의 `/api/highlights` 와 짝 — 따지는 일과 저장은 core(`ops::highlights`).
 

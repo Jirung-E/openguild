@@ -3,9 +3,9 @@ book_id = "BOOK-007"
 title = "플러그인 · 이벤트"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-11-06T09:20:41+09:00"
+updated_at = "2026-11-06T13:06:54+09:00"
 deleted = false
-version = 1
+version = 3
 +++
 
 # 플러그인 · 이벤트
@@ -180,6 +180,7 @@ stdout · stderr 는 CLI 의 표준출력에 섞지 않는다(파이프가 깨�
 | 정의가 바뀌면 | 다음 명령에 바로 | 관리 → 플러그인 **[다시 읽기]** (자동 감지 없음). 허용·철회·길드 전환 때도 다시 꽂는다 | `openguild plugin reload --remote …` (서버 기계에서만) |
 | 끝날 때 | 전달을 **2초만** 기다리고 나간다(`OPENGUILD_PLUGIN_DRAIN_MS`). 못 끝내면 경고 — `run` 자식은 부모가 죽어도 혼자 끝낸다 | 계속 산다 | 종료 때 유예 |
 | `notify` 가 가는 곳 | stderr | 앱 알림(`AppNotifier` → `plugin-notify` 이벤트) — 표시 시간(`seconds`, 0 이면 닫을 때까지)과 누르면 열 문서 · 댓글(`open` · `comment`)을 받는다(DEV-477) | stderr |
+| 알림함(DEV-478) | `notify` 와 실패를 `.guild/notices/` 에 적는다(`core/src/notices.rs`) | 같은 파일. 실패는 `plugin-problem` 이벤트로 종을 다시 읽게 한다 — 토스트는 안 띄운다(DEV-381) | 같은 파일 — 원격은 `/api/notices` 로 읽는다 |
 | 시간마다 도는 줄 | 안 돈다 | 30초마다 확인 | 30초마다 확인 |
 | 동의 받는 곳 | `plugin allow` | 관리 → 플러그인 | 받지 않는다(그 기계의 CLI) |
 | 길드를 안 열었을 때 | — | 적재 자체를 막는다 — 임시 자리(Welcome)가 신뢰 목록에 들어가지 않게 | — |

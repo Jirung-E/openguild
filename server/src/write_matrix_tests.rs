@@ -34,6 +34,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ("POST", "/api/plugins/reload", "플러그인 정의만 다시 읽는다"),
     (
         "POST",
+        "/api/notices/seen",
+        "알림함의 읽음 표시만 적는다 — 문서가 아니고 index 에도 없다",
+    ),
+    (
+        "POST",
         "/api/admin/restore",
         "스냅샷으로 되돌려 덮는 것이 그 일이다",
     ),

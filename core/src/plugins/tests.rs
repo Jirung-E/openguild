@@ -3328,6 +3328,95 @@ permissions = ["notify"]
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-478: 알림과 실패가 알림함에 남고, 실패는 화면에도 바로 간다.
+#[tokio::test]
+async fn notices_and_problems_land_in_the_inbox() {
+    #[derive(Default)]
+    struct Shown(std::sync::Mutex<Vec<String>>);
+    impl super::guild::Notifier for Shown {
+        fn notify(&self, _plugin: &str, _text: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn problem(&self, text: &str) {
+            self.0.lock().unwrap().push(text.to_string());
+        }
+    }
+    let home = fresh_tmp("inbox-home");
+    let g = fresh_tmp("inbox");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("hand");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name        = "hand"
+scope       = ["cli"]
+scripts     = ["main.rhai"]
+permissions = ["notify"]
+
+[[handlers]]
+    id   = "생성"
+    post = ["quest.created"]
+    call = "on_created"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"
+        fn on_created(e) {
+            notify("새 퀘스트", #{ open: e.quest.id, comment: 2 });
+            backup();
+        }
+        "#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let shown = std::sync::Arc::new(Shown::default());
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins_with(
+            Scope::Cli,
+            std::sync::Arc::new(runtime::DropDelivery),
+            shown.clone(),
+        );
+        assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    }
+    let q = crate::ops::quests::create_quest(
+        &store,
+        crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "훅".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(10)));
+
+    let ib = crate::notices::inbox(&store.paths).unwrap();
+    assert_eq!(ib.notices.len(), 2, "{:?}", ib.notices);
+    let (problem, notice) = (&ib.notices[0], &ib.notices[1]);
+    assert_eq!(notice.kind, crate::notices::Kind::Notify);
+    assert_eq!(notice.plugin.as_deref(), Some("hand"));
+    assert_eq!(notice.text, "새 퀘스트");
+    assert_eq!(notice.open.as_deref(), Some(q.quest_id.as_str()));
+    assert_eq!(notice.comment, Some(2));
+    assert_eq!(problem.kind, crate::notices::Kind::Problem);
+    assert!(problem.text.contains("backup"), "{}", problem.text);
+    assert_eq!((ib.unread, ib.unread_problems), (2, 1));
+    assert_eq!(shown.0.lock().unwrap().clone(), vec![problem.text.clone()]);
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 #[tokio::test]
 async fn a_script_can_notify_and_back_up_within_its_permissions() {
     #[derive(Default)]

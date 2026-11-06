@@ -5,18 +5,29 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
 
 type Handler = (e: { payload: unknown }) => void;
-const heard = vi.hoisted(() => ({ event: '', handler: undefined as unknown, stop: vi.fn() }));
+const heard = vi.hoisted(() => ({
+	handlers: {} as Record<string, unknown>,
+	stops: {} as Record<string, () => void>
+}));
 vi.mock('@tauri-apps/api/event', () => ({
 	listen: async (event: string, handler: unknown) => {
-		heard.event = event;
-		heard.handler = handler;
-		return heard.stop;
+		heard.handlers[event] = handler;
+		heard.stops[event] = vi.fn();
+		return heard.stops[event];
 	}
 }));
+// DEV-478: 알림이 오면 알림함을 다시 읽는다 — 여기서는 부른 것만 본다.
+const inboxApi = vi.hoisted(() => ({
+	get: vi.fn(async () => ({ notices: [], unread: 0, unread_problems: 0 })),
+	markSeen: vi.fn(async () => ({}))
+}));
+vi.mock('$lib/api/notices', () => ({ noticesApi: inboxApi }));
 
 import { listenPluginNotices, notifications, type ToastNotif } from './toast';
+import { inboxItems, resetInboxForTest } from './inbox';
 
-const emit = (payload: unknown) => (heard.handler as Handler)({ payload });
+const emit = (payload: unknown, event = 'plugin-notify') =>
+	(heard.handlers[event] as Handler)({ payload });
 const toasts = () => get(notifications) as ToastNotif[];
 
 describe('listenPluginNotices', () => {
@@ -28,8 +39,29 @@ describe('listenPluginNotices', () => {
 
 	it('앱이 쏘는 이름을 듣고, 멈출 수 있다', async () => {
 		const stop = await listenPluginNotices();
-		expect(heard.event).toBe('plugin-notify');
-		expect(stop).toBe(heard.stop);
+		expect(Object.keys(heard.handlers).sort()).toEqual(['plugin-notify', 'plugin-problem']);
+		stop();
+		expect(heard.stops['plugin-notify']).toHaveBeenCalled();
+		expect(heard.stops['plugin-problem']).toHaveBeenCalled();
+	});
+
+	// DEV-478: 길드 알림은 코어가 파일에 적었다 — 화면은 앱 알림으로 또 남기지 않고 알림함을 다시 읽는다.
+	it('플러그인 알림은 알림함을 다시 읽고, 앱 알림으로 겹쳐 남지 않는다', async () => {
+		resetInboxForTest();
+		inboxApi.get.mockClear();
+		await listenPluginNotices();
+		emit({ plugin: 'p', text: '글', options: {} });
+		expect(inboxApi.get).toHaveBeenCalledTimes(1);
+		expect(get(inboxItems)).toHaveLength(0);
+	});
+
+	// DEV-381: 실패를 토스트로 띄우면 시끄럽다 — 알림함만 다시 읽어 종이 빨개진다.
+	it('플러그인 실패는 토스트 없이 알림함을 다시 읽는다', async () => {
+		inboxApi.get.mockClear();
+		await listenPluginNotices();
+		emit({ text: "플러그인 'p' 실패" }, 'plugin-problem');
+		expect(toasts()).toHaveLength(0);
+		expect(inboxApi.get).toHaveBeenCalledTimes(1);
 	});
 
 	it('옵션이 비면 기본 4초, 갈 곳 없음', async () => {

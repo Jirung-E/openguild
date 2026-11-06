@@ -5,6 +5,7 @@ pub mod comments;
 pub mod highlights;
 pub mod library;
 pub mod meta;
+pub mod notices;
 pub mod quests;
 pub mod rules;
 pub mod templates;
@@ -362,6 +363,9 @@ pub fn create_router(store: Store) -> Router {
             get(quests::list_positions).put(quests::update_positions),
         )
         .route("/api/quest-dependencies", get(quests::list_dependencies))
+        // DEV-478: 알림함 — 이 서버에서 난 플러그인 알림 · 실패.
+        .route("/api/notices", get(notices::get))
+        .route("/api/notices/seen", post(notices::seen))
         // DEV-443: 개인 형광펜 — 대상은 `?target=quest:DEV-001` 처럼.
         .route(
             "/api/highlights",

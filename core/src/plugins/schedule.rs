@@ -322,7 +322,7 @@ pub(super) fn run_line(
     cfg: &BTreeMap<String, Value>,
     subst: &BTreeMap<String, String>,
     delivery: &dyn Delivery,
-    log: &Mutex<Vec<String>>,
+    log: &super::runtime::Problems,
     probe: Option<&mut super::runtime::Probe<'_>>,
 ) {
     let line = &p.def.handlers[i];
@@ -345,10 +345,8 @@ pub(super) fn run_line(
     });
 }
 
-fn note(log: &Mutex<Vec<String>>, msg: String) {
-    if let Ok(mut l) = log.lock() {
-        l.push(msg);
-    }
+fn note(log: &super::runtime::Problems, msg: String) {
+    log.note(msg);
 }
 
 /// 한 번 확인한다 — 차례가 된 줄마다 함수를 부른다. `state_root` 가 있으면 기록을 거기 둔다(시험용).
@@ -356,7 +354,7 @@ pub(super) async fn tick(
     store: &crate::Store,
     plugins: &[Plugin],
     delivery: &dyn Delivery,
-    log: &Mutex<Vec<String>>,
+    log: &super::runtime::Problems,
     now: u64,
     state_root: Option<&Path>,
 ) {
@@ -438,7 +436,7 @@ pub(super) fn start(
     store: crate::Store,
     plugins: Arc<Vec<Plugin>>,
     delivery: Arc<dyn Delivery>,
-    log: Arc<Mutex<Vec<String>>>,
+    log: Arc<super::runtime::Problems>,
 ) -> Option<Ticker> {
     if !plugins.iter().any(|p| every_lines(p).next().is_some()) {
         return None;
@@ -749,7 +747,7 @@ mod tests {
             store.clone(),
             Arc::new(super::super::guild::Stderr),
         );
-        let log = Mutex::new(Vec::new());
+        let log = super::super::runtime::Problems::default();
         let state = root.join("state");
         tick(
             &store,
@@ -821,7 +819,7 @@ mod tests {
         ));
         // `PluginRuntime` 이 권한을 보고 `query()` 를 잇는다.
         let runtime = super::super::runtime::PluginRuntime::new(vec![p.clone()], delivery.clone());
-        let log = Mutex::new(Vec::new());
+        let log = super::super::runtime::Problems::default();
         let state = root.join("state");
         tick(
             &store,
@@ -953,7 +951,7 @@ mod tests {
                 .unwrap(),
         ));
         let rec = super::super::testing::Recorder::default();
-        let log = Mutex::new(Vec::new());
+        let log = super::super::runtime::Problems::default();
         let state = root.join("state");
         for now in [5_000_000, 5_000_030] {
             tick(

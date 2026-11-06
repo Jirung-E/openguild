@@ -367,6 +367,14 @@ impl openguild_core::plugins::guild::Notifier for AppNotifier {
             None => openguild_core::plugins::guild::Stderr.notify(plugin, text),
         }
     }
+
+    /// DEV-478: 플러그인 실패 — 알림함에는 코어가 이미 적었다. 화면이 바로 알게만 한다.
+    fn problem(&self, text: &str) {
+        use tauri::Emitter;
+        if let Some(app) = APP.get() {
+            let _ = app.emit("plugin-problem", serde_json::json!({ "text": text }));
+        }
+    }
 }
 
 pub fn install_plugins_for_gui(store: &Store) {
@@ -741,6 +749,9 @@ pub fn run() {
             commands::remove_book_attachment,
             commands::list_quest_candidates,
             commands::list_quest_positions,
+            // DEV-478: 알림함
+            commands::get_notices,
+            commands::mark_notices_seen,
             // DEV-443: 개인 형광펜
             commands::list_highlights,
             commands::add_highlight,

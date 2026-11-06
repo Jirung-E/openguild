@@ -339,7 +339,7 @@ impl Store {
         // DEV-406: 스크립트가 시키는 길드 일(백업·알림)은 코어가 실행한다 — 전달 구현은 그대로
         // 두고 감싼다.
         let delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery> = std::sync::Arc::new(
-            crate::plugins::guild::WithGuild::new(delivery, self.clone(), notifier),
+            crate::plugins::guild::WithGuild::new(delivery, self.clone(), notifier.clone()),
         );
         let loaded = crate::plugins::load_for(&self.paths.guild_root, scope);
         if loaded.active.is_empty() {
@@ -347,6 +347,15 @@ impl Store {
         } else {
             let mut rt =
                 crate::plugins::runtime::PluginRuntime::new(loaded.active.clone(), delivery);
+            // DEV-478: 실패도 알림함에 남기고, 화면이 있으면 띄운다.
+            let paths = self.paths.clone();
+            rt.on_problem(std::sync::Arc::new(move |text: &str| {
+                let n = crate::notices::Notice::now(crate::notices::Kind::Problem, None, text);
+                if let Err(e) = crate::notices::record(&paths, &n) {
+                    eprintln!("[notices] {e:#}");
+                }
+                notifier.problem(text);
+            }));
             // DEV-458: 시간마다 도는 줄은 계속 살아 있는 앱 · 서버에서만.
             if scope != crate::plugins::Scope::Cli {
                 rt.start_schedule(self.clone());

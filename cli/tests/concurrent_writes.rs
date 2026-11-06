@@ -241,3 +241,37 @@ fn rule_show_json_gives_the_version_rule_set_takes() {
     assert!(!out.status.success());
     assert_eq!(g.json(&["rule", "show", "r"])["content"], "b\n");
 }
+
+/// DEV-478: `notice list` · `notice read` — 앱의 종과 같은 목록과 읽음 표시.
+#[test]
+fn notice_list_shows_unread_and_read_clears_it() {
+    let g = Guild::new("notices");
+    let dir = g.root.join(".guild/notices");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("notices.jsonl"),
+        concat!(
+            r#"{"at":"2099-01-01T10:00:00.000+09:00","kind":"notify","plugin":"p","text":"하나","open":"DEV-1"}"#,
+            "\n",
+            r#"{"at":"2099-01-01T10:00:01.000+09:00","kind":"problem","text":"둘"}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    let got = g.json(&["notice", "list"]);
+    assert_eq!(got["unread"], 2);
+    assert_eq!(got["notices"][0]["text"], "둘");
+    assert_eq!(got["notices"][1]["open"], "DEV-1");
+
+    g.ok(&["notice", "read"], None);
+    let got = g.json(&["notice", "list", "--unread"]);
+    assert_eq!(got["unread"], 0);
+    assert_eq!(got["notices"], serde_json::json!([]));
+    assert_eq!(
+        g.json(&["notice", "list"])["notices"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}

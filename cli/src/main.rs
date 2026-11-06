@@ -195,6 +195,11 @@ enum Command {
         #[arg(help = tf!("ko | en — 미지정 시 현재 값 출력", "ko | en — prints current value if omitted"))]
         lang: Option<String>,
     },
+    #[command(about = tf!("알림함 — 플러그인 알림과 실패를 다시 본다(비공개, .guild/notices/, gitignored)", "Notice inbox — plugin notices and failures, kept to read again (private, `.guild/notices/`, gitignored)"))]
+    Notice {
+        #[command(subcommand)]
+        sub: NoticeCmd,
+    },
     #[command(about = tf!("작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트", "Work log — activity timeline by date/range + per-day notes"))]
     Worklog {
         #[command(subcommand)]
@@ -1389,6 +1394,18 @@ enum LibraryFolderCmd {
 }
 
 // ─────────────────────────── Worklog 서브명령 ───────────────────────────
+
+/// DEV-478: 알림함 — 플러그인 `notify` 와 실패. 앱의 종과 같은 목록.
+#[derive(Subcommand)]
+enum NoticeCmd {
+    #[command(about = tf!("알림 목록 — 최근 것부터. 안 읽은 것에 * 표시", "List notices, newest first. Unread ones are marked *"))]
+    List {
+        #[arg(long, help = tf!("안 읽은 것만", "Only unread ones"))]
+        unread: bool,
+    },
+    #[command(about = tf!("모두 읽음으로 표시 — 앱의 종 표시도 꺼진다", "Mark all as read — the app's bell badge clears too"))]
+    Read,
+}
 
 /// 작업 기록 — 활동은 캐시 조회(quest 이력/댓글/생성), 노트는
 /// `.guild/worklog/{YYYY-MM-DD}.md` (전역 공유, git tracked).
@@ -3592,6 +3609,24 @@ impl Backend {
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::worklog::activities(&l.store, from, to)),
             ),
+        }
+    }
+
+    fn notices_get(&self) -> Result<openguild_core::notices::Inbox> {
+        match self {
+            Backend::Http(c) => c.get("/api/notices"),
+            Backend::Local(l) => openguild_core::notices::inbox(&l.store.paths),
+        }
+    }
+
+    fn notices_seen(&self, at: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => {
+                let _: serde_json::Value =
+                    c.post("/api/notices/seen", &serde_json::json!({ "at": at }))?;
+                Ok(())
+            }
+            Backend::Local(l) => openguild_core::notices::mark_seen(&l.store.paths, at),
         }
     }
 
@@ -8206,6 +8241,7 @@ fn run() -> Result<()> {
         Command::Update { .. } => unreachable!("handled above"),
         Command::Plugin { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
+        Command::Notice { sub } => handle_notice(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
         Command::Restore {
             to,
@@ -10004,6 +10040,71 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
 }
 
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
+fn handle_notice(c: &Backend, json: bool, sub: NoticeCmd) -> Result<()> {
+    use openguild_core::notices::Kind;
+    let inbox = c.notices_get()?;
+    match sub {
+        NoticeCmd::List { unread } => {
+            let shown = if unread {
+                &inbox.notices[..inbox.unread]
+            } else {
+                &inbox.notices[..]
+            };
+            if json {
+                println!(
+                    "{}",
+                    json_str(&serde_json::json!({
+                        "notices": shown,
+                        "unread": inbox.unread,
+                        "unread_problems": inbox.unread_problems,
+                    }))
+                );
+                return Ok(());
+            }
+            if shown.is_empty() {
+                println!("{}", tf!("(알림 없음)", "(no notices)"));
+                return Ok(());
+            }
+            for (i, n) in shown.iter().enumerate() {
+                let mark = if i < inbox.unread { "*" } else { " " };
+                let at = n.at.get(..16).unwrap_or(&n.at).replace('T', " ");
+                let from = match (n.kind, &n.plugin) {
+                    (Kind::Problem, _) => tf!("실패", "failure"),
+                    (Kind::Notify, Some(p)) => p.clone(),
+                    (Kind::Notify, None) => tf!("플러그인", "plugin"),
+                };
+                let to = n
+                    .open
+                    .as_ref()
+                    .map(|o| match n.comment {
+                        Some(c) => format!("  → {o} #{c}"),
+                        None => format!("  → {o}"),
+                    })
+                    .unwrap_or_default();
+                println!("{mark} {at}  [{from}] {}{to}", n.text);
+            }
+        }
+        NoticeCmd::Read => {
+            if let Some(n) = inbox.notices.first() {
+                c.notices_seen(&n.at)?;
+            }
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "read": inbox.unread }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "{} 개를 읽음으로 표시했습니다",
+                        "marked {} as read",
+                        inbox.unread
+                    )
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
     match sub {
         WorklogCmd::Show { date, from, to } => {

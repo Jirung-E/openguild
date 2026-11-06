@@ -500,6 +500,13 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	if (method === 'POST' && pathOnly === '/api/quests') {
 		return { cmd: 'create_quest', args: { body } };
 	}
+	// ───── DEV-478: 알림함 — 서버의 /api/notices 와 짝 ─────
+	if (method === 'GET' && pathOnly === '/api/notices') {
+		return { cmd: 'get_notices', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/notices/seen') {
+		return { cmd: 'mark_notices_seen', args: { at: (body as { at: string }).at } };
+	}
 	// ───── DEV-443: 개인 형광펜 — 서버의 /api/highlights 와 짝 ─────
 	if (pathOnly === '/api/highlights') {
 		const target = query.get('target') ?? '';

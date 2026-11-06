@@ -5085,3 +5085,45 @@ fn lang_is_taken_off_the_query() {
     assert_eq!(strip("/api/quests?language=en"), None);
     assert_eq!(strip("/api/quests"), None);
 }
+
+/// DEV-478: 알림함 — 이 서버에서 난 알림을 원격 앱 · CLI 가 읽고 읽음으로 적는다.
+#[tokio::test]
+async fn test_notices_list_and_mark_seen() {
+    use openguild_core::notices::{self, Kind, Notice};
+    let dir = std::env::temp_dir().join(format!(
+        "og-test-notices-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+    let app = routes::create_router(store.clone());
+
+    let (status, empty) = get(app.clone(), "/api/notices").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(empty["notices"], json!([]));
+
+    let mut n = Notice::now(Kind::Notify, Some("p"), "새 퀘스트");
+    n.open = Some("DEV-1".into());
+    notices::record(&store.paths, &n).unwrap();
+    notices::record(&store.paths, &Notice::now(Kind::Problem, None, "실패")).unwrap();
+    let (_, got) = get(app.clone(), "/api/notices").await;
+    assert_eq!(got["unread"], 2);
+    assert_eq!(got["unread_problems"], 1);
+    assert_eq!(got["notices"][0]["kind"], "problem");
+    assert_eq!(got["notices"][1]["open"], "DEV-1");
+
+    let newest = got["notices"][0]["at"].clone();
+    let (status, _) = post(app.clone(), "/api/notices/seen", json!({ "at": newest })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, got) = get(app.clone(), "/api/notices").await;
+    assert_eq!(got["unread"], 0);
+
+    let (status, _) = post(app.clone(), "/api/notices/seen", json!({ "at": "어제" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let _ = std::fs::remove_dir_all(&dir);
+}

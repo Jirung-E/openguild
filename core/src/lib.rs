@@ -24,6 +24,7 @@ pub mod maintenance;
 pub mod merge;
 pub mod migrate;
 pub mod models;
+pub mod notices;
 pub mod ops;
 pub mod plugins;
 pub mod query;
