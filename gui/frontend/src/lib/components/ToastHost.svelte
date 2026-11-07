@@ -193,15 +193,28 @@
 		if (card.toast && !$inboxOpen) dismissNotif(card.toast.id);
 	}
 
+	// 지울 때 — 먼저 그 카드만 제자리에서 옆으로 빼 보내고(`.removing`), 다 안 보이게 된 **뒤에** 목록에서 지운다.
+	// 그러면 남은 카드(`animate:flip`)와 머리 띠(`followHead`)가 지연 없이 함께 자리를 메운다. 예전엔 flip 에 지연을
+	// 줬는데, 맥 앱(WebKit)은 지연 동안 카드를 옛 자리에 붙들지 않아 위 카드가 먼저 튀었다.
+	let removing = $state<Set<string>>(new Set());
 	function dismissCard(card: NoticeCardData) {
-		holdFlip();
-		followHead();
-		if (card.toast) dismissNotif(card.toast.id);
-		if (card.item) void dismissItem(card.item);
+		if (removing.has(card.key)) return;
+		removing = new Set(removing).add(card.key);
+		setTimeout(() => {
+			quietOut = true;
+			followHead();
+			if (card.toast) dismissNotif(card.toast.id);
+			if (card.item) void dismissItem(card.item);
+			void tick().then(() => {
+				quietOut = false;
+				const next = new Set(removing);
+				next.delete(card.key);
+				removing = next;
+			});
+		}, outMs());
 	}
 
 	async function clearAll() {
-		holdFlip();
 		for (const n of $notifications) if (n.kind === 'toast') dismissNotif(n.id);
 		await clearAllNotices();
 		closeInbox();
@@ -249,14 +262,6 @@
 		};
 	}
 
-	// 지울 때 남은 카드는 빠지는 카드가 다 안 보이게 된 **뒤에** 자리를 메운다 — 동시에 움직이면 위 카드가 내려와
-	// 아직 보이는 빠지는 카드와 겹쳤다.
-	let flipDelay = $state(0);
-	function holdFlip() {
-		flipDelay = outMs();
-		setTimeout(() => (flipDelay = 0), outMs() + motionMs() + 50);
-	}
-
 	// 지울 때 머리 띠도 카드와 **같이** 내려온다 — 카드가 빠지면 목록 높이가 그 자리에서 줄어 머리 띠만 먼저 툭
 	// 떨어졌다. 카드의 `animate:flip` 과 같은 지연 · 시간 · 곡선으로 머리 띠를 옛 자리에서 새 자리로 옮긴다(FLIP).
 	let headEl: HTMLDivElement | undefined = $state(undefined);
@@ -270,7 +275,6 @@
 			if (Math.abs(dy) < 0.5) return;
 			el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], {
 				duration: motionMs(),
-				delay: flipDelay,
 				easing: EASE_OUT_CUBIC,
 				fill: 'backwards'
 			});
@@ -303,6 +307,8 @@
 	let scrollEl: HTMLDivElement | undefined = $state(undefined);
 	let fadeTop = $state(false);
 	let fadeBottom = $state(false);
+	/** 목록이 칸 안에 다 들어간다 — 그때는 칸이 자르지 않는다(지울 때 위에서 내려오는 카드가 칸 위 끝에 잘렸다). */
+	let fits = $state(true);
 	/** 열 때 맨 아래(가장 최근)에 붙어 따라간다 — 사용자가 스크롤하면 놓는다. */
 	let following = true;
 
@@ -314,6 +320,7 @@
 		}
 		fadeTop = el.scrollTop > 1;
 		fadeBottom = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+		fits = el.scrollHeight <= el.clientHeight + 1;
 	}
 
 	// 카드가 바뀌면 흐림 표시를 다시 잰다.
@@ -426,6 +433,7 @@
 		class="ib-scroll"
 		class:fade-top={fadeTop}
 		class:fade-bottom={fadeBottom}
+		class:fits
 		bind:this={scrollEl}
 		onscroll={updateFade}
 		onwheel={() => (following = false)}
@@ -446,9 +454,10 @@
 			<div
 				class="slot"
 				class:leaving={closing && !card.toast}
+				class:removing={removing.has(card.key)}
 				in:cardIn
 				out:cardOut
-				animate:flip={{ duration: motionMs(), delay: flipDelay }}
+				animate:flip={{ duration: motionMs() }}
 			>
 				<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
 			</div>
@@ -574,6 +583,9 @@
 		scrollbar-width: none;
 		pointer-events: auto;
 	}
+	.notif-stack.open .ib-scroll.fits {
+		overflow: visible;
+	}
 	.notif-stack.open .ib-scroll::-webkit-scrollbar {
 		display: none;
 	}
@@ -655,6 +667,15 @@
 		transition:
 			opacity calc(var(--dur-mid) * 1.5) cubic-bezier(0.33, 1, 0.68, 1),
 			translate calc(var(--dur-mid) * 1.5) cubic-bezier(0.33, 1, 0.68, 1);
+	}
+	/* 지우는 중 — 그 카드만 제자리에서 옆으로 빠지며 옅어진다(그 뒤 목록에서 지운다). */
+	.slot.removing {
+		opacity: 0;
+		translate: 60% 0;
+		pointer-events: none;
+		transition:
+			opacity var(--dur-mid) linear,
+			translate var(--dur-mid) cubic-bezier(0.33, 1, 0.68, 1);
 	}
 	.ib-head.shadowed {
 		box-shadow: var(--shadow-md);
