@@ -108,3 +108,14 @@ describe('알림함을 연 채 토스트가 사라져도', () => {
 		expect(stackCards([], items, true, seen).map((c) => c.key)).toEqual(['toast-3']);
 	});
 });
+
+describe('플러그인이 고른 아이콘', () => {
+	it('icon: created 면 무엇이 생긴 카드', () => {
+		expect(cardOfItem(item({ plugin: 'p', text: '새 퀘스트', icon: 'created' })).tone).toBe(
+			'created'
+		);
+		expect(cardOfItem(item({ plugin: 'p', text: '그냥' })).tone).toBe('notify');
+		const t = toast({ plugin: 'p', text: '새 퀘스트', message: 'p: 새 퀘스트', icon: 'created' });
+		expect(stackCards([t], [], false)[0].tone).toBe('created');
+	});
+});

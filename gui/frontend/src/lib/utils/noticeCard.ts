@@ -5,8 +5,8 @@
 import type { InboxItem } from '$lib/stores/inbox';
 import type { ToastNotif } from '$lib/stores/toast';
 
-/** 아이콘과 색 — 일반 알림(종, 파랑) · 실패(경고, 빨강). */
-export type Tone = 'notify' | 'problem';
+/** 아이콘과 색 — 일반 알림(종, 파랑) · 무엇이 생긴 것(plus-circle, 파랑) · 실패(경고, 빨강). */
+export type Tone = 'notify' | 'created' | 'problem';
 
 /** 종류 줄의 앞말. */
 export type KindLabel = 'plugin' | 'problem' | 'app' | 'error';
@@ -77,7 +77,8 @@ export function cardOfItem(item: InboxItem): NoticeCardData {
 		return { ...base, tone: 'problem', kind: 'problem', ...problemParts(item.text) };
 	}
 	if (item.source === 'plugin') {
-		return { ...base, tone: 'notify', kind: 'plugin', who: item.plugin, ...split(item.text) };
+		const tone = item.icon === 'created' ? 'created' : 'notify';
+		return { ...base, tone, kind: 'plugin', who: item.plugin, ...split(item.text) };
 	}
 	return {
 		...base,
@@ -99,7 +100,8 @@ export function cardOfToast(t: ToastNotif, item?: InboxItem): NoticeCardData {
 		item
 	};
 	if (t.plugin !== undefined) {
-		return { ...base, tone: 'notify', kind: 'plugin', who: t.plugin, ...split(t.text ?? '') };
+		const tone = t.icon === 'created' ? 'created' : 'notify';
+		return { ...base, tone, kind: 'plugin', who: t.plugin, ...split(t.text ?? '') };
 	}
 	const error = t.variant === 'error';
 	return {

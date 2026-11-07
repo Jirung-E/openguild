@@ -79,7 +79,10 @@
 	<span class="nc-dot" class:on={card.unread} aria-hidden="true"></span>
 	<div class="nc-kind">
 		<span class="nc-icon" aria-hidden="true"
-			><Icon name={card.tone === 'problem' ? 'warn' : 'bell'} size="1rem" /></span
+			><Icon
+				name={card.tone === 'problem' ? 'warn' : card.tone === 'created' ? 'plus-circle' : 'bell'}
+				size="1rem"
+			/></span
 		>
 		<span class="nc-who">{kindText}</span>
 		<!-- glyph-ok: 횟수 표시(×3) — 아이콘이 아니라 곱셈 기호다 -->

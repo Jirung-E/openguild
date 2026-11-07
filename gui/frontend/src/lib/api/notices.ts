@@ -9,6 +9,8 @@ export interface Notice {
 	text: string;
 	open?: string;
 	comment?: number;
+	/** 카드 앞 아이콘 — `created` 면 무엇이 새로 생겼다. */
+	icon?: 'created';
 }
 
 export interface Inbox {

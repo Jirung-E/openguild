@@ -33,6 +33,8 @@ export interface ToastNotif extends NotifBase {
 	/** DEV-478: 플러그인 알림이면 보낸 플러그인과 그 글(`message` 는 `플러그인: 글`). */
 	plugin?: string;
 	text?: string;
+	/** 플러그인이 고른 아이콘. */
+	icon?: 'created';
 	/** DEV-478: 알림함의 같은 알림(앱 알림의 key). 성공 알림은 알림함에 없어 비어 있다. */
 	inboxKey?: string;
 }
@@ -102,7 +104,7 @@ function pushToast(
 	variant: ToastVariant,
 	durationMs: number,
 	href?: string,
-	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey'> = {}
+	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey' | 'icon'> = {}
 ): string {
 	let id: string | null = null;
 	const at = new Date().toISOString();
@@ -138,6 +140,7 @@ export interface PluginNoticeOptions {
 	seconds?: number;
 	open?: string;
 	comment?: number;
+	icon?: 'created';
 }
 
 // DEV-478: 알림함과 같이 쓴다 — 거기로 옮겼다.
@@ -150,7 +153,11 @@ export function showPluginNotice(
 	options: PluginNoticeOptions = {}
 ): string {
 	const ms = options.seconds === undefined ? 4000 : options.seconds * 1000;
-	return pushToast(`${plugin}: ${text}`, 'info', ms, noticeHref(options), { plugin, text });
+	return pushToast(`${plugin}: ${text}`, 'info', ms, noticeHref(options), {
+		plugin,
+		text,
+		icon: options.icon
+	});
 }
 
 // ── DEV-266: 표시 상한 + 우선순위 ────────────────────────────────────

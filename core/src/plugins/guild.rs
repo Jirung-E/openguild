@@ -79,7 +79,13 @@ pub struct NoticeOptions {
     /// 그 문서의 댓글 번호까지 이동.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comment: Option<i64>,
+    /// 카드 앞 아이콘 — 없으면 일반 알림(종). [`NOTICE_ICONS`] 중 하나.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
+
+/// `notify` 의 `icon` 으로 고를 수 있는 것 — `created` 는 무엇이 새로 생겼다(새 퀘스트 등).
+pub const NOTICE_ICONS: &[&str] = &["created"];
 
 /// 기본 — 표준 오류로 한 줄. CLI 와 서버가 쓴다(서버 로그에 그대로 남는다).
 pub struct Stderr;
@@ -268,6 +274,7 @@ impl Delivery for WithGuild {
                         crate::notices::Notice::now(crate::notices::Kind::Notify, Some(name), text);
                     n.open = options.open.clone();
                     n.comment = options.comment;
+                    n.icon = options.icon.clone();
                     self.keep(&n);
                     return self.notifier.notify_with(name, text, &options);
                 }

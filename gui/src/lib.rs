@@ -1093,13 +1093,14 @@ mod tests {
             seconds: Some(10.0),
             open: Some("DEV-001".into()),
             comment: Some(3),
+            icon: Some("created".into()),
         };
         assert_eq!(
             super::notice_payload("p", "글", &full),
             serde_json::json!({
                 "plugin": "p",
                 "text": "글",
-                "options": { "seconds": 10.0, "open": "DEV-001", "comment": 3 }
+                "options": { "seconds": 10.0, "open": "DEV-001", "comment": 3, "icon": "created" }
             })
         );
     }

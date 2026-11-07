@@ -3270,6 +3270,7 @@ permissions = ["notify"]
             notify("계속", #{ seconds: 0 });
             notify("문서", #{ open: "dev-1" });
             notify("댓글", #{ seconds: 10, open: e.quest.id, comment: 3 });
+            notify("생김", #{ icon: "created", open: e.quest.id });
         }
         "#,
     )
@@ -3307,6 +3308,7 @@ permissions = ["notify"]
         seconds,
         open: open.map(String::from),
         comment,
+        icon: None,
     };
     assert_eq!(
         said.0.lock().unwrap().clone(),
@@ -3319,6 +3321,13 @@ permissions = ["notify"]
             (
                 "댓글".to_string(),
                 opts(Some(10.0), Some(q.quest_id.as_str()), Some(3))
+            ),
+            (
+                "생김".to_string(),
+                NoticeOptions {
+                    icon: Some("created".into()),
+                    ..opts(None, Some(q.quest_id.as_str()), None)
+                }
             ),
         ]
     );

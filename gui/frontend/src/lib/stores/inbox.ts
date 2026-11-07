@@ -20,6 +20,8 @@ export interface InboxItem {
 	unread: boolean;
 	/** 잇달아 난 같은 앱 알림의 횟수. */
 	count: number;
+	/** 플러그인이 고른 아이콘(`notify(글, #{ icon })`). */
+	icon?: 'created';
 }
 
 /** 알림을 눌렀을 때 갈 앱 안 주소 — 번호로 문서 종류를 가른다. */
@@ -97,7 +99,8 @@ function fromGuild(n: Notice, i: number, unread: number): InboxItem {
 		error: n.kind === 'problem',
 		href: noticeHref(n),
 		unread: i < unread,
-		count: 1
+		count: 1,
+		icon: n.icon
 	};
 }
 

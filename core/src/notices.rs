@@ -47,6 +47,9 @@ pub struct Notice {
     pub open: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comment: Option<i64>,
+    /// 카드 앞 아이콘 — `notify(글, #{ icon })` 그대로.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 impl Notice {
@@ -58,6 +61,7 @@ impl Notice {
             text: text.to_string(),
             open: None,
             comment: None,
+            icon: None,
         }
     }
 }

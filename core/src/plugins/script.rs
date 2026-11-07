@@ -175,10 +175,25 @@ fn notice_options(map: &rhai::Map) -> Result<super::guild::NoticeOptions, String
                 })?;
                 out.comment = Some(n);
             }
+            "icon" => {
+                let icon = v
+                    .clone()
+                    .into_string()
+                    .ok()
+                    .filter(|s| super::guild::NOTICE_ICONS.contains(&s.as_str()))
+                    .ok_or_else(|| {
+                        crate::tf!(
+                            "icon 은 {} 중 하나입니다: {v}",
+                            "icon is one of {}: {v}",
+                            super::guild::NOTICE_ICONS.join(", ")
+                        )
+                    })?;
+                out.icon = Some(icon);
+            }
             other => {
                 return Err(crate::tf!(
-                    "모르는 옵션 '{other}' — 쓸 수 있는 옵션: seconds, open, comment",
-                    "unknown option '{other}' — available options: seconds, open, comment"
+                    "모르는 옵션 '{other}' — 쓸 수 있는 옵션: seconds, open, comment, icon",
+                    "unknown option '{other}' — available options: seconds, open, comment, icon"
                 ));
             }
         }
@@ -1039,6 +1054,7 @@ mod tests {
             "#{ seconds: 3600 }",
             "#{ open: \"BOOK-2\" }",
             "#{ open: \"C-3\", comment: 1 }",
+            "#{ icon: \"created\" }",
         ] {
             assert!(check(ok).is_ok(), "{ok}");
         }
@@ -1054,6 +1070,8 @@ mod tests {
             "#{ open: \"DEV-1\", comment: 0 }",
             "#{ open: \"DEV-1\", comment: \"3\" }",
             "#{ open: \"BOOK-1\", comment: 3 }",
+            "#{ icon: \"rocket\" }",
+            "#{ icon: 1 }",
         ] {
             assert!(check(bad).is_err(), "{bad}");
         }
