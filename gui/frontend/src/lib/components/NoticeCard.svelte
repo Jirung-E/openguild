@@ -331,4 +331,12 @@
 	.nc-x:hover {
 		color: var(--text);
 	}
+	/* 터치 화면에는 마우스 올림이 없다 — × 를 늘 보인다(안 그러면 휴대폰에서 지울 길이 없다). */
+	@media (hover: none) {
+		.nc-x {
+			opacity: 1;
+			transform: none;
+			pointer-events: auto;
+		}
+	}
 </style>
