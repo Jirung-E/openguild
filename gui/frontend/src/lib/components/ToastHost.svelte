@@ -195,6 +195,7 @@
 
 	function dismissCard(card: NoticeCardData) {
 		holdFlip();
+		followHead();
 		if (card.toast) dismissNotif(card.toast.id);
 		if (card.item) void dismissItem(card.item);
 	}
@@ -223,9 +224,9 @@
 	 * 빠지는 카드는 그 자리에 떼어 두고(position: absolute) 오른쪽으로 빠지고, 남은 카드는 `animate:flip` 으로 자리를
 	 * 메운다. 예전엔 높이를 접느라 overflow: hidden 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
 	 */
+	// 알림함을 열 때 끼어 드는 카드와 머리 띠도 알림이 올 때처럼 오른쪽에서 미끄러져 들어온다(사용자가 정한 것). 닫을 때는
+	// 그 반대로 오른쪽으로 빠진다(`.leaving`).
 	function cardIn(_node: HTMLElement) {
-		// 알림함을 열 때 끼어 드는 카드는 머리 띠처럼 제자리에서 옅게 나타난다 — 닫을 때(제자리에서 옅어짐)와 같은 움직임.
-		if (opening) return fadeOnly(_node);
 		return {
 			duration: motionMs(),
 			css: (t: number) => {
@@ -256,33 +257,45 @@
 		setTimeout(() => (flipDelay = 0), outMs() + motionMs() + 50);
 	}
 
-	// 알림함을 여는 동안 — 끼어 드는 카드는 옅게 나타난다(cardIn).
-	let opening = false;
+	// 지울 때 머리 띠도 카드와 **같이** 내려온다 — 카드가 빠지면 목록 높이가 그 자리에서 줄어 머리 띠만 먼저 툭
+	// 떨어졌다. 카드의 `animate:flip` 과 같은 지연 · 시간 · 곡선으로 머리 띠를 옛 자리에서 새 자리로 옮긴다(FLIP).
+	let headEl: HTMLDivElement | undefined = $state(undefined);
+	const EASE_OUT_CUBIC = 'cubic-bezier(0.33, 1, 0.68, 1)'; // svelte/easing 의 cubicOut 과 같은 곡선
+	function followHead() {
+		const el = headEl;
+		if (!el || typeof el.animate !== 'function') return;
+		const before = el.getBoundingClientRect().top;
+		void tick().then(() => {
+			const dy = before - el.getBoundingClientRect().top;
+			if (Math.abs(dy) < 0.5) return;
+			el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], {
+				duration: motionMs(),
+				delay: flipDelay,
+				easing: EASE_OUT_CUBIC,
+				fill: 'backwards'
+			});
+		});
+	}
 	/** 머리 띠 · 덮개 — 옅어지기만. */
 	function fadeOnly(_node: Element) {
 		return { duration: cssMs('--dur-mid'), css: (t: number) => `opacity: ${t};` };
 	}
 
-	// 닫을 때 — 지나간 카드와 머리 띠를 **제자리에서** 옅어지게만 하고(`closing`), 다 옅어진 뒤에 틀(위 끝 · 스크롤
-	// 칸)과 그 카드들을 거둔다. 틀이 먼저 없어지면 빠지는 카드들이 잘리지 않은 채 화면 위쪽까지 보였고, 카드가 먼저
-	// 빠지면 머리 띠가 아래로 떨어졌다.
+	// 닫을 때 — 지나간 카드와 머리 띠는 **자리를 둔 채** 오른쪽으로 빠지고(`.leaving`, 열 때의 반대), 다 빠진 뒤에
+	// 틀(위 끝 · 스크롤 칸)과 그 카드들을 거둔다. 목록에서 먼저 빼면 높이가 줄어 남은 것들이 튀었고, 틀이 먼저
+	// 없어지면 빠지는 카드들이 잘리지 않은 채 화면 위쪽까지 보였다.
 	const closing = $derived(layoutOpen && !$inboxOpen);
 	$effect(() => {
 		if ($inboxOpen) {
-			opening = true;
 			layoutOpen = true;
-			const t = setTimeout(() => (opening = false), motionMs() + 50);
-			return () => clearTimeout(t);
+			return;
 		}
 		if (!layoutOpen) return;
-		const t = setTimeout(
-			() => {
-				quietOut = true;
-				layoutOpen = false;
-				void tick().then(() => (quietOut = false));
-			},
-			cssMs('--dur-mid') + 30
-		);
+		const t = setTimeout(() => {
+			quietOut = true;
+			layoutOpen = false;
+			void tick().then(() => (quietOut = false));
+		}, motionMs() + 30);
 		return () => clearTimeout(t);
 	});
 
@@ -394,8 +407,14 @@
 {/if}
 <div class="notif-stack" class:open={layoutOpen} role="status" aria-live="polite">
 	<!-- DEV-478: 알림함 머리 — 열 때 펼쳐지고, 카드와 달리 스크롤되지 않는다. -->
-	{#if $inboxOpen}
-		<div class="ib-head" class:shadowed={fadeTop} transition:fadeOnly>
+	{#if layoutOpen}
+		<div
+			class="ib-head"
+			class:shadowed={fadeTop}
+			class:leaving={closing}
+			bind:this={headEl}
+			in:cardIn
+		>
 			<span class="ib-title">{t('inbox.title', $locale)}</span>
 			<button class="btn btn-sm" onclick={() => void clearAll()} disabled={cards.length === 0}
 				>{t('inbox.clearAll', $locale)}</button
@@ -628,10 +647,14 @@
 		pointer-events: auto;
 		transition: box-shadow var(--dur-fast);
 	}
-	/* 닫는 중 — 지나간 카드는 제자리에서 옅어진다. */
-	.slot.leaving {
+	/* 닫는 중 — 지나간 카드와 머리 띠는 자리를 둔 채 오른쪽으로 빠진다(열 때 들어온 움직임의 반대, 같은 시간 · 곡선). */
+	.slot.leaving,
+	.ib-head.leaving {
 		opacity: 0;
-		transition: opacity var(--dur-mid);
+		translate: 110% 0;
+		transition:
+			opacity calc(var(--dur-mid) * 1.5) cubic-bezier(0.33, 1, 0.68, 1),
+			translate calc(var(--dur-mid) * 1.5) cubic-bezier(0.33, 1, 0.68, 1);
 	}
 	.ib-head.shadowed {
 		box-shadow: var(--shadow-md);
