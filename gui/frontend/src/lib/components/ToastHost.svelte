@@ -211,23 +211,65 @@
 	}
 
 	/** 올 때 · 갈 때 — 오른쪽에서 미끄러져 들어오며 높이가 열리고, 나갈 때는 그 반대. */
+	//
+	// 두 단계로 나눈다 — 앞 절반은 높이를 그대로 두고 옆으로 미끄러지기만(그림자가 온전하다), 뒤 절반은 다 빠진 뒤
+	// 높이만 접는다. 한꺼번에 하면 접는 동안 `overflow: hidden` 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
+	// 들어올 때는 그 반대(자리가 먼저 열리고 그 자리로 미끄러져 들어온다).
 	function cardMotion(node: HTMLElement) {
 		const h = node.offsetHeight;
 		return {
-			duration: cssMs('--dur-mid'),
-			easing: cubicOut,
-			css: (t: number, u: number) =>
-				`overflow: hidden; opacity: ${t}; max-height: ${t * h}px; transform: translateX(${u * 1.5}rem);`
+			duration: cssMs('--dur-mid') * 1.5,
+			// 장면마다 같은 속성을 다 적는다 — 어느 장면에 빠진 속성은 브라우저가 이상하게 이어 붙인다(높이가 눌려 보였다).
+			css: (t: number) => {
+				if (t >= 0.5) {
+					const s = cubicOut((t - 0.5) * 2);
+					return `opacity: ${s}; transform: translateX(${(1 - s) * 110}%); max-height: ${h}px; overflow: visible;`;
+				}
+				const s = cubicOut(t * 2);
+				return `opacity: 0; transform: translateX(110%); max-height: ${s * h}px; overflow: hidden;`;
+			}
 		};
 	}
 
-	// 알림함 — 열면 맨 아래(가장 최근)가 보이게, 밖을 누르거나 Esc 면 닫는다.
-	let stackEl: HTMLDivElement | undefined = $state(undefined);
+	// ── 알림함의 스크롤 칸 ──
+	let scrollEl: HTMLDivElement | undefined = $state(undefined);
+	let fadeTop = $state(false);
+	let fadeBottom = $state(false);
+	/** 열 때 맨 아래(가장 최근)에 붙어 따라간다 — 사용자가 스크롤하면 놓는다. */
+	let following = true;
+
+	function updateFade() {
+		const el = scrollEl;
+		if (!el || !$inboxOpen) {
+			fadeTop = fadeBottom = false;
+			return;
+		}
+		fadeTop = el.scrollTop > 1;
+		fadeBottom = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+	}
+
+	// 카드가 바뀌면 흐림 표시를 다시 잰다.
 	$effect(() => {
-		if (!$inboxOpen) return;
-		const toBottom = () => stackEl && (stackEl.scrollTop = stackEl.scrollHeight);
-		void tick().then(toBottom);
-		const late = setTimeout(toBottom, cssMs('--dur-mid') + 30);
+		void cards;
+		void tick().then(updateFade);
+	});
+
+	// 알림함 — 열면 맨 아래(가장 최근)가 보이게, 밖을 누르거나 Esc 면 닫는다.
+	$effect(() => {
+		if (!$inboxOpen) {
+			updateFade();
+			return;
+		}
+		// 끼어 드는 카드들이 자라는 동안 매 프레임 맨 아래에 붙인다 — 한두 번 뛰어내리면 흔들려 보였다.
+		following = true;
+		const until = performance.now() + cssMs('--dur-mid') * 1.5 + 80;
+		let frame = 0;
+		const stick = () => {
+			if (scrollEl && following) scrollEl.scrollTop = scrollEl.scrollHeight;
+			updateFade();
+			if (performance.now() < until) frame = requestAnimationFrame(stick);
+		};
+		frame = requestAnimationFrame(stick);
 		// BUG-322 와 같은 이유 — 타이틀바 클릭은 오버레이가 못 받으니 capture 로 받는다.
 		const onDown = (e: MouseEvent) => {
 			const el = e.target;
@@ -241,7 +283,7 @@
 		window.addEventListener('mousedown', onDown, { capture: true });
 		window.addEventListener('keydown', onKey);
 		return () => {
-			clearTimeout(late);
+			cancelAnimationFrame(frame);
 			window.removeEventListener('mousedown', onDown, { capture: true });
 			window.removeEventListener('keydown', onKey);
 		};
@@ -284,41 +326,46 @@
 	});
 </script>
 
-<div
-	class="notif-stack"
-	class:open={$inboxOpen}
-	role="status"
-	aria-live="polite"
-	bind:this={stackEl}
->
-	<!-- DEV-478: 알림함 머리 — 열 때 펼쳐진다. -->
+<div class="notif-stack" class:open={$inboxOpen} role="status" aria-live="polite">
+	<!-- DEV-478: 알림함 머리 — 열 때 펼쳐지고, 카드와 달리 스크롤되지 않는다. -->
 	{#if $inboxOpen}
-		<div class="slot" transition:cardMotion>
-			<div class="ib-head">
-				<span class="ib-title">{t('inbox.title', $locale)}</span>
-				<button class="btn btn-sm" onclick={() => void clearAll()} disabled={cards.length === 0}
-					>{t('inbox.clearAll', $locale)}</button
-				>
-			</div>
+		<div class="ib-head" transition:cardMotion>
+			<span class="ib-title">{t('inbox.title', $locale)}</span>
+			<button class="btn btn-sm" onclick={() => void clearAll()} disabled={cards.length === 0}
+				>{t('inbox.clearAll', $locale)}</button
+			>
 		</div>
-		{#if cards.length === 0}
+	{/if}
+	<!-- 카드들. 알림함이면 이 안에서 스크롤하고, 가려진 쪽 끝을 흐리게 한다. -->
+	<div
+		class="ib-scroll"
+		class:fade-top={fadeTop}
+		class:fade-bottom={fadeBottom}
+		bind:this={scrollEl}
+		onscroll={updateFade}
+		onwheel={() => (following = false)}
+	>
+		{#if $inboxOpen && cards.length === 0}
 			<div class="slot" transition:cardMotion>
 				<p class="card ib-empty">{t('inbox.empty', $locale)}</p>
 			</div>
 		{/if}
+		<!-- DEV-266: 상한 초과분 축약 칩 — 클릭 시 전체 펼침. 스택 맨 위(코너
+		     반대쪽)에 둬 최신/지속 알림을 가리지 않는다. -->
+		{#if view.hidden > 0 && !$inboxOpen}
+			<button class="card more-chip" onclick={() => (expanded = true)}>
+				{t('notif.more', $locale).replace('{n}', String(view.hidden))}
+			</button>
+		{/if}
+		{#each cards as card (card.key)}
+			<div class="slot" transition:cardMotion>
+				<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
+			</div>
+		{/each}
+	</div>
+	{#if $inboxOpen && scrollEl}
+		<OverlayScrollbar target={scrollEl} />
 	{/if}
-	<!-- DEV-266: 상한 초과분 축약 칩 — 클릭 시 전체 펼침. 스택 맨 위(코너
-	     반대쪽)에 둬 최신/지속 알림을 가리지 않는다. -->
-	{#if view.hidden > 0 && !$inboxOpen}
-		<button class="card more-chip" onclick={() => (expanded = true)}>
-			{t('notif.more', $locale).replace('{n}', String(view.hidden))}
-		</button>
-	{/if}
-	{#each cards as card (card.key)}
-		<div class="slot" transition:cardMotion>
-			<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
-		</div>
-	{/each}
 	{#each persistent as n (n.id)}
 		{#if n.kind === 'update'}
 			<div class="card upd" class:err={$updateState.status === 'error'} role="status">
@@ -395,32 +442,67 @@
 	/* DEV-259: 우하단 단일 스택. bottom 고정 + column → 새 항목이 코너에,
 	   기존은 위로 밀림. */
 	.notif-stack {
-		/* DEV-478: 카드 모서리에 걸친 × · 점이 잘리지 않게 안쪽 여백을 두고, 그만큼 바깥으로 낸다. */
-		--edge: 0.75rem; /* token-ok: 모서리 표시가 들어갈 자리 */
+		/* DEV-478: 카드 모서리에 걸친 × · 점과 그림자 번짐(--shadow-md)이 잘리지 않게 안쪽 여백을 두고, 그만큼
+		   바깥으로 낸다. 여백은 비어 있어 눌림을 받지 않는다. */
+		--edge-x: 1.5rem; /* token-ok: 그림자 번짐이 들어갈 자리 — 화면 오른쪽 여백과 같아 스택이 오른쪽 끝에 붙는다 */
+		--edge-y: 1.75rem; /* token-ok: 그림자 번짐(아래로 더 퍼진다)이 들어갈 자리 */
 		position: fixed;
-		right: calc(1.5rem - var(--edge));
-		bottom: calc(1.5rem - var(--edge));
+		right: calc(1.5rem - var(--edge-x));
+		bottom: calc(1.5rem - var(--edge-y));
 		z-index: 2000;
 		display: flex;
 		flex-direction: column;
 		align-items: stretch;
 		box-sizing: content-box;
-		padding: 0 var(--edge) var(--edge);
+		padding: 0 var(--edge-x) var(--edge-y);
 		width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		max-width: calc(100vw - 3rem);
 		pointer-events: none;
 	}
-	/* 알림함 — 배경은 없고(카드마다의 그림자로 가른다), 길면 이 안에서 스크롤. */
+	/* 알림함 — 배경은 없고(카드마다의 그림자로 가른다). 위 끝은 타이틀바 · 상단 바 아래, 머리는 고정하고
+	   카드 칸만 스크롤한다. */
 	.notif-stack.open {
-		max-height: calc(100vh - var(--nav-h, 3.25rem) - 3rem);
-		max-height: calc(100dvh - var(--nav-h, 3.25rem) - 3rem);
+		top: calc(var(--titlebar-h, 0px) + var(--nav-h, 3.25rem));
+		justify-content: flex-end;
+	}
+	.ib-scroll {
+		display: flex;
+		flex-direction: column;
+		pointer-events: none;
+	}
+	.notif-stack.open .ib-scroll {
+		flex: 0 1 auto;
+		min-height: 0;
+		/* 그림자 · 모서리 표시가 스크롤 칸에 잘리지 않게 여백을 안에 두고 그만큼 바깥으로 */
+		margin: 0 calc(-1 * var(--edge-x)) calc(-1 * var(--edge-y));
+		padding: 0 var(--edge-x) var(--edge-y);
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		scrollbar-width: thin;
+		scrollbar-width: none;
 		pointer-events: auto;
 	}
+	.notif-stack.open .ib-scroll::-webkit-scrollbar {
+		display: none;
+	}
+	/* 스크롤로 가려진 카드가 있는 쪽 끝을 흐리게. 마스크는 알파만 보므로 불투명한 아무 색(currentColor)이면 된다. */
+	.ib-scroll.fade-top {
+		mask-image: linear-gradient(to bottom, transparent, currentColor var(--sp-32));
+	}
+	.ib-scroll.fade-bottom {
+		mask-image: linear-gradient(to top, transparent, currentColor var(--sp-32));
+	}
+	.ib-scroll.fade-top.fade-bottom {
+		mask-image: linear-gradient(
+			to bottom,
+			transparent,
+			currentColor var(--sp-32),
+			currentColor calc(100% - var(--sp-32)),
+			transparent
+		);
+	}
 	/* 간격은 위 여백으로 — 카드 자리(.slot)와 업데이트 · 스키마 카드가 같은 간격으로 쌓인다. */
-	.notif-stack > .card {
+	.notif-stack > .card,
+	.ib-scroll > .card {
 		margin-top: var(--sp-12);
 	}
 	.card {
@@ -472,10 +554,12 @@
 	}
 	.ib-head {
 		display: flex;
+		flex: none;
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--sp-8);
-		padding: var(--sp-4) var(--sp-4) 0;
+		padding: var(--sp-12) var(--sp-4) 0;
+		pointer-events: auto;
 	}
 	.ib-title {
 		font-size: var(--fs-sm);

@@ -164,5 +164,9 @@ export function stackCards(
 		});
 	const time = (c: NoticeCardData) => (c.at ? Date.parse(c.at) : Number.MAX_SAFE_INTEGER);
 	// 시각이 같으면 떠 있는 것을 아래로(코너 쪽) — 열고 닫을 때 자리가 안 바뀐다.
-	return [...past, ...shown].sort((a, b) => time(a) - time(b));
+	// 같은 시각(같은 밀리초에 잇달아 온 알림)이면 알림함에 적힌 순서대로 — 목록은 최근 것이 먼저라 뒤집어 센다.
+	const order = new Map(items.map((i, k) => [i.key, items.length - k]));
+	const rank = (c: NoticeCardData) =>
+		c.item ? (order.get(c.item.key) ?? 0) : Number.MAX_SAFE_INTEGER;
+	return [...past, ...shown].sort((a, b) => time(a) - time(b) || rank(a) - rank(b));
 }

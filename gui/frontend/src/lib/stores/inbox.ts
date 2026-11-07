@@ -89,9 +89,23 @@ export async function refreshInbox(): Promise<void> {
 	}
 }
 
-function fromGuild(n: Notice, i: number, unread: number): InboxItem {
+/**
+ * 길드 알림 줄의 key — 시각과 내용으로 짓는다. 목록 안의 순번으로 지으면 하나를 지우거나 새 알림이 올 때마다 그 뒤
+ * 모든 줄의 key 가 바뀌어, 화면의 카드가 한꺼번에 빠졌다 다시 들어왔다. 시각 · 글까지 같은 줄은 차례를 붙인다.
+ */
+function guildKeys(notices: Notice[]): string[] {
+	const seen = new Map<string, number>();
+	return notices.map((n) => {
+		const base = `g-${n.at}-${n.kind}-${n.plugin ?? ''}-${n.text}`;
+		const k = (seen.get(base) ?? 0) + 1;
+		seen.set(base, k);
+		return k === 1 ? base : `${base}#${k}`;
+	});
+}
+
+function fromGuild(n: Notice, i: number, unread: number, key: string): InboxItem {
 	return {
-		key: `g-${n.at}-${i}`,
+		key,
 		at: n.at,
 		source: n.kind === 'problem' ? 'problem' : 'plugin',
 		plugin: n.plugin,
@@ -107,7 +121,10 @@ function fromGuild(n: Notice, i: number, unread: number): InboxItem {
 /** 합친 목록 — 최근 것이 먼저. */
 export const inboxItems = derived([appNotices, appSeen, guild], ([$app, $seen, $guild]) => {
 	const items: InboxItem[] = [
-		...$guild.notices.map((n, i) => fromGuild(n, i, $guild.unread)),
+		...(() => {
+			const keys = guildKeys($guild.notices);
+			return $guild.notices.map((n, i) => fromGuild(n, i, $guild.unread, keys[i]));
+		})(),
 		...$app.map((a) => ({
 			key: a.key,
 			at: a.at,

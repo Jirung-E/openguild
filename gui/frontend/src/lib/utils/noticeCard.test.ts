@@ -119,3 +119,14 @@ describe('플러그인이 고른 아이콘', () => {
 		expect(stackCards([t], [], false)[0].tone).toBe('created');
 	});
 });
+
+describe('같은 밀리초에 온 알림', () => {
+	it('알림함에 적힌 순서(오래된 것 위)로 놓인다', () => {
+		const at = '2026-11-07T10:00:00.000+09:00';
+		// 알림함 목록은 최근 것이 먼저 — 셋 → 둘 → 하나 순으로 적혔다.
+		const items = ['셋', '둘', '하나'].map((text, k) =>
+			item({ key: `k${k}`, at, plugin: 'p', text })
+		);
+		expect(stackCards([], items, true).map((c) => c.title)).toEqual(['하나', '둘', '셋']);
+	});
+});

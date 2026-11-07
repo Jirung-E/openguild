@@ -78,7 +78,7 @@
 >
 	<span class="nc-dot" class:on={card.unread} aria-hidden="true"></span>
 	<div class="nc-kind">
-		<span class="nc-icon" aria-hidden="true"
+		<span class="nc-icon" class:bell={card.tone === 'notify'} aria-hidden="true"
 			><Icon
 				name={card.tone === 'problem' ? 'warn' : card.tone === 'created' ? 'plus-circle' : 'bell'}
 				size="1rem"
@@ -211,6 +211,10 @@
 		border-radius: 50%;
 		color: var(--c);
 		background: color-mix(in srgb, var(--c) 15%, transparent);
+	}
+	/* 종 도형은 16 격자에서 아래로 0.85 쏠려 있다(y 3.6~14.1) — 원 안에서 가운데로 보이게 올린다. */
+	.nc-icon.bell :global(svg) {
+		transform: translateY(-0.053rem); /* token-ok: 도형의 광학 중심 보정 */
 	}
 	.nc-who {
 		min-width: 0;

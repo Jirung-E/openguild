@@ -176,3 +176,30 @@ describe('알림함 열고 닫기 · 모두 지우기', () => {
 		expect(get(inboxItems)).toEqual([]);
 	});
 });
+
+describe('길드 알림 줄의 key', () => {
+	it('앞의 줄을 지워도 나머지 줄의 key 는 그대로다', async () => {
+		const n = (s: number, text: string) => ({
+			at: `2026-11-07T10:00:0${s}.000+09:00`,
+			kind: 'notify' as const,
+			plugin: 'p',
+			text
+		});
+		inboxApi.get.mockResolvedValueOnce({
+			notices: [n(3, 'c'), n(2, 'b'), n(1, 'a')],
+			unread: 0,
+			unread_problems: 0
+		});
+		await refreshInbox();
+		const before = new Map(get(inboxItems).map((i) => [i.text, i.key]));
+		inboxApi.get.mockResolvedValueOnce({
+			notices: [n(4, 'd'), n(3, 'c'), n(1, 'a')],
+			unread: 0,
+			unread_problems: 0
+		});
+		await refreshInbox();
+		const after = new Map(get(inboxItems).map((i) => [i.text, i.key]));
+		expect(after.get('a')).toBe(before.get('a'));
+		expect(after.get('c')).toBe(before.get('c'));
+	});
+});
