@@ -194,11 +194,13 @@
 	}
 
 	function dismissCard(card: NoticeCardData) {
+		holdFlip();
 		if (card.toast) dismissNotif(card.toast.id);
 		if (card.item) void dismissItem(card.item);
 	}
 
 	async function clearAll() {
+		holdFlip();
 		for (const n of $notifications) if (n.kind === 'toast') dismissNotif(n.id);
 		await clearAllNotices();
 		closeInbox();
@@ -222,6 +224,8 @@
 	 * 메운다. 예전엔 높이를 접느라 overflow: hidden 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
 	 */
 	function cardIn(_node: HTMLElement) {
+		// 알림함을 열 때 끼어 드는 카드는 머리 띠처럼 제자리에서 옅게 나타난다 — 닫을 때(제자리에서 옅어짐)와 같은 움직임.
+		if (opening) return fadeOnly(_node);
 		return {
 			duration: motionMs(),
 			css: (t: number) => {
@@ -234,16 +238,26 @@
 	// 스스로 한다 — 여기서 위치를 또 정하거나 `transform` 을 쓰면 그 맞춤을 덮어 엉뚱한 곳으로 갔다. 그래서 움직임은
 	// 따로 겹쳐지는 `translate` 속성으로 준다. 알림함을 닫아 지나간 카드를 거둘 때는 이미 제자리에서 옅어졌으니 움직이지 않는다(`quietOut`).
 	let quietOut = false;
+	/** 빠지는 카드가 다 안 보이게 될 때까지의 시간 — 옅어짐은 이 안에 끝난다. */
+	const outMs = () => cssMs('--dur-mid');
 	function cardOut(_node: HTMLElement) {
 		if (quietOut) return { duration: 0 };
 		return {
-			duration: motionMs(),
-			css: (t: number) => {
-				const s = cubicOut(t);
-				return `opacity: ${s}; translate: ${(1 - s) * 110}% 0;`;
-			}
+			duration: outMs(),
+			css: (t: number) => `opacity: ${t}; translate: ${(1 - cubicOut(t)) * 60}% 0;`
 		};
 	}
+
+	// 지울 때 남은 카드는 빠지는 카드가 다 안 보이게 된 **뒤에** 자리를 메운다 — 동시에 움직이면 위 카드가 내려와
+	// 아직 보이는 빠지는 카드와 겹쳤다.
+	let flipDelay = $state(0);
+	function holdFlip() {
+		flipDelay = outMs();
+		setTimeout(() => (flipDelay = 0), outMs() + motionMs() + 50);
+	}
+
+	// 알림함을 여는 동안 — 끼어 드는 카드는 옅게 나타난다(cardIn).
+	let opening = false;
 	/** 머리 띠 · 덮개 — 옅어지기만. */
 	function fadeOnly(_node: Element) {
 		return { duration: cssMs('--dur-mid'), css: (t: number) => `opacity: ${t};` };
@@ -255,8 +269,10 @@
 	const closing = $derived(layoutOpen && !$inboxOpen);
 	$effect(() => {
 		if ($inboxOpen) {
+			opening = true;
 			layoutOpen = true;
-			return;
+			const t = setTimeout(() => (opening = false), motionMs() + 50);
+			return () => clearTimeout(t);
 		}
 		if (!layoutOpen) return;
 		const t = setTimeout(
@@ -389,6 +405,8 @@
 	<!-- 카드들. 알림함이면 이 안에서 스크롤한다. -->
 	<div
 		class="ib-scroll"
+		class:fade-top={fadeTop}
+		class:fade-bottom={fadeBottom}
 		bind:this={scrollEl}
 		onscroll={updateFade}
 		onwheel={() => (following = false)}
@@ -411,16 +429,12 @@
 				class:leaving={closing && !card.toast}
 				in:cardIn
 				out:cardOut
-				animate:flip={{ duration: motionMs() }}
+				animate:flip={{ duration: motionMs(), delay: flipDelay }}
 			>
 				<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
 			</div>
 		{/each}
 	</div>
-	<!-- 아래에 가려진 카드가 있으면 아래 끝에 짧은 그림자 띠(위는 머리 띠의 그림자). -->
-	{#if layoutOpen && fadeBottom}
-		<div class="ib-more" transition:fadeOnly aria-hidden="true"></div>
-	{/if}
 	{#if layoutOpen && scrollEl}
 		<OverlayScrollbar target={scrollEl} />
 	{/if}
@@ -631,15 +645,22 @@
 		z-index: 1999;
 		background: var(--backdrop);
 	}
-	/* 아래에 가려진 카드가 있다 — 목록 아래 끝에 짧은 그림자 띠. */
-	.ib-more {
-		position: absolute;
-		right: 0;
-		bottom: 0;
-		left: 0;
-		height: var(--sp-24);
-		background: linear-gradient(to top, var(--backdrop), transparent);
-		pointer-events: none;
+	/* 스크롤로 가려진 카드가 있는 쪽 끝은 덮개 속으로 녹아들게 — 칼로 자른 듯한 끝을 없앤다. 뒤는 덮개라 페이지가
+	   비치지 않는다. 마스크는 알파만 보므로 불투명한 아무 색(currentColor)이면 된다. */
+	.notif-stack.open .ib-scroll.fade-top {
+		mask-image: linear-gradient(to bottom, transparent, currentColor calc(var(--sp-24) * 2));
+	}
+	.notif-stack.open .ib-scroll.fade-bottom {
+		mask-image: linear-gradient(to top, transparent, currentColor calc(var(--sp-24) * 2));
+	}
+	.notif-stack.open .ib-scroll.fade-top.fade-bottom {
+		mask-image: linear-gradient(
+			to bottom,
+			transparent,
+			currentColor calc(var(--sp-24) * 2),
+			currentColor calc(100% - calc(var(--sp-24) * 2)),
+			transparent
+		);
 	}
 	.ib-title {
 		font-size: var(--fs-sm);

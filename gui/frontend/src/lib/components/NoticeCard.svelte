@@ -322,8 +322,10 @@
 			opacity var(--dur-fast),
 			transform var(--dur-fast);
 	}
+	/* 누른 뒤 포커스가 남아도 × 가 남지 않게 — 키보드로 옮겨 왔을 때만(focus-visible). */
 	.nc:hover .nc-x,
-	.nc:focus-within .nc-x {
+	.nc:focus-visible .nc-x,
+	.nc-x:focus-visible {
 		opacity: 1;
 		transform: scale(1);
 		pointer-events: auto;
