@@ -8,6 +8,9 @@ import { tick } from 'svelte';
 const goto = vi.fn();
 vi.mock('$app/navigation', () => ({ goto: (href: string) => goto(href) }));
 
+// jsdom 에는 Web Animations 가 없다 — 카드 목록의 `animate:flip` 이 부른다.
+if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
+
 import ToastHost from './ToastHost.svelte';
 import { notifications, showPluginNotice } from '$lib/stores/toast';
 

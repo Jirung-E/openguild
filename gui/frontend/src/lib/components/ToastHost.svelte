@@ -42,6 +42,7 @@
 	import { locale, t } from '$lib/stores/locale';
 	import { tick } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
+	import { flip } from 'svelte/animate';
 	import {
 		clearAllNotices,
 		closeInbox,
@@ -171,13 +172,15 @@
 	});
 
 	// ── DEV-478: 알림 카드 · 알림함 ─────────────────────────────────────
+	/** 알림함의 틀(위 끝 · 스크롤 칸 · 지나간 카드)이 펼쳐져 있나 — 닫을 때는 옅어지는 동안 조금 더 남는다(아래). */
+	let layoutOpen = $state(false);
 	const shownToasts = $derived(
-		($inboxOpen ? $notifications : view.visible).filter((n) => n.kind === 'toast') as ToastNotif[]
+		(layoutOpen ? $notifications : view.visible).filter((n) => n.kind === 'toast') as ToastNotif[]
 	);
 	const persistent = $derived(view.visible.filter((n) => n.kind !== 'toast'));
 	// 알림함 줄 → 그 줄이 떴던 토스트의 key. 카드가 같은 알림이면 같은 key 를 쓰게(`stackCards`).
 	const seenKeys = new Map<string, string>();
-	const cards = $derived(stackCards(shownToasts, $inboxItems, $inboxOpen, seenKeys));
+	const cards = $derived(stackCards(shownToasts, $inboxItems, layoutOpen, seenKeys));
 
 	function openCard(card: NoticeCardData) {
 		if (card.href) {
@@ -210,26 +213,62 @@
 		return v.endsWith('ms') ? n : n * 1000;
 	}
 
-	/** 올 때 · 갈 때 — 오른쪽에서 미끄러져 들어오며 높이가 열리고, 나갈 때는 그 반대. */
-	//
-	// 두 단계로 나눈다 — 앞 절반은 높이를 그대로 두고 옆으로 미끄러지기만(그림자가 온전하다), 뒤 절반은 다 빠진 뒤
-	// 높이만 접는다. 한꺼번에 하면 접는 동안 `overflow: hidden` 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
-	// 들어올 때는 그 반대(자리가 먼저 열리고 그 자리로 미끄러져 들어온다).
-	function cardMotion(node: HTMLElement) {
-		const h = node.offsetHeight;
+	/** 움직임 시간 — `--dur-mid` 의 1.5 배. '동작 줄이기' 면 0. */
+	const motionMs = () => cssMs('--dur-mid') * 1.5;
+
+	/**
+	 * 올 때 · 갈 때 — transform · opacity 만 움직인다(높이 · 그림자는 그대로라 매 프레임 레이아웃을 다시 하지 않는다).
+	 * 빠지는 카드는 그 자리에 떼어 두고(position: absolute) 오른쪽으로 빠지고, 남은 카드는 `animate:flip` 으로 자리를
+	 * 메운다. 예전엔 높이를 접느라 overflow: hidden 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
+	 */
+	function cardIn(_node: HTMLElement) {
 		return {
-			duration: cssMs('--dur-mid') * 1.5,
-			// 장면마다 같은 속성을 다 적는다 — 어느 장면에 빠진 속성은 브라우저가 이상하게 이어 붙인다(높이가 눌려 보였다).
+			duration: motionMs(),
 			css: (t: number) => {
-				if (t >= 0.5) {
-					const s = cubicOut((t - 0.5) * 2);
-					return `opacity: ${s}; transform: translateX(${(1 - s) * 110}%); max-height: ${h}px; overflow: visible;`;
-				}
-				const s = cubicOut(t * 2);
-				return `opacity: 0; transform: translateX(110%); max-height: ${s * h}px; overflow: hidden;`;
+				const s = cubicOut(t);
+				return `opacity: ${s}; translate: ${(1 - s) * 110}% 0;`;
 			}
 		};
 	}
+	// 빠지는 자리 고정(position: absolute + transform 으로 제자리 맞춤)은 `animate:flip` 이 있는 목록에서 Svelte 가
+	// 스스로 한다 — 여기서 위치를 또 정하거나 `transform` 을 쓰면 그 맞춤을 덮어 엉뚱한 곳으로 갔다. 그래서 움직임은
+	// 따로 겹쳐지는 `translate` 속성으로 준다. 알림함을 닫아 지나간 카드를 거둘 때는 이미 제자리에서 옅어졌으니 움직이지 않는다(`quietOut`).
+	let quietOut = false;
+	function cardOut(_node: HTMLElement) {
+		if (quietOut) return { duration: 0 };
+		return {
+			duration: motionMs(),
+			css: (t: number) => {
+				const s = cubicOut(t);
+				return `opacity: ${s}; translate: ${(1 - s) * 110}% 0;`;
+			}
+		};
+	}
+	/** 머리 띠 · 덮개 — 옅어지기만. */
+	function fadeOnly(_node: Element) {
+		return { duration: cssMs('--dur-mid'), css: (t: number) => `opacity: ${t};` };
+	}
+
+	// 닫을 때 — 지나간 카드와 머리 띠를 **제자리에서** 옅어지게만 하고(`closing`), 다 옅어진 뒤에 틀(위 끝 · 스크롤
+	// 칸)과 그 카드들을 거둔다. 틀이 먼저 없어지면 빠지는 카드들이 잘리지 않은 채 화면 위쪽까지 보였고, 카드가 먼저
+	// 빠지면 머리 띠가 아래로 떨어졌다.
+	const closing = $derived(layoutOpen && !$inboxOpen);
+	$effect(() => {
+		if ($inboxOpen) {
+			layoutOpen = true;
+			return;
+		}
+		if (!layoutOpen) return;
+		const t = setTimeout(
+			() => {
+				quietOut = true;
+				layoutOpen = false;
+				void tick().then(() => (quietOut = false));
+			},
+			cssMs('--dur-mid') + 30
+		);
+		return () => clearTimeout(t);
+	});
 
 	// ── 알림함의 스크롤 칸 ──
 	let scrollEl: HTMLDivElement | undefined = $state(undefined);
@@ -240,7 +279,7 @@
 
 	function updateFade() {
 		const el = scrollEl;
-		if (!el || !$inboxOpen) {
+		if (!el || !layoutOpen) {
 			fadeTop = fadeBottom = false;
 			return;
 		}
@@ -262,7 +301,7 @@
 		}
 		// 끼어 드는 카드들이 자라는 동안 매 프레임 맨 아래에 붙인다 — 한두 번 뛰어내리면 흔들려 보였다.
 		following = true;
-		const until = performance.now() + cssMs('--dur-mid') * 1.5 + 80;
+		const until = performance.now() + motionMs() + 80;
 		let frame = 0;
 		const stick = () => {
 			if (scrollEl && following) scrollEl.scrollTop = scrollEl.scrollHeight;
@@ -280,12 +319,19 @@
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') closeInbox();
 		};
+		// 창을 옮기거나 크기를 바꾸면 다시 잰다 — 맨 아래에 붙어 있었으면 그대로 붙인다.
+		const onResize = () => {
+			if (scrollEl && following) scrollEl.scrollTop = scrollEl.scrollHeight;
+			updateFade();
+		};
 		window.addEventListener('mousedown', onDown, { capture: true });
 		window.addEventListener('keydown', onKey);
+		window.addEventListener('resize', onResize);
 		return () => {
 			cancelAnimationFrame(frame);
 			window.removeEventListener('mousedown', onDown, { capture: true });
 			window.removeEventListener('keydown', onKey);
+			window.removeEventListener('resize', onResize);
 		};
 	});
 
@@ -326,27 +372,29 @@
 	});
 </script>
 
-<div class="notif-stack" class:open={$inboxOpen} role="status" aria-live="polite">
+<!-- DEV-478: 알림함을 열면 상단 바 아래를 옅게 덮는다(모달의 막과 같은 색). 누르면 닫힌다(밖 누르기). -->
+{#if $inboxOpen}
+	<div class="ib-backdrop" transition:fadeOnly aria-hidden="true"></div>
+{/if}
+<div class="notif-stack" class:open={layoutOpen} role="status" aria-live="polite">
 	<!-- DEV-478: 알림함 머리 — 열 때 펼쳐지고, 카드와 달리 스크롤되지 않는다. -->
 	{#if $inboxOpen}
-		<div class="ib-head" transition:cardMotion>
+		<div class="ib-head" class:shadowed={fadeTop} transition:fadeOnly>
 			<span class="ib-title">{t('inbox.title', $locale)}</span>
 			<button class="btn btn-sm" onclick={() => void clearAll()} disabled={cards.length === 0}
 				>{t('inbox.clearAll', $locale)}</button
 			>
 		</div>
 	{/if}
-	<!-- 카드들. 알림함이면 이 안에서 스크롤하고, 가려진 쪽 끝을 흐리게 한다. -->
+	<!-- 카드들. 알림함이면 이 안에서 스크롤한다. -->
 	<div
 		class="ib-scroll"
-		class:fade-top={fadeTop}
-		class:fade-bottom={fadeBottom}
 		bind:this={scrollEl}
 		onscroll={updateFade}
 		onwheel={() => (following = false)}
 	>
 		{#if $inboxOpen && cards.length === 0}
-			<div class="slot" transition:cardMotion>
+			<div class="slot" transition:fadeOnly>
 				<p class="card ib-empty">{t('inbox.empty', $locale)}</p>
 			</div>
 		{/if}
@@ -358,12 +406,22 @@
 			</button>
 		{/if}
 		{#each cards as card (card.key)}
-			<div class="slot" transition:cardMotion>
+			<div
+				class="slot"
+				class:leaving={closing && !card.toast}
+				in:cardIn
+				out:cardOut
+				animate:flip={{ duration: motionMs() }}
+			>
 				<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
 			</div>
 		{/each}
 	</div>
-	{#if $inboxOpen && scrollEl}
+	<!-- 아래에 가려진 카드가 있으면 아래 끝에 짧은 그림자 띠(위는 머리 띠의 그림자). -->
+	{#if layoutOpen && fadeBottom}
+		<div class="ib-more" transition:fadeOnly aria-hidden="true"></div>
+	{/if}
+	{#if layoutOpen && scrollEl}
 		<OverlayScrollbar target={scrollEl} />
 	{/if}
 	{#each persistent as n (n.id)}
@@ -466,6 +524,8 @@
 		justify-content: flex-end;
 	}
 	.ib-scroll {
+		/* 빠지는 카드를 제자리에 떼어 둘 기준(cardOut) */
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		pointer-events: none;
@@ -483,22 +543,6 @@
 	}
 	.notif-stack.open .ib-scroll::-webkit-scrollbar {
 		display: none;
-	}
-	/* 스크롤로 가려진 카드가 있는 쪽 끝을 흐리게. 마스크는 알파만 보므로 불투명한 아무 색(currentColor)이면 된다. */
-	.ib-scroll.fade-top {
-		mask-image: linear-gradient(to bottom, transparent, currentColor var(--sp-32));
-	}
-	.ib-scroll.fade-bottom {
-		mask-image: linear-gradient(to top, transparent, currentColor var(--sp-32));
-	}
-	.ib-scroll.fade-top.fade-bottom {
-		mask-image: linear-gradient(
-			to bottom,
-			transparent,
-			currentColor var(--sp-32),
-			currentColor calc(100% - var(--sp-32)),
-			transparent
-		);
 	}
 	/* 간격은 위 여백으로 — 카드 자리(.slot)와 업데이트 · 스키마 카드가 같은 간격으로 쌓인다. */
 	.notif-stack > .card,
@@ -552,20 +596,55 @@
 	.slot > :global(*) {
 		pointer-events: auto;
 	}
+	/* 머리 띠 — 불투명. 위에 가려진 카드가 있으면 그림자가 짙어진다. */
 	.ib-head {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		flex: none;
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--sp-8);
-		padding: var(--sp-12) var(--sp-4) 0;
+		margin-top: var(--sp-12);
+		padding: var(--sp-6) var(--sp-8) var(--sp-6) var(--sp-12);
+		background: var(--bg-elevated);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
+		box-shadow: var(--shadow-sm);
 		pointer-events: auto;
+		transition: box-shadow var(--dur-fast);
+	}
+	/* 닫는 중 — 지나간 카드는 제자리에서 옅어진다. */
+	.slot.leaving {
+		opacity: 0;
+		transition: opacity var(--dur-mid);
+	}
+	.ib-head.shadowed {
+		box-shadow: var(--shadow-md);
+	}
+	.ib-backdrop {
+		position: fixed;
+		top: calc(var(--titlebar-h, 0px) + var(--nav-h, 3.25rem));
+		right: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 1999;
+		background: var(--backdrop);
+	}
+	/* 아래에 가려진 카드가 있다 — 목록 아래 끝에 짧은 그림자 띠. */
+	.ib-more {
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		height: var(--sp-24);
+		background: linear-gradient(to top, var(--backdrop), transparent);
+		pointer-events: none;
 	}
 	.ib-title {
 		font-size: var(--fs-sm);
 		font-weight: var(--fw-semibold);
 		color: var(--text);
-		text-shadow: 0 0 var(--sp-4) var(--bg);
 	}
 	.ib-empty {
 		margin: 0;
