@@ -130,6 +130,10 @@ pub(crate) fn resolve_edit(
     what: &str,
 ) -> crate::error::AppResult<String> {
     let Some(base) = base else { return Ok(mine) };
+    // 줄바꿈을 LF 로 맞춘 뒤 비교한다 — 윈도우 메모장 등으로 CRLF 가 된 파일과 편집기(CodeMirror, 늘 LF)의 글을
+    // 그대로 견주면 `\r` 때문에 모든 줄이 바뀐 것으로 보여 다른 줄을 고쳐도 충돌이 났다. 저장은 LF 다.
+    let lf = |s: &str| s.replace("\r\n", "\n");
+    let (current, base, mine) = (lf(current), lf(base), lf(&mine));
     let (c, b, m) = (current.trim_end(), base.trim_end(), mine.trim_end());
     if b == c || m == c {
         return Ok(mine);
@@ -146,7 +150,7 @@ pub(crate) fn resolve_edit(
                     "편집하는 사이 다른 곳에서 {what} 의 같은 줄을 고쳤습니다 — 어느 쪽을 남길지 골라 주세요",
                     "While you were editing, the same lines of {what} were changed elsewhere — choose which to keep"
                 ),
-                current: Some(current.to_string()),
+                current: Some(current.clone()),
                 segments,
                 new_id: None,
             }),
@@ -240,6 +244,49 @@ mod resolve_edit_tests {
         assert_eq!(merged.unwrap(), "A\nb\nC\n");
         let merged = super::resolve_edit("A\nb\nc\n", Some("a\nb\nc\n"), "a\nb\nC".into(), "r");
         assert_eq!(merged.unwrap(), "A\nb\nC");
+    }
+
+    /// DEV-435: CRLF 파일(윈도우 메모장)을 편집기(LF)로 고쳐도 다른 줄이면 합친다 — `\r` 때문에 거짓 충돌이 났다.
+    #[test]
+    fn crlf_and_lf_texts_merge_by_line() {
+        // 시작 · 지금이 CRLF, 내 것은 LF.
+        let merged = super::resolve_edit(
+            "one\r\ntwo\r\nfour EXT\r\n",
+            Some("one\r\ntwo\r\nfour\r\n"),
+            "one\ntwo APP\nfour\n".into(),
+            "r",
+        );
+        assert_eq!(merged.unwrap(), "one\ntwo APP\nfour EXT\n");
+        // 편집 중에 파일이 통째로 CRLF 로 저장된 경우.
+        let merged = super::resolve_edit(
+            "one\r\ntwo\r\nfour EXT\r\n",
+            Some("one\ntwo\nfour\n"),
+            "one\ntwo APP\nfour\n".into(),
+            "r",
+        );
+        assert_eq!(merged.unwrap(), "one\ntwo APP\nfour EXT\n");
+        // 같은 줄 충돌은 그 줄만.
+        let err = super::resolve_edit(
+            "one\r\ntwo EXT\r\nfour\r\n",
+            Some("one\r\ntwo\r\nfour\r\n"),
+            "one\ntwo APP\nfour\n".into(),
+            "r",
+        )
+        .unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else {
+            panic!("충돌이어야 함")
+        };
+        let conflicts: Vec<_> = c
+            .segments
+            .iter()
+            .filter_map(|s| match s {
+                crate::merge::Segment::Conflict { current, mine, .. } => Some((current, mine)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].0, "two EXT\n");
+        assert_eq!(conflicts[0].1, "two APP\n");
     }
 }
 
