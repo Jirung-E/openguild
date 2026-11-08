@@ -162,7 +162,7 @@ To confirm before a change, ask in a `pre` line and block on no:
 `fn guard(e) { if !ask(`Delete ${e.quest.id}?`, #{ yes: "Delete", danger: true }) { "cancelled" } }`
 with `permissions = ["ask"]`. In the app it shows a dialog, in a terminal CLI a `(y/N)` prompt, and on a
 server it shows on the remote window that made the request. Where nobody can answer (agents, scripts,
-scheduled lines) the answer is no — so the guarded change is blocked there; say so in `description`.
+a server's scheduled lines) the answer is no — so the guarded change is blocked there; say so in `description`.
 Test it with `set_answer(true)` / the default no.
 
 ### 4. Where do the secrets go?
