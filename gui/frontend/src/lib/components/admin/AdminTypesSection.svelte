@@ -1,8 +1,7 @@
 <script lang="ts">
+	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { focusOnMount } from '$lib/actions/focus-on-mount';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onMount } from 'svelte';
 	import { adminApi, type QuestTypeWithCount } from '$lib/api/admin';
 	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
@@ -174,8 +173,12 @@
 	<div class="section-header">
 		<h2>Quest Types</h2>
 		<div class="actions">
-			<button onclick={openCreate} disabled={busy}>{t('adminTypes.newType', $locale)}</button>
-			<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
+			<button class="btn btn-sm" onclick={openCreate} disabled={busy}
+				>{t('adminTypes.newType', $locale)}</button
+			>
+			<button class="btn btn-sm" onclick={refresh} disabled={busy}
+				>{t('admin.refresh', $locale)}</button
+			>
 		</div>
 	</div>
 
@@ -228,8 +231,7 @@
 								<td class="row-actions">
 									<ActionButtons
 										label={t('common.save', $locale)}
-										buttonClass=""
-										primaryClass="save"
+										small
 										{busy}
 										onconfirm={saveEdit}
 										oncancel={cancelEdit}
@@ -244,11 +246,11 @@
 								<td class="desc">{ty.description ?? ''}</td>
 								<td class="count">{ty.quest_count}</td>
 								<td class="row-actions">
-									<button onclick={() => startEdit(ty)} disabled={busy}
+									<button class="btn btn-sm" onclick={() => startEdit(ty)} disabled={busy}
 										>{t('adminTypes.edit', $locale)}</button
 									>
 									<button
-										class="danger"
+										class="btn btn-sm btn-danger"
 										onclick={() => askDelete(ty)}
 										disabled={busy || ty.quest_count > 0}
 										title={ty.quest_count > 0
@@ -269,92 +271,72 @@
 </section>
 
 {#if creating}
-	<div class="ov" role="presentation" use:modalScrollLock>
-		<div
-			class="modal-box modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{
-				onEscape: () => {
-					if (!busy) creating = false;
-				}
-			}}
-		>
-			<h3 class="modal-title">{t('adminTypes.newTypeTitle', $locale)}</h3>
-			<div class="form">
-				<label>
-					<span>prefix</span>
-					<input
-						class="input"
-						type="text"
-						bind:value={newPrefix}
-						placeholder={t('adminTypes.prefixPlaceholder', $locale)}
-						maxlength="6"
-						disabled={busy}
-					/>
-				</label>
-				<label>
-					<span>{t('adminTypes.colColor', $locale)}</span>
-					<input type="color" bind:value={newColor} disabled={busy} />
-					<code class="hex">{newColor}</code>
-				</label>
-				<label>
-					<span>{t('adminTypes.colDesc', $locale)}</span>
-					<input
-						class="input"
-						type="text"
-						bind:value={newDesc}
-						placeholder={t('adminTypes.descShortPlaceholder', $locale)}
-						disabled={busy}
-					/>
-				</label>
-			</div>
-			<div class="modal-actions">
-				<ActionButtons
-					label={t('common.add', $locale)}
-					kind="accent"
-					{busy}
-					onconfirm={doCreate}
-					oncancel={() => (creating = false)}
+	<Modal
+		title={t('adminTypes.newTypeTitle', $locale)}
+		size="md"
+		z={100}
+		{busy}
+		onclose={() => (creating = false)}
+	>
+		<div class="form">
+			<label>
+				<span>prefix</span>
+				<input
+					class="input"
+					type="text"
+					bind:value={newPrefix}
+					placeholder={t('adminTypes.prefixPlaceholder', $locale)}
+					maxlength="6"
+					disabled={busy}
 				/>
-			</div>
+			</label>
+			<label>
+				<span>{t('adminTypes.colColor', $locale)}</span>
+				<input type="color" bind:value={newColor} disabled={busy} />
+				<code class="hex">{newColor}</code>
+			</label>
+			<label>
+				<span>{t('adminTypes.colDesc', $locale)}</span>
+				<input
+					class="input"
+					type="text"
+					bind:value={newDesc}
+					placeholder={t('adminTypes.descShortPlaceholder', $locale)}
+					disabled={busy}
+				/>
+			</label>
 		</div>
-	</div>
+		{#snippet actions()}
+			<ActionButtons
+				label={t('common.add', $locale)}
+				{busy}
+				onconfirm={doCreate}
+				oncancel={() => (creating = false)}
+			/>
+		{/snippet}
+	</Modal>
 {/if}
 
-{#if confirmDelete}
-	<div class="ov" role="presentation" use:modalScrollLock>
-		<div
-			class="modal-box modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{
-				onEscape: () => {
-					if (!busy) confirmDelete = null;
-				}
-			}}
-		>
-			<h3 class="modal-title">{t('adminTypes.deleteTypeTitle', $locale)}</h3>
-			<p class="modal-msg">
-				<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />
-				{t('adminTypes.deleteMsg2', $locale)}<code>.guild/types/{confirmDelete.prefix}.toml</code
-				>{t('adminTypes.deleteMsg3', $locale)}
-			</p>
-			<div class="modal-actions">
-				<ActionButtons
-					label={t('detail.delete', $locale)}
-					kind="danger"
-					autofocus="cancel"
-					{busy}
-					onconfirm={doDelete}
-					oncancel={() => (confirmDelete = null)}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
+<ConfirmDialog
+	open={confirmDelete !== null}
+	title={t('adminTypes.deleteTypeTitle', $locale)}
+	confirmLabel={t('detail.delete', $locale)}
+	danger
+	{busy}
+	z={100}
+	onconfirm={doDelete}
+	oncancel={() => (confirmDelete = null)}
+>
+	{#if confirmDelete}
+		<p class="modal-msg">
+			<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />
+			{t('adminTypes.deleteMsg2', $locale)}<code>.guild/types/{confirmDelete.prefix}.toml</code>{t(
+				'adminTypes.deleteMsg3',
+				$locale
+			)}
+		</p>
+	{/if}
+</ConfirmDialog>
 
 <!-- DEV-119: prefix rename cascade 확인 — 인앱 모달. -->
 <ConfirmDialog
@@ -400,42 +382,6 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--sp-8);
-	}
-	button,
-	.row-actions :global(button) {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--bg-subtle);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	button:hover:not(:disabled),
-	.row-actions :global(button:hover:not(:disabled)) {
-		background: var(--border);
-	}
-	button:disabled,
-	.row-actions :global(button:disabled) {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	button.danger {
-		color: var(--danger);
-		border-color: var(--danger);
-	}
-	button.danger:hover:not(:disabled) {
-		background: rgba(233, 79, 79, 0.18);
-	}
-	/* DEV-074 fix6 / DEV-116 fix: `--btn-primary-*` 토큰. */
-	.row-actions :global(button.save) {
-		background: var(--btn-primary-bg);
-		border-color: var(--btn-primary-border);
-		color: var(--btn-primary-text);
-	}
-	.row-actions :global(button.save:hover:not(:disabled)) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
 	}
 	/* BUG-143: 좁은 폭에선 셀 줄바꿈(스와치/hex 쌓임, CJK 버튼 글자 세로
 	   꺾임) 대신 표를 가로 스크롤. */
@@ -525,35 +471,6 @@
 		font-size: var(--fs-sm);
 	}
 
-	/* modal */
-	.ov {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 100;
-		display: flex;
-		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
-		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
-		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
-		align-items: flex-start;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		justify-content: center;
-		padding: var(--sp-16);
-	}
-	.modal {
-		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
-		margin: auto;
-		width: 100%;
-		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: var(--sp-16) var(--sp-24);
-	}
-	.modal-title {
-		margin: 0 0 var(--sp-12);
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
-	}
 	.modal-msg {
 		margin: 0 0 var(--sp-16);
 		font-size: var(--fs-md);
@@ -577,10 +494,5 @@
 	.form label > span {
 		flex: 0 0 4rem;
 		color: var(--text-muted);
-	}
-	.modal-actions {
-		display: flex;
-		gap: var(--sp-8);
-		justify-content: flex-end;
 	}
 </style>

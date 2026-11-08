@@ -10,6 +10,10 @@
      예전엔 window 에서 받아, 뒤 페이지에 포커스가 있어도 스친 Enter 가 '확인'을 눌렀다.
      위험한 동작(`danger`)은 '취소'에서 시작한다 — Enter 를 한 번 더 눌러도 지우지 않는다.
 
+  DEV-440 후속: 틀은 `Modal`, 단추는 `ActionButtons` — 창마다 따로 만들던 확인 창(보드 상태 바꾸기 · 퀘스트 삭제 ·
+  타입 바꾸기 · 관리 삭제 · 환영 화면 비우기 · 빼기)도 이걸 쓴다. 글 아래에 더 보일 것(경고 줄 · 파일 경로)은
+  `children` 으로 넘긴다. 일하는 중(`busy`)이면 단추가 꺼지고 닫히지 않는다.
+
   사용:
   ```svelte
   let confirmOpen = $state(false);
@@ -32,9 +36,9 @@
   ```
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
+	import Modal from '$lib/components/Modal.svelte';
 	// DEV-205 모듈1: 기본 라벨 i18n. 호출부가 라벨을 넘기면 그대로 쓰고,
 	// 미지정(undefined)일 때만 locale 사전 기본값으로 대체.
 	import { locale, t } from '$lib/stores/locale';
@@ -42,10 +46,21 @@
 	type Props = {
 		open: boolean;
 		title?: string;
-		message: string;
+		/** 글. 굵은 글 · 경로처럼 꾸밈이 필요하면 비우고 `children` 으로. */
+		message?: string;
 		confirmLabel?: string;
 		cancelLabel?: string;
 		danger?: boolean;
+		/** 일하는 중 — 단추를 끄고 닫히지 않는다. */
+		busy?: boolean;
+		/** 막의 겹침 순서(`Modal` 의 `z`). */
+		z?: number;
+		/** 상자 폭(`Modal` 의 `size`) — 고를 것이 딸린 확인 창(하위 퀘스트 함께 지우기 등)은 md. */
+		size?: 'sm' | 'md';
+		/** 하는 일 단추의 `data-testid`. */
+		testid?: string;
+		/** 글 아래에 더 보일 것 — 경고 줄 · 파일 경로 등. */
+		children?: Snippet;
 		onconfirm?: () => void;
 		oncancel?: () => void;
 	};
@@ -57,108 +72,68 @@
 		confirmLabel,
 		cancelLabel,
 		danger = false,
+		busy = false,
+		z,
+		size = 'sm',
+		testid,
+		children,
 		onconfirm,
 		oncancel
 	}: Props = $props();
 
-	// 같은 화면에 대화상자가 여럿 있어도 제목 · 문구 연결이 겹치지 않게.
 	const uid = $props.id();
 	const displayTitle = $derived(title ?? t('common.confirm', $locale));
 	const displayConfirm = $derived(confirmLabel ?? t('common.confirm', $locale));
 	const displayCancel = $derived(cancelLabel ?? t('common.cancel', $locale));
 
-	function close() {
-		oncancel?.();
-	}
-	function confirm() {
-		onconfirm?.();
-	}
-
-	// BUG-272: Esc 만 직접 받는다. Enter 는 포커스된 버튼이 스스로 누른다(브라우저 기본 동작).
-	// 대화상자 밖으로 안 올려 보낸다 — 아래 깔린 모달이 같은 Esc 로 함께 닫히지 않게.
-	function onkeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			e.stopPropagation();
-			close();
-		}
-	}
+	// BUG-272: Esc 는 Modal(modalFocus)이 받아 닫고 밖으로 올려 보내지 않는다. Enter 는 포커스된 단추가 스스로 누른다.
+	const close = () => oncancel?.();
 </script>
 
 {#if open}
-	<div
-		class="ov"
-		use:modalScrollLock
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) close();
-		}}
+	<Modal
+		title={displayTitle}
+		role="alertdialog"
+		{size}
+		closeButton={false}
+		{busy}
+		{z}
+		describedby="{uid}-msg"
+		onclose={close}
 	>
-		<div
-			class="modal-box modal"
-			role="alertdialog"
-			aria-modal="true"
-			aria-labelledby="{uid}-title"
-			aria-describedby="{uid}-msg"
-			tabindex="-1"
-			use:modalFocus
-			{onkeydown}
-		>
-			<h3 class="modal-title" id="{uid}-title">{displayTitle}</h3>
-			<p class="modal-msg" id="{uid}-msg">{message}</p>
-			<div class="modal-actions">
-				<ActionButtons
-					label={displayConfirm}
-					cancelLabel={displayCancel}
-					kind={danger ? 'danger' : 'primary'}
-					autofocus={danger ? 'cancel' : 'confirm'}
-					onconfirm={confirm}
-					oncancel={close}
-				/>
-			</div>
+		<div class="confirm-body" id="{uid}-msg">
+			{#if message}<p class="confirm-msg">{message}</p>{/if}
+			{@render children?.()}
 		</div>
-	</div>
+		{#snippet actions()}
+			<ActionButtons
+				label={displayConfirm}
+				cancelLabel={displayCancel}
+				kind={danger ? 'danger' : 'primary'}
+				autofocus={danger ? 'cancel' : 'confirm'}
+				{busy}
+				{testid}
+				onconfirm={() => onconfirm?.()}
+				oncancel={close}
+			/>
+		{/snippet}
+	</Modal>
 {/if}
 
 <style>
-	.ov {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 200;
+	.confirm-body {
 		display: flex;
-		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
-		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
-		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
-		align-items: flex-start;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		justify-content: center;
-		padding: var(--sp-16);
+		flex-direction: column;
+		gap: var(--sp-8);
 	}
-	.modal {
-		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
-		margin: auto;
-		width: 100%;
-		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: var(--sp-16) var(--sp-24) var(--sp-16);
+	.confirm-body :global(p) {
+		margin: 0;
 	}
-	.modal-title {
-		margin: 0 0 var(--sp-8);
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
-	}
-	.modal-msg {
-		margin: 0 0 var(--sp-16);
+	.confirm-msg {
+		margin: 0;
 		font-size: var(--fs-md);
 		color: var(--text);
 		white-space: pre-wrap;
 		word-break: break-word;
-	}
-	.modal-actions {
-		display: flex;
-		gap: var(--sp-8);
-		justify-content: flex-end;
 	}
 </style>

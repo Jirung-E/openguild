@@ -6,9 +6,8 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
+	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import DocLink from '$lib/components/DocLink.svelte';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
 	import {
@@ -573,7 +572,7 @@
 			<div class="title-row">
 				<span class="slug">{detail.campaign_slug}</span>
 				{#if editMode}
-					<input class="input title-input" bind:value={titleEdit} disabled={saving} />
+					<input class="input lg title-input" bind:value={titleEdit} disabled={saving} />
 				{:else}
 					<h1>{detail.title}</h1>
 				{/if}
@@ -882,35 +881,19 @@
 {#if comboOpen && detail}
 	<!-- BUG-160: 바깥(백드롭) 클릭으로 닫기 — ConfirmDialog 와 동일 패턴.
 	     e.target === e.currentTarget 가드로 내부 클릭 버블링은 제외. -->
-	<div
-		class="ov"
-		use:modalScrollLock
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) comboOpen = false;
-		}}
+	<Modal
+		title={t('campaign.linkQuestTitle', $locale)}
+		size="xl"
+		z={100}
+		onclose={() => (comboOpen = false)}
 	>
-		<div
-			class="modal-box modal-sm modal-combo"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: () => (comboOpen = false) }}
-		>
-			<div class="modal-head">
-				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
-				<button class="x" onclick={() => (comboOpen = false)}
-					><Icon name="close" size="1em" /></button
-				>
-			</div>
-			<QuestCombobox
-				quests={linkableQuests}
-				placeholder={t('campaign.searchPlaceholder', $locale)}
-				onselect={pickQuestToLink}
-				oncancel={() => (comboOpen = false)}
-			/>
-		</div>
-	</div>
+		<QuestCombobox
+			quests={linkableQuests}
+			placeholder={t('campaign.searchPlaceholder', $locale)}
+			onselect={pickQuestToLink}
+			oncancel={() => (comboOpen = false)}
+		/>
+	</Modal>
 {/if}
 
 <!-- DEV-396: 새 퀘스트 생성 — 만들어지면 이 캠페인에 연결한다. -->
@@ -1088,7 +1071,6 @@
 	}
 
 	.title-input {
-		font-size: var(--fs-lg);
 		width: 100%;
 		margin-bottom: var(--sp-8);
 	}
@@ -1256,12 +1238,6 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: var(--sp-12);
-	}
-	.modal-head h3 {
-		margin: 0;
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
 	}
 	.x {
 		background: none;

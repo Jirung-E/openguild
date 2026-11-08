@@ -1,10 +1,9 @@
 <script lang="ts">
+	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '../Icon.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onMount } from 'svelte';
 	import { adminApi, type QuestStatusWithCount } from '$lib/api/admin';
 	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
@@ -185,8 +184,12 @@
 	<div class="section-header">
 		<h2>Quest Statuses</h2>
 		<div class="actions">
-			<button onclick={openCreate} disabled={busy}>{t('adminStatuses.newStatus', $locale)}</button>
-			<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
+			<button class="btn btn-sm" onclick={openCreate} disabled={busy}
+				>{t('adminStatuses.newStatus', $locale)}</button
+			>
+			<button class="btn btn-sm" onclick={refresh} disabled={busy}
+				>{t('admin.refresh', $locale)}</button
+			>
 		</div>
 	</div>
 
@@ -266,8 +269,7 @@
 								<td class="row-actions">
 									<ActionButtons
 										label={t('common.save', $locale)}
-										buttonClass=""
-										primaryClass="save"
+										small
 										{busy}
 										onconfirm={saveEdit}
 										oncancel={cancelEdit}
@@ -294,11 +296,11 @@
 								</td>
 								<td class="count">{s.quest_count}</td>
 								<td class="row-actions">
-									<button onclick={() => startEdit(s)} disabled={busy}
+									<button class="btn btn-sm" onclick={() => startEdit(s)} disabled={busy}
 										>{t('adminTypes.edit', $locale)}</button
 									>
 									<button
-										class="danger"
+										class="btn btn-sm btn-danger"
 										onclick={() => askDelete(s)}
 										disabled={busy || s.quest_count > 0}
 										title={s.quest_count > 0
@@ -319,105 +321,83 @@
 </section>
 
 {#if creating}
-	<div class="ov" role="presentation" use:modalScrollLock>
-		<div
-			class="modal-box modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{
-				onEscape: () => {
-					if (!busy) creating = false;
-				}
-			}}
-		>
-			<h3 class="modal-title">{t('adminStatuses.newStatusTitle', $locale)}</h3>
-			<div class="form">
+	<Modal
+		title={t('adminStatuses.newStatusTitle', $locale)}
+		size="md"
+		z={100}
+		{busy}
+		onclose={() => (creating = false)}
+	>
+		<div class="form">
+			<label>
+				<span>name_en</span>
+				<input
+					class="input"
+					type="text"
+					bind:value={newNameEn}
+					placeholder={t('adminStatuses.nameEnPlaceholder', $locale)}
+					maxlength="32"
+					pattern="[A-Za-z][A-Za-z0-9 _\-]*"
+					title={t('adminStatuses.nameEnTitle', $locale)}
+					disabled={busy}
+				/>
+			</label>
+			<!-- DEV-015: 기본 언어=영어면 name_ko 입력 자체를 숨김. -->
+			{#if $locale === 'ko'}
 				<label>
-					<span>name_en</span>
+					<span>name_ko</span>
 					<input
 						class="input"
 						type="text"
-						bind:value={newNameEn}
-						placeholder={t('adminStatuses.nameEnPlaceholder', $locale)}
+						bind:value={newNameKo}
+						placeholder={t('adminStatuses.nameKoPlaceholder', $locale)}
 						maxlength="32"
-						pattern="[A-Za-z][A-Za-z0-9 _\-]*"
-						title={t('adminStatuses.nameEnTitle', $locale)}
 						disabled={busy}
 					/>
 				</label>
-				<!-- DEV-015: 기본 언어=영어면 name_ko 입력 자체를 숨김. -->
-				{#if $locale === 'ko'}
-					<label>
-						<span>name_ko</span>
-						<input
-							class="input"
-							type="text"
-							bind:value={newNameKo}
-							placeholder={t('adminStatuses.nameKoPlaceholder', $locale)}
-							maxlength="32"
-							disabled={busy}
-						/>
-					</label>
-				{/if}
-				<label>
-					<span>{t('adminTypes.colColor', $locale)}</span>
-					<input type="color" bind:value={newColor} disabled={busy} />
-					<code class="hex">{newColor}</code>
-				</label>
-			</div>
-			<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
-			<div class="modal-actions">
-				<ActionButtons
-					label={t('common.add', $locale)}
-					kind="accent"
-					{busy}
-					onconfirm={doCreate}
-					oncancel={() => (creating = false)}
-				/>
-			</div>
+			{/if}
+			<label>
+				<span>{t('adminTypes.colColor', $locale)}</span>
+				<input type="color" bind:value={newColor} disabled={busy} />
+				<code class="hex">{newColor}</code>
+			</label>
 		</div>
-	</div>
+		<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
+		{#snippet actions()}
+			<ActionButtons
+				label={t('common.add', $locale)}
+				{busy}
+				onconfirm={doCreate}
+				oncancel={() => (creating = false)}
+			/>
+		{/snippet}
+	</Modal>
 {/if}
 
-{#if confirmDelete}
-	<div class="ov" role="presentation" use:modalScrollLock>
-		<div
-			class="modal-box modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{
-				onEscape: () => {
-					if (!busy) confirmDelete = null;
-				}
-			}}
-		>
-			<h3 class="modal-title">{t('adminStatuses.deleteStatusTitle', $locale)}</h3>
-			<p class="modal-msg">
-				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>){t(
-					'adminStatuses.deleteMsg1',
-					$locale
-				)}
-				<br />
-				{t('adminStatuses.deleteMsg2', $locale)}<code>.guild/statuses/</code>{t(
-					'adminStatuses.deleteMsg3',
-					$locale
-				)}
-			</p>
-			<div class="modal-actions">
-				<ActionButtons
-					label={t('detail.delete', $locale)}
-					kind="danger"
-					autofocus="cancel"
-					{busy}
-					onconfirm={doDelete}
-					oncancel={() => (confirmDelete = null)}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
+<ConfirmDialog
+	open={confirmDelete !== null}
+	title={t('adminStatuses.deleteStatusTitle', $locale)}
+	confirmLabel={t('detail.delete', $locale)}
+	danger
+	{busy}
+	z={100}
+	onconfirm={doDelete}
+	oncancel={() => (confirmDelete = null)}
+>
+	{#if confirmDelete}
+		<p class="modal-msg">
+			<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>){t(
+				'adminStatuses.deleteMsg1',
+				$locale
+			)}
+			<br />
+			{t('adminStatuses.deleteMsg2', $locale)}<code>.guild/statuses/</code>{t(
+				'adminStatuses.deleteMsg3',
+				$locale
+			)}
+		</p>
+	{/if}
+</ConfirmDialog>
 
 <!-- DEV-119: slug rename cascade 확인 — 인앱 모달. -->
 <ConfirmDialog
@@ -462,43 +442,6 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--sp-8);
-	}
-	button,
-	.row-actions :global(button) {
-		padding: var(--sp-6) var(--sp-12);
-		background: var(--bg-subtle);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	button:hover:not(:disabled),
-	.row-actions :global(button:hover:not(:disabled)) {
-		background: var(--border);
-	}
-	button:disabled,
-	.row-actions :global(button:disabled) {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	button.danger {
-		color: var(--danger);
-		border-color: var(--danger);
-	}
-	button.danger:hover:not(:disabled) {
-		background: rgba(233, 79, 79, 0.18);
-	}
-	/* DEV-074 fix6 / DEV-116 fix: 다른 save 버튼과 동일 패턴 — `--btn-primary-*`
-	   토큰. 라이트모드에서도 명도 적정 (success 기반, fix5 의 #1a7f37). */
-	.row-actions :global(button.save) {
-		background: var(--btn-primary-bg);
-		border-color: var(--btn-primary-border);
-		color: var(--btn-primary-text);
-	}
-	.row-actions :global(button.save:hover:not(:disabled)) {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
 	}
 	/* BUG-143: 좁은 폭에선 셀 줄바꿈 대신 표 가로 스크롤 + 셀 nowrap. */
 	.table-wrap {
@@ -579,35 +522,6 @@
 		font-size: var(--fs-sm);
 	}
 
-	/* modal */
-	.ov {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 100;
-		display: flex;
-		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
-		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
-		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
-		align-items: flex-start;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		justify-content: center;
-		padding: var(--sp-16);
-	}
-	.modal {
-		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
-		margin: auto;
-		width: 100%;
-		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: var(--sp-16) var(--sp-24);
-	}
-	.modal-title {
-		margin: 0 0 var(--sp-12);
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
-	}
 	.modal-msg {
 		margin: 0 0 var(--sp-16);
 		font-size: var(--fs-md);
@@ -636,11 +550,6 @@
 		margin: 0 0 var(--sp-16);
 		font-size: var(--fs-sm);
 		color: var(--text-muted);
-	}
-	.modal-actions {
-		display: flex;
-		gap: var(--sp-8);
-		justify-content: flex-end;
 	}
 	/* BUG-275: '완료로 침' 칸 — 표시는 있었는데 스타일이 없었다. */
 	.done-mark {

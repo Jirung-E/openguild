@@ -9,8 +9,8 @@
   **어느 경우에도 편집기의 내 글을 지우지 않는다** — 닫으면 그대로 남는다(REQ-024).
 -->
 <script lang="ts">
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import {
 		assemble,
@@ -77,119 +77,83 @@
 			: lines.slice(0, 2).join('\n') + '\n…';
 	}
 
-	function onkeydown(e: KeyboardEvent) {
-		if (conflict && e.key === 'Escape') {
-			e.preventDefault();
-			onclose?.();
-		}
-	}
-
 	const title = $derived(conflict ? t(`editConflict.title.${conflict.reason}`, $locale) : '');
 </script>
 
-<svelte:window {onkeydown} />
-
 {#if conflict}
-	<div class="ov" use:modalScrollLock role="presentation">
-		<div
-			class="modal-box modal"
-			role="alertdialog"
-			aria-modal="true"
-			aria-labelledby="ec-title"
-			tabindex="-1"
-			use:modalFocus
-		>
-			<h3 class="modal-title" id="ec-title">{title}</h3>
-			<p class="modal-msg">{conflict.message}</p>
+	<Modal {title} role="alertdialog" size="xl" closeButton={false} onclose={() => onclose?.()}>
+		<p class="modal-msg">{conflict.message}</p>
 
-			{#if conflict.reason === 'text'}
-				<p class="hint">{t('editConflict.hint', $locale)}</p>
-				<div class="segments">
-					{#each conflict.segments as seg, si (si)}
-						{#if seg.kind === 'same'}
-							{@const prevConflict = si > 0}
-							{@const nextConflict = si < conflict.segments.length - 1}
-							{#if prevConflict || nextConflict}
-								<pre class="same">{prevConflict && nextConflict
-										? context(seg.text, 'after') + '\n' + context(seg.text, 'before')
-										: prevConflict
-											? context(seg.text, 'after')
-											: context(seg.text, 'before')}</pre>
-							{/if}
-						{:else}
-							{@const ci = conflicts.indexOf(seg)}
-							<div class="clash" class:done={choice[ci] !== undefined}>
-								<div class="side" class:chosen={choice[ci] === 'current' || choice[ci] === 'both'}>
-									<div class="side-label">{t('editConflict.current', $locale)}</div>
-									<pre>{seg.current || t('editConflict.empty', $locale)}</pre>
-								</div>
-								<div class="side" class:chosen={choice[ci] === 'mine' || choice[ci] === 'both'}>
-									<div class="side-label">{t('editConflict.mine', $locale)}</div>
-									<pre>{seg.mine || t('editConflict.empty', $locale)}</pre>
-								</div>
-								<div class="pick" role="group" aria-label={t('editConflict.pick', $locale)}>
-									<button class:on={choice[ci] === 'current'} onclick={() => pick(ci, 'current')}
-										>{t('editConflict.useCurrent', $locale)}</button
-									>
-									<button class:on={choice[ci] === 'mine'} onclick={() => pick(ci, 'mine')}
-										>{t('editConflict.useMine', $locale)}</button
-									>
-									<button class:on={choice[ci] === 'both'} onclick={() => pick(ci, 'both')}
-										>{t('editConflict.useBoth', $locale)}</button
-									>
-								</div>
-							</div>
+		{#if conflict.reason === 'text'}
+			<p class="hint">{t('editConflict.hint', $locale)}</p>
+			<div class="segments">
+				{#each conflict.segments as seg, si (si)}
+					{#if seg.kind === 'same'}
+						{@const prevConflict = si > 0}
+						{@const nextConflict = si < conflict.segments.length - 1}
+						{#if prevConflict || nextConflict}
+							<pre class="same">{prevConflict && nextConflict
+									? context(seg.text, 'after') + '\n' + context(seg.text, 'before')
+									: prevConflict
+										? context(seg.text, 'after')
+										: context(seg.text, 'before')}</pre>
 						{/if}
-					{/each}
-				</div>
-			{:else if conflict.reason === 'stale' && conflict.current != null}
-				<div class="side-label">{t('editConflict.current', $locale)}</div>
-				<pre class="current-all">{conflict.current}</pre>
-			{/if}
-
-			<div class="modal-actions">
+					{:else}
+						{@const ci = conflicts.indexOf(seg)}
+						<div class="clash" class:done={choice[ci] !== undefined}>
+							<div class="side" class:chosen={choice[ci] === 'current' || choice[ci] === 'both'}>
+								<div class="side-label">{t('editConflict.current', $locale)}</div>
+								<pre>{seg.current || t('editConflict.empty', $locale)}</pre>
+							</div>
+							<div class="side" class:chosen={choice[ci] === 'mine' || choice[ci] === 'both'}>
+								<div class="side-label">{t('editConflict.mine', $locale)}</div>
+								<pre>{seg.mine || t('editConflict.empty', $locale)}</pre>
+							</div>
+							<div class="seg pick" role="group" aria-label={t('editConflict.pick', $locale)}>
+								<button class:on={choice[ci] === 'current'} onclick={() => pick(ci, 'current')}
+									>{t('editConflict.useCurrent', $locale)}</button
+								>
+								<button class:on={choice[ci] === 'mine'} onclick={() => pick(ci, 'mine')}
+									>{t('editConflict.useMine', $locale)}</button
+								>
+								<button class:on={choice[ci] === 'both'} onclick={() => pick(ci, 'both')}
+									>{t('editConflict.useBoth', $locale)}</button
+								>
+							</div>
+						</div>
+					{/if}
+				{/each}
+			</div>
+		{:else if conflict.reason === 'stale' && conflict.current != null}
+			<div class="side-label">{t('editConflict.current', $locale)}</div>
+			<pre class="current-all">{conflict.current}</pre>
+		{/if}
+		{#snippet actions()}
+			{#if conflict?.reason === 'text'}
+				<ActionButtons
+					label={t('editConflict.apply', $locale)}
+					cancelLabel={t('editConflict.keepEditing', $locale)}
+					disabled={!allChosen}
+					onconfirm={resolve}
+					oncancel={() => onclose?.()}
+				/>
+			{:else if conflict?.reason === 'renamed' && conflict.new_id}
+				<ActionButtons
+					label={t('editConflict.openNew', $locale).replace('{id}', conflict.new_id)}
+					cancelLabel={t('editConflict.keepEditing', $locale)}
+					onconfirm={openNew}
+					oncancel={() => onclose?.()}
+				/>
+			{:else}
 				<button class="btn" onclick={() => onclose?.()}
 					>{t('editConflict.keepEditing', $locale)}</button
 				>
-				{#if conflict.reason === 'text'}
-					<button class="btn btn-primary" disabled={!allChosen} onclick={resolve}
-						>{t('editConflict.apply', $locale)}</button
-					>
-				{:else if conflict.reason === 'renamed' && conflict.new_id}
-					<button class="btn btn-primary" onclick={openNew}
-						>{t('editConflict.openNew', $locale).replace('{id}', conflict.new_id)}</button
-					>
-				{/if}
-			</div>
-		</div>
-	</div>
+			{/if}
+		{/snippet}
+	</Modal>
 {/if}
 
 <style>
-	.ov {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 200;
-		display: flex;
-		align-items: flex-start;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		justify-content: center;
-		padding: var(--sp-16);
-	}
-	.modal {
-		margin: auto;
-		width: 100%;
-		max-width: calc(52rem * var(--popup-scale, 1));
-		padding: var(--sp-16) var(--sp-24) var(--sp-16);
-	}
-	.modal-title {
-		margin: 0 0 var(--sp-8);
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
-	}
 	.modal-msg,
 	.hint {
 		margin: 0 0 var(--sp-12);
@@ -243,25 +207,10 @@
 		color: var(--text-muted);
 		margin-bottom: var(--sp-4);
 	}
+	/* DEV-440 후속: 셋 중 하나 고르기 — 모양은 공통 `.seg`, 여기는 자리(오른쪽 끝)만. */
 	.pick {
 		grid-column: 1 / -1;
-		display: flex;
-		gap: var(--sp-6);
-		justify-content: flex-end;
-	}
-	.pick button {
-		padding: var(--sp-4) var(--sp-12);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
-	.pick button.on {
-		background: var(--btn-primary-bg);
-		border-color: var(--btn-primary-border);
-		color: var(--btn-primary-text);
+		justify-self: end;
 	}
 	.current-all {
 		padding: var(--sp-8);
@@ -270,10 +219,5 @@
 		margin-bottom: var(--sp-16);
 		max-height: 20rem;
 		overflow: auto;
-	}
-	.modal-actions {
-		display: flex;
-		gap: var(--sp-8);
-		justify-content: flex-end;
 	}
 </style>

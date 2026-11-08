@@ -1303,7 +1303,7 @@
 			{/if}
 			<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 			<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
-				<select class="sort-sel" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
+				<select class="input sm" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
 					{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
 						<option value={k}>{label}</option>
 					{/each}
@@ -1680,7 +1680,7 @@
 						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 						<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
 							<select
-								class="sort-sel"
+								class="input sm"
 								bind:value={docSortKey}
 								title={t('library.sortTitle', $locale)}
 							>
@@ -2645,18 +2645,11 @@
 		gap: var(--sp-4);
 		flex: none;
 	}
-	.sort-sel {
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
+	/* DEV-440 후속: 옆 고르기(`.input.sm`)와 같은 높이의 정사각형. */
 	.sort-dir {
-		width: 1.7rem;
-		height: 1.7rem;
+		box-sizing: border-box;
+		width: var(--ctl-h-sm);
+		height: var(--ctl-h-sm);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);

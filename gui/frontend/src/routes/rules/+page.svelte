@@ -727,15 +727,9 @@
 	.rule-item:hover {
 		background: var(--bg-elevated);
 	}
-	/* REQ-013: 검색 입력 — 도서관(.search-input)과 같은 치수·색. */
+	/* REQ-013: 검색 입력 — 모양은 공통 `.input`(DEV-440 후속), 여기는 폭 · 여백만. */
 	.rule-search {
 		width: 100%;
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		color: var(--text);
-		border-radius: var(--r-sm);
-		font-size: var(--fs-sm);
 		margin: var(--sp-6) 0;
 		box-sizing: border-box;
 	}

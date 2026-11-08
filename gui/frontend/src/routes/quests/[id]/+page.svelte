@@ -1,7 +1,7 @@
 <script lang="ts">
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import DocLink from '$lib/components/DocLink.svelte';
 	import { applyStatusUpdate } from '$lib/utils/quest-detail';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
@@ -840,7 +840,7 @@
 			>
 				<label class="field-label">
 					<span>{t('qd.titleLabel', $locale)}</span>
-					<input class="edit-title" type="text" bind:value={editTitle} />
+					<input class="input lg edit-title" type="text" bind:value={editTitle} />
 				</label>
 
 				<div class="field-label">
@@ -1351,81 +1351,43 @@
 	<!-- BUG-160: 바깥(백드롭) 클릭으로 닫기 — ConfirmDialog 와 동일 패턴.
 	     e.target === e.currentTarget 가드가 핵심: 모달 내부 클릭이 버블링돼
 	     닫히는 걸 막는다. -->
-	<div
-		class="ov"
-		use:modalScrollLock
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) closeCombo();
-		}}
+	<Modal
+		title={comboMode === 'parent'
+			? t('qd.comboParent', $locale)
+			: comboMode === 'sub'
+				? t('qd.comboSub', $locale)
+				: comboMode === 'prereq'
+					? t('qd.comboPrereq', $locale)
+					: t('qd.comboSuccessor', $locale)}
+		size="xl"
+		z={100}
+		onclose={closeCombo}
 	>
-		<div
-			class="modal-box modal-sm modal-combo"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: closeCombo }}
-		>
-			<div class="modal-head">
-				<h3>
-					{#if comboMode === 'parent'}{t(
-							'qd.comboParent',
-							$locale
-						)}{:else if comboMode === 'sub'}{t(
-							'qd.comboSub',
-							$locale
-						)}{:else if comboMode === 'prereq'}{t('qd.comboPrereq', $locale)}{:else}{t(
-							'qd.comboSuccessor',
-							$locale
-						)}{/if}
-				</h3>
-				<button class="x" onclick={closeCombo}><Icon name="close" size="1em" /></button>
-			</div>
-			{#if candidatesLoading}
-				<div class="combo-state">{t('qd.loadingCandidates', $locale)}</div>
-			{:else}
-				<QuestCombobox
-					quests={candidates}
-					placeholder={t('qd.searchByIdTitle', $locale)}
-					onselect={pickCandidate}
-					oncancel={closeCombo}
-				/>
-			{/if}
-			{#if comboError}<p class="combo-err">{comboError}</p>{/if}
-		</div>
-	</div>
+		{#if candidatesLoading}
+			<div class="combo-state">{t('qd.loadingCandidates', $locale)}</div>
+		{:else}
+			<QuestCombobox
+				quests={candidates}
+				placeholder={t('qd.searchByIdTitle', $locale)}
+				onselect={pickCandidate}
+				oncancel={closeCombo}
+			/>
+		{/if}
+		{#if comboError}<p class="combo-err">{comboError}</p>{/if}
+	</Modal>
 {/if}
 
 <!-- BUG-030: 캠페인 연결 콤보박스 모달 (sub/prereq 와 동일 패턴) -->
 {#if showCampaignCombo && detail}
-	<div
-		class="ov"
-		use:modalScrollLock
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) closeCampaignCombo();
-		}}
-	>
-		<div
-			class="modal-box modal-sm modal-combo"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: closeCampaignCombo }}
-		>
-			<div class="modal-head">
-				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
-				<button class="x" onclick={closeCampaignCombo}><Icon name="close" size="1em" /></button>
-			</div>
-			<CampaignCombobox
-				campaigns={campaignCandidates}
-				placeholder={t('qd.campaignSearchPlaceholder', $locale)}
-				onselect={linkCampaign}
-				oncancel={closeCampaignCombo}
-			/>
-			{#if campaignLinkError}<p class="combo-err">{campaignLinkError}</p>{/if}
-		</div>
-	</div>
+	<Modal title={t('qd.linkCampaignTitle', $locale)} size="xl" z={100} onclose={closeCampaignCombo}>
+		<CampaignCombobox
+			campaigns={campaignCandidates}
+			placeholder={t('qd.campaignSearchPlaceholder', $locale)}
+			onselect={linkCampaign}
+			oncancel={closeCampaignCombo}
+		/>
+		{#if campaignLinkError}<p class="combo-err">{campaignLinkError}</p>{/if}
+	</Modal>
 {/if}
 
 <!-- DEV-278: 연관 퀘스트 신규 생성 모달 — 서브/선행/후속 공용.
@@ -1443,151 +1405,102 @@
 	{@const target = confirmTypeChange}
 	<!-- BUG-160: 바깥 클릭 = 취소. 단 변경이 진행 중이면 닫지 않는다
 	     (요청은 계속 날아가는데 UI 만 사라져 결과를 못 보는 상태 방지). -->
-	<div
-		class="ov"
-		use:modalScrollLock
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget && !changingType) confirmTypeChange = null;
-		}}
+	<ConfirmDialog
+		open
+		title={t('qd.changeTypeTitle', $locale)}
+		confirmLabel={changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
+		danger
+		size="md"
+		busy={changingType}
+		z={100}
+		onconfirm={doChangeType}
+		oncancel={() => (confirmTypeChange = null)}
 	>
-		<div
-			class="modal-box modal-sm"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{
-				onEscape: () => {
-					if (!changingType) confirmTypeChange = null;
-				}
-			}}
-		>
-			<div class="modal-head">
-				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
-				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
-					><Icon name="close" size="1em" /></button
-				>
-			</div>
-			<p class="del-msg">
-				<code>{detail.quest_id}</code>{t('qd.changeTypeMsg1', $locale)}<strong
-					>{target.prefix}</strong
-				>{t('qd.changeTypeMsg2', $locale)}
-				<code>{target.prefix}-NNN</code>{t('qd.changeTypeMsg3', $locale)}
-			</p>
+		<p class="del-msg">
+			<code>{detail.quest_id}</code>{t('qd.changeTypeMsg1', $locale)}<strong>{target.prefix}</strong
+			>{t('qd.changeTypeMsg2', $locale)}
+			<code>{target.prefix}-NNN</code>{t('qd.changeTypeMsg3', $locale)}
+		</p>
+		<p class="del-prereq">
+			<Icon name="warn" size="1em" />
+			{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t(
+				'qd.changeTypeWarnPost',
+				$locale
+			)}
+			{t('qd.autoBlockNote', $locale)}
+			{t('qd.autoUpdated', $locale)}
+		</p>
+		<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
+		     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
+		{#if editMode}
 			<p class="del-prereq">
 				<Icon name="warn" size="1em" />
-				{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t(
-					'qd.changeTypeWarnPost',
+				{t('qd.immediateNavWarn', $locale)}<strong>{t('qd.unsavedWarnStrong', $locale)}</strong>{t(
+					'qd.unsavedWarnRest',
 					$locale
 				)}
-				{t('qd.autoBlockNote', $locale)}
-				{t('qd.autoUpdated', $locale)}
 			</p>
-			<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
-			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
-			{#if editMode}
-				<p class="del-prereq">
-					<Icon name="warn" size="1em" />
-					{t('qd.immediateNavWarn', $locale)}<strong>{t('qd.unsavedWarnStrong', $locale)}</strong
-					>{t('qd.unsavedWarnRest', $locale)}
-				</p>
-			{/if}
-			<div class="del-actions">
-				<ActionButtons
-					label={changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
-					kind="danger"
-					autofocus="cancel"
-					busy={changingType}
-					onconfirm={doChangeType}
-					oncancel={() => (confirmTypeChange = null)}
-				/>
-			</div>
-		</div>
-	</div>
+		{/if}
+	</ConfirmDialog>
 {/if}
 
 <!-- 삭제 모달 -->
 {#if deleteModal && detail}
 	<!-- BUG-160: 바깥 클릭 = 취소. 삭제 진행 중엔 닫지 않음(위와 동일 이유). -->
-	<div
-		class="ov"
-		use:modalScrollLock
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget && !deleting) deleteModal = false;
-		}}
+	<ConfirmDialog
+		open
+		title={`${detail.quest_id} ${t('detail.delete', $locale)}`}
+		confirmLabel={deleting ? t('quest.delete.deleting', $locale) : t('detail.delete', $locale)}
+		danger
+		size="md"
+		busy={deleting}
+		testid="confirm-delete"
+		z={100}
+		onconfirm={confirmDelete}
+		oncancel={() => (deleteModal = false)}
 	>
-		<div
-			class="modal-box modal-sm"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{
-				onEscape: () => {
-					if (!deleting) deleteModal = false;
-				}
-			}}
-		>
-			<div class="modal-head">
-				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
-				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}
-					><Icon name="close" size="1em" /></button
-				>
-			</div>
-			<p class="del-msg">{t('quest.delete.msg', $locale)}</p>
-			{#if detail.children.length > 0}
-				<div class="del-sub">
-					<div class="del-sub-head">
-						<p class="del-sub-title">{t('quest.delete.subTitle', $locale)}</p>
-						<label class="del-sub-all">
-							<input
-								type="checkbox"
-								checked={cascadeSet.size === detail.children.length}
-								indeterminate={cascadeSet.size > 0 && cascadeSet.size < detail.children.length}
-								onchange={toggleAllCascade}
-								data-testid="cascade-all"
-							/>
-							<span>{t('quest.delete.selectAll', $locale)}</span>
-						</label>
-					</div>
-					<p class="del-sub-help">
-						{t('quest.delete.subHelp', $locale)}
-					</p>
-					<ul class="del-sub-list" bind:this={delSubListEl}>
-						{#each detail.children as sq (sq.id)}
-							<li>
-								<label>
-									<input
-										type="checkbox"
-										checked={cascadeSet.has(sq.id)}
-										onchange={() => toggleCascade(sq.id)}
-										data-testid="cascade-{sq.id}"
-									/>
-									<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
-									<span class="del-sub-title-text">{sq.title}</span>
-								</label>
-							</li>
-						{/each}
-					</ul>
-					{#if delSubListEl}
-						<OverlayScrollbar target={delSubListEl} />
-					{/if}
+		<p class="del-msg">{t('quest.delete.msg', $locale)}</p>
+		{#if detail.children.length > 0}
+			<div class="del-sub">
+				<div class="del-sub-head">
+					<p class="del-sub-title">{t('quest.delete.subTitle', $locale)}</p>
+					<label class="del-sub-all">
+						<input
+							type="checkbox"
+							checked={cascadeSet.size === detail.children.length}
+							indeterminate={cascadeSet.size > 0 && cascadeSet.size < detail.children.length}
+							onchange={toggleAllCascade}
+							data-testid="cascade-all"
+						/>
+						<span>{t('quest.delete.selectAll', $locale)}</span>
+					</label>
 				</div>
-			{/if}
-			<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
-			<div class="del-actions">
-				<ActionButtons
-					label={deleting ? t('quest.delete.deleting', $locale) : t('detail.delete', $locale)}
-					kind="danger"
-					autofocus="cancel"
-					busy={deleting}
-					testid="confirm-delete"
-					onconfirm={confirmDelete}
-					oncancel={() => (deleteModal = false)}
-				/>
+				<p class="del-sub-help">
+					{t('quest.delete.subHelp', $locale)}
+				</p>
+				<ul class="del-sub-list" bind:this={delSubListEl}>
+					{#each detail.children as sq (sq.id)}
+						<li>
+							<label>
+								<input
+									type="checkbox"
+									checked={cascadeSet.has(sq.id)}
+									onchange={() => toggleCascade(sq.id)}
+									data-testid="cascade-{sq.id}"
+								/>
+								<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
+								<span class="del-sub-title-text">{sq.title}</span>
+							</label>
+						</li>
+					{/each}
+				</ul>
+				{#if delSubListEl}
+					<OverlayScrollbar target={delSubListEl} />
+				{/if}
 			</div>
-		</div>
-	</div>
+		{/if}
+		<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
+	</ConfirmDialog>
 {/if}
 
 <!-- DEV-109/123/127: 우하단 floating 점프 버튼 cluster. -->
@@ -1817,19 +1730,10 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
+	/* 모양은 `.input.lg` — 여기는 폭만. */
 	.edit-title {
-		padding: var(--sp-8) var(--sp-12);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-strong);
-		font-size: var(--fs-lg);
-		outline: none;
 		width: 100%;
 		box-sizing: border-box;
-	}
-	.edit-title:focus {
-		border-color: var(--accent);
 	}
 	.edit-select {
 		padding: var(--sp-6) var(--sp-8);
@@ -2221,12 +2125,6 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: var(--sp-12);
-	}
-	.modal-head h3 {
-		margin: 0;
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
 	}
 	.x {
 		background: none;

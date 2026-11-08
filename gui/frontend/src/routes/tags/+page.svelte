@@ -260,7 +260,7 @@
 		<h1>{t('tags.title', $locale)}</h1>
 		<span class="count">{t('tags.count', $locale).replace('{n}', String(rows.length))}</span>
 		<input
-			class="filter"
+			class="input filter"
 			bind:value={filter}
 			placeholder={t('tags.filterPlaceholder', $locale)}
 			spellcheck="false"
@@ -380,19 +380,9 @@
 	}
 	.filter {
 		/* 남은 폭을 채운다. 예전 `margin-left:auto` + 고정 폭은 좁은 화면에서 줄이 넘어가면
-		   왼쪽에 빈자리를 남겼다(브라우저로 확인). */
+		   왼쪽에 빈자리를 남겼다(브라우저로 확인). 모양은 공통 `.input`. */
 		flex: 1 1 12rem;
 		min-width: 8rem;
-		padding: var(--sp-6) var(--sp-12);
-		font-size: var(--fs-md);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		background: var(--bg-subtle);
-		color: var(--text-strong);
-		outline: none;
-	}
-	.filter:focus {
-		border-color: var(--accent);
 	}
 	.empty {
 		padding: var(--sp-32);

@@ -8,12 +8,17 @@
 // 이 검사는 `<button …>{t('….cancel', …)}` 처럼 **취소 글을 직접 단 단추**를 막는다. 취소 단추는
 // `ActionButtons` 가 그린다(글을 바꾸려면 `cancelLabel`). 하나로 "추가 ↔ 취소" 를 오가는 토글 단추
 // (`{open ? t('common.cancel') : t('…add')}`)와 닫기 X 의 `aria-label` 은 쌍이 아니라서 걸리지 않는다.
+//
+// DEV-440 후속: 모달 틀도 `Modal` 하나 — 창마다 막 · 상자 · 제목 · X 를 따로 그리던 것(X 만 세 가지)을 막는다.
+// `aria-modal` 을 직접 단 요소가 `Modal.svelte` 밖에 있으면 실패한다.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
 const CANON = 'lib/components/ActionButtons.svelte';
+const MODAL = 'lib/components/Modal.svelte';
+const DIRECT_MODAL = /aria-modal=/g;
 
 /** 단추 여는 태그 바로 뒤의 글이 `{t('….cancel'` 이나 `{t('common.no'` 로 시작하면 직접 단 취소 단추다. */
 const DIRECT_CANCEL = /<button\b[^>]*>\s*\{t\('(?:[\w.]*\.cancel|common\.no)'/g;
@@ -34,7 +39,13 @@ function check(path) {
 	const text = readFileSync(path, 'utf8');
 	for (const m of text.matchAll(DIRECT_CANCEL)) {
 		const line = text.slice(0, m.index).split('\n').length;
-		violations.push(`${rel}:${line}`);
+		violations.push(`${rel}:${line}  취소 단추 → ActionButtons`);
+	}
+	if (rel !== MODAL) {
+		for (const m of text.matchAll(DIRECT_MODAL)) {
+			const line = text.slice(0, m.index).split('\n').length;
+			violations.push(`${rel}:${line}  모달 틀 → Modal`);
+		}
 	}
 }
 
@@ -42,9 +53,9 @@ walk(SRC);
 
 if (violations.length > 0) {
 	console.error(
-		'취소 단추를 직접 달았습니다 — `ActionButtons` 로 바꾸세요(순서: 취소 왼쪽, 하는 일 오른쪽):'
+		'공통 부품을 거치지 않았습니다 — 취소 단추는 `ActionButtons`(취소 왼쪽, 하는 일 오른쪽), 모달 틀은 `Modal`:'
 	);
 	for (const v of violations) console.error(`  ${v}`);
 	process.exit(1);
 }
-console.log('check:actions — 취소 · 확인 단추는 모두 ActionButtons 로 그립니다.');
+console.log('check:actions — 취소 · 확인 단추는 ActionButtons, 모달 틀은 Modal 로 그립니다.');

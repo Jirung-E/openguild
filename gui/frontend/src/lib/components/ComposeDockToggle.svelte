@@ -49,11 +49,11 @@
 		align-items: center;
 		justify-content: center;
 		box-sizing: border-box;
-		width: 1.75rem;
-		height: 1.5rem;
+		width: var(--ctl-h-sm);
+		height: var(--ctl-h-sm);
 		padding: 0;
 		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
+		border-radius: var(--r-md);
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;

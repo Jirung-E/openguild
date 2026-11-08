@@ -348,17 +348,15 @@
 			<dl class="info-grid">
 				<dt>{t('settings.tabBehavior', $locale)}</dt>
 				<dd>
-					<div class="theme-toggle" role="group" aria-label={t('settings.tabBehavior', $locale)}>
+					<div class="seg" role="group" aria-label={t('settings.tabBehavior', $locale)}>
 						<button
-							class="th-btn"
-							class:active={$editorSettings.tabMode === 'tab'}
+							class:on={$editorSettings.tabMode === 'tab'}
 							onclick={() => setTabMode('tab')}
 							aria-pressed={$editorSettings.tabMode === 'tab'}
 							>{t('settings.tabChar', $locale)}</button
 						>
 						<button
-							class="th-btn"
-							class:active={$editorSettings.tabMode === 'space'}
+							class:on={$editorSettings.tabMode === 'space'}
 							onclick={() => setTabMode('space')}
 							aria-pressed={$editorSettings.tabMode === 'space'}
 							>{t('settings.tabSpace', $locale)}</button
@@ -370,11 +368,10 @@
 				</dd>
 				<dt>{t('settings.indentSize', $locale)}</dt>
 				<dd>
-					<div class="theme-toggle" role="group" aria-label={t('settings.indentSize', $locale)}>
+					<div class="seg" role="group" aria-label={t('settings.indentSize', $locale)}>
 						{#each [2, 4] as n (n)}
 							<button
-								class="th-btn"
-								class:active={$editorSettings.indentSize === n}
+								class:on={$editorSettings.indentSize === n}
 								onclick={() => setIndentSize(n as IndentSize)}
 								aria-pressed={$editorSettings.indentSize === n}
 								>{n}{t('settings.indentUnit', $locale)}</button
@@ -389,16 +386,14 @@
 				     하나로 묶어 켜고 끔. -->
 				<dt>{t('settings.autoFormat', $locale)}</dt>
 				<dd>
-					<div class="theme-toggle" role="group" aria-label={t('settings.autoFormat', $locale)}>
+					<div class="seg" role="group" aria-label={t('settings.autoFormat', $locale)}>
 						<button
-							class="th-btn"
-							class:active={$editorSettings.autoFormat}
+							class:on={$editorSettings.autoFormat}
 							onclick={() => setAutoFormat(true)}
 							aria-pressed={$editorSettings.autoFormat}>{t('settings.on', $locale)}</button
 						>
 						<button
-							class="th-btn"
-							class:active={!$editorSettings.autoFormat}
+							class:on={!$editorSettings.autoFormat}
 							onclick={() => setAutoFormat(false)}
 							aria-pressed={!$editorSettings.autoFormat}>{t('settings.off', $locale)}</button
 						>
@@ -434,20 +429,14 @@
 				{#if isTauri}
 					<dt>{t('settings.autoUpdateCheck', $locale)}</dt>
 					<dd>
-						<div
-							class="theme-toggle"
-							role="group"
-							aria-label={t('settings.autoUpdateCheck', $locale)}
-						>
+						<div class="seg" role="group" aria-label={t('settings.autoUpdateCheck', $locale)}>
 							<button
-								class="th-btn"
-								class:active={$autoUpdateCheck}
+								class:on={$autoUpdateCheck}
 								onclick={() => setAutoUpdateCheck(true)}
 								aria-pressed={$autoUpdateCheck}>{t('settings.on', $locale)}</button
 							>
 							<button
-								class="th-btn"
-								class:active={!$autoUpdateCheck}
+								class:on={!$autoUpdateCheck}
 								onclick={() => setAutoUpdateCheck(false)}
 								aria-pressed={!$autoUpdateCheck}>{t('settings.off', $locale)}</button
 							>
@@ -623,23 +612,20 @@
 				{#if hdrSupported}
 					<dt>{t('settings.hdrLimit', $locale)}</dt>
 					<dd>
-						<div class="theme-toggle" role="group" aria-label={t('settings.hdrLimit', $locale)}>
+						<div class="seg" role="group" aria-label={t('settings.hdrLimit', $locale)}>
 							<button
-								class="th-btn"
-								class:active={$hdrLimit === 'no-limit'}
+								class:on={$hdrLimit === 'no-limit'}
 								onclick={() => setHdrLimit('no-limit')}
 								aria-pressed={$hdrLimit === 'no-limit'}>{t('settings.hdrLimitOn', $locale)}</button
 							>
 							<button
-								class="th-btn"
-								class:active={$hdrLimit === 'constrained'}
+								class:on={$hdrLimit === 'constrained'}
 								onclick={() => setHdrLimit('constrained')}
 								aria-pressed={$hdrLimit === 'constrained'}
 								>{t('settings.hdrLimitConstrained', $locale)}</button
 							>
 							<button
-								class="th-btn"
-								class:active={$hdrLimit === 'standard'}
+								class:on={$hdrLimit === 'standard'}
 								onclick={() => setHdrLimit('standard')}
 								aria-pressed={$hdrLimit === 'standard'}>{t('settings.hdrLimitOff', $locale)}</button
 							>
@@ -703,11 +689,10 @@
 				<!-- DEV-074: 테마 (Dark / Light / System). DEV-114: 커스텀 프리셋도 옆에 노출. -->
 				<dt>{t('settings.theme', $locale)}</dt>
 				<dd>
-					<div class="theme-toggle" role="group" aria-label={t('settings.theme', $locale)}>
+					<div class="seg" role="group" aria-label={t('settings.theme', $locale)}>
 						{#each ['dark', 'light', 'system'] as opt (opt)}
 							<button
-								class="th-btn"
-								class:active={!$activeCustomTheme && $theme === opt}
+								class:on={!$activeCustomTheme && $theme === opt}
 								onclick={() => pickBaseTheme(opt as ThemeChoice)}
 								aria-pressed={!$activeCustomTheme && $theme === opt}
 							>
@@ -720,8 +705,8 @@
 						{/each}
 						{#each $customThemes as p (p.name)}
 							<button
-								class="th-btn custom"
-								class:active={$activeCustomTheme === p.name}
+								class="custom"
+								class:on={$activeCustomTheme === p.name}
 								onclick={() => pickCustomPreset(p.name)}
 								aria-pressed={$activeCustomTheme === p.name}
 								title={`${t('settings.customBasedOn', $locale)}${p.base === 'dark' ? t('settings.themeDark', $locale) : t('settings.themeLight', $locale)}${t('settings.basedSuffix', $locale)}`}
@@ -738,23 +723,23 @@
 				<dd>
 					<div class="ct-actions">
 						{#if !creatingPreset}
-							<button class="th-btn" onclick={() => (creatingPreset = true)}
+							<button class="btn btn-sm" onclick={() => (creatingPreset = true)}
 								>{t('settings.newPreset', $locale)}</button
 							>
 						{/if}
 						{#if $customThemes.length > 0}
-							<button class="th-btn" onclick={exportPresets}
+							<button class="btn btn-sm" onclick={exportPresets}
 								>{t('settings.exportJson', $locale)}</button
 							>
 						{/if}
 						{#if !importing}
-							<button class="th-btn" onclick={() => (importing = true)}
+							<button class="btn btn-sm" onclick={() => (importing = true)}
 								>{t('settings.import', $locale)}</button
 							>
 						{/if}
 						{#if activePreset}
 							<button
-								class="th-btn danger"
+								class="btn btn-sm btn-danger"
 								onclick={() => (confirmDeletePresetName = activePreset?.name ?? null)}
 							>
 								{t('settings.deletePresetBtnPrefix', $locale)}{activePreset.name}{t(
@@ -774,15 +759,10 @@
 								bind:value={newPresetName}
 								onkeydown={(e) => e.key === 'Enter' && submitCreatePreset()}
 							/>
-							<div
-								class="theme-toggle"
-								role="group"
-								aria-label={t('settings.basedOnTheme', $locale)}
-							>
+							<div class="seg" role="group" aria-label={t('settings.basedOnTheme', $locale)}>
 								{#each ['dark', 'light'] as b (b)}
 									<button
-										class="th-btn"
-										class:active={newPresetBase === b}
+										class:on={newPresetBase === b}
 										onclick={() => (newPresetBase = b as EffectiveTheme)}
 									>
 										{b === 'dark'
@@ -794,7 +774,7 @@
 							<ActionButtons
 								label={t('settings.createBtn', $locale)}
 								kind="plain"
-								buttonClass="th-btn"
+								small
 								onconfirm={submitCreatePreset}
 								oncancel={() => {
 									creatingPreset = false;
@@ -819,7 +799,7 @@
 								<ActionButtons
 									label={t('settings.import', $locale)}
 									kind="plain"
-									buttonClass="th-btn"
+									small
 									disabled={!importText.trim()}
 									onconfirm={importPresets}
 									oncancel={() => {
@@ -872,12 +852,11 @@
 				<!-- DEV-015: 언어 토글 — DEV-205 로 앱 전역 적용됨. -->
 				<dt>{t('settings.language', $locale)}</dt>
 				<dd>
-					<div class="theme-toggle" role="group" aria-label={t('settings.language', $locale)}>
+					<div class="seg" role="group" aria-label={t('settings.language', $locale)}>
 						<!-- 언어 이름 자체는 번역 대상이 아님 — 항상 고정 표기. -->
 						{#each [{ value: 'ko', label: '한국어' }, { value: 'en', label: 'English' }] as opt (opt.value)}
 							<button
-								class="th-btn"
-								class:active={$locale === opt.value}
+								class:on={$locale === opt.value}
 								onclick={() => setLocale(opt.value as Locale)}
 								aria-pressed={$locale === opt.value}
 							>
@@ -1154,57 +1133,14 @@
 	}
 
 	/* DEV-074: 테마 토글 — segmented (QuestList 의 view-toggle 과 같은 패턴). */
-	.theme-toggle {
-		/* BUG-254 계열(admin 보고): 글자는 rem 인데 여백만 px 이라 배율을
-		   올리면 **주변 컴포넌트와 다른 속도로** 커졌다. 여백도 rem 으로.
-		   16px 기준 환산이라 기본 배율에서 치수는 그대로다. */
-		display: inline-flex;
-		gap: 0;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		padding: var(--sp-2);
-	}
-	.th-btn,
-	.ct-create :global(.th-btn),
-	.ct-actions :global(.th-btn) {
-		padding: var(--sp-4) var(--sp-12);
-		background: transparent;
-		border: none;
-		border-radius: var(--r-sm);
-		color: var(--text-muted);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			color var(--dur-fast);
-	}
-	.th-btn:hover,
-	.ct-create :global(.th-btn:hover),
-	.ct-actions :global(.th-btn:hover) {
-		color: var(--text);
-	}
-	.th-btn.active {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
 	/* DEV-114: 커스텀 프리셋 버튼 — 기본 3개와 구분되는 강조색 톤. */
-	.th-btn.custom {
+	/* 사용자 테마 — 이름이 파랑. */
+	.seg > button.custom {
 		color: var(--accent);
 	}
-	.th-btn.custom.active {
-		background: var(--bg-subtle);
+	.seg > button.custom.on {
 		color: var(--accent);
 		font-weight: var(--fw-semibold);
-	}
-	.th-btn.danger {
-		color: var(--danger);
-	}
-	.th-btn:disabled,
-	.ct-create :global(.th-btn:disabled),
-	.ct-actions :global(.th-btn:disabled) {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	/* DEV-114: 커스텀 테마 편집기. */
@@ -1213,11 +1149,6 @@
 		flex-wrap: wrap;
 		gap: var(--sp-6);
 		align-items: center;
-	}
-	.ct-actions .th-btn,
-	.ct-actions :global(.th-btn) {
-		border: var(--bw) solid var(--border);
-		background: var(--bg-elevated);
 	}
 	.ct-create {
 		display: flex;

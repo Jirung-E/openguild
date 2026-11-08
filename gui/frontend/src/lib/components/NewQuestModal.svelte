@@ -1,9 +1,8 @@
 <script lang="ts">
+	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205: 새 퀘스트 모달 i18n.
@@ -480,283 +479,265 @@
 		}
 	}
 
-	function onKeydown(e: KeyboardEvent) {
-		// 내부 콤보박스/자동완성이 먼저 Esc를 소비했으면 모달까지 닫지 않는다.
-		if (e.defaultPrevented) return;
-		if (e.key === 'Escape') onclose();
-	}
-
 	// BUG-199: 배경 스크롤 잠금은 오버레이 엘리먼트에 건 액션(use:modalScrollLock)이
 	// 담당한다 — 어드민 모달들처럼 "컴포넌트는 살아 있고 오버레이만 나타나는"
 	// 경우까지 같은 방식으로 덮기 위해 한 패턴으로 통일했다.
 </script>
 
-<svelte:window onkeydown={onKeydown} />
-
-<!-- 배경 오버레이 -->
-<div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
-	<div class="modal-box modal" role="document" use:modalFocus>
-		<div class="modal-head">
-			<h2 class="modal-title">
-				{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}
-			</h2>
-			<button class="close-btn" onclick={onclose} aria-label={t('nqm.close', $locale)}
-				><Icon name="close" size="1em" /></button
-			>
+<Modal
+	title={parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}
+	size="lg"
+	{onclose}
+>
+	{#if loading}
+		<div class="loading">Loading…</div>
+	{:else if types.length === 0}
+		<!-- DEV-014 후속: type 0개 — admin 으로 안내 (prefix 정책 결정이 필요해
+		     여기서 자동 생성 안 함). -->
+		<div class="empty-state">
+			<p class="empty-title">{t('nqm.noTypes', $locale)}</p>
+			<p class="empty-msg">
+				{t('nqm.noTypesMsg', $locale)}
+			</p>
+			<div class="form-actions">
+				<!-- DEV-440: 닫기가 왼쪽, 하는 일이 오른쪽 — ActionButtons 와 같은 순서(이쪽은 링크라 손으로). -->
+				<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
+				<a class="btn btn-primary" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+			</div>
 		</div>
-
-		{#if loading}
-			<div class="loading">Loading…</div>
-		{:else if types.length === 0}
-			<!-- DEV-014 후속: type 0개 — admin 으로 안내 (prefix 정책 결정이 필요해
-			     여기서 자동 생성 안 함). -->
-			<div class="empty-state">
-				<p class="empty-title">{t('nqm.noTypes', $locale)}</p>
-				<p class="empty-msg">
-					{t('nqm.noTypesMsg', $locale)}
-				</p>
-				<div class="form-actions">
-					<!-- DEV-440: 닫기가 왼쪽, 하는 일이 오른쪽 — ActionButtons 와 같은 순서(이쪽은 링크라 손으로). -->
-					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
-					<a class="btn btn-primary" href="/admin" onclick={onclose}
-						>{t('nqm.goToAdmin', $locale)}</a
-					>
-				</div>
+	{:else if !openStatusSlug}
+		<!-- DEV-014 후속: status 0개 — "기본 Open 만들고 계속" 한 번에 처리. -->
+		<div class="empty-state">
+			<p class="empty-title">{t('nqm.noStatuses', $locale)}</p>
+			<p class="empty-msg">
+				{t('nqm.noStatusMsg1', $locale)}<strong>'Open'</strong>{t('nqm.noStatusMsg2', $locale)}
+			</p>
+			{#if bootstrapError}
+				<p class="save-error">{bootstrapError}</p>
+			{/if}
+			<div class="form-actions">
+				<button
+					class="btn btn-primary"
+					onclick={bootstrapDefaultStatus}
+					disabled={creatingDefaultStatus}
+				>
+					{creatingDefaultStatus
+						? t('nqm.addingStatus', $locale)
+						: t('nqm.addDefaultStatus', $locale)}
+				</button>
+				<a class="btn" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+				<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
 			</div>
-		{:else if !openStatusSlug}
-			<!-- DEV-014 후속: status 0개 — "기본 Open 만들고 계속" 한 번에 처리. -->
-			<div class="empty-state">
-				<p class="empty-title">{t('nqm.noStatuses', $locale)}</p>
-				<p class="empty-msg">
-					{t('nqm.noStatusMsg1', $locale)}<strong>'Open'</strong>{t('nqm.noStatusMsg2', $locale)}
-				</p>
-				{#if bootstrapError}
-					<p class="save-error">{bootstrapError}</p>
-				{/if}
-				<div class="form-actions">
-					<button
-						class="btn btn-primary"
-						onclick={bootstrapDefaultStatus}
-						disabled={creatingDefaultStatus}
-					>
-						{creatingDefaultStatus
-							? t('nqm.addingStatus', $locale)
-							: t('nqm.addDefaultStatus', $locale)}
-					</button>
-					<a class="btn" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
-					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
-				</div>
-			</div>
-		{:else}
-			<div class="form">
-				<!-- DEV-060: 템플릿 — 선택 시 type/urgency 즉시 반영, 제목/설명은
-				     비어있을 때만 prefill (사용자 입력 우선, CLI merge 와 동일). -->
-				{#if isTauri && templates.length > 0}
-					<div class="field">
-						<label class="field-label">
-							<span>{t('nqm.template', $locale)}</span>
-							<select
-								class="input sel"
-								bind:value={selectedTemplate}
-								onchange={() => applyTemplate(selectedTemplate)}
-							>
-								<option value="">{t('nqm.noTemplate', $locale)}</option>
-								{#each templates as t (t.name)}
-									<option value={t.name}>{t.name}{t.title ? ` — ${t.title}` : ''}</option>
-								{/each}
-							</select>
-						</label>
-					</div>
-				{/if}
-				<!-- DEV-293: 타입/긴급도 드롭다운 → pill (상세 페이지 상태/타입 변경과 통일).
-				     재지적 — 같은 줄에 나란히 두니 어느 pill 이 어느 항목인지 헷갈려서
-				     각각 자기 라벨과 함께 별도 행으로 분리. 상태는 값 하나뿐이라 라벨
-				     옆에 인라인. -->
-				<div class="field pill-field">
-					<span class="field-label"><span>{t('nqm.type', $locale)}</span></span>
-					<div class="pill-btns">
-						{#each types as ty (ty.id)}
-							<button
-								type="button"
-								class="pill-btn"
-								class:active={ty.id === typeId}
-								style:--c={ty.color}
-								onclick={() => (typeId = ty.id)}
-							>
-								{ty.prefix}
-							</button>
-						{/each}
-					</div>
-				</div>
-				<div class="field pill-field">
-					<span class="field-label"><span>{t('filter.urgency', $locale)}</span></span>
-					<div class="pill-btns">
-						{#each [1, 2, 3, 4] as u (u)}
-							<button
-								type="button"
-								class="pill-btn"
-								class:active={u === urgency}
-								style:--c={urgencyColor(u)}
-								onclick={() => (urgency = u)}
-							>
-								{urgencyLabel(u, $locale)}
-							</button>
-						{/each}
-					</div>
-				</div>
-				<div class="field status-field">
-					<span class="field-label">{t('nqm.status', $locale)}</span>
-					<span class="status-fixed" data-testid="new-quest-status"
-						>{openStatus ? statusLabel(openStatus, $locale) : ''}</span
-					>
-				</div>
-
+		</div>
+	{:else}
+		<div class="form">
+			<!-- DEV-060: 템플릿 — 선택 시 type/urgency 즉시 반영, 제목/설명은
+			     비어있을 때만 prefill (사용자 입력 우선, CLI merge 와 동일). -->
+			{#if isTauri && templates.length > 0}
 				<div class="field">
 					<label class="field-label">
-						<span>{t('nqm.title', $locale)}</span>
-						<input
-							bind:this={titleInput}
-							class="input inp"
-							type="text"
-							placeholder={t('nqm.titlePlaceholder', $locale)}
-							bind:value={title}
-						/>
+						<span>{t('nqm.template', $locale)}</span>
+						<select
+							class="input sel"
+							bind:value={selectedTemplate}
+							onchange={() => applyTemplate(selectedTemplate)}
+						>
+							<option value="">{t('nqm.noTemplate', $locale)}</option>
+							{#each templates as t (t.name)}
+								<option value={t.name}>{t.name}{t.title ? ` — ${t.title}` : ''}</option>
+							{/each}
+						</select>
 					</label>
 				</div>
-
-				<div class="field">
-					<label class="field-label">
-						<span>{t('nqm.descOptional', $locale)}</span>
-						<textarea
-							use:tabInsert
-							class="input ta"
-							bind:this={descInput}
-							rows="5"
-							placeholder={t('nqm.descPlaceholder', $locale)}
-							bind:value={description}
-							oninput={onWikiInput}
-							onkeyup={onWikiInput}
-							onclick={onWikiInput}
-							onkeydowncapture={onWikiKeydown}
-						></textarea>
-					</label>
-					<SizeGrip target={descInput} />
+			{/if}
+			<!-- DEV-293: 타입/긴급도 드롭다운 → pill (상세 페이지 상태/타입 변경과 통일).
+			     재지적 — 같은 줄에 나란히 두니 어느 pill 이 어느 항목인지 헷갈려서
+			     각각 자기 라벨과 함께 별도 행으로 분리. 상태는 값 하나뿐이라 라벨
+			     옆에 인라인. -->
+			<div class="field pill-field">
+				<span class="field-label"><span>{t('nqm.type', $locale)}</span></span>
+				<div class="pill-btns">
+					{#each types as ty (ty.id)}
+						<button
+							type="button"
+							class="pill-btn"
+							class:active={ty.id === typeId}
+							style:--c={ty.color}
+							onclick={() => (typeId = ty.id)}
+						>
+							{ty.prefix}
+						</button>
+					{/each}
 				</div>
+			</div>
+			<div class="field pill-field">
+				<span class="field-label"><span>{t('filter.urgency', $locale)}</span></span>
+				<div class="pill-btns">
+					{#each [1, 2, 3, 4] as u (u)}
+						<button
+							type="button"
+							class="pill-btn"
+							class:active={u === urgency}
+							style:--c={urgencyColor(u)}
+							onclick={() => (urgency = u)}
+						>
+							{urgencyLabel(u, $locale)}
+						</button>
+					{/each}
+				</div>
+			</div>
+			<div class="field status-field">
+				<span class="field-label">{t('nqm.status', $locale)}</span>
+				<span class="status-fixed" data-testid="new-quest-status"
+					>{openStatus ? statusLabel(openStatus, $locale) : ''}</span
+				>
+			</div>
 
-				<details class="relations-field">
-					<summary>{t('nqm.relationsOptional', $locale)}</summary>
-					<p class="relations-hint">{t('nqm.relationsHint', $locale)}</p>
-					{#each [{ mode: 'parent' as RelationMode, label: t('quest.section.parent', $locale) }, { mode: 'sub' as RelationMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as RelationMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as RelationMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
-						<div class="relation-row">
-							<div class="relation-head">
-								<span>{row.label}</span>
-								{#if row.mode !== 'parent' || (!parentQuestId && !selectedParent)}
-									<button type="button" class="relation-add" onclick={() => openRelation(row.mode)}>
-										{relationMode === row.mode
-											? t('common.cancel', $locale)
-											: t('nqm.relationAdd', $locale)}
-									</button>
-								{/if}
-							</div>
-							{#if selectedFor(row.mode).length > 0}
-								<div class="relation-chips">
-									{#each selectedFor(row.mode) as quest (quest.id)}
-										<span class="relation-chip">
-											<strong>{quest.quest_id}</strong>
-											<span>{quest.title}</span>
-											{#if !(row.mode === 'parent' && parentQuestId)}
-												<button
-													type="button"
-													onclick={() => removeRelation(row.mode, quest.id)}
-													aria-label={`${quest.quest_id} ${t('nqm.relationRemove', $locale)}`}
-													><Icon name="close" size="1em" /></button
-												>
-											{/if}
-										</span>
-									{/each}
-								</div>
-							{/if}
-							{#if relationMode === row.mode}
-								<div class="relation-picker">
-									<QuestCombobox
-										quests={relationCandidates}
-										placeholder={t('qd.searchByIdTitle', $locale)}
-										onselect={pickRelation}
-										oncancel={() => (relationMode = null)}
-									/>
-								</div>
+			<div class="field">
+				<label class="field-label">
+					<span>{t('nqm.title', $locale)}</span>
+					<input
+						bind:this={titleInput}
+						class="input inp"
+						type="text"
+						placeholder={t('nqm.titlePlaceholder', $locale)}
+						bind:value={title}
+					/>
+				</label>
+			</div>
+
+			<div class="field">
+				<label class="field-label">
+					<span>{t('nqm.descOptional', $locale)}</span>
+					<textarea
+						use:tabInsert
+						class="input ta"
+						bind:this={descInput}
+						rows="5"
+						placeholder={t('nqm.descPlaceholder', $locale)}
+						bind:value={description}
+						oninput={onWikiInput}
+						onkeyup={onWikiInput}
+						onclick={onWikiInput}
+						onkeydowncapture={onWikiKeydown}
+					></textarea>
+				</label>
+				<SizeGrip target={descInput} />
+			</div>
+
+			<details class="relations-field">
+				<summary>{t('nqm.relationsOptional', $locale)}</summary>
+				<p class="relations-hint">{t('nqm.relationsHint', $locale)}</p>
+				{#each [{ mode: 'parent' as RelationMode, label: t('quest.section.parent', $locale) }, { mode: 'sub' as RelationMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as RelationMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as RelationMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
+					<div class="relation-row">
+						<div class="relation-head">
+							<span>{row.label}</span>
+							{#if row.mode !== 'parent' || (!parentQuestId && !selectedParent)}
+								<button type="button" class="relation-add" onclick={() => openRelation(row.mode)}>
+									{relationMode === row.mode
+										? t('common.cancel', $locale)
+										: t('nqm.relationAdd', $locale)}
+								</button>
 							{/if}
 						</div>
-					{/each}
-				</details>
+						{#if selectedFor(row.mode).length > 0}
+							<div class="relation-chips">
+								{#each selectedFor(row.mode) as quest (quest.id)}
+									<span class="relation-chip">
+										<strong>{quest.quest_id}</strong>
+										<span>{quest.title}</span>
+										{#if !(row.mode === 'parent' && parentQuestId)}
+											<button
+												type="button"
+												onclick={() => removeRelation(row.mode, quest.id)}
+												aria-label={`${quest.quest_id} ${t('nqm.relationRemove', $locale)}`}
+												><Icon name="close" size="1em" /></button
+											>
+										{/if}
+									</span>
+								{/each}
+							</div>
+						{/if}
+						{#if relationMode === row.mode}
+							<div class="relation-picker">
+								<QuestCombobox
+									quests={relationCandidates}
+									placeholder={t('qd.searchByIdTitle', $locale)}
+									onselect={pickRelation}
+									oncancel={() => (relationMode = null)}
+								/>
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</details>
 
-				{#if saveError}
-					<p class="save-error">{saveError}</p>
+			{#if saveError}
+				<p class="save-error">{saveError}</p>
+			{/if}
+
+			<div class="form-actions">
+				{#if isTauri}
+					<button
+						class="btn"
+						type="button"
+						onclick={() => {
+							showSaveTpl = !showSaveTpl;
+							tplMsg = null;
+							tplExists = false;
+						}}
+						disabled={saving}
+					>
+						{showSaveTpl ? t('nqm.closeSaveTpl', $locale) : t('nqm.saveAsTpl', $locale)}
+					</button>
 				{/if}
+				<ActionButtons
+					label={saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
+					busy={saving}
+					disabled={!title.trim()}
+					onconfirm={create}
+					oncancel={onclose}
+				/>
+			</div>
 
-				<div class="form-actions">
-					<ActionButtons
-						label={saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
-						busy={saving}
-						disabled={!title.trim()}
-						onconfirm={create}
-						oncancel={onclose}
+			{#if isTauri && showSaveTpl}
+				<!-- DEV-158: 현재 입력(타입/긴급도/제목/설명/템플릿 tags)을 템플릿으로 저장. -->
+				<div class="tpl-save">
+					<input
+						class="input inp"
+						type="text"
+						placeholder={t('nqm.tplNamePlaceholder', $locale)}
+						bind:value={tplName}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') saveAsTemplate(false);
+						}}
 					/>
-					{#if isTauri}
+					<button
+						class="btn btn-primary"
+						type="button"
+						onclick={() => saveAsTemplate(false)}
+						disabled={savingTpl || !tplName.trim()}
+					>
+						{savingTpl ? t('common.saving', $locale) : t('common.save', $locale)}
+					</button>
+					{#if tplExists}
 						<button
-							class="btn btn-tpl"
+							class="btn btn-danger"
 							type="button"
-							onclick={() => {
-								showSaveTpl = !showSaveTpl;
-								tplMsg = null;
-								tplExists = false;
-							}}
-							disabled={saving}
+							onclick={() => saveAsTemplate(true)}
+							disabled={savingTpl}
 						>
-							{showSaveTpl ? t('nqm.closeSaveTpl', $locale) : t('nqm.saveAsTpl', $locale)}
+							덮어쓰기
 						</button>
 					{/if}
 				</div>
-
-				{#if isTauri && showSaveTpl}
-					<!-- DEV-158: 현재 입력(타입/긴급도/제목/설명/템플릿 tags)을 템플릿으로 저장. -->
-					<div class="tpl-save">
-						<input
-							class="input inp"
-							type="text"
-							placeholder={t('nqm.tplNamePlaceholder', $locale)}
-							bind:value={tplName}
-							onkeydown={(e) => {
-								if (e.key === 'Enter') saveAsTemplate(false);
-							}}
-						/>
-						<button
-							class="btn btn-primary"
-							type="button"
-							onclick={() => saveAsTemplate(false)}
-							disabled={savingTpl || !tplName.trim()}
-						>
-							{savingTpl ? t('common.saving', $locale) : t('common.save', $locale)}
-						</button>
-						{#if tplExists}
-							<button
-								class="btn btn-danger"
-								type="button"
-								onclick={() => saveAsTemplate(true)}
-								disabled={savingTpl}
-							>
-								덮어쓰기
-							</button>
-						{/if}
-					</div>
-					{#if tplMsg}
-						<p class="tpl-msg">{tplMsg}</p>
-					{/if}
+				{#if tplMsg}
+					<p class="tpl-msg">{tplMsg}</p>
 				{/if}
-			</div>
-		{/if}
-	</div>
-</div>
+			{/if}
+		</div>
+	{/if}
+</Modal>
 <!-- DEV-344: cross-link 자동완성 팝업 — 댓글/본문과 같은 공유 컴포넌트. -->
 {#if wiki}
 	<WikiAutocompletePopup
@@ -775,32 +756,6 @@
 {/if}
 
 <style>
-	.overlay {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 200;
-		display: flex;
-		/* BUG-199: 화면보다 긴 팝업은 오버레이 자체가 스크롤을 맡는다. 가운데
-		   정렬(center)이면 넘칠 때 위쪽이 잘려 닫기 버튼에 못 닿는다 — 위 정렬
-		   + auto 여백으로, 짧을 땐 가운데처럼 보이고 길면 위부터 보인다. */
-		align-items: flex-start;
-		justify-content: center;
-		padding: var(--sp-16);
-		overflow-y: auto;
-		overscroll-behavior: contain;
-	}
-
-	.modal {
-		/* BUG-199: 짧으면 세로 가운데처럼 보이도록(위 flex-start 와 짝). */
-		margin: auto;
-		width: 100%;
-		max-width: calc(
-			35rem * var(--popup-scale, 1)
-		); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
-		animation: modal-in var(--dur-mid) cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
-		transform-origin: top center;
-	}
 	@keyframes modal-in {
 		from {
 			opacity: 0;
@@ -812,33 +767,6 @@
 		}
 	}
 
-	.modal-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: var(--sp-16) var(--sp-16) var(--sp-12);
-		border-bottom: var(--bw) solid var(--bg-subtle);
-	}
-	.modal-title {
-		margin: 0;
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
-	}
-	.close-btn {
-		background: none;
-		border: none;
-		color: var(--text-faint);
-		font-size: 1.3rem; /* token-ok: × 글리프 크기 */
-		line-height: var(--lh-tight);
-		cursor: pointer;
-		padding: 0 var(--sp-4);
-		transition: color var(--dur-fast);
-	}
-	.close-btn:hover {
-		color: var(--text);
-	}
-
 	.loading {
 		padding: var(--sp-32);
 		text-align: center;
@@ -847,7 +775,6 @@
 	}
 
 	.form {
-		padding: var(--sp-16) var(--sp-16) var(--sp-16);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);
@@ -1040,10 +967,6 @@
 		margin-top: var(--sp-4);
 	}
 
-	/* DEV-158: 템플릿으로 저장 — 우측 정렬, 보조 액션. */
-	.btn-tpl {
-		margin-left: auto;
-	}
 	.tpl-save {
 		display: flex;
 		gap: var(--sp-8);

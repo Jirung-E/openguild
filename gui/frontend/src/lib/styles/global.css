@@ -98,6 +98,18 @@
 	--lh-tight: 1; /* 한 줄짜리 버튼 · 알약 */
 	--lh-snug: 1.35; /* 목록 · 카드 · 설명 (1.2 ~ 1.45) */
 	--lh-body: 1.6; /* 긴 글 · 문서 본문 (1.5 ~ 1.6) */
+	/* DEV-440 후속: 조작 요소(단추 · 입력칸 · 고르기 · 세그먼트)의 높이 세 단계 — 같은 줄에 놓이면 같은 높이.
+	   글 한 줄(본문 줄 높이) + 위아래 여백 + 테두리로 계산해 글자 크기 · UI 배율을 따라간다. 아이콘만 든 단추나
+	   WebKit 의 고르기처럼 글 줄이 없는 것도 이 높이를 채운다(예전엔 아이콘 단추 · 고르기만 낮았다). */
+	--ctl-h: calc(
+		var(--fs-sm) * var(--lh-body) + 2 * var(--sp-6) + 2 * var(--bw)
+	); /* .btn · .input · .seg */
+	--ctl-h-sm: calc(
+		var(--fs-sm) * var(--lh-body) + 2 * var(--sp-4) + 2 * var(--bw)
+	); /* .input.sm · .seg.sm · 도구줄 */
+	--ctl-h-xs: calc(
+		var(--fs-xs) * var(--lh-body) + 2 * var(--sp-2) + 2 * var(--bw)
+	); /* .btn-sm · .seg.xs */
 	/* 글꼴 단일 출처. 컴포넌트는 `var(--font-sans)` / `var(--font-mono)` 만 쓰고
 	   스택을 직접 적지 않는다 — `check:font` 가 막는다.
 
@@ -613,7 +625,7 @@ input[type='checkbox']:disabled {
    쓰는 법 — 종류는 색으로만 가른다:
      <button class="btn">취소</button>                 보조 (기본)
      <button class="btn btn-primary">저장</button>     주 동작 — 저장 · 만들기 (초록). 한 화면에 여럿이어도 된다
-     <button class="btn btn-accent">열기</button>      파랑 — 원래 파랑이던 버튼(환영 화면 열기 · 연결, 관리 추가)
+     <button class="btn btn-accent">열기</button>      파랑 — 원래 파랑이던 버튼(환영 화면 열기 · 연결)
      <button class="btn btn-danger">삭제</button>      되돌릴 수 없는 일 (빨강)
      <button class="btn btn-warning">복원</button>     조심할 일 (노랑)
      <button class="btn btn-quiet">…</button>          테두리 없는 조용한 버튼
@@ -627,6 +639,8 @@ input[type='checkbox']:disabled {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	box-sizing: border-box;
+	min-height: var(--ctl-h);
 	gap: var(--sp-4);
 	padding: var(--sp-6) var(--sp-12);
 	font-size: var(--fs-sm);
@@ -692,6 +706,7 @@ input[type='checkbox']:disabled {
 	color: var(--text);
 }
 .btn-sm {
+	min-height: var(--ctl-h-xs);
 	padding: var(--sp-2) var(--sp-8);
 	font-size: var(--fs-xs);
 	border-radius: var(--r-sm);
@@ -711,6 +726,8 @@ input[type='checkbox']:disabled {
    설명은 도서관 [[BOOK-009]] 디자인 언어.
    ───────────────────────────────────────────────────────────── */
 .input {
+	box-sizing: border-box;
+	min-height: var(--ctl-h);
 	padding: var(--sp-6) var(--sp-8);
 	font-size: var(--fs-sm);
 	color: var(--text);
@@ -726,6 +743,36 @@ input[type='checkbox']:disabled {
 .input:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+/* DEV-440 후속: 작은 입력칸 · 고르기 — 도구줄 · 목록 머리의 정렬 고르기처럼 작은 단추 옆. */
+.input.sm {
+	min-height: var(--ctl-h-sm);
+	padding: var(--sp-4) var(--sp-8);
+}
+/* 고르기(select) — 브라우저 기본 모양을 끈다. WebKit(맥 앱)은 기본 모양이면 여백을 무시해 20px 로 납작했고
+   양 끝이 둥근 다른 모양이었다. 화살표는 글자색 삼각형 둘(그라디언트)로 그린다. */
+select.input {
+	appearance: none;
+	-webkit-appearance: none;
+	background-image:
+		linear-gradient(45deg, transparent 50%, currentColor 50%),
+		linear-gradient(135deg, currentColor 50%, transparent 50%);
+	background-position:
+		calc(100% - var(--sp-12)) 50%,
+		calc(100% - var(--sp-8)) 50%;
+	background-size: var(--sp-4) var(--sp-4);
+	background-repeat: no-repeat;
+	cursor: pointer;
+}
+/* 화살표 자리 — `.input.sm` 의 여백(0,2,0)보다 세게 걸어야 글이 화살표 밑으로 들어가지 않는다. */
+select.input,
+select.input.sm {
+	padding-right: calc(var(--sp-8) + var(--sp-16));
+}
+/* 큰 글자 입력칸 — 문서 제목 편집. */
+.input.lg {
+	padding: var(--sp-8) var(--sp-12);
+	font-size: var(--fs-lg);
 }
 .popup {
 	color: var(--text);
@@ -792,7 +839,12 @@ input[type='checkbox']:disabled {
 	padding: var(--sp-2) var(--sp-8);
 }
 /* DEV-457: 아주 작은 세그먼트 — `.btn-sm`(위아래 sp-2, fs-xs) 옆. 판의 여백이 칸의 위아래 여백을 대신한다. */
+/* DEV-440 후속: 곡률은 높이 단계를 따른다 — xs 단계는 `.btn-sm` 처럼 r-sm(판) · r-xs(칸). */
+.seg.xs {
+	border-radius: var(--r-sm);
+}
 .seg.xs > button {
+	border-radius: var(--r-xs);
 	padding: 0 var(--sp-6);
 	font-size: var(--fs-xs);
 }

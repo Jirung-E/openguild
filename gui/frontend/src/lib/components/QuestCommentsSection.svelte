@@ -1118,7 +1118,7 @@
 		<div class="reply-form">
 			<div class="reply-author">
 				<input
-					class="input author-input"
+					class="input sm author-input"
 					type="text"
 					placeholder={t('comment.authorOpt', $locale)}
 					bind:value={replyAuthor}
@@ -1637,7 +1637,7 @@
 				<div class="new-form">
 					<div class="new-row">
 						<input
-							class="input author-input"
+							class="input sm author-input"
 							type="text"
 							placeholder={t('comment.authorOpt', $locale)}
 							bind:value={newAuthor}
@@ -2105,7 +2105,10 @@
 		user-select: none;
 	}
 	/* '답글 쓰기' — 댓글번호 (#N) 와 같은 테두리 버튼 느낌. */
+	/* DEV-440 후속: 옆 반응 단추와 같은 높이(`--ctl-h-xs`). */
 	.reply-write-btn {
+		box-sizing: border-box;
+		min-height: var(--ctl-h-xs);
 		font-size: var(--fs-xs);
 		color: var(--text-muted);
 		background: transparent;
@@ -2178,13 +2181,15 @@
 		position: relative;
 	}
 	.reaction-add {
+		box-sizing: border-box;
+		min-height: var(--ctl-h-xs);
 		/* DEV-454 후속: 글자 '☺+' 두 개 → 도형 하나라 조금 크게(1.3em), 가운데는 flex 로. */
 		display: inline-flex;
 		align-items: center;
 		padding: var(--sp-2) var(--sp-6);
 		background: transparent;
 		border: var(--bw) solid var(--border-muted);
-		border-radius: var(--r-xl);
+		border-radius: var(--r-sm); /* DEV-440 후속: 옆 "답글 쓰기"(xs 단계)와 같은 곡률 */
 		font-size: var(--fs-xs);
 		color: var(--text-faint);
 		cursor: pointer;
@@ -2384,14 +2389,15 @@
 		align-items: center;
 		justify-content: center;
 		box-sizing: border-box;
-		width: 1.75rem;
-		height: 1.5rem;
+		/* DEV-440 후속: 같은 줄의 작성자 칸(`.input.sm`)과 같은 높이. 팝업 단추(ComposeDockToggle)와 값이 같아야 한다. */
+		width: var(--ctl-h-sm);
+		height: var(--ctl-h-sm);
 		padding: 0;
 		font-size: var(--fs-xs);
 		font-family: var(--font-mono);
 		line-height: var(--lh-tight);
 		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
+		border-radius: var(--r-md);
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;

@@ -9,11 +9,9 @@
   문구는 페이지 시절 한국어로 박혀 있던 것을 옮기며 i18n 으로 바꿨다.
 -->
 <script lang="ts">
+	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
-	import Icon from './Icon.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
@@ -66,105 +64,69 @@
 			saving = false;
 		}
 	}
-
-	function onKeydown(e: KeyboardEvent) {
-		if (e.defaultPrevented) return;
-		if (e.key === 'Escape' && !saving) onclose();
-	}
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<Modal title={t('ncm.newCampaign', $locale)} size="lg" busy={saving} {onclose}>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			submit();
+		}}
+	>
+		<label>
+			<span class="lab">{t('ncm.title', $locale)}</span>
+			<!-- svelte-ignore a11y_autofocus -->
+			<input
+				class="input"
+				type="text"
+				bind:value={title}
+				placeholder={t('ncm.titlePlaceholder', $locale)}
+				disabled={saving}
+				autofocus
+				data-autofocus
+			/>
+		</label>
 
-<div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
-	<div class="modal-box modal" role="document" use:modalFocus>
-		<div class="modal-head">
-			<h2 class="modal-title">{t('ncm.newCampaign', $locale)}</h2>
-			<button class="close-btn" onclick={onclose} aria-label={t('common.cancel', $locale)}
-				><Icon name="close" size="1em" /></button
-			>
+		<div class="period-row">
+			<label>
+				<span class="lab">{t('ncm.start', $locale)}</span>
+				<DateField bind:value={startedAt} disabled={saving} />
+			</label>
+			<label>
+				<span class="lab">{t('ncm.end', $locale)}</span>
+				<DateField bind:value={endedAt} disabled={saving} />
+			</label>
 		</div>
 
-		<form
-			onsubmit={(e) => {
-				e.preventDefault();
-				submit();
-			}}
-		>
-			<label>
-				<span class="lab">{t('ncm.title', $locale)}</span>
-				<!-- svelte-ignore a11y_autofocus -->
-				<input
-					class="input"
-					type="text"
-					bind:value={title}
-					placeholder={t('ncm.titlePlaceholder', $locale)}
-					disabled={saving}
-					autofocus
-					data-autofocus
-				/>
-			</label>
+		<label>
+			<span class="lab">{t('ncm.body', $locale)}</span>
+			<textarea
+				class="input"
+				use:tabInsert
+				bind:this={bodyInput}
+				bind:value={description}
+				rows="8"
+				disabled={saving}
+				placeholder={t('ncm.bodyPlaceholder', $locale)}
+			></textarea>
+		</label>
+		<SizeGrip target={bodyInput} />
 
-			<div class="period-row">
-				<label>
-					<span class="lab">{t('ncm.start', $locale)}</span>
-					<DateField bind:value={startedAt} disabled={saving} />
-				</label>
-				<label>
-					<span class="lab">{t('ncm.end', $locale)}</span>
-					<DateField bind:value={endedAt} disabled={saving} />
-				</label>
-			</div>
+		{#if error}<div class="error">{error}</div>{/if}
 
-			<label>
-				<span class="lab">{t('ncm.body', $locale)}</span>
-				<textarea
-					class="input"
-					use:tabInsert
-					bind:this={bodyInput}
-					bind:value={description}
-					rows="8"
-					disabled={saving}
-					placeholder={t('ncm.bodyPlaceholder', $locale)}
-				></textarea>
-			</label>
-			<SizeGrip target={bodyInput} />
-
-			{#if error}<div class="error">{error}</div>{/if}
-
-			<div class="actions">
-				<ActionButtons
-					label={saving ? t('ncm.creating', $locale) : t('ncm.create', $locale)}
-					submit
-					busy={saving}
-					disabled={!title.trim()}
-					oncancel={onclose}
-				/>
-			</div>
-		</form>
-	</div>
-</div>
+		<div class="actions">
+			<ActionButtons
+				label={saving ? t('ncm.creating', $locale) : t('ncm.create', $locale)}
+				submit
+				busy={saving}
+				disabled={!title.trim()}
+				oncancel={onclose}
+			/>
+		</div>
+	</form>
+</Modal>
 
 <style>
-	/* 새 퀘스트 모달과 같은 껍데기 — 긴 내용도 위부터 보이게(BUG-199). */
-	.overlay {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 200;
-		display: flex;
-		align-items: flex-start;
-		justify-content: center;
-		padding: var(--sp-16);
-		overflow-y: auto;
-		overscroll-behavior: contain;
-	}
-	.modal {
-		margin: auto;
-		width: 100%;
-		max-width: calc(35rem * var(--popup-scale, 1));
-		animation: modal-in var(--dur-mid) cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
-		transform-origin: top center;
-	}
 	@keyframes modal-in {
 		from {
 			opacity: 0;
@@ -175,35 +137,11 @@
 			transform: none;
 		}
 	}
-	.modal-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: var(--sp-16) var(--sp-16);
-		border-bottom: var(--bw) solid var(--border);
-	}
-	.modal-title {
-		margin: 0;
-		font-size: var(--fs-lg);
-		color: var(--text-strong);
-	}
-	.close-btn {
-		background: none;
-		border: none;
-		color: var(--text-muted);
-		font-size: 1.2rem; /* token-ok: × 글리프 크기 */
-		line-height: var(--lh-tight);
-		cursor: pointer;
-	}
-	.close-btn:hover {
-		color: var(--text);
-	}
 
 	form {
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);
-		padding: var(--sp-16);
 	}
 	label {
 		display: flex;

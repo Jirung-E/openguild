@@ -1,7 +1,5 @@
 <script lang="ts">
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
-	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
-	import { modalFocus } from '$lib/actions/modal-focus';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
@@ -615,65 +613,42 @@
 	</footer>
 </main>
 
-{#if confirmOpen}
-	<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 스타일 모달. -->
-	<div class="ov" role="presentation" use:modalScrollLock>
-		<div
-			class="modal-box modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: cancelClear }}
-		>
-			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
-			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
-			<div class="modal-actions">
-				<ActionButtons
-					label={t('welcome.clearConfirm', $locale)}
-					kind="danger"
-					autofocus="cancel"
-					onconfirm={doClear}
-					oncancel={cancelClear}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
+<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 확인 창. DEV-440 후속: 공통 ConfirmDialog. -->
+<ConfirmDialog
+	open={confirmOpen}
+	title={t('welcome.clearTitle', $locale)}
+	message={t('welcome.clearMsg', $locale)}
+	confirmLabel={t('welcome.clearConfirm', $locale)}
+	danger
+	z={100}
+	onconfirm={doClear}
+	oncancel={cancelClear}
+/>
 
-{#if confirmRemove}
-	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
-	<div class="ov" role="presentation" use:modalScrollLock>
-		<div
-			class="modal-box modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: cancelRemove }}
-		>
-			<h3 class="modal-title">{t('welcome.removeTitle', $locale)}</h3>
-			<p class="modal-msg">
-				<strong>{confirmRemove.name}</strong>{t('welcome.removeSuffix', $locale)}
-			</p>
-			<p class="modal-path">
-				{confirmRemove.kind === 'local' ? confirmRemove.path : confirmRemove.url}
-			</p>
-			<p class="modal-msg modal-note">
-				{confirmRemove.kind === 'local'
-					? t('welcome.removeNoteLocal', $locale)
-					: t('welcome.removeNoteRemote', $locale)}
-			</p>
-			<div class="modal-actions">
-				<ActionButtons
-					label={t('welcome.remove', $locale)}
-					kind="danger"
-					autofocus="cancel"
-					onconfirm={doRemove}
-					oncancel={cancelRemove}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
+<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
+<ConfirmDialog
+	open={!!confirmRemove}
+	title={t('welcome.removeTitle', $locale)}
+	confirmLabel={t('welcome.remove', $locale)}
+	danger
+	z={100}
+	onconfirm={doRemove}
+	oncancel={cancelRemove}
+>
+	{#if confirmRemove}
+		<p class="modal-msg">
+			<strong>{confirmRemove.name}</strong>{t('welcome.removeSuffix', $locale)}
+		</p>
+		<p class="modal-path">
+			{confirmRemove.kind === 'local' ? confirmRemove.path : confirmRemove.url}
+		</p>
+		<p class="modal-msg modal-note">
+			{confirmRemove.kind === 'local'
+				? t('welcome.removeNoteLocal', $locale)
+				: t('welcome.removeNoteRemote', $locale)}
+		</p>
+	{/if}
+</ConfirmDialog>
 
 <!-- DEV-154: 더 새 schema 길드 — 전용 안내 + 업데이트 확인 (DEV-063). -->
 <ConfirmDialog
@@ -983,35 +958,6 @@
 		justify-content: flex-end;
 	}
 
-	/* --- 커스텀 confirm 모달 --- */
-	.ov {
-		position: fixed;
-		inset: 0;
-		background: var(--backdrop);
-		z-index: 100;
-		display: flex;
-		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
-		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
-		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
-		align-items: flex-start;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		justify-content: center;
-		padding: var(--sp-16);
-	}
-	.modal {
-		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
-		margin: auto;
-		width: 100%;
-		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: var(--sp-16) var(--sp-24);
-	}
-	.modal-title {
-		margin: 0 0 var(--sp-8);
-		font-size: var(--fs-lg);
-		font-weight: var(--fw-semibold);
-		color: var(--text-strong);
-	}
 	.modal-msg {
 		margin: 0 0 var(--sp-16);
 		font-size: var(--fs-md);
@@ -1033,10 +979,5 @@
 	.modal-note {
 		font-size: var(--fs-sm);
 		color: var(--text-muted);
-	}
-	.modal-actions {
-		display: flex;
-		gap: var(--sp-8);
-		justify-content: flex-end;
 	}
 </style>

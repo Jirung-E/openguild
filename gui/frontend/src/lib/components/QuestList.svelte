@@ -650,10 +650,9 @@
 
 	<!-- DEV-065 / DEV-068: 뷰 모드 토글 + tag 필터 chip 들 — filter-bar 아래. -->
 	<div class="view-toggle-row">
-		<div class="view-toggle" role="group" aria-label={t('questList.viewMode', $locale)}>
+		<div class="seg sm view-toggle" role="group" aria-label={t('questList.viewMode', $locale)}>
 			<button
-				class="vt-btn"
-				class:active={viewMode === 'tree'}
+				class:on={viewMode === 'tree'}
 				onclick={() => (viewMode = 'tree')}
 				title={t('questList.treeTitle', $locale)}
 				aria-pressed={viewMode === 'tree'}
@@ -663,8 +662,7 @@
 				>
 			</button>
 			<button
-				class="vt-btn"
-				class:active={viewMode === 'list'}
+				class:on={viewMode === 'list'}
 				onclick={() => (viewMode = 'list')}
 				title={t('questList.listTitle', $locale)}
 				aria-pressed={viewMode === 'list'}
@@ -676,7 +674,7 @@
 		</div>
 		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->
 		<div class="sort-group" aria-label={t('questList.sort', $locale)}>
-			<select class="sort-sel" bind:value={sortKey} title={t('questList.sortBy', $locale)}>
+			<select class="input sm" bind:value={sortKey} title={t('questList.sortBy', $locale)}>
 				{#each SORT_KEYS as k (k)}
 					<option value={k}>{SORT_LABELS[k]}</option>
 				{/each}
@@ -843,18 +841,11 @@
 		align-items: center;
 		gap: var(--sp-4);
 	}
-	.sort-sel {
-		padding: var(--sp-4) var(--sp-8);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-	}
+	/* DEV-440 후속: 옆 고르기(`.input.sm`)와 같은 높이의 정사각형. */
 	.sort-dir {
-		width: 1.7rem;
-		height: 1.7rem;
+		box-sizing: border-box;
+		width: var(--ctl-h-sm);
+		height: var(--ctl-h-sm);
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
@@ -867,38 +858,11 @@
 		border-color: var(--text-faint);
 	}
 
-	.view-toggle {
-		/* BUG-254 계열(admin 보고): 글자는 rem 인데 여백만 px 이라 배율을
-		   올리면 **주변 컴포넌트와 다른 속도로** 커졌다. 여백도 rem 으로.
-		   16px 기준 환산이라 기본 배율에서 치수는 그대로다. */
+	/* DEV-440 후속: 모양은 공통 `.seg.sm` — 여기는 아이콘과 글을 한 줄로 놓는 것만. */
+	.view-toggle > button {
 		display: inline-flex;
-		gap: 0;
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		padding: var(--sp-2);
-	}
-	.vt-btn {
-		display: flex;
 		align-items: center;
 		gap: var(--sp-4);
-		padding: var(--sp-2) var(--sp-8);
-		background: transparent;
-		border: none;
-		border-radius: var(--r-sm);
-		color: var(--text-muted);
-		font-size: var(--fs-sm);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			color var(--dur-fast);
-	}
-	.vt-btn:hover {
-		color: var(--text);
-	}
-	.vt-btn.active {
-		background: var(--bg-subtle);
-		color: var(--text);
 	}
 	.vt-icon {
 		font-size: 0.95rem; /* token-ok: 아이콘 글리프 크기 */

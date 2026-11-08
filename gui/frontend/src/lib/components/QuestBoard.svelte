@@ -1,6 +1,6 @@
 <script lang="ts">
-	import ActionButtons from '$lib/components/ActionButtons.svelte';
-	import { modalFocus } from '$lib/actions/modal-focus';
+	import Modal from '$lib/components/Modal.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
@@ -3970,31 +3970,34 @@
 				>
 			</button>
 			<div class="tb-sep"></div>
-			<select
-				class="tb-select"
-				value={globalCols}
-				onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
-				title={t(boardOrientation === 'columns' ? 'board.gridCols' : 'board.gridRows', $locale)}
-			>
-				<option value={1}
-					>1{t(
-						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
-						$locale
-					)}</option
+			<span class="tb-select-wrap">
+				<select
+					class="tb-select"
+					value={globalCols}
+					onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
+					title={t(boardOrientation === 'columns' ? 'board.gridCols' : 'board.gridRows', $locale)}
 				>
-				<option value={2}
-					>2{t(
-						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
-						$locale
-					)}</option
-				>
-				<option value={3}
-					>3{t(
-						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
-						$locale
-					)}</option
-				>
-			</select>
+					<option value={1}
+						>1{t(
+							boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+							$locale
+						)}</option
+					>
+					<option value={2}
+						>2{t(
+							boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+							$locale
+						)}</option
+					>
+					<option value={3}
+						>3{t(
+							boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+							$locale
+						)}</option
+					>
+				</select>
+				<span class="tb-caret"><Icon name="caret-down-sm" size="1em" /></span>
+			</span>
 			<div class="tb-sep"></div>
 			<!-- DEV-056 → DEV-059 fix2: 숨김 + 순서 변경 통합 → '보드 설정'. -->
 			<button
@@ -4030,14 +4033,17 @@
 						>{t('board.arrangeToolbarBtn', $locale)}</span
 					>
 				</button>
-				<select
-					class="tb-select tb-mode"
-					bind:value={arrangeMode}
-					title={t('board.arrangeMode', $locale)}
-				>
-					<option value="group">{t('board.arrangeModeGroup', $locale)}</option>
-					<option value="all">{t('board.arrangeModeAll', $locale)}</option>
-				</select>
+				<span class="tb-select-wrap">
+					<select
+						class="tb-select tb-mode"
+						bind:value={arrangeMode}
+						title={t('board.arrangeMode', $locale)}
+					>
+						<option value="group">{t('board.arrangeModeGroup', $locale)}</option>
+						<option value="all">{t('board.arrangeModeAll', $locale)}</option>
+					</select>
+					<span class="tb-caret"><Icon name="caret-down-sm" size="1em" /></span>
+				</span>
 			</div>
 		{/if}
 		<!-- 토글 버튼 — 항상 우측 끝 (collapsed / expanded 동일 위치, 사용자 피드백). -->
@@ -4064,52 +4070,26 @@
 	<div class="overlay error">{error}</div>
 {/if}
 
-{#if confirmDialog}
-	<div class="dialog-backdrop" role="presentation">
-		<div
-			class="modal-box dialog"
-			role="alertdialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: () => confirmDialogResolve(false) }}
-		>
-			<p class="dialog-msg">{confirmDialog.msg}</p>
-			<div class="dialog-btns">
-				<ActionButtons
-					label={t('common.change', $locale)}
-					autofocus="confirm"
-					onconfirm={() => confirmDialogResolve(true)}
-					oncancel={() => confirmDialogResolve(false)}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
+<!-- DEV-440 후속: 공통 확인 창 — 보드 위라 막이 도구줄 · 노드 카드보다 위(500). -->
+<ConfirmDialog
+	open={!!confirmDialog}
+	message={confirmDialog?.msg ?? ''}
+	confirmLabel={t('common.change', $locale)}
+	z={500}
+	onconfirm={() => confirmDialogResolve(true)}
+	oncancel={() => confirmDialogResolve(false)}
+/>
 
 <!-- DEV-056: 숨김 설정 모달 -->
 {#if showHideModal}
-	<div
-		class="dialog-backdrop"
-		role="presentation"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) showHideModal = false;
-		}}
+	<Modal
+		title={t('board.settings', $locale)}
+		size="lg"
+		z={500}
+		onclose={() => (showHideModal = false)}
 	>
-		<div
-			class="modal-box hide-modal"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			use:modalFocus={{ onEscape: () => (showHideModal = false) }}
-		>
-			<div class="hide-head">
-				<h3 class="hide-title">{t('board.settings', $locale)}</h3>
-				<button
-					class="hide-close"
-					onclick={() => (showHideModal = false)}
-					aria-label={t('common.close', $locale)}><Icon name="close" size="1em" /></button
-				>
-			</div>
+		<!-- BUG-354: 창 높이를 묶고 안쪽이 스크롤 — 제목은 위에 남는다. -->
+		<div class="hide-modal">
 			<p class="hide-help">
 				{t(boardOrientation === 'columns' ? 'board.hideHelp' : 'board.hideHelpRows', $locale)}
 			</p>
@@ -4271,7 +4251,7 @@
 				</div>
 			</div>
 		</div>
-	</div>
+	</Modal>
 {/if}
 
 <style>
@@ -5302,9 +5282,12 @@
 		padding: var(--sp-4) var(--sp-8);
 		opacity: 1;
 	}
+	/* DEV-440 후속: 도구줄의 단추 · 고르기는 모두 `--ctl-h-sm` — 아이콘만 든 단추가 글자 단추보다 낮던 것. */
 	.tb-btn {
 		display: flex;
 		align-items: center;
+		box-sizing: border-box;
+		min-height: var(--ctl-h-sm);
 		gap: var(--sp-4);
 		padding: var(--sp-4) var(--sp-8);
 		background: var(--bg-subtle);
@@ -5372,19 +5355,48 @@
 		align-self: stretch;
 		margin: var(--sp-2) 0;
 	}
+	/* 도구줄 고르기 — 브라우저 기본 모양(WebKit 의 둥근 양끝 · 위아래 화살표)을 끄고 `.tb-btn` 과 같은 상자로.
+	   기본 모양이면 [정렬][그룹] 이 붙지 않고 고르기만 따로 둥글게 떠 보였다(admin: "이부분 뭔가 이상함"). */
+	.tb-select-wrap {
+		position: relative;
+		display: flex;
+	}
 	.tb-select {
-		padding: var(--sp-2) var(--sp-6);
+		box-sizing: border-box;
+		min-height: var(--ctl-h-sm);
+		appearance: none;
+		-webkit-appearance: none;
+		padding: var(--sp-4) var(--sp-24) var(--sp-4) var(--sp-8);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		color: var(--text-muted);
+		font: inherit;
 		font-size: var(--fs-sm);
+		line-height: inherit;
 		cursor: pointer;
 		outline: none;
+		transition:
+			background var(--dur-fast),
+			color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
 	.tb-select:hover {
+		background: color-mix(in srgb, var(--accent) 8%, var(--bg-subtle));
 		border-color: var(--text-faint);
 		color: var(--text);
+	}
+	.tb-select:focus-visible {
+		box-shadow: var(--ring);
+	}
+	.tb-caret {
+		position: absolute;
+		right: var(--sp-6);
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		color: var(--text-faint);
+		pointer-events: none;
 	}
 
 	/* Arrange 버튼 + mode select 를 하나의 컨트롤처럼 묶음 */
@@ -5401,7 +5413,6 @@
 	.tb-arrange-group .tb-mode {
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
-		padding-left: var(--sp-4);
 	}
 
 	.overlay {
@@ -5452,22 +5463,16 @@
 	}
 	/* DEV-056: 숨김 설정 모달 */
 	.hide-modal {
-		padding: var(--sp-16) var(--sp-24) var(--sp-16);
-		/* 모바일: 30~40rem 고정폭이 좁은 화면에서 밖으로 삐져나감 — 뷰포트 폭 안으로 clamp. */
-		width: min(calc(40rem * var(--popup-scale, 1)), calc(100vw - 2rem));
-		min-width: min(calc(30rem * var(--popup-scale, 1)), calc(100vw - 2rem));
-		max-width: calc(100vw - 2rem);
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-12);
-		box-sizing: border-box;
-		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
-		/* BUG-264: 위와 같은 이유 — 폴백 후 `dvh`. */
+		/* BUG-264: 폴백 후 `dvh`. */
 		/* BUG-354: 화면 높이만 상한으로 두면 큰 화면에서 창이 화면 거의 전체만큼 길었다(admin:
-		   "너무 높아져서 스크롤하라고 한 것"). 창 높이 자체를 32rem(UI 배율 따라감)으로 묶고 나머지는
-		   스크롤 — 레인 표와 체크박스까지가 한눈에 들어오는 높이다. 작은 화면에서는 여전히 화면 안으로. */
-		max-height: min(calc(32rem * var(--popup-scale, 1)), calc(100vh - 4rem));
-		max-height: min(calc(32rem * var(--popup-scale, 1)), calc(100dvh - 4rem));
+		   "너무 높아져서 스크롤하라고 한 것"). 높이를 32rem(UI 배율 따라감)으로 묶고 나머지는
+		   스크롤 — 레인 표와 체크박스까지가 한눈에 들어오는 높이다. 작은 화면에서는 여전히 화면 안으로.
+		   DEV-440 후속: 틀(폭 · 막 · 제목 · X)은 Modal, 여기는 안쪽 스크롤만. */
+		max-height: min(calc(28rem * var(--popup-scale, 1)), calc(100vh - 8rem));
+		max-height: min(calc(28rem * var(--popup-scale, 1)), calc(100dvh - 8rem));
 		overflow-y: auto;
 	}
 	/* BUG-354: 세로 flex 라 안 항목이 기본으로 줄어든다(flex-shrink: 1). 그러면 창이 스크롤되는 대신

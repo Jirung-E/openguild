@@ -261,17 +261,19 @@
 	.df-text.month {
 		width: 5rem;
 	}
+	/* DEV-440 후속: 옆 날짜 칸(`.input`)과 같은 높이의 정사각형. */
 	.df-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
+		box-sizing: border-box;
+		width: var(--ctl-h);
+		height: var(--ctl-h);
 		padding: 0;
 		color: var(--text-muted);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
+		border-radius: var(--r-md);
 		cursor: pointer;
 	}
 	.df-btn:hover:not(:disabled) {
