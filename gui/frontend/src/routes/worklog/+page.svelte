@@ -437,12 +437,14 @@
 				{#if unit === 'range'}
 					<!-- 임의 구간 (admin 요청) — 시작/끝 날짜 직접 지정. -->
 					<DateField
+						small
 						bind:value={rangeFrom}
 						onpick={onRangeInput}
 						ariaLabel={t('worklogPage.rangeStartAria', $locale)}
 					/>
 					<span class="range-tilde">~</span>
 					<DateField
+						small
 						bind:value={rangeTo}
 						onpick={onRangeInput}
 						ariaLabel={t('worklogPage.rangeEndAria', $locale)}
@@ -454,6 +456,7 @@
 					{#if unit === 'month'}
 						<!-- 월 뷰는 월만 고름 (admin 요청) — DateField month 모드. -->
 						<DateField
+							small
 							mode="month"
 							value={anchorMonth}
 							onpick={onMonthInput}
@@ -463,6 +466,7 @@
 						<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한 DateField.
 						     주 뷰에선 고른 날짜가 속한 주로 이동. -->
 						<DateField
+							small
 							bind:value={anchor}
 							onpick={onAnchorInput}
 							ariaLabel={t('worklogPage.dateSelectAria', $locale)}
@@ -687,7 +691,10 @@
 		align-items: center;
 		gap: var(--sp-6);
 	}
+	/* DEV-440 후속: 이 줄은 [단위][보기] `.seg.sm` 옆이라 작은 높이(`--ctl-h-sm`) — 날짜 칸도 `small`. */
 	.nav button {
+		box-sizing: border-box;
+		min-height: var(--ctl-h-sm);
 		border: var(--bw) solid var(--border);
 		background: transparent;
 		color: var(--text);

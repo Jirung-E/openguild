@@ -23,6 +23,7 @@
 		disabled = false,
 		ariaLabel = '',
 		mode = 'date',
+		small = false,
 		onpick
 	}: {
 		value?: string;
@@ -30,6 +31,8 @@
 		ariaLabel?: string;
 		/** 'date' = YYYY-MM-DD(일 그리드), 'month' = YYYY-MM(월 그리드). */
 		mode?: 'date' | 'month';
+		/** DEV-440 후속: 작은 줄(`.seg.sm` · 도구줄 단추 옆)에 놓일 때 — 칸 · 달력 단추가 `--ctl-h-sm` 높이. */
+		small?: boolean;
 		/** 값 확정 시(달력 선택 또는 텍스트 입력 blur/Enter) 호출 — onchange 대용. */
 		onpick?: (v: string) => void;
 	} = $props();
@@ -139,6 +142,7 @@
 <span class="datefield" class:disabled bind:this={rootEl} onkeydown={onKeydown} role="presentation">
 	<input
 		class="input df-text"
+		class:sm={small}
 		class:month={mode === 'month'}
 		type="text"
 		inputmode="numeric"
@@ -152,6 +156,7 @@
 	<button
 		type="button"
 		class="df-btn"
+		class:sm={small}
 		onclick={togglePicker}
 		{disabled}
 		aria-label={t('common.pickDate', $locale)}
@@ -275,6 +280,10 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
 		cursor: pointer;
+	}
+	.df-btn.sm {
+		width: var(--ctl-h-sm);
+		height: var(--ctl-h-sm);
 	}
 	.df-btn:hover:not(:disabled) {
 		background: var(--border);

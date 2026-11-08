@@ -485,9 +485,6 @@
 		border-top: none;
 		padding-top: var(--sp-12);
 	}
-	.editor input[type='text'] {
-		font: inherit;
-	}
 	.editor .slug {
 		width: 12rem;
 	}

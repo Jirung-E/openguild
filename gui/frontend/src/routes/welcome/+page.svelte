@@ -949,7 +949,6 @@
 	}
 	.uninit-name input {
 		flex: 1 1 auto;
-		font: inherit;
 		font-family: var(--font-mono);
 	}
 	.uninit-actions {

@@ -6,6 +6,7 @@
    - 우상단 "+ 새 캠페인" 버튼
 -->
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
@@ -205,19 +206,19 @@
 	<div class="controls">
 		<label>
 			{t('campaignList.statusLabel', $locale)}
-			<select class="input" bind:value={statusFilter}>
+			<Select bind:value={statusFilter}>
 				<option value="all">{t('campaignList.statusAll', $locale)}</option>
 				<option value="active">{t('campaignList.statusActive', $locale)}</option>
 				<option value="done">{t('campaignList.statusDone', $locale)}</option>
-			</select>
+			</Select>
 		</label>
 		<label>
 			{t('campaignList.sortLabel', $locale)}
-			<select class="input" bind:value={sort}>
+			<Select bind:value={sort}>
 				<option value="recent">{t('campaignList.sortRecent', $locale)}</option>
 				<option value="remaining">{t('campaignList.sortRemaining', $locale)}</option>
 				<option value="manual">{t('campaignList.sortManual', $locale)}</option>
-			</select>
+			</Select>
 		</label>
 		<SearchField
 			bind:search

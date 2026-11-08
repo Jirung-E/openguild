@@ -13,6 +13,7 @@
   (cross-link 대상 — DEV-218).
 -->
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import PaneResizer from '$lib/components/PaneResizer.svelte';
 	import { isChildWindow } from '$lib/stores/windowKind';
@@ -1303,11 +1304,11 @@
 			{/if}
 			<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 			<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
-				<select class="input sm" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
+				<Select small bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
 					{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
 						<option value={k}>{label}</option>
 					{/each}
-				</select>
+				</Select>
 				<button
 					class="sort-dir"
 					onclick={() => (docSortDesc = !docSortDesc)}
@@ -1679,15 +1680,11 @@
 						{/if}
 						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 						<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
-							<select
-								class="input sm"
-								bind:value={docSortKey}
-								title={t('library.sortTitle', $locale)}
-							>
+							<Select small bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
 								{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
 									<option value={k}>{label}</option>
 								{/each}
-							</select>
+							</Select>
 							<button
 								class="sort-dir"
 								onclick={() => (docSortDesc = !docSortDesc)}
@@ -1813,12 +1810,12 @@
 								bind:value={createTitle}
 								onkeydown={(e) => e.key === 'Enter' && submitCreate()}
 							/>
-							<select class="input" bind:value={createPath}>
+							<Select bind:value={createPath}>
 								<option value="">{t('library.topLevel', $locale)}</option>
 								{#each flattenFolderPaths(tree) as p (p)}
 									<option value={p}>{p}</option>
 								{/each}
-							</select>
+							</Select>
 							{#if createError}<p class="err">{createError}</p>{/if}
 							<div class="actions">
 								<ActionButtons
@@ -1946,12 +1943,12 @@
 
 					{#if moving}
 						<div class="modal-inline">
-							<select class="input" bind:value={movePath}>
+							<Select bind:value={movePath}>
 								<option value="">{t('library.topLevel', $locale)}</option>
 								{#each flattenFolderPaths(tree) as p (p)}
 									<option value={p}>{p}</option>
 								{/each}
-							</select>
+							</Select>
 							{#if moveError}<p class="err">{moveError}</p>{/if}
 							<div class="actions">
 								<ActionButtons
@@ -2088,12 +2085,12 @@
 	{#if movingPicked}
 		<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
 		<div class="modal-inline">
-			<select class="input" bind:value={movePickedPath}>
+			<Select bind:value={movePickedPath}>
 				<option value="">{t('library.topLevel', $locale)}</option>
 				{#each flattenFolderPaths(tree) as p (p)}
 					<option value={p}>{p}</option>
 				{/each}
-			</select>
+			</Select>
 			<div class="actions">
 				<ActionButtons
 					label={t('library.move', $locale)}

@@ -11,6 +11,10 @@
 //
 // DEV-440 후속: 모달 틀도 `Modal` 하나 — 창마다 막 · 상자 · 제목 · X 를 따로 그리던 것(X 만 세 가지)을 막는다.
 // `aria-modal` 을 직접 단 요소가 `Modal.svelte` 밖에 있으면 실패한다.
+//
+// DEV-440 후속: 고르기도 `Select` 하나 — 꺾쇠를 글자색 아이콘으로 얹는 틀. select 를 직접 쓰면 꺾쇠가 없거나
+// (브라우저 기본 모양) 화면마다 다른 꺾쇠가 된다(도구줄만 아이콘, 나머지는 회색 그라디언트였다).
+// `<select` 가 `Select.svelte` 밖에 있으면 실패한다.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +23,8 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url));
 const CANON = 'lib/components/ActionButtons.svelte';
 const MODAL = 'lib/components/Modal.svelte';
 const DIRECT_MODAL = /aria-modal=/g;
+const SELECT = 'lib/components/Select.svelte';
+const DIRECT_SELECT = /<select\b/g;
 
 /** 단추 여는 태그 바로 뒤의 글이 `{t('….cancel'` 이나 `{t('common.no'` 로 시작하면 직접 단 취소 단추다. */
 const DIRECT_CANCEL = /<button\b[^>]*>\s*\{t\('(?:[\w.]*\.cancel|common\.no)'/g;
@@ -47,15 +53,23 @@ function check(path) {
 			violations.push(`${rel}:${line}  모달 틀 → Modal`);
 		}
 	}
+	if (rel !== SELECT) {
+		for (const m of text.matchAll(DIRECT_SELECT)) {
+			const line = text.slice(0, m.index).split('\n').length;
+			violations.push(`${rel}:${line}  고르기 → Select`);
+		}
+	}
 }
 
 walk(SRC);
 
 if (violations.length > 0) {
 	console.error(
-		'공통 부품을 거치지 않았습니다 — 취소 단추는 `ActionButtons`(취소 왼쪽, 하는 일 오른쪽), 모달 틀은 `Modal`:'
+		'공통 부품을 거치지 않았습니다 — 취소 단추는 `ActionButtons`(취소 왼쪽, 하는 일 오른쪽), 모달 틀은 `Modal`, 고르기는 `Select`:'
 	);
 	for (const v of violations) console.error(`  ${v}`);
 	process.exit(1);
 }
-console.log('check:actions — 취소 · 확인 단추는 ActionButtons, 모달 틀은 Modal 로 그립니다.');
+console.log(
+	'check:actions — 취소 · 확인 단추는 ActionButtons, 모달 틀은 Modal, 고르기는 Select 로 그립니다.'
+);

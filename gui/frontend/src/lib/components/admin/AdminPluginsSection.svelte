@@ -10,6 +10,7 @@
   허용한다. DEV-394: [다시 읽기] 는 디스크의 정의로 다시 꽂는다(자동 감지는 없다).
 -->
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '../Icon.svelte';
 	import { onMount, tick } from 'svelte';
@@ -566,9 +567,9 @@
 										<!-- BUG-328: 고른 값은 **`select` 에** 준다. `option` 의 `selected` 는
 												     처음 그릴 때의 속성이라, 저장 뒤 다시 그려도 이미 그려진 상자의
 												     선택은 안 바뀐다 — 그래서 두 번 저장해야 맞아 보였다(admin). -->
-										<select
+										<Select
 											id={`pi-${p.name}-${i.key}`}
-											class="input pi-field"
+											class="pi-field"
 											disabled={busy || !canManage}
 											value={draftOf(p.name, i)}
 											onchange={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
@@ -576,11 +577,11 @@
 											{#each i.options as o (o.value)}
 												<option value={o.value}>{o.label}</option>
 											{/each}
-										</select>
+										</Select>
 									{:else}
 										<input
 											id={`pi-${p.name}-${i.key}`}
-											class="input pi-field"
+											class="pi-field"
 											type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
 											autocomplete="off"
 											placeholder={i.has_value && (i.value === null || i.value === undefined)
@@ -1017,7 +1018,7 @@
 		overflow-wrap: anywhere;
 		min-width: 0;
 	}
-	.pi-field {
+	:global(.select-box.pi-field) {
 		min-width: 0;
 	}
 	.pi-actions {

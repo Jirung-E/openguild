@@ -178,6 +178,7 @@
 	<!-- DEV-037: 검색. DEV-452: 같은 칸에서 [검색 | 쿼리] 를 고른다(쿼리는 예전엔 고급 안의 따로 칸). -->
 	<div class="search-group">
 		<SearchField
+			small
 			bind:search
 			bind:query
 			bind:mode={searchMode}
@@ -263,18 +264,18 @@
 		<!-- 날짜 범위 -->
 		<label class="date-range"
 			>{t('filter.created', $locale)}
-			<DateField bind:value={createdAfter} /> ~
-			<DateField bind:value={createdBefore} /></label
+			<DateField small bind:value={createdAfter} /> ~
+			<DateField small bind:value={createdBefore} /></label
 		>
 		<label class="date-range"
 			>{t('filter.updated', $locale)}
-			<DateField bind:value={updatedAfter} /> ~
-			<DateField bind:value={updatedBefore} /></label
+			<DateField small bind:value={updatedAfter} /> ~
+			<DateField small bind:value={updatedBefore} /></label
 		>
 		<label class="date-range" title={t('filter.commentedTitle', $locale)}
 			>{t('filter.commented', $locale)}
-			<DateField bind:value={commentedAfter} /> ~
-			<DateField bind:value={commentedBefore} /></label
+			<DateField small bind:value={commentedAfter} /> ~
+			<DateField small bind:value={commentedBefore} /></label
 		>
 		{#if advancedActive}
 			<button
@@ -327,7 +328,11 @@
 		background: var(--bg-subtle);
 	}
 
+	/* DEV-440 후속: 이 줄은 작은 단계(`--ctl-h-sm`) — 칩 · 검색 칸(SearchField small) · 날짜 칸(DateField small)이
+	   모두 같은 높이. 창 폭 · UI 배율에 따라 줄이 접히면 칩과 검색 칸이 나란히 놓인다. */
 	button {
+		box-sizing: border-box;
+		min-height: var(--ctl-h-sm);
 		padding: var(--sp-4) var(--sp-12);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);

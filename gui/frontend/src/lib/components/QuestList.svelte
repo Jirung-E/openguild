@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
 	// DEV-453: 보드 · 목록 전환.
@@ -674,11 +675,11 @@
 		</div>
 		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->
 		<div class="sort-group" aria-label={t('questList.sort', $locale)}>
-			<select class="input sm" bind:value={sortKey} title={t('questList.sortBy', $locale)}>
+			<Select small bind:value={sortKey} title={t('questList.sortBy', $locale)}>
 				{#each SORT_KEYS as k (k)}
 					<option value={k}>{SORT_LABELS[k]}</option>
 				{/each}
-			</select>
+			</Select>
 			<button
 				class="sort-dir"
 				onclick={() => (sortDesc = !sortDesc)}

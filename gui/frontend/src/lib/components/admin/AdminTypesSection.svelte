@@ -443,9 +443,10 @@
 	.row-actions :global(button + button) {
 		margin-left: var(--sp-4);
 	}
+	/* DEV-440 후속: 글자 크기는 공통 `.input` 것 — 여기서 `font: inherit` 로 덮으면 글이 한 단계 커져 칸이
+	   36px 로 다른 입력칸(34.5px)보다 높았다. */
 	input[type='text'] {
 		width: 100%;
-		font: inherit;
 	}
 	input[type='text'].prefix-input {
 		width: 7ch;

@@ -9,6 +9,7 @@
     우하단 통합 스택, DEV-259)가 담당. Tauri 전용.
 -->
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '$lib/components/Icon.svelte';
@@ -520,8 +521,7 @@
 					<dt>{t(row.labelKey, $locale)}</dt>
 					<dd class="ui-scale">
 						<div class="scale-row">
-							<select
-								class="font-select"
+							<Select
 								value={fontSelectValue(row.kind)}
 								onchange={(e) => onFontSelect(row.kind, e.currentTarget.value)}
 								aria-label={t(row.labelKey, $locale)}
@@ -530,10 +530,10 @@
 									<option value={f}>{f || t('settings.fontSystemDefault', $locale)}</option>
 								{/each}
 								<option value={CUSTOM}>{t('settings.fontCustom', $locale)}</option>
-							</select>
+							</Select>
 							{#if fontSelectValue(row.kind) === CUSTOM}
 								<input
-									class="font-custom"
+									class="input font-custom"
 									type="text"
 									value={row.kind === 'ui' ? $uiFont : $codeFont}
 									placeholder={t('settings.fontCustomPlaceholder', $locale)}
@@ -1004,22 +1004,8 @@
 		width: 100%;
 		max-width: 24rem;
 	}
-	/* DEV-272: 글꼴 선택 — 드롭다운 + (직접 입력일 때) 이름 칸 + 견본. */
-	.ui-scale .font-select,
-	.ui-scale .font-custom {
-		padding: var(--sp-4) var(--sp-6);
-		background: var(--bg-elevated);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text);
-		font: inherit;
-		font-size: var(--fs-md);
-		outline: none;
-	}
-	.ui-scale .font-select:focus-visible,
-	.ui-scale .font-custom:focus-visible {
-		border-color: var(--accent);
-	}
+	/* DEV-272: 글꼴 선택 — 드롭다운 + (직접 입력일 때) 이름 칸 + 견본.
+	   DEV-440 후속: 드롭다운은 공통 `Select`, 이름 칸은 공통 `.input` — 앱의 다른 고르기 · 입력칸과 같은 상자. */
 	.ui-scale .font-custom {
 		flex: 1;
 		min-width: 8rem;

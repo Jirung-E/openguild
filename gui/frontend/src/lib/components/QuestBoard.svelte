@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -3970,34 +3971,32 @@
 				>
 			</button>
 			<div class="tb-sep"></div>
-			<span class="tb-select-wrap">
-				<select
-					class="tb-select"
-					value={globalCols}
-					onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
-					title={t(boardOrientation === 'columns' ? 'board.gridCols' : 'board.gridRows', $locale)}
+			<Select
+				small
+				class="tb-select"
+				value={globalCols}
+				onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
+				title={t(boardOrientation === 'columns' ? 'board.gridCols' : 'board.gridRows', $locale)}
+			>
+				<option value={1}
+					>1{t(
+						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+						$locale
+					)}</option
 				>
-					<option value={1}
-						>1{t(
-							boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
-							$locale
-						)}</option
-					>
-					<option value={2}
-						>2{t(
-							boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
-							$locale
-						)}</option
-					>
-					<option value={3}
-						>3{t(
-							boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
-							$locale
-						)}</option
-					>
-				</select>
-				<span class="tb-caret"><Icon name="caret-down-sm" size="1em" /></span>
-			</span>
+				<option value={2}
+					>2{t(
+						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+						$locale
+					)}</option
+				>
+				<option value={3}
+					>3{t(
+						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+						$locale
+					)}</option
+				>
+			</Select>
 			<div class="tb-sep"></div>
 			<!-- DEV-056 → DEV-059 fix2: 숨김 + 순서 변경 통합 → '보드 설정'. -->
 			<button
@@ -4033,17 +4032,15 @@
 						>{t('board.arrangeToolbarBtn', $locale)}</span
 					>
 				</button>
-				<span class="tb-select-wrap">
-					<select
-						class="tb-select tb-mode"
-						bind:value={arrangeMode}
-						title={t('board.arrangeMode', $locale)}
-					>
-						<option value="group">{t('board.arrangeModeGroup', $locale)}</option>
-						<option value="all">{t('board.arrangeModeAll', $locale)}</option>
-					</select>
-					<span class="tb-caret"><Icon name="caret-down-sm" size="1em" /></span>
-				</span>
+				<Select
+					small
+					class="tb-select tb-mode"
+					bind:value={arrangeMode}
+					title={t('board.arrangeMode', $locale)}
+				>
+					<option value="group">{t('board.arrangeModeGroup', $locale)}</option>
+					<option value="all">{t('board.arrangeModeAll', $locale)}</option>
+				</Select>
 			</div>
 		{/if}
 		<!-- 토글 버튼 — 항상 우측 끝 (collapsed / expanded 동일 위치, 사용자 피드백). -->
@@ -5355,48 +5352,28 @@
 		align-self: stretch;
 		margin: var(--sp-2) 0;
 	}
-	/* 도구줄 고르기 — 브라우저 기본 모양(WebKit 의 둥근 양끝 · 위아래 화살표)을 끄고 `.tb-btn` 과 같은 상자로.
+	/* 도구줄 고르기 — 상자 · 높이 · 꺾쇠는 공통 `Select`(small), 색만 `.tb-btn` 처럼(배경 · 흐린 글자 → 올리면 진하게).
+	   글자색은 감싼 상자에 준다 — select 글자와 꺾쇠가 함께 따른다.
 	   기본 모양이면 [정렬][그룹] 이 붙지 않고 고르기만 따로 둥글게 떠 보였다(admin: "이부분 뭔가 이상함"). */
-	.tb-select-wrap {
-		position: relative;
-		display: flex;
-	}
-	.tb-select {
-		box-sizing: border-box;
-		min-height: var(--ctl-h-sm);
-		appearance: none;
-		-webkit-appearance: none;
-		padding: var(--sp-4) var(--sp-24) var(--sp-4) var(--sp-8);
-		background: var(--bg-subtle);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
+	.toolbar :global(.tb-select) {
 		color: var(--text-muted);
-		font: inherit;
-		font-size: var(--fs-sm);
-		line-height: inherit;
-		cursor: pointer;
-		outline: none;
-		transition:
-			background var(--dur-fast),
-			color var(--dur-fast),
-			border-color var(--dur-fast);
+		transition: color var(--dur-fast);
 	}
-	.tb-select:hover {
-		background: color-mix(in srgb, var(--accent) 8%, var(--bg-subtle));
-		border-color: var(--text-faint);
+	.toolbar :global(.tb-select:hover) {
 		color: var(--text);
 	}
-	.tb-select:focus-visible {
-		box-shadow: var(--ring);
+	.toolbar :global(.tb-select select) {
+		background-color: var(--bg-subtle);
+		transition:
+			background-color var(--dur-fast),
+			border-color var(--dur-fast);
 	}
-	.tb-caret {
-		position: absolute;
-		right: var(--sp-6);
-		top: 50%;
-		transform: translateY(-50%);
-		display: flex;
-		color: var(--text-faint);
-		pointer-events: none;
+	.toolbar :global(.tb-select select:hover) {
+		background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-subtle));
+		border-color: var(--text-faint);
+	}
+	.toolbar :global(.tb-select select:focus-visible) {
+		box-shadow: var(--ring);
 	}
 
 	/* Arrange 버튼 + mode select 를 하나의 컨트롤처럼 묶음 */
@@ -5410,7 +5387,7 @@
 		border-bottom-right-radius: 0;
 		border-right: none;
 	}
-	.tb-arrange-group .tb-mode {
+	.tb-arrange-group :global(.tb-mode select) {
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
 	}

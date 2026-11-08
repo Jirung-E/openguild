@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
@@ -537,8 +538,8 @@
 				<div class="field">
 					<label class="field-label">
 						<span>{t('nqm.template', $locale)}</span>
-						<select
-							class="input sel"
+						<Select
+							class="sel"
 							bind:value={selectedTemplate}
 							onchange={() => applyTemplate(selectedTemplate)}
 						>
@@ -546,7 +547,7 @@
 							{#each templates as t (t.name)}
 								<option value={t.name}>{t.name}{t.title ? ` — ${t.title}` : ''}</option>
 							{/each}
-						</select>
+						</Select>
 					</label>
 				</div>
 			{/if}
@@ -588,9 +589,12 @@
 			</div>
 			<div class="field status-field">
 				<span class="field-label">{t('nqm.status', $locale)}</span>
-				<span class="status-fixed" data-testid="new-quest-status"
-					>{openStatus ? statusLabel(openStatus, $locale) : ''}</span
-				>
+				<!-- DEV-440 후속: 고칠 수 없는 값이라 입력칸 모양(흰 칸 · 테두리)이 아니라 홈 · 목록과 같은 상태 알약. -->
+				{#if openStatus}
+					<span class="pill" style:--c={openStatus.color} data-testid="new-quest-status"
+						>{statusLabel(openStatus, $locale)}</span
+					>
+				{/if}
 			</div>
 
 			<div class="field">
@@ -890,7 +894,7 @@
 	}
 	.status-field {
 		flex-direction: row;
-		align-items: baseline;
+		align-items: center;
 		gap: var(--sp-8);
 	}
 	.pill-btns {
@@ -921,23 +925,8 @@
 		cursor: default;
 	}
 
-	.sel {
+	.field :global(.sel) {
 		min-width: 5rem;
-	}
-
-	.status-fixed {
-		display: inline-flex;
-		align-items: center;
-		padding: var(--sp-6) var(--sp-8);
-		background: var(--bg);
-		border: var(--bw) solid var(--bg-subtle);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		min-width: 5rem;
-		/* BUG-253: 테두리 두께는 --bw 토큰(배율 반응). */
-		min-height: calc(0.875rem + 0.8rem + var(--bw) * 2);
-		box-sizing: border-box;
 	}
 
 	.inp {

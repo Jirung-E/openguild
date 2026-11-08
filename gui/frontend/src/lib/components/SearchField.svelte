@@ -34,6 +34,7 @@
 		/** REQ-040: 여기서는 쿼리를 못 쓴다(검색 페이지의 '전체' · 규칙 탭) — [쿼리] 와 `?` 를 끈다. */
 		queryDisabled = false,
 		queryDisabledHint = '',
+		small = false,
 		options
 	}: {
 		search?: string;
@@ -47,6 +48,8 @@
 		grow?: boolean;
 		queryDisabled?: boolean;
 		queryDisabledHint?: string;
+		/** DEV-440 후속: 작은 줄(퀘스트 목록 필터 줄 — 칩 · 단추가 `--ctl-h-sm`)에 놓일 때. */
+		small?: boolean;
 		options?: Snippet;
 	} = $props();
 
@@ -73,7 +76,12 @@
 </script>
 
 <div class="search-field" class:grow>
-	<div class="seg" role="radiogroup" aria-label={t('filter.searchModeAria', $locale)}>
+	<div
+		class="seg"
+		class:sm={small}
+		role="radiogroup"
+		aria-label={t('filter.searchModeAria', $locale)}
+	>
 		<button
 			type="button"
 			role="radio"
@@ -102,6 +110,7 @@
 		<input
 			type="search"
 			class="input search-input"
+			class:sm={small}
 			class:mono={mode === 'query'}
 			class:bad={mode === 'query' && queryError}
 			placeholder={mode === 'search' ? placeholder : t(queryPlaceholderKey, $locale)}
@@ -130,6 +139,7 @@
 		<button
 			type="button"
 			class="query-help-btn"
+			class:sm={small}
 			class:active={helpOpen}
 			aria-expanded={helpOpen}
 			title={queryDisabled && queryDisabledHint
@@ -215,7 +225,10 @@
 		color: var(--danger);
 		background: transparent;
 	}
+	/* DEV-440 후속: 옆 검색 칸과 같은 높이(작은 줄이면 `--ctl-h-sm`). */
 	.query-help-btn {
+		box-sizing: border-box;
+		min-height: var(--ctl-h);
 		padding: var(--sp-2) var(--sp-8);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
@@ -224,6 +237,9 @@
 		font-size: var(--fs-sm);
 		font-weight: var(--fw-semibold);
 		cursor: pointer;
+	}
+	.query-help-btn.sm {
+		min-height: var(--ctl-h-sm);
 	}
 	.query-help-btn.active {
 		background: color-mix(in srgb, var(--accent) 20%, transparent);

@@ -101,9 +101,11 @@ export const ICON_SHAPES: Record<IconName, string> = {
 	'caret-up': '<path d="M3.8 10.4h8.4L8 5.4z" fill="currentColor"/>',
 	'caret-left': '<path d="M10.4 3.8v8.4L5.4 8z" fill="currentColor"/>',
 	'caret-right': '<path d="M5.6 3.8v8.4L10.6 8z" fill="currentColor"/>',
-	// ▾ ▸ — 작은 삼각형(필터 · 고급 · 소스 펼치기).
-	'caret-down-sm': '<path d="M5.2 6.6h5.6L8 9.8z" fill="currentColor"/>',
-	'caret-right-sm': '<path d="M6.6 5.2v5.6L9.8 8z" fill="currentColor"/>',
+	// ▾ ▸ — 작은 삼각형(필터 · 고급 · 소스 펼치기 · 고르기의 꺾쇠).
+	// DEV-440 후속: 7 × 4 로 키우고 상자 가운데(8, 8)에 놓는다 — 예전 5.6 × 3.2 는 글 옆에서 작아 보였고
+	// 삼각형이 가운데보다 0.2 아래(오른쪽)로 치우쳐 글줄과 어긋나 보였다(admin).
+	'caret-down-sm': '<path d="M4.5 6h7L8 10z" fill="currentColor"/>',
+	'caret-right-sm': '<path d="M6 4.5v7L10 8z" fill="currentColor"/>',
 	// ↓ (↑ 은 위의 up)
 	down: '<path d="M8 3.4v8.7M4.4 8.5 8 12.1l3.6-3.6"/>',
 	// ↗ — 밖으로(새 창 · 릴리스 페이지).
