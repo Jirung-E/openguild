@@ -438,8 +438,9 @@
 		onscroll={updateFade}
 		onwheel={() => (following = false)}
 	>
-		{#if $inboxOpen && cards.length === 0}
-			<div class="slot" transition:fadeOnly>
+		<!-- 비었을 때 — 머리 띠 · 카드와 같이 오른쪽에서 들어오고 닫을 때 오른쪽으로 빠진다. -->
+		{#if layoutOpen && cards.length === 0}
+			<div class="slot" class:leaving={closing} in:cardIn>
 				<p class="card ib-empty">{t('inbox.empty', $locale)}</p>
 			</div>
 		{/if}
