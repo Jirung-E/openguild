@@ -32,6 +32,7 @@
   ```
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	// DEV-205 모듈1: 기본 라벨 i18n. 호출부가 라벨을 넘기면 그대로 쓰고,
@@ -106,18 +107,14 @@
 			<h3 class="modal-title" id="{uid}-title">{displayTitle}</h3>
 			<p class="modal-msg" id="{uid}-msg">{message}</p>
 			<div class="modal-actions">
-				<button class="btn" data-autofocus={danger ? '' : undefined} onclick={close}>
-					{displayCancel}
-				</button>
-				<button
-					class="btn"
-					class:btn-primary={!danger}
-					class:btn-danger={danger}
-					data-autofocus={danger ? undefined : ''}
-					onclick={confirm}
-				>
-					{displayConfirm}
-				</button>
+				<ActionButtons
+					label={displayConfirm}
+					cancelLabel={displayCancel}
+					kind={danger ? 'danger' : 'primary'}
+					autofocus={danger ? 'cancel' : 'confirm'}
+					onconfirm={confirm}
+					oncancel={close}
+				/>
 			</div>
 		</div>
 	</div>

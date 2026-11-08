@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import DocLink from '$lib/components/DocLink.svelte';
@@ -936,12 +937,12 @@
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 
 				<div class="edit-actions">
-					<button class="btn btn-primary" onclick={() => saveEdit()} disabled={saving}>
-						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
-					</button>
-					<button class="btn" onclick={exitEditMode} disabled={saving}
-						>{t('common.cancel', $locale)}</button
-					>
+					<ActionButtons
+						label={saving ? t('common.saving', $locale) : t('common.save', $locale)}
+						busy={saving}
+						onconfirm={() => saveEdit()}
+						oncancel={exitEditMode}
+					/>
 				</div>
 			</div>
 		{:else}
@@ -1492,17 +1493,14 @@
 				</p>
 			{/if}
 			<div class="del-actions">
-				<button class="btn btn-danger" onclick={doChangeType} disabled={changingType}>
-					{changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
-				</button>
-				<button
-					class="btn"
-					data-autofocus
-					onclick={() => (confirmTypeChange = null)}
-					disabled={changingType}
-				>
-					{t('common.cancel', $locale)}
-				</button>
+				<ActionButtons
+					label={changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
+					kind="danger"
+					autofocus="cancel"
+					busy={changingType}
+					onconfirm={doChangeType}
+					oncancel={() => (confirmTypeChange = null)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -1577,19 +1575,16 @@
 				</div>
 			{/if}
 			<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
-			<!-- 버튼 순서: [취소][삭제] — ConfirmDialog(캠페인 상세 등)와 통일. -->
 			<div class="del-actions">
-				<button class="btn" data-autofocus onclick={() => (deleteModal = false)} disabled={deleting}
-					>{t('common.cancel', $locale)}</button
-				>
-				<button
-					class="btn btn-danger"
-					onclick={confirmDelete}
-					disabled={deleting}
-					data-testid="confirm-delete"
-				>
-					{deleting ? t('quest.delete.deleting', $locale) : t('detail.delete', $locale)}
-				</button>
+				<ActionButtons
+					label={deleting ? t('quest.delete.deleting', $locale) : t('detail.delete', $locale)}
+					kind="danger"
+					autofocus="cancel"
+					busy={deleting}
+					testid="confirm-delete"
+					onconfirm={confirmDelete}
+					oncancel={() => (deleteModal = false)}
+				/>
 			</div>
 		</div>
 	</div>

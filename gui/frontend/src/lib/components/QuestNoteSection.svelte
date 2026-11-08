@@ -12,6 +12,7 @@
   `mode` prop 은 호환을 위해 받지만 무시 — 항상 memo 동작.
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
 	import { onDestroy } from 'svelte';
@@ -252,17 +253,13 @@
 						/>
 					</div>
 					<div class="actions">
-						<button
-							class="btn btn-primary"
-							onclick={() => save()}
-							disabled={saving}
+						<ActionButtons
+							label={saving ? t('common.saving', $locale) : t('common.save', $locale)}
 							title={`${t('compose.shortcut', $locale)}: ${submitShortcutLabel()}`}
-						>
-							{saving ? t('common.saving', $locale) : t('common.save', $locale)}
-						</button>
-						<button class="btn" onclick={cancelEdit} disabled={saving}
-							>{t('common.cancel', $locale)}</button
-						>
+							busy={saving}
+							onconfirm={() => save()}
+							oncancel={cancelEdit}
+						/>
 					</div>
 				</ComposeDock>
 				{#if saveError}<p class="state err">{saveError}</p>{/if}

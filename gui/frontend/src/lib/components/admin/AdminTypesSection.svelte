@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
@@ -225,11 +226,14 @@
 								</td>
 								<td class="count">{ty.quest_count}</td>
 								<td class="row-actions">
-									<button class="save" onclick={saveEdit} disabled={busy}
-										>{t('common.save', $locale)}</button
-									>
-									<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button
-									>
+									<ActionButtons
+										label={t('common.save', $locale)}
+										buttonClass=""
+										primaryClass="save"
+										{busy}
+										onconfirm={saveEdit}
+										oncancel={cancelEdit}
+									/>
 								</td>
 							{:else}
 								<td><code>{ty.prefix}</code></td>
@@ -307,12 +311,13 @@
 				</label>
 			</div>
 			<div class="modal-actions">
-				<button class="btn btn-accent" onclick={doCreate} disabled={busy}
-					>{t('common.add', $locale)}</button
-				>
-				<button class="btn" onclick={() => (creating = false)} disabled={busy}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('common.add', $locale)}
+					kind="accent"
+					{busy}
+					onconfirm={doCreate}
+					oncancel={() => (creating = false)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -338,12 +343,14 @@
 				>{t('adminTypes.deleteMsg3', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn btn-danger" onclick={doDelete} disabled={busy}
-					>{t('detail.delete', $locale)}</button
-				>
-				<button class="btn" data-autofocus onclick={() => (confirmDelete = null)} disabled={busy}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('detail.delete', $locale)}
+					kind="danger"
+					autofocus="cancel"
+					{busy}
+					onconfirm={doDelete}
+					oncancel={() => (confirmDelete = null)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -394,7 +401,8 @@
 		flex-wrap: wrap;
 		gap: var(--sp-8);
 	}
-	button {
+	button,
+	.row-actions :global(button) {
 		padding: var(--sp-6) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
@@ -403,10 +411,12 @@
 		font-size: var(--fs-md);
 		cursor: pointer;
 	}
-	button:hover:not(:disabled) {
+	button:hover:not(:disabled),
+	.row-actions :global(button:hover:not(:disabled)) {
 		background: var(--border);
 	}
-	button:disabled {
+	button:disabled,
+	.row-actions :global(button:disabled) {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -418,12 +428,12 @@
 		background: rgba(233, 79, 79, 0.18);
 	}
 	/* DEV-074 fix6 / DEV-116 fix: `--btn-primary-*` 토큰. */
-	button.save {
+	.row-actions :global(button.save) {
 		background: var(--btn-primary-bg);
 		border-color: var(--btn-primary-border);
 		color: var(--btn-primary-text);
 	}
-	button.save:hover:not(:disabled) {
+	.row-actions :global(button.save:hover:not(:disabled)) {
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
@@ -484,7 +494,7 @@
 	.row-actions {
 		text-align: right;
 	}
-	.row-actions button + button {
+	.row-actions :global(button + button) {
 		margin-left: var(--sp-4);
 	}
 	input[type='text'] {

@@ -6,6 +6,7 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import DocLink from '$lib/components/DocLink.svelte';
@@ -639,16 +640,13 @@
 					/>
 				</div>
 				<div class="actions">
-					<button
-						class="btn btn-primary"
-						onclick={() => saveEdit()}
-						disabled={saving || !titleEdit.trim()}
-					>
-						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
-					</button>
-					<button class="btn" onclick={exitEditMode} disabled={saving}
-						>{t('common.cancel', $locale)}</button
-					>
+					<ActionButtons
+						label={saving ? t('common.saving', $locale) : t('common.save', $locale)}
+						busy={saving}
+						disabled={!titleEdit.trim()}
+						onconfirm={() => saveEdit()}
+						oncancel={exitEditMode}
+					/>
 				</div>
 			{:else if detail.description && detail.description.trim()}
 				<MarkdownView

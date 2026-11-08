@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
@@ -515,10 +516,11 @@
 					{t('nqm.noTypesMsg', $locale)}
 				</p>
 				<div class="form-actions">
+					<!-- DEV-440: 닫기가 왼쪽, 하는 일이 오른쪽 — ActionButtons 와 같은 순서(이쪽은 링크라 손으로). -->
+					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
 					<a class="btn btn-primary" href="/admin" onclick={onclose}
 						>{t('nqm.goToAdmin', $locale)}</a
 					>
-					<button class="btn" onclick={onclose}>{t('nqm.close', $locale)}</button>
 				</div>
 			</div>
 		{:else if !openStatusSlug}
@@ -693,12 +695,13 @@
 				{/if}
 
 				<div class="form-actions">
-					<button class="btn btn-primary" onclick={create} disabled={saving || !title.trim()}>
-						{saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
-					</button>
-					<button class="btn" onclick={onclose} disabled={saving}
-						>{t('common.cancel', $locale)}</button
-					>
+					<ActionButtons
+						label={saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
+						busy={saving}
+						disabled={!title.trim()}
+						onconfirm={create}
+						oncancel={onclose}
+					/>
 					{#if isTauri}
 						<button
 							class="btn btn-tpl"

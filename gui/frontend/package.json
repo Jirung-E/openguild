@@ -24,6 +24,7 @@
 		"check:tokens": "node scripts/check-design-tokens.mjs",
 		"check:viewport": "node scripts/check-viewport-units.mjs",
 		"check:classes": "node scripts/check-undefined-classes.mjs",
+		"check:actions": "node scripts/check-action-buttons.mjs",
 		"check:guards": "node scripts/check-guard-registration.mjs",
 		"check:format": "prettier --check .",
 		"check:lint": "eslint ."

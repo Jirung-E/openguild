@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import Icon from '$lib/components/Icon.svelte';
@@ -501,12 +502,16 @@
 				<p class="err">{initErr}</p>
 			{/if}
 			<div class="uninit-actions">
-				<button class="btn btn-danger" onclick={initUninit} disabled={initRunning}>
-					{initRunning ? t('welcome.initializing', $locale) : t('welcome.initAndOpen', $locale)}
-				</button>
-				<button class="btn" onclick={declineUninit} disabled={initRunning}
-					>{t('common.no', $locale)}</button
-				>
+				<ActionButtons
+					label={initRunning
+						? t('welcome.initializing', $locale)
+						: t('welcome.initAndOpen', $locale)}
+					kind="danger"
+					cancelLabel={t('common.no', $locale)}
+					busy={initRunning}
+					onconfirm={initUninit}
+					oncancel={declineUninit}
+				/>
 			</div>
 		</section>
 	{/if}
@@ -623,12 +628,13 @@
 			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
 			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn btn-danger" onclick={doClear}
-					>{t('welcome.clearConfirm', $locale)}</button
-				>
-				<button class="btn" data-autofocus onclick={cancelClear}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('welcome.clearConfirm', $locale)}
+					kind="danger"
+					autofocus="cancel"
+					onconfirm={doClear}
+					oncancel={cancelClear}
+				/>
 			</div>
 		</div>
 	</div>
@@ -657,10 +663,13 @@
 					: t('welcome.removeNoteRemote', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn btn-danger" onclick={doRemove}>{t('welcome.remove', $locale)}</button>
-				<button class="btn" data-autofocus onclick={cancelRemove}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('welcome.remove', $locale)}
+					kind="danger"
+					autofocus="cancel"
+					onconfirm={doRemove}
+					oncancel={cancelRemove}
+				/>
 			</div>
 		</div>
 	</div>

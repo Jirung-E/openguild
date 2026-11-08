@@ -13,6 +13,7 @@
   (cross-link 대상 — DEV-218).
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import PaneResizer from '$lib/components/PaneResizer.svelte';
 	import { isChildWindow } from '$lib/stores/windowKind';
 	import {
@@ -1213,12 +1214,12 @@
 			/>
 			{#if renameFolderError}<p class="err">{renameFolderError}</p>{/if}
 			<div class="actions">
-				<button class="btn btn-primary" onclick={submitRenameFolder}
-					>{t('library.folderRenameSubmit', $locale)}</button
-				>
-				<button class="btn" onclick={() => (renamingFolder = null)}
-					>{t('library.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('library.folderRenameSubmit', $locale)}
+					cancelLabel={t('library.cancel', $locale)}
+					onconfirm={submitRenameFolder}
+					oncancel={() => (renamingFolder = null)}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -1234,12 +1235,12 @@
 			/>
 			{#if renameDocError}<p class="err">{renameDocError}</p>{/if}
 			<div class="actions">
-				<button class="btn btn-primary" onclick={submitRenameDoc}
-					>{t('library.folderRenameSubmit', $locale)}</button
-				>
-				<button class="btn" onclick={() => (renamingDoc = null)}
-					>{t('library.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('library.folderRenameSubmit', $locale)}
+					cancelLabel={t('library.cancel', $locale)}
+					onconfirm={submitRenameDoc}
+					oncancel={() => (renamingDoc = null)}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -1428,10 +1429,12 @@
 				/>
 				{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 				<div class="actions">
-					<button class="btn btn-primary" onclick={submitCreateFolder}
-						>{t('library.create', $locale)}</button
-					>
-					<button class="btn" onclick={cancelCreateFolder}>{t('library.cancel', $locale)}</button>
+					<ActionButtons
+						label={t('library.create', $locale)}
+						cancelLabel={t('library.cancel', $locale)}
+						onconfirm={submitCreateFolder}
+						oncancel={cancelCreateFolder}
+					/>
 				</div>
 			</div>
 		{/if}
@@ -1446,10 +1449,12 @@
 				/>
 				{#if createError}<p class="err">{createError}</p>{/if}
 				<div class="actions">
-					<button class="btn btn-primary" onclick={submitCreate}
-						>{t('library.create', $locale)}</button
-					>
-					<button class="btn" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
+					<ActionButtons
+						label={t('library.create', $locale)}
+						cancelLabel={t('library.cancel', $locale)}
+						onconfirm={submitCreate}
+						oncancel={cancelCreate}
+					/>
 				</div>
 			</div>
 		{/if}
@@ -1790,12 +1795,12 @@
 							/>
 							{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 							<div class="actions">
-								<button class="btn btn-primary" onclick={submitCreateFolder}
-									>{t('library.create', $locale)}</button
-								>
-								<button class="btn" onclick={cancelCreateFolder}
-									>{t('library.cancel', $locale)}</button
-								>
+								<ActionButtons
+									label={t('library.create', $locale)}
+									cancelLabel={t('library.cancel', $locale)}
+									onconfirm={submitCreateFolder}
+									oncancel={cancelCreateFolder}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -1816,10 +1821,12 @@
 							</select>
 							{#if createError}<p class="err">{createError}</p>{/if}
 							<div class="actions">
-								<button class="btn btn-primary" onclick={submitCreate}
-									>{t('library.create', $locale)}</button
-								>
-								<button class="btn" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
+								<ActionButtons
+									label={t('library.create', $locale)}
+									cancelLabel={t('library.cancel', $locale)}
+									onconfirm={submitCreate}
+									oncancel={cancelCreate}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -1927,10 +1934,12 @@
 							/>
 							{#if retitleError}<p class="err">{retitleError}</p>{/if}
 							<div class="actions">
-								<button class="btn btn-primary" onclick={submitRetitle}
-									>{t('library.change', $locale)}</button
-								>
-								<button class="btn" onclick={cancelRetitle}>{t('library.cancel', $locale)}</button>
+								<ActionButtons
+									label={t('library.change', $locale)}
+									cancelLabel={t('library.cancel', $locale)}
+									onconfirm={submitRetitle}
+									oncancel={cancelRetitle}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -1945,10 +1954,12 @@
 							</select>
 							{#if moveError}<p class="err">{moveError}</p>{/if}
 							<div class="actions">
-								<button class="btn btn-primary" onclick={submitMove}
-									>{t('library.move', $locale)}</button
-								>
-								<button class="btn" onclick={cancelMove}>{t('library.cancel', $locale)}</button>
+								<ActionButtons
+									label={t('library.move', $locale)}
+									cancelLabel={t('library.cancel', $locale)}
+									onconfirm={submitMove}
+									oncancel={cancelMove}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -1979,12 +1990,13 @@
 								/>
 							</div>
 							<div class="actions">
-								<button class="btn btn-primary" onclick={() => save()} disabled={saving}>
-									{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
-								</button>
-								<button class="btn" onclick={cancelEdit} disabled={saving}>
-									{t('library.cancel', $locale)}
-								</button>
+								<ActionButtons
+									label={saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
+									cancelLabel={t('library.cancel', $locale)}
+									busy={saving}
+									onconfirm={() => save()}
+									oncancel={cancelEdit}
+								/>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>
@@ -2083,16 +2095,15 @@
 				{/each}
 			</select>
 			<div class="actions">
-				<button
-					class="btn btn-primary"
-					onclick={async () => {
+				<ActionButtons
+					label={t('library.move', $locale)}
+					cancelLabel={t('library.cancel', $locale)}
+					onconfirm={async () => {
 						movingPicked = false;
 						await movePickedTo(movePickedPath);
-					}}>{t('library.move', $locale)}</button
-				>
-				<button class="btn" onclick={() => (movingPicked = false)}
-					>{t('library.cancel', $locale)}</button
-				>
+					}}
+					oncancel={() => (movingPicked = false)}
+				/>
 			</div>
 		</div>
 	{/if}

@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+// DEV-440: 취소 · 확인 단추 쌍은 `ActionButtons` 하나로 — 순서를 한 곳에서 정한다.
+//
+// 화면마다 단추를 직접 쓰던 때, 확인 창(ConfirmDialog · 퀘스트 삭제)은 [취소][삭제] 인데 보드 상태 바꾸기 ·
+// 만들기 창 · 편집 뒤 저장 줄은 [저장][취소] 라 같은 앱에서 손이 엇갈렸다(admin: "퀘스트 삭제 시도시에는
+// 취소가 왼쪽인데, 보드에서 상태변경 시도시에는 취소가 오른쪽임").
+//
+// 이 검사는 `<button …>{t('….cancel', …)}` 처럼 **취소 글을 직접 단 단추**를 막는다. 취소 단추는
+// `ActionButtons` 가 그린다(글을 바꾸려면 `cancelLabel`). 하나로 "추가 ↔ 취소" 를 오가는 토글 단추
+// (`{open ? t('common.cancel') : t('…add')}`)와 닫기 X 의 `aria-label` 은 쌍이 아니라서 걸리지 않는다.
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SRC = fileURLToPath(new URL('../src', import.meta.url));
+const CANON = 'lib/components/ActionButtons.svelte';
+
+/** 단추 여는 태그 바로 뒤의 글이 `{t('….cancel'` 이나 `{t('common.no'` 로 시작하면 직접 단 취소 단추다. */
+const DIRECT_CANCEL = /<button\b[^>]*>\s*\{t\('(?:[\w.]*\.cancel|common\.no)'/g;
+
+const violations = [];
+
+function walk(dir) {
+	for (const name of readdirSync(dir)) {
+		const p = join(dir, name);
+		if (statSync(p).isDirectory()) walk(p);
+		else if (p.endsWith('.svelte')) check(p);
+	}
+}
+
+function check(path) {
+	const rel = relative(SRC, path).split('\\').join('/');
+	if (rel === CANON) return;
+	const text = readFileSync(path, 'utf8');
+	for (const m of text.matchAll(DIRECT_CANCEL)) {
+		const line = text.slice(0, m.index).split('\n').length;
+		violations.push(`${rel}:${line}`);
+	}
+}
+
+walk(SRC);
+
+if (violations.length > 0) {
+	console.error(
+		'취소 단추를 직접 달았습니다 — `ActionButtons` 로 바꾸세요(순서: 취소 왼쪽, 하는 일 오른쪽):'
+	);
+	for (const v of violations) console.error(`  ${v}`);
+	process.exit(1);
+}
+console.log('check:actions — 취소 · 확인 단추는 모두 ActionButtons 로 그립니다.');

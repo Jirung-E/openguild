@@ -10,6 +10,7 @@
   Nav 미노출 — HOME 요약 카드가 진입점 (admin 결정).
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -506,12 +507,13 @@
 						<!-- BUG-321: 휴대폰에서도 되는 크기 손잡이 — 구석의 브라우저 손잡이는 끈다. -->
 						<SizeGrip target={editorContainer} min={10} />
 						<div class="actions">
-							<button class="btn btn-primary" onclick={() => saveNote()} disabled={saving}>
-								{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
-							</button>
-							<button class="btn" onclick={cancelEdit} disabled={saving}
-								>{t('worklogPage.cancel', $locale)}</button
-							>
+							<ActionButtons
+								label={saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
+								cancelLabel={t('worklogPage.cancel', $locale)}
+								busy={saving}
+								onconfirm={() => saveNote()}
+								oncancel={cancelEdit}
+							/>
 						</div>
 						{#if saveError}<p class="err">{saveError}</p>{/if}
 					</div>

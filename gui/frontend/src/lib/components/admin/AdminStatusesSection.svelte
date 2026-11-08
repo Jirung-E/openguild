@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '../Icon.svelte';
@@ -263,11 +264,14 @@
 								</td>
 								<td class="count">{s.quest_count}</td>
 								<td class="row-actions">
-									<button class="save" onclick={saveEdit} disabled={busy}
-										>{t('common.save', $locale)}</button
-									>
-									<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button
-									>
+									<ActionButtons
+										label={t('common.save', $locale)}
+										buttonClass=""
+										primaryClass="save"
+										{busy}
+										onconfirm={saveEdit}
+										oncancel={cancelEdit}
+									/>
 								</td>
 							{:else}
 								<td><code>{s.slug}</code></td>
@@ -364,12 +368,13 @@
 			</div>
 			<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn btn-accent" onclick={doCreate} disabled={busy}
-					>{t('common.add', $locale)}</button
-				>
-				<button class="btn" onclick={() => (creating = false)} disabled={busy}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('common.add', $locale)}
+					kind="accent"
+					{busy}
+					onconfirm={doCreate}
+					oncancel={() => (creating = false)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -401,12 +406,14 @@
 				)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn btn-danger" onclick={doDelete} disabled={busy}
-					>{t('detail.delete', $locale)}</button
-				>
-				<button class="btn" data-autofocus onclick={() => (confirmDelete = null)} disabled={busy}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('detail.delete', $locale)}
+					kind="danger"
+					autofocus="cancel"
+					{busy}
+					onconfirm={doDelete}
+					oncancel={() => (confirmDelete = null)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -456,7 +463,8 @@
 		flex-wrap: wrap;
 		gap: var(--sp-8);
 	}
-	button {
+	button,
+	.row-actions :global(button) {
 		padding: var(--sp-6) var(--sp-12);
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
@@ -465,10 +473,12 @@
 		font-size: var(--fs-md);
 		cursor: pointer;
 	}
-	button:hover:not(:disabled) {
+	button:hover:not(:disabled),
+	.row-actions :global(button:hover:not(:disabled)) {
 		background: var(--border);
 	}
-	button:disabled {
+	button:disabled,
+	.row-actions :global(button:disabled) {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -481,12 +491,12 @@
 	}
 	/* DEV-074 fix6 / DEV-116 fix: 다른 save 버튼과 동일 패턴 — `--btn-primary-*`
 	   토큰. 라이트모드에서도 명도 적정 (success 기반, fix5 의 #1a7f37). */
-	button.save {
+	.row-actions :global(button.save) {
 		background: var(--btn-primary-bg);
 		border-color: var(--btn-primary-border);
 		color: var(--btn-primary-text);
 	}
-	button.save:hover:not(:disabled) {
+	.row-actions :global(button.save:hover:not(:disabled)) {
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
@@ -538,7 +548,7 @@
 	.row-actions {
 		text-align: right;
 	}
-	.row-actions button + button {
+	.row-actions :global(button + button) {
 		margin-left: var(--sp-4);
 	}
 	input[type='text'] {

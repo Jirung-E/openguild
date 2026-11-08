@@ -13,6 +13,7 @@
   ↩ #id 링크가 실제 답글 대상을 가리킨다. parent_id 체인은 데이터에 그대로 기록.
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import Icon from './Icon.svelte';
 	// DEV-454: 편집기 토글의 'M↓' 는 아이콘이 아니라 마크다운을 나타내는 글자다 — 마크업의 글자 아이콘 가드를 피해 여기 둔다.
 	const MD_MARK = 'M↓';
@@ -1173,17 +1174,14 @@
 			{/if}
 			{#if replyError}<p class="state err">{replyError}</p>{/if}
 			<div class="actions">
-				<button
-					class="btn btn-primary"
-					onclick={() => submitReply(replyingTo ?? rootId)}
-					disabled={replySaving || !replyBody.trim()}
+				<ActionButtons
+					label={replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
 					title={`${t('compose.shortcut', $locale)}: ${submitShortcutLabel()}`}
-				>
-					{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
-				</button>
-				<button class="btn" onclick={cancelReply} disabled={replySaving}>
-					{t('common.cancel', $locale)}
-				</button>
+					busy={replySaving}
+					disabled={!replyBody.trim()}
+					onconfirm={() => submitReply(replyingTo ?? rootId)}
+					oncancel={cancelReply}
+				/>
 			</div>
 		</div>
 	</ComposeDock>
@@ -1320,12 +1318,12 @@
 			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
-				<button class="btn btn-primary" onclick={() => saveEdit(e.id)} disabled={editSaving}>
-					{editSaving ? t('common.saving', $locale) : t('common.save', $locale)}
-				</button>
-				<button class="btn" onclick={cancelEdit} disabled={editSaving}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={editSaving ? t('common.saving', $locale) : t('common.save', $locale)}
+					busy={editSaving}
+					onconfirm={() => saveEdit(e.id)}
+					oncancel={cancelEdit}
+				/>
 			</div>
 		{:else if bodyShut(e.id)}
 			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침.

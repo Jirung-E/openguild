@@ -9,6 +9,7 @@
   `.guild/rules/general.md` 로 마이그레이션됨.
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '$lib/components/Icon.svelte';
 	import PaneResizer from '$lib/components/PaneResizer.svelte';
@@ -448,10 +449,11 @@
 						/>
 						{#if createError}<p class="err">{createError}</p>{/if}
 						<div class="actions">
-							<button class="btn btn-primary" onclick={submitCreate}
-								>{t('rules.create', $locale)}</button
-							>
-							<button class="btn" onclick={cancelCreate}>{t('common.cancel', $locale)}</button>
+							<ActionButtons
+								label={t('rules.create', $locale)}
+								onconfirm={submitCreate}
+								oncancel={cancelCreate}
+							/>
 						</div>
 					</div>
 				{/if}
@@ -525,10 +527,11 @@
 							/>
 							{#if renameError}<p class="err">{renameError}</p>{/if}
 							<div class="actions">
-								<button class="btn btn-primary" onclick={submitRename}
-									>{t('common.change', $locale)}</button
-								>
-								<button class="btn" onclick={cancelRename}>{t('common.cancel', $locale)}</button>
+								<ActionButtons
+									label={t('common.change', $locale)}
+									onconfirm={submitRename}
+									oncancel={cancelRename}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -559,12 +562,12 @@
 								/>
 							</div>
 							<div class="actions">
-								<button class="btn btn-primary" onclick={() => save()} disabled={saving}>
-									{saving ? t('common.saving', $locale) : t('common.save', $locale)}
-								</button>
-								<button class="btn" onclick={cancelEdit} disabled={saving}>
-									{t('common.cancel', $locale)}
-								</button>
+								<ActionButtons
+									label={saving ? t('common.saving', $locale) : t('common.save', $locale)}
+									busy={saving}
+									onconfirm={() => save()}
+									oncancel={cancelEdit}
+								/>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>

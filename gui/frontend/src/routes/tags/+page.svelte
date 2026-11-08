@@ -15,6 +15,7 @@
   나눠 갖지 않게 합쳤다.
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { focusOnMount } from '$lib/actions/focus-on-mount';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '$lib/components/Icon.svelte';
@@ -245,12 +246,12 @@
 			maxlength="200"
 			disabled={busy}
 		/>
-		<button class="btn btn-primary" onclick={save} disabled={busy}
-			>{t('common.save', $locale)}</button
-		>
-		<button class="btn" onclick={() => (editing = null)} disabled={busy}
-			>{t('common.cancel', $locale)}</button
-		>
+		<ActionButtons
+			label={t('common.save', $locale)}
+			{busy}
+			onconfirm={save}
+			oncancel={() => (editing = null)}
+		/>
 	</div>
 {/snippet}
 

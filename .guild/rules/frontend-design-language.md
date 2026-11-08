@@ -1,7 +1,7 @@
 +++
 created_at = "2026-10-11T02:02:56+09:00"
-updated_at = "2026-10-25T13:57:57+09:00"
-version = 1
+updated_at = "2026-11-08T22:17:22+09:00"
+version = 2
 +++
 # 디자인 언어 — DEV-427
 
@@ -16,6 +16,7 @@ GUI 를 디자인하거나 고칠 때는 도서관 **[[BOOK-009]] 디자인 언�
 - 새 단계가 필요하면 admin 과 정하고 `global.css` 와 [[BOOK-009]] 를 함께 고친다.
 - 버튼은 공통 클래스 `.btn` (+ `btn-primary` · `btn-danger` · `btn-warning` · `btn-quiet` · `btn-sm`) 을
   쓴다 — 화면마다 버튼 모양을 새로 정하지 않는다. 배치(margin 등)만 화면이 정한다([[DEV-428]]).
+- 취소 · 하는 일 단추 쌍은 `ActionButtons` — [취소][하는 일] 순서를 한 곳에서 정한다(`check:actions`, [[DEV-440]]).
 - 입력칸은 `.input`, 잠깐 뜨는 작은 창은 `.popup`, 모달은 `.modal-box` + 막 `var(--backdrop)` ([[DEV-440]]).
 - 둘 중 하나 고르기는 `.seg`(+ `.seg.sm`), 검색칸은 `SearchField`([검색 | 쿼리]) ([[DEV-452]] · [[DEV-453]]).
 - 아이콘은 `Icon`(SVG, 도형은 `utils/icon-paths.ts`) — 글자 기호(☰ ⚙ × ▼ …)를 아이콘으로 쓰지 않는다. 글자 자리에는

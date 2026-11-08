@@ -9,6 +9,7 @@
     우하단 통합 스택, DEV-259)가 담당. Tauri 전용.
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
@@ -790,16 +791,16 @@
 									</button>
 								{/each}
 							</div>
-							<button class="th-btn" onclick={submitCreatePreset}
-								>{t('settings.createBtn', $locale)}</button
-							>
-							<button
-								class="th-btn"
-								onclick={() => {
+							<ActionButtons
+								label={t('settings.createBtn', $locale)}
+								kind="plain"
+								buttonClass="th-btn"
+								onconfirm={submitCreatePreset}
+								oncancel={() => {
 									creatingPreset = false;
 									presetError = null;
-								}}>{t('common.cancel', $locale)}</button
-							>
+								}}
+							/>
 						</div>
 						{#if presetError}<p class="ct-error">{presetError}</p>{/if}
 					{/if}
@@ -815,16 +816,17 @@
 							></textarea>
 							<SizeGrip target={importInput} />
 							<div class="ct-actions">
-								<button class="th-btn" onclick={importPresets} disabled={!importText.trim()}>
-									{t('settings.import', $locale)}
-								</button>
-								<button
-									class="th-btn"
-									onclick={() => {
+								<ActionButtons
+									label={t('settings.import', $locale)}
+									kind="plain"
+									buttonClass="th-btn"
+									disabled={!importText.trim()}
+									onconfirm={importPresets}
+									oncancel={() => {
 										importing = false;
 										importText = '';
-									}}>{t('common.cancel', $locale)}</button
-								>
+									}}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -1163,7 +1165,9 @@
 		border-radius: var(--r-md);
 		padding: var(--sp-2);
 	}
-	.th-btn {
+	.th-btn,
+	.ct-create :global(.th-btn),
+	.ct-actions :global(.th-btn) {
 		padding: var(--sp-4) var(--sp-12);
 		background: transparent;
 		border: none;
@@ -1175,7 +1179,9 @@
 			background var(--dur-fast),
 			color var(--dur-fast);
 	}
-	.th-btn:hover {
+	.th-btn:hover,
+	.ct-create :global(.th-btn:hover),
+	.ct-actions :global(.th-btn:hover) {
 		color: var(--text);
 	}
 	.th-btn.active {
@@ -1194,7 +1200,9 @@
 	.th-btn.danger {
 		color: var(--danger);
 	}
-	.th-btn:disabled {
+	.th-btn:disabled,
+	.ct-create :global(.th-btn:disabled),
+	.ct-actions :global(.th-btn:disabled) {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -1206,7 +1214,8 @@
 		gap: var(--sp-6);
 		align-items: center;
 	}
-	.ct-actions .th-btn {
+	.ct-actions .th-btn,
+	.ct-actions :global(.th-btn) {
 		border: var(--bw) solid var(--border);
 		background: var(--bg-elevated);
 	}

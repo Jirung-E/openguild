@@ -273,6 +273,10 @@ jobs:
       - name: check undefined css classes
         run: npm run check:classes
 
+      # DEV-440: 취소 · 확인 단추 쌍은 ActionButtons 하나로 — 순서(취소 왼쪽)가 화면마다 갈리지 않게.
+      - name: check action button order
+        run: npm run check:actions
+
       # DEV-372: 가드가 package.json / justfile / check.yml 세 곳에 모두
       # 등록됐는지. 한 곳이 빠지면 그 검사는 조용히 안 돌아간다(BUG-251).
       - name: check guard registration parity

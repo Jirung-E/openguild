@@ -9,6 +9,7 @@
   문구는 페이지 시절 한국어로 박혀 있던 것을 옮기며 i18n 으로 바꿨다.
 -->
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	// DEV-454: 글자 아이콘 대신 SVG.
 	import Icon from './Icon.svelte';
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
@@ -131,12 +132,13 @@
 			{#if error}<div class="error">{error}</div>{/if}
 
 			<div class="actions">
-				<button type="submit" class="btn btn-primary" disabled={saving || !title.trim()}>
-					{saving ? t('ncm.creating', $locale) : t('ncm.create', $locale)}
-				</button>
-				<button type="button" class="btn" onclick={onclose} disabled={saving}>
-					{t('common.cancel', $locale)}
-				</button>
+				<ActionButtons
+					label={saving ? t('ncm.creating', $locale) : t('ncm.create', $locale)}
+					submit
+					busy={saving}
+					disabled={!title.trim()}
+					oncancel={onclose}
+				/>
 			</div>
 		</form>
 	</div>

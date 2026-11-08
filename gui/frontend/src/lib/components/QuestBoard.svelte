@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButtons from '$lib/components/ActionButtons.svelte';
 	import { modalFocus } from '$lib/actions/modal-focus';
 	import { onDestroy, onMount } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -4074,12 +4075,12 @@
 		>
 			<p class="dialog-msg">{confirmDialog.msg}</p>
 			<div class="dialog-btns">
-				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}
-					>{t('common.change', $locale)}</button
-				>
-				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}
-					>{t('common.cancel', $locale)}</button
-				>
+				<ActionButtons
+					label={t('common.change', $locale)}
+					autofocus="confirm"
+					onconfirm={() => confirmDialogResolve(true)}
+					oncancel={() => confirmDialogResolve(false)}
+				/>
 			</div>
 		</div>
 	</div>
@@ -5449,35 +5450,6 @@
 		gap: var(--sp-8);
 		justify-content: flex-end;
 	}
-	.dialog-ok {
-		padding: var(--sp-6) var(--sp-16);
-		background: var(--btn-primary-bg);
-		border: var(--bw) solid var(--btn-primary-border);
-		border-radius: var(--r-md);
-		color: var(--btn-primary-text);
-		font-size: var(--fs-md);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast),
-			border-color var(--dur-fast);
-	}
-	.dialog-ok:hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.dialog-cancel {
-		padding: var(--sp-6) var(--sp-16);
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-md);
-		color: var(--text-muted);
-		font-size: var(--fs-md);
-		cursor: pointer;
-	}
-	.dialog-cancel:hover {
-		background: var(--bg-subtle);
-	}
-
 	/* DEV-056: 숨김 설정 모달 */
 	.hide-modal {
 		padding: var(--sp-16) var(--sp-24) var(--sp-16);

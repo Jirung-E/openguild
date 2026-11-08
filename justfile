@@ -103,6 +103,7 @@ test-frontend:
     cd gui/frontend && npm run check:tokens
     cd gui/frontend && npm run check:viewport
     cd gui/frontend && npm run check:classes
+    cd gui/frontend && npm run check:actions
     cd gui/frontend && npm run check:guards
     cd gui/frontend && npm run check:format
     cd gui/frontend && npm run check:lint
