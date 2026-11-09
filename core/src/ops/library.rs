@@ -319,7 +319,8 @@ async fn set_book_tags_locked(
     let path = store.paths.book_path(book_id);
     let mut bf = BookFile::read(&path).map_err(AppError::Internal)?;
     bf.frontmatter.tags = normalized.clone();
-    bf.write(&path).map_err(AppError::Internal)?;
+    bf.write(&path)
+        .map_err(|e| AppError::save_failed(book_id, e))?;
 
     sync_book_tags_cache(store, existing.id, &normalized).await?;
 
@@ -408,7 +409,7 @@ pub async fn create_book(
         body: body.trim().to_string(),
     };
     file.write(store.paths.book_path(&book_id))
-        .map_err(AppError::Internal)?;
+        .map_err(|e| AppError::save_failed(&book_id, e))?;
 
     sqlx::query(
         "INSERT INTO library_docs (number, title, body, path, created_at, updated_at)
@@ -561,7 +562,7 @@ pub async fn update_book_with(
         body: new_body.clone(),
     };
     file.write(store.paths.book_path(book_id))
-        .map_err(AppError::Internal)?;
+        .map_err(|e| AppError::save_failed(book_id, e))?;
 
     sqlx::query(
         "UPDATE library_docs SET title = ?, body = ?, path = ?, updated_at = ? WHERE number = ?",
@@ -626,7 +627,7 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
         body: existing.body.clone(),
     };
     file.write(store.paths.book_path(book_id))
-        .map_err(AppError::Internal)?;
+        .map_err(|e| AppError::save_failed(book_id, e))?;
 
     sqlx::query("UPDATE library_docs SET deleted_at = ?, updated_at = ? WHERE number = ?")
         .bind(&now)
@@ -963,7 +964,8 @@ pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<L
         let mut file = BookFile::read(&path).map_err(AppError::Internal)?;
         file.frontmatter.path = rename(&file.frontmatter.path);
         file.frontmatter.updated_at = now.clone();
-        file.write(&path).map_err(AppError::Internal)?;
+        file.write(&path)
+            .map_err(|e| AppError::save_failed(&b.book_id(), e))?;
         sqlx::query("UPDATE library_docs SET path = ?, updated_at = ? WHERE number = ?")
             .bind(rename(&b.path))
             .bind(&now)

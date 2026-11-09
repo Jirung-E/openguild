@@ -168,7 +168,8 @@ pub async fn set_comments(store: &Store, slug: &str, content: String) -> AppResu
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::write_comments(&store.paths, slug, &content).map_err(AppError::Internal)?;
+    repo::write_comments(&store.paths, slug, &content)
+        .map_err(|e| AppError::save_failed(slug, e))?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: 파일을 통째로 갈았으므로 캐시도 전체 재적재.
     replace_comments_db(store, slug).await
@@ -222,7 +223,8 @@ pub async fn add_comment_entry(
     )
     .await
     .map_err(AppError::Internal)?;
-    let entry = svc::add_entry(store, slug, author, body, parent_id, discussion)?;
+    let entry = svc::add_entry(store, slug, author, body, parent_id, discussion)
+        .map_err(|e| e.on_save(slug))?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: file 진리원 갱신 후 DB 캐시 UPSERT.
     upsert_comment_entry_db(store, slug, &entry).await?;
@@ -277,7 +279,7 @@ pub async fn update_comment_entry_with(
     )
     .await
     .map_err(AppError::Internal)?;
-    let updated = svc::update_entry(store, slug, id, body)?;
+    let updated = svc::update_entry(store, slug, id, body).map_err(|e| e.on_save(slug))?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: 같은 entry_id 의 row 를 UPSERT (body 만 변경됨).
     upsert_comment_entry_db(store, slug, &updated).await?;
@@ -582,7 +584,7 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     } else {
         None
     };
-    svc::delete_entry(store, slug, id)?;
+    svc::delete_entry(store, slug, id).map_err(|e| e.on_save(slug))?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: 같은 entry_id 의 cache row 도 삭제.
     delete_comment_entry_db(store, slug, id).await?;
@@ -617,7 +619,7 @@ pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<(
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::write_memo(&store.paths, slug, &content).map_err(AppError::Internal)?;
+    repo::write_memo(&store.paths, slug, &content).map_err(|e| AppError::save_failed(slug, e))?;
     let _ = crate::file_mtime::touch(store, &store.paths.memo_path(slug)).await;
     // DEV-102: snapshot 백업 대상이 되도록 DB 캐시도 갱신.
     upsert_memo_db(store, slug, &content).await

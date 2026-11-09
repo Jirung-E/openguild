@@ -1441,7 +1441,7 @@ async fn write_quest_file_as_deleted(store: &Store, quest: &QuestRow) -> AppResu
     };
     if let Err(e) = qf.write(&path) {
         restore_cache_after_failed_write(store, quest).await;
-        return Err(crate::error::AppError::Internal(e));
+        return Err(crate::error::AppError::save_failed(&quest.quest_id, e));
     }
     // drift: soft-delete 로 쓴 파일도 cached_mtime 동기화 (오탐 방지).
     let mtime = crate::repo::fs::mtime_unix_nanos(&path);
@@ -1545,7 +1545,7 @@ pub(crate) async fn write_quest_file(
 
     if let Err(e) = qf.write(&path) {
         restore_cache_after_failed_write(store, quest).await;
-        return Err(crate::error::AppError::Internal(e));
+        return Err(crate::error::AppError::save_failed(&quest.quest_id, e));
     }
 
     // drift/DEV-121: 방금 쓴 파일의 mtime 을 cached_mtime 에 기록. detect_drift 와
@@ -1863,6 +1863,15 @@ mod tests {
             let _ = std::fs::remove_dir_all(&dir);
             return;
         }
+
+        // 앱 · CLI 에 보이는 문구: 문서 번호와 짧은 원인, 경로는 없다.
+        let err = res.unwrap_err();
+        assert!(
+            matches!(&err, AppError::SaveFailed(f) if f.doc == "DEV-001" && f.cause == crate::error::SaveCause::ReadOnly),
+            "{err:?}"
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("DEV-001") && !msg.contains(".guild"), "{msg}");
 
         let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
         assert_eq!(row.status_slug, "open", "캐시가 파일과 같아야 한다");

@@ -47,12 +47,16 @@ impl IntoResponse for HttpError {
                 StatusCode::from_u16(499).unwrap_or(StatusCode::BAD_REQUEST),
                 msg,
             ),
+            // BUG-395: 문서 저장 실패 — 어떤 문서인지와 오류 번호만 싣는다. 원인 · 경로는 로그에만(같은 번호로 찾는다).
+            AppError::SaveFailed(f) => {
+                let id = new_error_id();
+                tracing::error!(error_id = %id, doc = %f.doc, "save failed: {:#}", f.source);
+                (StatusCode::INTERNAL_SERVER_ERROR, f.public_message(&id))
+            }
             AppError::Internal(err) => {
-                tracing::error!("internal error: {err:#}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                let id = new_error_id();
+                tracing::error!(error_id = %id, "internal error: {err:#}");
+                (StatusCode::INTERNAL_SERVER_ERROR, internal_message(&id))
             }
         };
         (status, Json(json!({ "error": message }))).into_response()
@@ -80,12 +84,36 @@ pub fn panic_to_500(err: Box<dyn std::any::Any + Send + 'static>) -> Response {
     };
     // 위치·백트레이스는 표준 패닉 훅이 이미 stderr 에 찍는다. 여기서는 어떤
     // 요청이 죽었는지 추적 로그와 같은 자리에 남기는 것이 목적이다.
-    tracing::error!("handler panicked: {detail}");
+    let id = new_error_id();
+    tracing::error!(error_id = %id, "handler panicked: {detail}");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": "internal server error" })),
+        Json(json!({ "error": internal_message(&id) })),
     )
         .into_response()
+}
+
+/// BUG-395: 내부 오류의 고정 문구 + 오류 번호. 원인은 싣지 않는다(이 서버는 인증이 없다 — DEV-367).
+fn internal_message(id: &str) -> String {
+    format!("internal server error (error ID {id})")
+}
+
+/// BUG-395: 응답과 서버 로그를 잇는 짧은 번호 — 사용자가 서버 운영자에게 알려 주면 로그에서 그 줄을 찾는다
+/// (`grep error_id=3f9c2a1b`). 상용 서비스의 request/correlation ID 와 같은 쓰임. 보안 토큰이 아니라 찾기용이라
+/// 표준 라이브러리의 무작위 해시 키(+ 시각 · 순번)로 충분하다 — 의존성을 늘리지 않는다.
+pub fn new_error_id() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u64(SEQ.fetch_add(1, Ordering::Relaxed));
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    );
+    format!("{:08x}", h.finish() as u32)
 }
 
 #[cfg(test)]
@@ -136,6 +164,38 @@ mod tests {
         // 내부 디테일은 클라이언트에 노출 X
         assert!(!body.contains("127.0.0.1"));
         assert!(body.contains("internal server error"));
+    }
+
+    /// BUG-395: 저장 실패는 문서 번호와 오류 번호만 — 경로 · 원인은 응답에 없다.
+    #[tokio::test]
+    async fn save_failed_shows_doc_and_error_id_but_hides_cause() {
+        let io = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let inner = anyhow::Error::new(io)
+            .context("failed to write temp file: /home/me/g/.guild/quests/DEV-001.md.tmp");
+        let resp = HttpError(AppError::save_failed("DEV-001", inner)).into_response();
+        let (status, body) = body_text(resp).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(body.contains("DEV-001"), "{body}");
+        assert!(!body.contains("/home/me"), "경로가 샜다: {body}");
+        assert!(
+            !body.contains("권한") && !body.to_lowercase().contains("permission"),
+            "원인이 샜다: {body}"
+        );
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let msg = v["error"].as_str().unwrap();
+        assert!(
+            msg.split_whitespace()
+                .any(|w| w.len() == 8 && w.chars().all(|c| c.is_ascii_hexdigit())),
+            "오류 번호가 없다: {msg}"
+        );
+    }
+
+    #[test]
+    fn error_ids_differ() {
+        let a = new_error_id();
+        let b = new_error_id();
+        assert_eq!(a.len(), 8);
+        assert_ne!(a, b);
     }
 
     #[test]

@@ -160,7 +160,7 @@ pub async fn add_entry(
         edited_at: None,
     };
     entries.push(entry.clone());
-    repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    repo::write_entries_at(&path, &entries).map_err(|e| AppError::save_failed(slug, e))?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: file 진리원 갱신 후 DB 캐시 UPSERT.
@@ -233,7 +233,7 @@ pub async fn update_entry_with(
     entry.body = body_trimmed;
     entry.edited_at = Some(crate::time::now_local_iso8601());
     let updated = entry.clone();
-    repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    repo::write_entries_at(&path, &entries).map_err(|e| AppError::save_failed(slug, e))?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: 캐시 UPSERT.
@@ -278,7 +278,7 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
             "comment {id} not found for {slug}"
         )));
     }
-    repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    repo::write_entries_at(&path, &entries).map_err(|e| AppError::save_failed(slug, e))?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: 캐시 row 삭제.
@@ -366,7 +366,7 @@ pub async fn toggle_reaction(
             .push(join_reaction(emoji, &[author.to_string()]));
     }
     let updated = entry.clone();
-    repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    repo::write_entries_at(&path, &entries).map_err(|e| AppError::save_failed(slug, e))?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     // 길드 전체 댓글 · 플러그인 시간 실행은 index 를 읽는다 — 반응도 같이 맞춘다.
@@ -399,7 +399,7 @@ pub async fn toggle_pinned(store: &Store, slug: &str, id: u64) -> AppResult<Comm
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
     entry.pinned = !entry.pinned;
     let updated = entry.clone();
-    repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    repo::write_entries_at(&path, &entries).map_err(|e| AppError::save_failed(slug, e))?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     upsert_entry_db(store, slug, &updated).await?;
@@ -439,7 +439,7 @@ pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<(
     .await
     .map_err(AppError::Internal)?;
     repo::write_text_at(&store.paths.campaign_memo_path(slug), &content)
-        .map_err(AppError::Internal)?;
+        .map_err(|e| AppError::save_failed(slug, e))?;
     let _ = crate::file_mtime::touch(store, &store.paths.campaign_memo_path(slug)).await;
     // DEV-134: 캐시 UPSERT — snapshot 백업 대상.
     upsert_memo_db(store, slug, &content).await

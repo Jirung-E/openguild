@@ -40,7 +40,7 @@ mod test_env;
 pub mod time;
 pub mod user_dirs;
 
-pub use error::{AppError, AppResult};
+pub use error::{AppError, AppResult, SaveCause, SaveFailure};
 pub use store::Store;
 
 /// BUG-358: 시험이 만드는 임시 폴더 이름 뒤에 붙이는 번호 — 프로세스 안에서 하나씩 올라간다.

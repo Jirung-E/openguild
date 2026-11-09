@@ -699,6 +699,28 @@ async fn sync_checklist_to_index(
 /// frontmatter 는 DB 최신값으로 구성. 본문 markdown 은 DEV-066 패턴:
 /// `description_explicit = true` → DB `description` 사용,
 /// `false` → 기존 파일 본문 보존 + DB 와 다르면 sync.
+/// BUG-395: 캠페인 파일 쓰기가 실패했을 때 — 퀘스트(`ops::quests::restore_cache_after_failed_write`)와 같다. 캐시는
+/// 이 작업이 이미 바꿔 놓았고 파일은 그대로라, 캐시를 파일 쪽으로 되돌린다. 기억해 둔 파일 시각을 지워 "파일을 다시
+/// 읽을 것" 으로 만들고 바로 다시 읽는다. 파일이 아예 없으면(새로 만들다 실패) 행을 지운다. 되돌리기의 실패는 삼킨다
+/// — 돌려줄 오류는 원래의 쓰기 실패다.
+async fn restore_cache_after_failed_write(store: &Store, camp: &CampaignRow) {
+    let pool = &store.index_pool;
+    let path = store.paths.campaign_path(&camp.campaign_slug);
+    let rel = crate::file_mtime::rel_key(&store.paths, &path);
+    let _ = sqlx::query("DELETE FROM file_mtime_cache WHERE rel_path = ?")
+        .bind(&rel)
+        .execute(pool)
+        .await;
+    if path.exists() {
+        let _ = crate::incremental::refresh_campaign_before_write(store, &camp.campaign_slug).await;
+    } else {
+        let _ = sqlx::query("DELETE FROM campaigns WHERE id = ?")
+            .bind(camp.id)
+            .execute(pool)
+            .await;
+    }
+}
+
 pub(crate) async fn write_campaign_file(
     store: &Store,
     camp: &CampaignRow,
@@ -754,7 +776,10 @@ pub(crate) async fn write_campaign_file(
         },
         body,
     };
-    cf.write(&path).map_err(AppError::Internal)?;
+    if let Err(e) = cf.write(&path) {
+        restore_cache_after_failed_write(store, camp).await;
+        return Err(AppError::save_failed(&camp.campaign_slug, e));
+    }
     // DEV-178: 외부편집 감지용 mtime 캐시 갱신 (drift / lazy refresh 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     Ok(())
@@ -1069,6 +1094,42 @@ mod tests {
         assert!(r.contains("- [ ] A"));
         assert!(r.contains("- [ ] C"));
         assert!(!r.contains("- [x] B"));
+    }
+
+    /// BUG-395: 캠페인 파일을 못 쓰면 캐시도 파일 그대로여야 한다.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn update_campaign_failed_write_keeps_cache_as_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, store) = banner_setup("camp-ro").await;
+        let id = sql::fetch_by_slug(&store.index_pool, "C-001")
+            .await
+            .unwrap()
+            .id;
+        let before = sql::fetch_by_id(&store.index_pool, id).await.unwrap().title;
+        let cdir = store.paths.campaigns_dir();
+        std::fs::set_permissions(&cdir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let res = update_campaign(
+            &store,
+            id,
+            UpdateCampaignRequest {
+                title: Some("바뀐 제목".into()),
+                description: None,
+                status: None,
+                started_at: None,
+                ended_at: None,
+                display_order: None,
+            },
+        )
+        .await;
+        std::fs::set_permissions(&cdir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if res.is_ok() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return; // root 처럼 권한을 무시하는 환경
+        }
+        let row = sql::fetch_by_id(&store.index_pool, id).await.unwrap();
+        assert_eq!(row.title, before, "캐시가 파일과 같아야 한다");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// BUG-388: 마지막 항목을 지워 본문이 빈 뒤에 캠페인을 고쳐도 항목이 되살아나지 않는다.

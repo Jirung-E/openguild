@@ -610,7 +610,7 @@ pub(crate) async fn refresh_quest_before_write(store: &Store, slug: &str) -> any
     Ok(())
 }
 
-async fn refresh_campaign_before_write(store: &Store, slug: &str) -> anyhow::Result<()> {
+pub(crate) async fn refresh_campaign_before_write(store: &Store, slug: &str) -> anyhow::Result<()> {
     let path = store.paths.campaign_path(slug);
     if !path.exists() {
         // 밖에서 지운 문서 — 퀘스트와 같다. 캐시에 없으면 파일을 본 적 없는 행이다.
