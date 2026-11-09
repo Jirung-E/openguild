@@ -203,6 +203,20 @@ describe('DEV-420 화살표는 아래로', () => {
 		expect(out.get(3)!.y).toBe(M.rowStep);
 	});
 
+	// BUG-383 다시: 자리가 없던 퀘스트 하나가 **이미 완료**면(보드를 안 연 사이에 만들고 끝냄) 긴 완료
+	// 레인의 바닥이 함께 놓이는 새 퀘스트 모두의 시작점이 됐다.
+	it('함께 놓이는 퀘스트가 긴 레인에 있어도 다른 레인의 새 퀘스트는 끌려 내려가지 않는다', () => {
+		const quests = [q(1, 3), q(2, 1), q(3, 3), q(4, 1), q(5, 2)];
+		const stored = new Map([
+			[1, { x: 2100, y: 5000 }], // 완료 레인 깊숙이
+			[2, { x: 100, y: 0 }]
+		]);
+		const out = autoPlace(quests, stored, lanes, M, []);
+		expect(out.get(3)!.y).toBe(5100); // 완료로 간 새 퀘스트는 완료 레인 아래
+		expect(out.get(4)!.y).toBe(M.rowStep); // 자기 레인의 마지막 노드 바로 아래
+		expect(out.get(5)!.y).toBe(0); // 빈 레인은 맨 위
+	});
+
 	it('선행이 다른 레인 아래쪽에 있으면 그보다는 아래에 — 화살표는 그대로 아래로', () => {
 		const quests = [q(1, 2), q(2, 1)];
 		const stored = new Map([[1, { x: 1100, y: 700 }]]);

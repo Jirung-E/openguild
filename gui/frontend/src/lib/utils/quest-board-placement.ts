@@ -75,59 +75,55 @@ export function autoPlace(
 	edges: readonly PlacementEdge[] = []
 ): Map<number, BoardPoint> {
 	const unplaced = quests.filter((q) => !stored.has(q.id)).sort((a, b) => a.id - b.id);
+	const laneIdx = (q: PlacementQuest) => laneOf.get(q.status_id) ?? 0;
 
-	// 자동 배치를 시작할 y — 손으로 옮겨 둔 노드보다 아래에서 시작한다.
+	// 레인마다 따로 채운다 — 각 레인은 **자기 레인의** 저장된 노드 아래에서 시작한다.
 	//
-	// 레인마다 따로 잡지 않고 **가장 아래 것 하나**를 기준으로 삼는다: 띠가 레인을 가로지르기
-	// 때문에, 레인마다 시작점이 다르면 같은 깊이가 서로 다른 높이에 놓여 화살표가 위로 갈 수
-	// 있다(그걸 막자고 띠를 만든 것이다).
+	// BUG-383: 예전엔 놓일 것들이 쓰는 레인 전체에서 가장 아래 노드를 하나의 시작점으로 삼았다(한 띠).
+	// 그래서 아직 자리가 없던 퀘스트 하나가 이미 완료로 가 있으면(보드를 안 연 사이에 만들고 끝낸 것)
+	// 긴 완료 레인의 바닥이 시작점이 되어, 함께 놓이는 새 퀘스트가 모두 그 깊이까지 내려갔다(admin:
+	// "새로 생긴 퀘스트들이 보드상에서 엄청 아래쪽에"). 화살표를 아래로 향하게 하는 데 필요한 것은 한
+	// 띠가 아니라 **선행보다 아래**라는 것뿐이라, 그것만 퀘스트마다 지킨다.
 	//
-	// BUG-383: 다만 **볼 노드는 새로 놓을 것과 상관있는 것뿐**이다 — 놓일 레인에 있는 노드와,
-	// 놓일 것의 선행. 예전엔 보드 전체의 가장 아래 노드를 봤다. BUG-284 로 모든 노드가 고정돼
-	// 있으니 완료 레인 하나만 길어도, 새 퀘스트는 비어 있는 자기 레인의 그 깊이까지
-	// 내려갔다(admin: "새로 생성되는 퀘스트가 보드의 저 아래에 생성된다"). 다른 레인의 노드와는
-	// 겹칠 수 없고, 선행만 위에 있으면 화살표도 아래로 간다.
-	const lanesUsed = new Set(unplaced.map((q) => laneOf.get(q.status_id) ?? 0));
-	const unplacedIds = new Set(unplaced.map((q) => q.id));
-	const prereqs = new Set(
-		edges.filter((e) => unplacedIds.has(e.quest_id)).map((e) => e.prerequisite_id)
-	);
-	let startY = m.initialY;
+	// 레인은 저장된 x 가 아니라 **지금 상태**로 본다 — 상태를 바꾼 노드의 x 는 옛 레인에 남아 있고,
+	// 그리는 쪽이 적재 때 지금 레인으로 옮겨 그린다.
+	const laneTop = new Map<number, number>();
 	for (const q of quests) {
 		const p = stored.get(q.id);
 		if (!p) continue;
-		// 레인은 저장된 x 가 아니라 **지금 상태**로 본다 — 상태를 바꾼 노드의 x 는 옛 레인에
-		// 남아 있고, 그리는 쪽이 적재 때 지금 레인으로 옮겨 그린다.
-		if (lanesUsed.has(laneOf.get(q.status_id) ?? 0) || prereqs.has(q.id))
-			startY = Math.max(startY, p.y + m.rowStep);
+		const lane = laneIdx(q);
+		laneTop.set(lane, Math.max(laneTop.get(lane) ?? m.initialY, p.y + m.rowStep));
 	}
 	const depth = depthOf(quests, edges);
-
-	// 깊이별로 레인마다 몇 칸이 필요한가 → 그 띠의 높이(줄 수).
-	const byDepth = new Map<number, PlacementQuest[]>();
-	for (const q of unplaced) {
-		const d = depth.get(q.id) ?? 0;
-		(byDepth.get(d) ?? byDepth.set(d, []).get(d)!).push(q);
+	const prereqsOf = new Map<number, number[]>();
+	for (const e of edges) {
+		(prereqsOf.get(e.quest_id) ?? prereqsOf.set(e.quest_id, []).get(e.quest_id)!).push(
+			e.prerequisite_id
+		);
 	}
-	const depths = [...byDepth.keys()].sort((a, b) => a - b);
 
+	// 깊이 순, 같은 깊이는 id 순.
+	const order = [...unplaced].sort(
+		(a, b) => (depth.get(a.id) ?? 0) - (depth.get(b.id) ?? 0) || a.id - b.id
+	);
+	// 레인마다 지금 채우는 줄 · 그 줄에 놓인 수 · 그 줄의 깊이.
+	const cursor = new Map<number, { y: number; n: number; depth: number }>();
 	const out = new Map<number, BoardPoint>();
-	let y = startY;
-	for (const d of depths) {
-		const here = byDepth.get(d)!;
-		const perLane = new Map<number, number>();
-		for (const q of here) {
-			const n = perLane.get(q.status_id) ?? 0;
-			perLane.set(q.status_id, n + 1);
-			const lane = laneOf.get(q.status_id) ?? 0;
-			out.set(q.id, {
-				x: lane * m.laneStride + m.colOffsets[n % 3],
-				y: y + Math.floor(n / 3) * m.rowStep
-			});
+	for (const q of order) {
+		const lane = laneIdx(q);
+		const d = depth.get(q.id) ?? 0;
+		let c = cursor.get(lane) ?? { y: laneTop.get(lane) ?? m.initialY, n: 0, depth: d };
+		// 줄이 찼거나 깊이가 바뀌면 다음 줄 — 같은 줄에는 같은 깊이만 둔다.
+		if (c.n > 0 && (c.n >= 3 || c.depth !== d)) c = { y: c.y + m.rowStep, n: 0, depth: d };
+		// 선행(저장된 것이든 방금 놓은 것이든)보다 아래.
+		let minY = -Infinity;
+		for (const pid of prereqsOf.get(q.id) ?? []) {
+			const p = out.get(pid) ?? stored.get(pid);
+			if (p) minY = Math.max(minY, p.y + m.rowStep);
 		}
-		// 이 띠에서 가장 많이 쓴 레인의 줄 수만큼 내려간다 — 다음 띠가 겹치지 않게.
-		const rows = Math.max(1, ...[...perLane.values()].map((n) => Math.ceil(n / 3)));
-		y += rows * m.rowStep;
+		if (c.y < minY) c = { y: minY, n: 0, depth: d };
+		out.set(q.id, { x: lane * m.laneStride + m.colOffsets[c.n], y: c.y });
+		cursor.set(lane, { y: c.y, n: c.n + 1, depth: d });
 	}
 	return out;
 }
