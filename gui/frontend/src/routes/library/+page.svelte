@@ -27,7 +27,7 @@
 	import { libraryExportZipUrl } from '$lib/utils/banner';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
@@ -500,11 +500,22 @@
 		if (path !== explorerPath) {
 			explorerPath = path;
 		}
+		// BUG-393: 주소가 바뀌었다는 것은 이미 앱 전체 가드(+layout 의 beforeNavigate)를 지났다는 뜻이다 — 편집 중이었으면
+		// 거기서 "버리고 이동" 을 골랐다. 그래서 여기서는 다시 묻지 않고(`select` 는 클릭용이라 또 묻는다) 편집을 접고
+		// 주소대로 연다. 전에는 뒤로 가기 한 번에 확인 창이 두 번 떴다.
 		if (id && id !== selectedId && books.some((b) => b.book_id === id)) {
-			select(id);
+			untrack(() => {
+				if (editMode) cancelEdit();
+				confirmDiscardId = null;
+				pendingBackToGrid = false;
+			});
+			selectedId = id;
 		} else if (!id && selectedId !== null) {
 			// 뒤로가기로 ?id= 가 사라짐(문서 상세 → 목록) — 상태만 반영, 다시
 			// syncUrl 로 되돌리지 않음(이미 URL 이 진실).
+			untrack(() => {
+				if (editMode) cancelEdit();
+			});
 			selectedId = null;
 		}
 	});
