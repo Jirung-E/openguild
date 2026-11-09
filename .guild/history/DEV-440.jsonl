@@ -9,3 +9,4 @@
 {"ts":"2026-11-09T01:54:01+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-11-09T09:11:12+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-11-09T09:24:20+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-11-09T09:30:28+09:00","op":"change_status","old":"testing","new":"done"}
