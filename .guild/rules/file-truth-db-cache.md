@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-10T01:30:04+09:00"
-version = 6
+updated_at = "2026-11-10T01:47:40+09:00"
+version = 7
 +++
 # 파일 진리 / DB 캐시 (저장소 불변 규칙)
 
@@ -65,13 +65,15 @@ DB 캐시로 읽는 엔티티의 외부편집 커버리지:
 | campaign 본문 | DB 캐시 | 상세 lazy + 시동 drift (DEV-178, file_mtime_cache) |
 | types / statuses / tags 정의 | DB 캐시 | 시동 drift (DEV-178, file_mtime_cache) — 목록이라 lazy 없음 |
 | 댓글 / 메모 (sibling) | DB 캐시 | 시동 drift (BUG-068, file_mtime_cache) |
+| 도서관 본문 | DB 캐시 | 시동 drift (DEV-311, file_mtime_cache) — 쓰기마다 `touch` (BUG-396) |
 | rules / templates | **파일 직독** | 항상 즉시 (캐시 없음) |
 
 campaign 본문·메타는 per-row `cached_mtime` 컬럼이 없어 범용 `file_mtime_cache`
 (BUG-068)로 비교한다. drift 는 "캐시에 있고 파일이 더 새것"일 때만 fresh —
 캐시에 없는 메타(시드만 된 상태)를 fresh 로 보면 오탐(§위 #4 의 last_indexed_at
 회귀와 동류). 신규 파일 적재는 reindex 가 담당. 이를 위해 모든 mutation ops 는
-파일 write 직후 `file_mtime::touch` 로 캐시를 갱신한다(오탐 방지).
+파일 write 직후 `file_mtime::touch` 로 캐시를 갱신한다(오탐 방지). 빠뜨리면 우리 쓰기를 바깥 편집으로 보고 다음
+동기화가 전체 재색인을 돈다 — 도서관 쓰기가 그랬다(BUG-396).
 
 **쓰기는 eventually-consistent 가 아니다 (BUG-389).** 쓰기는 DB 값으로 파일을 다시 만들기 때문에, 뒤처진 DB 로
 쓰면 밖에서 고친 내용을 파일에서 지운다. 그래서:

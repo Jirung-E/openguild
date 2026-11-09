@@ -321,6 +321,9 @@ async fn set_book_tags_locked(
     bf.frontmatter.tags = normalized.clone();
     bf.write(&path)
         .map_err(|e| AppError::save_failed(book_id, e))?;
+    // BUG-396: 도서관 문서는 `file_mtime_cache` 로 바깥 편집을 감지한다 — 방금 쓴 시각을 적어야 `check drift` 가
+    // 우리 쓰기를 바깥 편집으로 보지 않는다(전에는 다음 명령이 전체 재색인을 돌렸다).
+    let _ = crate::file_mtime::touch(store, &path).await;
 
     sync_book_tags_cache(store, existing.id, &normalized).await?;
 
@@ -410,6 +413,7 @@ pub async fn create_book(
     };
     file.write(store.paths.book_path(&book_id))
         .map_err(|e| AppError::save_failed(&book_id, e))?;
+    let _ = crate::file_mtime::touch(store, &store.paths.book_path(&book_id)).await; // BUG-396
 
     sqlx::query(
         "INSERT INTO library_docs (number, title, body, path, created_at, updated_at)
@@ -563,6 +567,7 @@ pub async fn update_book_with(
     };
     file.write(store.paths.book_path(book_id))
         .map_err(|e| AppError::save_failed(book_id, e))?;
+    let _ = crate::file_mtime::touch(store, &store.paths.book_path(book_id)).await; // BUG-396
 
     sqlx::query(
         "UPDATE library_docs SET title = ?, body = ?, path = ?, updated_at = ? WHERE number = ?",
@@ -628,6 +633,7 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
     };
     file.write(store.paths.book_path(book_id))
         .map_err(|e| AppError::save_failed(book_id, e))?;
+    let _ = crate::file_mtime::touch(store, &store.paths.book_path(book_id)).await; // BUG-396
 
     sqlx::query("UPDATE library_docs SET deleted_at = ?, updated_at = ? WHERE number = ?")
         .bind(&now)
@@ -966,6 +972,7 @@ pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<L
         file.frontmatter.updated_at = now.clone();
         file.write(&path)
             .map_err(|e| AppError::save_failed(&b.book_id(), e))?;
+        let _ = crate::file_mtime::touch(store, &path).await; // BUG-396
         sqlx::query("UPDATE library_docs SET path = ?, updated_at = ? WHERE number = ?")
             .bind(rename(&b.path))
             .bind(&now)
@@ -1161,6 +1168,36 @@ mod tests {
 
     /// BUG-302: 폴더는 만들 때마다 목록에 적힌다 — 문서를 새 폴더에 만들 때, 문서를 새 폴더로 옮길 때,
     /// 하위 폴더를 만들 때(위 폴더도). 예전엔 빈 폴더만 적혀서 트리에 보이는 폴더가 `folder list` 에 없었다.
+    /// BUG-396: 도서관 쓰기 뒤 `check drift` 가 깨끗해야 한다 — 전에는 우리가 쓴 파일을 바깥 편집으로 봤다.
+    #[tokio::test]
+    async fn library_writes_leave_no_drift() {
+        let dir = fresh_tmp("drift");
+        let store = setup(&dir).await;
+        let a = create_book(&store, "A", "a", "").await.unwrap().book_id();
+        let b = create_book(&store, "B", "b", "f").await.unwrap().book_id();
+        crate::reindex::reindex(&store).await.unwrap(); // 캐시에 시각이 있어야 비교한다
+        // 각 쓰기 앞의 짧은 쉼: 파일 시각이 reindex 때와 확실히 달라야 '더 새것' 으로 보이는지를 본다.
+        async fn clean(store: &Store, step: &str) {
+            let d = crate::drift::detect_drift(store).await.unwrap();
+            assert!(d.is_clean(), "{step}: {:?}", d.fresh_siblings);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        update_book(&store, &a, Some("A2"), Some("a2"), None)
+            .await
+            .unwrap();
+        clean(&store, "update").await;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        set_book_tags(&store, &a, vec!["x".into()]).await.unwrap();
+        clean(&store, "tags").await;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        move_folder(&store, "f", "g").await.unwrap();
+        clean(&store, "folder move").await;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        delete_book(&store, &b).await.unwrap();
+        clean(&store, "delete").await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn every_new_folder_is_registered() {
         let dir = fresh_tmp("register");
