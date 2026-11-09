@@ -832,6 +832,8 @@ pub async fn change_status(
     let campaigns_before = super::campaigns::quests_done_before(store, id).await?;
     let quest = sql::change_status(&store.index_pool, id, body).await?;
 
+    // BUG-395: 파일을 먼저 쓴다 — 실패하면 기록도 남기지 않는다(전에는 기록이 먼저 남아 파일과 어긋났다).
+    write_quest_file(store, &quest, false).await?;
     // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: status slug 저장.
     // DEV-049: quest_slug 도 함께 저장. DEV-048: new_status_slug 는 body 에서 그대로.
     let ts = crate::time::now_local_iso8601();
@@ -859,7 +861,6 @@ pub async fn change_status(
     )
     .map_err(crate::error::AppError::Internal)?;
 
-    write_quest_file(store, &quest, false).await?;
     super::campaigns::note_quests_all_done(store, &campaigns_before).await?;
     store.emit_post(ev::QUEST_STATUS_CHANGED, || {
         json!({
@@ -1390,6 +1391,32 @@ pub(crate) async fn rewrite_deleted_quest_file(
 /// soft-deleted quest 의 파일을 frontmatter `deleted: true` 로 작성.
 /// 본인은 더 이상 alive 가 아니므로 `write_quest_file` 의 fetch_relations 가
 /// 본인을 못 찾을 가능성 (deleted_at filter). 직접 frontmatter 만 갱신.
+/// BUG-395: 퀘스트 파일 쓰기가 실패했을 때. 캐시(index.db)는 이 작업이 이미 바꿔 놓았고 파일은 그대로다 — 파일이
+/// 진리원이니 캐시를 파일 쪽으로 되돌린다. 전에는 목록은 바뀐 상태, 파일은 옛 상태로 어긋난 채 남았고 `check drift` 도
+/// 못 잡았다(파일 시각이 그대로라).
+///
+/// - 같은 작업이 앞서 바꾼 다른 행(부모 · 하위 · 선행 퀘스트)도 있을 수 있다. 모든 행을 "파일을 다시 읽을 것"
+///   (`cached_mtime` 0)으로 표시해, 다음 동기화(앱 · CLI 를 열 때, `check drift`, 다음 쓰기 직전)가 파일에서 다시
+///   옮기게 한다. 내용이 같은 파일은 시각만 고친다(BUG-103).
+/// - 실패한 이 퀘스트는 바로 되돌린다 — 오류를 본 화면이 다시 읽을 때 옛 상태가 보이게. 파일이 아예 없으면(새로
+///   만들다 실패) 행을 지운다.
+///
+/// 되돌리기 자체의 실패는 삼킨다 — 돌려줄 오류는 원래의 쓰기 실패다. 표시는 남으니 다음 동기화가 다시 한다.
+async fn restore_cache_after_failed_write(store: &Store, quest: &QuestRow) {
+    let pool = &store.index_pool;
+    let _ = sqlx::query("UPDATE quests SET cached_mtime = 0")
+        .execute(pool)
+        .await;
+    if store.paths.quest_path(&quest.quest_id).exists() {
+        let _ = crate::incremental::refresh_quest_before_write(store, &quest.quest_id).await;
+    } else {
+        let _ = sqlx::query("DELETE FROM quests WHERE id = ?")
+            .bind(quest.id)
+            .execute(pool)
+            .await;
+    }
+}
+
 async fn write_quest_file_as_deleted(store: &Store, quest: &QuestRow) -> AppResult<()> {
     // BUG-012 와 동일 — DB 의 description 이 truth. 기존 파일 fallback 제거.
     let path = store.paths.quest_path(&quest.quest_id);
@@ -1412,7 +1439,10 @@ async fn write_quest_file_as_deleted(store: &Store, quest: &QuestRow) -> AppResu
         description: quest.description.clone().unwrap_or_default(),
         auto_block: String::new(),
     };
-    qf.write(&path).map_err(crate::error::AppError::Internal)?;
+    if let Err(e) = qf.write(&path) {
+        restore_cache_after_failed_write(store, quest).await;
+        return Err(crate::error::AppError::Internal(e));
+    }
     // drift: soft-delete 로 쓴 파일도 cached_mtime 동기화 (오탐 방지).
     let mtime = crate::repo::fs::mtime_unix_nanos(&path);
     sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
@@ -1513,7 +1543,10 @@ pub(crate) async fn write_quest_file(
         auto_block,
     };
 
-    qf.write(&path).map_err(crate::error::AppError::Internal)?;
+    if let Err(e) = qf.write(&path) {
+        restore_cache_after_failed_write(store, quest).await;
+        return Err(crate::error::AppError::Internal(e));
+    }
 
     // drift/DEV-121: 방금 쓴 파일의 mtime 을 cached_mtime 에 기록. detect_drift 와
     // incremental sync 가 per-row cached_mtime 으로 "파일이 DB 보다 새것인가" 를
@@ -1789,6 +1822,109 @@ mod tests {
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("status = \"in_progress\""));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-395: 파일을 못 쓰면 캐시 · 기록도 바뀌지 않은 채여야 한다(전에는 캐시만 바뀌고 기록 줄도 남았다).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn change_status_failed_write_keeps_cache_and_history_as_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tmp("status-ro");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let quests_dir = dir.join(".guild/quests");
+        let history_file = dir.join(".guild/history/DEV-001.jsonl");
+        let history_before = std::fs::read_to_string(&history_file).unwrap_or_default();
+        std::fs::set_permissions(&quests_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let res = change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await;
+        std::fs::set_permissions(&quests_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if res.is_ok() {
+            // root 처럼 권한을 무시하는 환경 — 실패를 만들 수 없다.
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+
+        let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+        assert_eq!(row.status_slug, "open", "캐시가 파일과 같아야 한다");
+        let content = std::fs::read_to_string(quests_dir.join("DEV-001.md")).unwrap();
+        assert!(content.contains("status = \"open\""));
+        assert_eq!(
+            std::fs::read_to_string(&history_file).unwrap_or_default(),
+            history_before,
+            "기록 줄이 남으면 안 된다"
+        );
+        let tmp_left = std::fs::read_dir(&quests_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().ends_with(".tmp"));
+        assert!(!tmp_left, "임시 파일이 남으면 안 된다");
+
+        // 다음 쓰기는 그대로 된다.
+        change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+        assert_eq!(row.status_slug, "in_progress");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-395: 새로 만들다 파일을 못 쓰면 캐시에 행이 남지 않는다.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn create_quest_failed_write_leaves_no_row() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tmp("create-ro");
+        let store = setup_store(&dir).await;
+        let quests_dir = dir.join(".guild/quests");
+        std::fs::set_permissions(&quests_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let res = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await;
+        std::fs::set_permissions(&quests_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if res.is_ok() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quests")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0, "파일 없는 퀘스트가 목록에 남으면 안 된다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

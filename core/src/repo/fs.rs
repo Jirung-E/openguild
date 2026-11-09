@@ -24,10 +24,17 @@ pub fn write_atomic<P: AsRef<Path>>(path: P, contents: &str) -> Result<()> {
         .unwrap_or(0);
     let tmp = path.with_extension(format!("{pid}.{ns}.tmp"));
 
-    std::fs::write(&tmp, contents)
-        .with_context(|| format!("failed to write temp file: {}", tmp.display()))?;
-    std::fs::rename(&tmp, path)
-        .with_context(|| format!("failed to rename {} → {}", tmp.display(), path.display()))?;
+    // BUG-395: 실패하면 임시 파일을 지운다 — 전에는 `.tmp` 가 길드 폴더에 남았다(윈도우에서 대상 파일을 다른
+    // 프로그램이 잡고 있을 때 등).
+    if let Err(e) = std::fs::write(&tmp, contents) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e).with_context(|| format!("failed to write temp file: {}", tmp.display()));
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e)
+            .with_context(|| format!("failed to rename {} → {}", tmp.display(), path.display()));
+    }
     Ok(())
 }
 
