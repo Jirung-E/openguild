@@ -86,8 +86,41 @@ pub fn check_counters(paths: &GuildPaths, auto_fix: bool) -> Result<CheckReport>
         }
     }
 
+    // BUG-392: 캠페인 카운터 파일(`campaigns/.counter.toml`) — 가장 큰 `C-NNN.md` 보다 작으면 같은 문제.
+    // 파일이 아직 없는 옛 길드는 여기서(--fix) 처음 생긴다.
+    let camp_max = repo_fs::list_quest_body_files(paths.campaigns_dir())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|p| {
+            p.file_stem()?
+                .to_str()?
+                .strip_prefix("C-")?
+                .parse::<i64>()
+                .ok()
+        })
+        .max()
+        .unwrap_or(0);
+    let camp_stored = crate::repo::campaign::read_counter(paths)?.last_number;
+    if camp_stored < camp_max {
+        tracing::warn!(
+            "counter inconsistency: campaign last_number = {camp_stored}, but max campaign number = {camp_max}"
+        );
+        if auto_fix {
+            crate::repo::campaign::raise_counter(paths, camp_max)?;
+        }
+        report.issues.push(CounterIssue {
+            prefix: CAMPAIGN_COUNTER.into(),
+            stored_last_number: camp_stored,
+            actual_max_number: camp_max,
+            corrected_to: camp_max,
+        });
+    }
+
     Ok(report)
 }
+
+/// BUG-392: `CounterIssue.prefix` 가 이 값이면 퀘스트 타입이 아니라 캠페인 카운터다(타입 prefix 는 대문자라 겹치지 않는다).
+pub const CAMPAIGN_COUNTER: &str = "campaign";
 
 #[cfg(test)]
 mod tests {
@@ -248,5 +281,42 @@ mod tests {
 
         // Counter type import 사용 — 컴파일러 미사용 경고 방지.
         let _: Counter = Counter::default();
+    }
+
+    /// BUG-392: 카운터 파일이 없는 옛 길드 — 캠페인 최대 번호보다 낮다고 알리고, --fix 면 만든다.
+    #[test]
+    fn campaign_counter_missing_is_reported_and_fixed() {
+        let dir = fresh_tmp("bug392");
+        seed_guild_dir(&dir).unwrap();
+        let paths = GuildPaths::new(&dir);
+        std::fs::create_dir_all(paths.campaigns_dir()).unwrap();
+        std::fs::write(
+            paths.campaign_path("C-003"),
+            "+++\ncampaign_id = \"C-003\"\n+++\n",
+        )
+        .unwrap();
+        std::fs::write(paths.campaigns_dir().join("C-003.comments.md"), "").unwrap();
+
+        let report = check_counters(&paths, false).unwrap();
+        let issue = report
+            .issues
+            .iter()
+            .find(|i| i.prefix == CAMPAIGN_COUNTER)
+            .unwrap();
+        assert_eq!((issue.stored_last_number, issue.actual_max_number), (0, 3));
+        assert!(
+            !paths.campaign_counter_path().exists(),
+            "dry-run 은 쓰지 않는다"
+        );
+
+        check_counters(&paths, true).unwrap();
+        assert_eq!(
+            crate::repo::campaign::read_counter(&paths)
+                .unwrap()
+                .last_number,
+            3
+        );
+        assert!(check_counters(&paths, false).unwrap().issues.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

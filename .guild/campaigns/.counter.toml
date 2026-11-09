@@ -1,0 +1,4 @@
+# WARNING: auto-managed file. Do not edit it by hand.
+# last_number is a monotonic counter that keeps issued campaign IDs from being reused.
+
+last_number = 7

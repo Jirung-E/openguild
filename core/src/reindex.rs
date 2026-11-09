@@ -1069,6 +1069,12 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
     }
 
     // campaign_counters self-heal — alive campaign 의 최대 번호로.
+    // BUG-392: git 에 남는 카운터 파일도 — 지운 캠페인의 번호를 다시 주지 않게.
+    let max_camp_num = max_camp_num.max(
+        crate::repo::campaign::read_counter(paths)
+            .map(|c| c.last_number)
+            .unwrap_or(0),
+    );
     if max_camp_num > 0 {
         sqlx::query(
             "UPDATE campaign_counters

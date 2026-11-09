@@ -121,6 +121,14 @@ pub async fn check_and_fix_counters(store: &Store, auto_fix: bool) -> Result<Com
 
 /// `quest_counters.last_number` 를 prefix 의 type id 로 UPDATE.
 async fn sync_sql_counter(store: &Store, prefix: &str, value: i64) -> Result<()> {
+    if prefix == crate::counter::CAMPAIGN_COUNTER {
+        sqlx::query("UPDATE campaign_counters SET last_number = MAX(last_number, ?) WHERE id = 1")
+            .bind(value)
+            .execute(&store.index_pool)
+            .await
+            .context("campaign_counters UPDATE 실패")?;
+        return Ok(());
+    }
     let type_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = ?")
         .bind(prefix)
         .fetch_optional(&store.index_pool)

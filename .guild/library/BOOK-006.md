@@ -3,9 +3,9 @@ book_id = "BOOK-006"
 title = "저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-11-06T09:20:58+09:00"
+updated_at = "2026-11-09T08:59:32+09:00"
 deleted = false
-version = 3
+version = 4
 +++
 
 # 저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금
@@ -24,7 +24,7 @@ version = 3
 | 댓글 | `quests/{slug}.comments.md` — 항목마다 HTML 마커 | `repo/comments.rs` |
 | 메모 | `quests/{slug}.memo.md` — **gitignored**, 개인 것 | `repo/comments.rs` |
 | 변경 이력 | `history/{slug}.jsonl` — 퀘스트·캠페인 사이드카 | `repo/history.rs` |
-| 캠페인 | `campaigns/{slug}.md` (+ 댓글·메모 같은 모양) — 본문의 GFM 체크박스가 체크리스트 | `repo/campaign.rs` |
+| 캠페인 | `campaigns/{slug}.md` (+ 댓글·메모 같은 모양) — 본문의 GFM 체크박스가 체크리스트 · 번호는 `campaigns/.counter.toml` | `repo/campaign.rs` |
 | 타입 · 상태 · 태그 | `types/{prefix}.toml` · `statuses/{order}-{slug}.toml` · `tags/{slug}.toml` | `repo/type_def.rs` · `status_def.rs` · `tag_def.rs` |
 | 템플릿 | `templates/{name}.md` | `repo/template.rs` |
 | 규칙 | `rules/{slug}.md` | `repo/rules.rs` |
@@ -34,8 +34,8 @@ version = 3
 | 플러그인 정의 | `plugins/{name}/` — `plugin.toml` + 스크립트 | `plugins/mod.rs` |
 | 보드 위치 | `positions.json` — **gitignored**, 개인 UI 상태 | `repo/positions.rs` |
 
-**번호는 되쓰지 않는다.** 타입의 카운터(`types/{prefix}.toml` 의 `[counter]`)와 도서관의
-`.counter.toml` 은 단조 증가다. 지운 번호도 다시 안 준다 — 삭제는 frontmatter 의
+**번호는 되쓰지 않는다.** 타입의 카운터(`types/{prefix}.toml` 의 `[counter]`)와 캠페인 · 도서관의
+`.counter.toml` 은 단조 증가다(캠페인은 BUG-392 전까지 index.db 에만 있어 색인을 다시 만들면 지운 번호가 다시 나왔다). 지운 번호도 다시 안 준다 — 삭제는 frontmatter 의
 `deleted = true`(soft delete)이고 파일은 제자리에 남는다. 그래야 git diff 가 깨끗하고 링크가 안 깨진다.
 
 **문서 번호**(DEV-433). 퀘스트 · 캠페인 · 도서관 문서 · 규칙 파일은 frontmatter 에 `version = N`, 퀘스트 ·

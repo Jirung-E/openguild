@@ -451,7 +451,7 @@ enum CheckCmd {
         #[arg(long, help = tf!("발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).", "Automatically resolve found drift via reindex (default: report only)."))]
         resync: bool,
     },
-    #[command(about = tf!("type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (--fix 면 보정).", "Check whether each type's last_number matches the actual max quest number (+ optional auto-fix)."))]
+    #[command(about = tf!("type · 캠페인의 last_number 가 실제 가장 큰 번호보다 작지 않은지 검사 (--fix 면 보정).", "Check that each type's and the campaign last_number is not below the actual max number (+ optional auto-fix)."))]
     Counters {
         #[arg(long, help = tf!("발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).", "Fix found mismatches directly in files + SQL (default: report only)."))]
         fix: bool,
@@ -7028,7 +7028,11 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
         );
         for issue in &report.file_report.issues {
             println!();
-            println!("  • type {} [file drift]:", issue.prefix);
+            if issue.prefix == openguild_core::counter::CAMPAIGN_COUNTER {
+                println!("  • campaign [file drift]:");
+            } else {
+                println!("  • type {} [file drift]:", issue.prefix);
+            }
             println!(
                 "{}",
                 tf!(
@@ -7040,8 +7044,8 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
             println!(
                 "{}",
                 tf!(
-                    "    실제 max quest 번호  : {}",
-                    "    actual max quest num : {}",
+                    "    실제 가장 큰 번호    : {}",
+                    "    actual max number    : {}",
                     issue.actual_max_number
                 )
             );

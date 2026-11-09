@@ -196,6 +196,53 @@ fn split_frontmatter(text: &str) -> Result<(&str, &str)> {
     Err(anyhow!("missing closing `+++` delimiter"))
 }
 
+// ─── 카운터 (.guild/campaigns/.counter.toml) ── BUG-392 ───
+//
+// 전에는 다음 번호가 index.db 에만 있어서, 마지막 캠페인을 지우고 색인을 다시 만들거나 다른 곳에서
+// clone 하면 같은 번호가 다시 나왔다. 퀘스트 타입 · 도서관처럼 git 에 남는 파일에 둔다.
+
+/// 캠페인 번호 카운터 파일. 단조 증가 — 줄이지 않는다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CampaignCounter {
+    #[serde(default)]
+    pub last_number: i64,
+}
+
+const COUNTER_HEADER: &str = "\
+# WARNING: auto-managed file. Do not edit it by hand.
+# last_number is a monotonic counter that keeps issued campaign IDs from being reused.
+";
+
+/// 카운터 파일의 값. 없으면 0.
+pub fn read_counter(paths: &super::GuildPaths) -> Result<CampaignCounter> {
+    let p = paths.campaign_counter_path();
+    if !p.exists() {
+        return Ok(CampaignCounter::default());
+    }
+    let s =
+        std::fs::read_to_string(&p).with_context(|| format!("failed to read: {}", p.display()))?;
+    toml::from_str(&s).context("failed to parse campaign counter TOML")
+}
+
+/// 카운터를 `number` 까지 올린다 — 이미 크거나 같으면 그대로(쓰지 않음). 썼으면 `true`.
+pub fn raise_counter(paths: &super::GuildPaths, number: i64) -> Result<bool> {
+    let cur = read_counter(paths)?;
+    if cur.last_number >= number {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(paths.campaigns_dir())
+        .with_context(|| format!("failed to create dir: {}", paths.campaigns_dir().display()))?;
+    let body = toml::to_string_pretty(&CampaignCounter {
+        last_number: number,
+    })
+    .context("failed to serialize campaign counter")?;
+    super::fs::write_atomic(
+        paths.campaign_counter_path(),
+        &format!("{COUNTER_HEADER}\n{body}"),
+    )?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

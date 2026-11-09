@@ -67,6 +67,12 @@ impl GuildPaths {
         self.campaigns_dir().join(format!("{slug}.md"))
     }
 
+    /// BUG-392: 캠페인 번호 카운터 (`.guild/campaigns/.counter.toml`). git tracked — 도서관의
+    /// `.counter.toml` 과 같은 뜻으로, 한 번 준 C-NNN 은 지워도 다시 주지 않는다.
+    pub fn campaign_counter_path(&self) -> PathBuf {
+        self.campaigns_dir().join(".counter.toml")
+    }
+
     pub fn types_dir(&self) -> PathBuf {
         self.dot_guild().join("types")
     }

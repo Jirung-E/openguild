@@ -115,6 +115,20 @@ pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppR
         ));
     }
     write_campaign_file(store, &camp, true).await?;
+    // BUG-392: 준 번호를 git 에 남는 카운터 파일에도 — 지워도 다시 주지 않게. 실패는 경고만(파일 max 가 바닥을 받친다).
+    match crate::repo::campaign::raise_counter(
+        &store.paths,
+        camp.campaign_slug
+            .strip_prefix("C-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .unwrap_or(0),
+    ) {
+        Ok(true) => {
+            let _ = crate::file_mtime::touch(store, &store.paths.campaign_counter_path()).await;
+        }
+        Ok(false) => {}
+        Err(e) => tracing::warn!("캠페인 카운터 파일 갱신 실패: {e:#}"),
+    }
     // DEV-388: DB 와 파일이 다 쓰인 **뒤에만** 낸다. journal 은 위에서 의도를
     // 먼저 적지만 이벤트는 일어난 일만 싣는다.
     store.emit_post(
@@ -125,12 +139,16 @@ pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppR
 }
 
 /// BUG-389: `campaigns/C-NNN.md` 중 가장 큰 번호. soft-delete 된 문서도 파일이 남아 있으니 센다.
+/// BUG-392: 카운터 파일(`campaigns/.counter.toml`)도 — 파일이 지워진 번호까지 막는다.
 fn last_campaign_number_in_files(store: &Store) -> AppResult<i64> {
+    let counter = crate::repo::campaign::read_counter(&store.paths)
+        .map(|c| c.last_number)
+        .unwrap_or(0);
     let dir = store.paths.campaigns_dir();
     if !dir.exists() {
-        return Ok(0);
+        return Ok(counter);
     }
-    let mut last = 0;
+    let mut last = counter;
     for entry in std::fs::read_dir(dir)? {
         let name = entry?.file_name();
         let number = name
@@ -1672,6 +1690,32 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert!(update_campaign(&store, id, order(7)).await.is_err());
         assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── BUG-392 ─────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn removed_campaign_number_is_not_reused_after_reindex() {
+        let (dir, store) = banner_setup("bug392-reuse").await; // C-001
+        let second = create_campaign(&store, campaign_request("second"))
+            .await
+            .unwrap();
+        assert_eq!(second.campaign_slug, "C-002");
+        let counter = std::fs::read_to_string(store.paths.campaign_counter_path()).unwrap();
+        assert!(counter.contains("last_number = 2"), "{counter}");
+
+        // 파일째 지우고(시험으로 만든 걸 치우듯) 색인을 다시 만든다 — 다른 곳에서 clone 한 것과 같다.
+        std::fs::remove_file(store.paths.campaign_path("C-002")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let next = create_campaign(&store, campaign_request("next"))
+            .await
+            .unwrap();
+        assert_eq!(
+            next.campaign_slug, "C-003",
+            "지운 C-002 를 다시 주면 안 된다"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
