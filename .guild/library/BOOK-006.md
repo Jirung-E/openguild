@@ -3,9 +3,9 @@ book_id = "BOOK-006"
 title = "저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-11-09T08:59:32+09:00"
+updated_at = "2026-11-10T01:30:05+09:00"
 deleted = false
-version = 4
+version = 5
 +++
 
 # 저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금
@@ -73,6 +73,7 @@ version = 4
 | CLI 명령마다 | `incremental::sync_if_changed` — 바뀐 파일만 다시 읽는다. 바뀐 게 없으면 `stat` 뿐. 정의가 바뀌었으면 풀 `reindex`(BUG-389 · BUG-391). `reindex` · `index` · `check` · `restore` 는 빼고 |
 | 서버 시작 | 앱이 열 때와 같다(`sync_on_open`) |
 | 문서를 쓰기 직전 | `Store::lock_docs` 가 잠근 그 문서를 파일에서 다시 읽는다. 못 읽으면 쓰지 않는다(BUG-389) |
+| 문서 파일 쓰기가 실패했을 때 | 캐시를 먼저 바꾼 퀘스트 · 캠페인은 그 문서를 파일에서 다시 읽어 되돌린다(새로 만들다 실패하면 행을 지운다). 퀘스트는 모든 행을 "다시 읽을 것" 으로 표시해 다음 동기화가 같은 작업이 바꾼 다른 행도 맞춘다. 임시 파일(`.tmp`)도 지운다(BUG-395) |
 | `git pull` · 브랜치 전환 뒤 | CLI 는 다음 명령에서, 앱 · 서버는 열 때 맞춘다. 켜 둔 앱의 목록은 ⟲(다시 색인). 복원은 스스로 `reindex` 한다 |
 
 `drift` 는 파일과 캐시가 어긋났는지 **알려 주는** 쪽이고, `health` 는 파일 자체가 이상한지
@@ -157,7 +158,7 @@ version = 4
 - 사이클 금지 — 부모 변경 · 선행 추가 때 `index.db` 로 BFS 검증
 - 하위 ↔ 선행 상호 배제, 직계 부모는 선행 후보에서 제외
 - 미해결 토론 댓글이 있으면 그 퀘스트는 완료로 못 간다
-- 타입 카운터 무결성 — `openguild check counters [--fix]`
+- 번호 파일 무결성(타입 · 캠페인) — `openguild check counters [--fix]`
 
 ## 안전장치 한눈에
 

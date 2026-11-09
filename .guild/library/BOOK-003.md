@@ -3,9 +3,9 @@ book_id = "BOOK-003"
 title = "openguild 아키텍처 — 개괄"
 path = "아키텍처"
 created_at = "2026-09-06T19:42:06+09:00"
-updated_at = "2026-11-06T09:54:13+09:00"
+updated_at = "2026-11-10T01:30:05+09:00"
 deleted = false
-version = 1
+version = 2
 +++
 
 # openguild 아키텍처 — 개괄
@@ -125,6 +125,7 @@ graph TB
 
 1 이 잠금 **밖**인 이유: 플러그인이 답하는 동안(밖에 나갈 수도 있다) 다른 변경을 세우지 않으려고.
 6 이 기다리지 않는 이유: 느린 훅 하나가 `openguild comment add` 를 붙잡으면 안 되므로.
+5 가 실패하면 4 를 파일 쪽으로 되돌리고 6 은 없다(BUG-395) — 상세는 [[BOOK-006]] 과 규칙 `file-truth-db-cache`.
 
 ## 불변식
 

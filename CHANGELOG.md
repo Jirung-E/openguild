@@ -2,7 +2,7 @@
 
 Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
-## 0.6.0-beta — 2026-11-09
+## 0.6.0-beta — 2026-11-10
 
 **길드에서 일이 생길 때 내 프로그램을 부를 수 있고, 여럿이 동시에 써도 기록이 안 사라지는
 릴리스.** 퀘스트가 생기거나 상태가 바뀌거나 댓글이 달리면 텔레그램·AI·스크립트로 이어 붙일 수
@@ -75,7 +75,7 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   온 순서대로 다시 보인다. 갈 곳이 있으면 눌러서 가고, × 로 하나를, "모두 지우기" 로 전부 지운다. 알림 카드는 뜰 때와
   같은 모양(종류 · 보낸 곳 · 시각 · 제목 · 펼치는 본문 · 갈 곳)이다. 안 읽은 개수를, 그 가운데 오류가 있으면 빨갛게 붙인다. 플러그인 알림과 **플러그인 실패**는
   `.guild/notices/` 에 남아 앱을 껐다 켜도 · 같은 기계의 서버 · CLI 에서 난 것도 보인다(최근 200개 · 30일, git 에
-  안 올라감). 앱 자체 알림은 앱이 켜진 동안만. CLI 는 `notice list` · `notice read` · `notice remove` · `notice clear`, 서버는 `/api/notices` (DEV-478)
+  안 올라감). 앱 자체 알림은 앱이 켜진 동안만 — 새 창으로 연 문서 창에서 난 것도 메인 창의 알림함에 모인다. CLI 는 `notice list` · `notice read` · `notice remove` · `notice clear`, 서버는 `/api/notices` (DEV-478)
   - **연결 데이터**(`with`) — `subject`, `parent`, `children`, `prereqs`, `campaigns`,
     `quests`. 이벤트 대상의 종류가 받을 수 있는 것을 정한다. 캐시가 아니라 `.guild/`
     파일에서 바로 읽는다 (DEV-405)

@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-06T09:53:54+09:00"
-version = 5
+updated_at = "2026-11-10T01:30:04+09:00"
+version = 6
 +++
 # 파일 진리 / DB 캐시 (저장소 불변 규칙)
 
@@ -22,6 +22,16 @@ ops 경로(journal append → SQL → 파일 atomic write → auto-block 재생�
 // ❌ DB 만 UPDATE 하고 파일 안 씀 → reindex 하면 사라짐
 // ✅ ops::quests::update_quest 처럼 파일 + DB 같이
 ```
+
+**파일 쓰기가 실패하면 캐시를 파일로 되돌린다 (BUG-395).** SQL 을 먼저 바꾸고 파일을 쓰는 경로는 파일 쓰기가
+실패하면 캐시만 바뀐 채 남는다 — 목록은 새 값, 파일은 옛 값이고 파일 시각이 그대로라 `check drift` 도 못 잡는다.
+
+- 퀘스트 · 캠페인 파일은 `write_quest_file` · `write_campaign_file` 로만 쓴다. 실패하면 그 안에서
+  `restore_cache_after_failed_write` 가 그 문서를 파일에서 다시 읽는다(파일이 없으면 = 새로 만들다 실패, 행을 지운다).
+  퀘스트는 모든 행을 "파일을 다시 읽을 것"(`cached_mtime` 0)으로 표시해, 같은 작업이 먼저 바꾼 다른 행도 다음 동기화가 맞춘다.
+- 기록(history · 사이드카)은 파일을 쓴 **뒤**에 남긴다 — 실패한 변경의 기록 줄이 남지 않게.
+- 파일을 먼저 쓰고 캐시를 고치는 경로(도서관 · 체크리스트 · 댓글)는 이 문제가 없다. 새 경로는 이 순서를 고른다.
+- 실패는 `AppError::save_failed(문서 번호, e)` 로 돌려준다 — 앱 · CLI 는 짧은 원인, 서버는 오류 번호([[code-conventions]]).
 
 ## 3. 백업 ≠ 캐시
 
@@ -69,7 +79,7 @@ campaign 본문·메타는 per-row `cached_mtime` 컬럼이 없어 범용 `file_
 - 문서를 고치기 전에 그 문서를 파일에서 다시 읽는다 — `lock_docs` 가 잠근 뒤 한다. 새 쓰기 경로도 이 잠금을 지날 것.
 - 파일을 못 읽으면 **쓰기를 거부**한다. 무시하고 쓰면 그 파일을 덮는다.
 - 타입 · 상태 이름 바꾸기처럼 DB 값으로 여러 파일을 다시 쓰는 작업은 길드 독점을 잡은 뒤 `sync_before_guild_write` 를 먼저 부른다.
-- 새 번호는 번호 파일(`types/*.toml`)과 문서 파일에서 정한다 — DB 는 하한일 뿐이다. `index.db` 가 비어 있어도 있는 번호를 다시 주면 안 된다.
+- 새 번호는 번호 파일(`types/*.toml` · `campaigns/.counter.toml` · `library/.counter.toml`)과 문서 파일에서 정한다 — DB 는 하한일 뿐이다. `index.db` 가 비어 있어도 있는 번호를 다시 주면 안 된다.
 
 **쓰기 경로는 전부 시험한다 (BUG-389).** `server/src/write_matrix_tests.rs` 가 서버의 모든 쓰기 경로를 밖에서 고친 · 깨뜨린 · 지운 파일 위에서 돌린다. 새 경로를 표에 넣지 않으면 시험이 실패한다.
 

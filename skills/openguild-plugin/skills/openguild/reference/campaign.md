@@ -1,7 +1,9 @@
 # Campaigns
 
 A campaign groups quests toward a milestone/release. Slugs look like
-`C-001`, `C-002`, ...
+`C-001`, `C-002`, ... A deleted campaign's number is never reused — the last
+number is kept in `.guild/campaigns/.counter.toml` (git-tracked, like quest
+type counters), and `openguild check counters` checks it too.
 
 ```bash
 openguild campaign list [--status active|done] [-q 'end:overdue quest:DEV-001']

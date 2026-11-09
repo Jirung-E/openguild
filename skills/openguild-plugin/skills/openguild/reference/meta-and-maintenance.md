@@ -49,7 +49,7 @@ catalog color/description.
 ```bash
 openguild reindex                 # rebuild the SQL cache from .guild/**
 openguild check drift [--resync]     # compare files vs. cache; --resync rebuilds the cache (otherwise report only)
-openguild check counters [--fix]     # verify ID counters; --fix corrects them (otherwise report only)
+openguild check counters [--fix]     # verify ID counters (quest types, campaigns); --fix corrects them (otherwise report only)
 openguild check sidecars          # comment/memo/attachment files whose document is missing (report only)
 openguild update --check          # is a newer release out? (no guild needed; tells only, never installs)
 openguild index rebuild

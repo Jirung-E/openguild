@@ -90,6 +90,13 @@ openguild quest restore DEV-049                     # undo if needed
 Exit code `0` = success, `1` = failure. Common failure cases:
 - Local mode, no `.guild` found from cwd or `--guild` path.
 - Remote mode, server unreachable (check with `openguild ping` first).
+- A file could not be saved — `DEV-001 파일을 저장하지 못했습니다 — <cause>` (English: `Could not save DEV-001 — <cause>`).
+  The cause is short: read-only or not writable, in use by another program (Windows), or disk full. **Nothing
+  was changed** — the guild still matches the file, so tell the user the cause and retry after it is fixed;
+  do not hand-edit `.guild/` to work around it.
+- Remote mode, the server failed — the response carries no cause, only an **error ID** (`오류 번호 85351ac5` /
+  `error ID 85351ac5`). The cause is in the server's log under the same `error_id=`. Report the ID to the user
+  (they pass it to whoever runs the server); retrying the same request blindly will not help.
 
 ```bash
 openguild ping || echo "server unreachable"
