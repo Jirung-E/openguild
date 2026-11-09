@@ -117,8 +117,9 @@ my-app/
 
 ### git 친화
 
-`.guild/quests/*.md`, `.guild/campaigns/*.md`, `.guild/rules/*.md`, `.guild/types/`,
-`.guild/statuses/` 모두 git tracked 권장. diff / blame / branch / PR 자연스럽게
+`.guild/quests/*.md`, `.guild/campaigns/`, `.guild/library/`, `.guild/rules/*.md`, `.guild/types/`,
+`.guild/statuses/` 모두 git tracked 권장. 캠페인 · 도서관 폴더의 `.counter.toml` 은 번호를 다시 쓰지 않게
+막는 파일이라 함께 넣는다(퀘스트 번호는 `types/` 에 있다). diff / blame / branch / PR 자연스럽게
 활용 가능.
 
 `.guild/index.db` / `.guild/backups/` / `.guild/positions.json` 은 자동으로
