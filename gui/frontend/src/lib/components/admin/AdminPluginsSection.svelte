@@ -581,7 +581,7 @@
 									{:else}
 										<input
 											id={`pi-${p.name}-${i.key}`}
-											class="pi-field"
+											class="input pi-field"
 											type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
 											autocomplete="off"
 											placeholder={i.has_value && (i.value === null || i.value === undefined)
@@ -1018,6 +1018,8 @@
 		overflow-wrap: anywhere;
 		min-width: 0;
 	}
+	/* 그리드 칸보다 넓어지지 않게 — 입력칸과 고르기 상자(Select 가 감싼 상자에 class 가 붙는다) 둘 다. */
+	.pi-field,
 	:global(.select-box.pi-field) {
 		min-width: 0;
 	}
