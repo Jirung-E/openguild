@@ -220,7 +220,10 @@
 			const url = nav.to?.url;
 			if (!url) return;
 			nav.cancel();
-			pendingAction = () => goto(url);
+			// BUG-394: 뒤로 · 앞으로 가기는 `goto` 로 다시 가면 새 기록이 쌓여, 다음 뒤로 가기가
+			// 방금 떠난 화면으로 돌아간다. 같은 칸 수만큼 기록 안에서 움직인다.
+			const delta = nav.type === 'popstate' ? nav.delta : 0;
+			pendingAction = delta ? () => history.go(delta) : () => goto(url);
 			showUnsavedModal = true;
 			return;
 		}
