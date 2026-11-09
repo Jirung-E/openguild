@@ -50,7 +50,11 @@ describe('listenPluginNotices', () => {
 
 	it('앱이 쏘는 이름을 듣고, 멈출 수 있다', async () => {
 		const stop = await listenPluginNotices();
-		expect(Object.keys(heard.handlers).sort()).toEqual(['plugin-notify', 'plugin-problem']);
+		expect(Object.keys(heard.handlers).sort()).toEqual([
+			'app-notice',
+			'plugin-notify',
+			'plugin-problem'
+		]);
 		stop();
 		expect(heard.stops['plugin-notify']).toHaveBeenCalled();
 		expect(heard.stops['plugin-problem']).toHaveBeenCalled();

@@ -9,8 +9,9 @@
 //
 // 사용(하위호환 유지): import { showToast } from '$lib/stores/toast';
 
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { noticeHref, recordAppNotice, refreshInbox } from './inbox';
+import { isChildWindow, readLabel } from './windowKind';
 
 export type ToastVariant = 'error' | 'success' | 'info';
 export type NotifKind = 'toast' | 'update' | 'schema';
@@ -95,6 +96,7 @@ export function showToast(
 	// DEV-478: 사라져도 알림함에서 다시 본다. "저장됨" 같은 성공 알림은 남기지 않는다.
 	const inboxKey =
 		variant !== 'success' ? recordAppNotice(message, variant === 'error', href) : undefined;
+	if (inboxKey) void forwardAppNotice(message, variant === 'error', href);
 	return pushToast(message, variant, durationMs, href, { inboxKey });
 }
 
@@ -220,6 +222,29 @@ export function dismissSchema(sig: string) {
 	dismissNotif('schema');
 }
 
+/** 다른 창에서 난 앱 알림 — `app-notice` 이벤트의 모양. */
+interface AppNoticeEvent {
+	from: string;
+	text: string;
+	error: boolean;
+	href?: string;
+}
+
+/**
+ * 앱 알림을 다른 창에도 알린다. 앱 알림은 창마다 메모리에만 있어, 알림함이 없는 자식 창(새 창으로 연 문서)에서 난
+ * 저장 실패 같은 알림은 알림함에 안 남았다. 앱이 아니면(웹) 창이 하나라 할 일이 없다.
+ */
+async function forwardAppNotice(text: string, error: boolean, href?: string): Promise<void> {
+	const from = readLabel();
+	if (!from) return;
+	try {
+		const { emit } = await import('@tauri-apps/api/event');
+		await emit('app-notice', { from, text, error, href } satisfies AppNoticeEvent);
+	} catch {
+		/* 알림함은 덤이다. */
+	}
+}
+
 /** 앱이 보내는 플러그인 알림을 받는다. 모양은 `gui/src/lib.rs` 의 `notice_payload` 와 같다. */
 export async function listenPluginNotices(): Promise<() => void> {
 	const { listen } = await import('@tauri-apps/api/event');
@@ -242,8 +267,14 @@ export async function listenPluginNotices(): Promise<() => void> {
 	const stopProblem = await listen<{ text: string }>('plugin-problem', () => {
 		void refreshInbox();
 	});
+	// 다른 창의 앱 알림 — 알림함이 있는 창(자식 창이 아닌 창)만 받아 둔다. 토스트는 다시 띄우지 않는다(그 창에서 이미 떴다).
+	const stopApp = await listen<AppNoticeEvent>('app-notice', (e) => {
+		if (e.payload.from === readLabel() || get(isChildWindow)) return;
+		recordAppNotice(e.payload.text, e.payload.error, e.payload.href);
+	});
 	return () => {
 		stopNotify();
 		stopProblem();
+		stopApp();
 	};
 }

@@ -8,7 +8,7 @@ import { writable } from 'svelte/store';
 // (Tauri v2 내부 구현) invoke 없이 바로 읽을 수 있어, 비동기 import 를 기다리는
 // 동안 TitleBar 가 잠깐 "메인윈도우처럼"(메뉴/검색 보임) 그려졌다가 사라지는
 // 깜빡임을 피할 수 있다. 초기값을 즉시 계산해 store 에 심는다.
-function readLabel(): string | null {
+export function readLabel(): string | null {
 	if (typeof window === 'undefined') return null;
 	const w = window as unknown as {
 		__TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } };
