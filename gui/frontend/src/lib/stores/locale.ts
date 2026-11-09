@@ -1764,6 +1764,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.laneSortCols': { ko: '이 레인 정렬 열 수', en: 'Sort columns for this lane' },
 	'board.laneSortRows': { ko: '이 레인 정렬 행 수', en: 'Sort rows for this lane' },
 	'board.laneSortMode': { ko: '이 레인 정렬 모드', en: 'Sort mode for this lane' },
+	'board.laneArrange': { ko: '이 레인 정렬', en: 'Arrange this lane' },
 	'board.laneSettingsCollapse': { ko: '레인 설정 접기', en: 'Collapse lane settings' },
 	'board.laneSettingsExpand': { ko: '레인 설정 펼치기', en: 'Expand lane settings' },
 	'board.confirmChangeSuffix': { ko: ' 상태로 변경할까요?', en: ' — change status?' },

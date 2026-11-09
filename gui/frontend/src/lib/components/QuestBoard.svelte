@@ -2875,7 +2875,8 @@
 			map[statusSlug(s.name_en)] = cols;
 		});
 		saveLaneColsMap(map);
-		headersEl?.querySelectorAll<HTMLSelectElement>('.lane-cols-sel').forEach((sel) => {
+		// 레인 설정 팝업은 헤더 밖 레이어(lanePopLayerEl)에 산다 — 헤더만 찾으면 팝업의 열 수가 그대로 남는다.
+		lanePopLayerEl?.querySelectorAll<HTMLSelectElement>('.lane-cols-sel').forEach((sel) => {
 			sel.value = String(cols);
 		});
 		syncLanes();
@@ -3084,6 +3085,17 @@
 				label.classList.toggle('collapsed', on);
 				hdr.classList.toggle('collapsed', on);
 			};
+			// DEV-440 후속: 이 팝업은 DOM 으로 조립해 Select 부품을 못 쓴다 — 같은 모양(기본 화살표 끄고 글자색 꺾쇠)을 직접.
+			const selectBox = (el: HTMLSelectElement) => {
+				const box = document.createElement('span');
+				box.className = 'lane-sel-box';
+				const caret = document.createElement('span');
+				caret.className = 'lane-sel-caret';
+				caret.setAttribute('aria-hidden', 'true');
+				caret.innerHTML = iconSvgMarkup('caret-down-sm');
+				box.append(el, caret);
+				return box;
+			};
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
 			sel.title = t(
@@ -3113,7 +3125,7 @@
 			};
 			const btn = document.createElement('button');
 			btn.className = 'lane-arrange-btn';
-			btn.title = 'Arrange this lane';
+			btn.title = t('board.laneArrange', get(locale));
 			btn.innerHTML = iconSvgMarkup('arrange');
 
 			// lane 별 정렬 모드 select (Group/All) — 전역 toolbar 의 mode select 와 같은 역할
@@ -3123,7 +3135,10 @@
 			(['group', 'all'] as const).forEach((v) => {
 				const opt = document.createElement('option');
 				opt.value = v;
-				opt.textContent = v === 'group' ? 'Group' : 'All';
+				opt.textContent = t(
+					v === 'group' ? 'board.arrangeModeGroup' : 'board.arrangeModeAll',
+					get(locale)
+				);
 				if (v === arrangeMode) opt.selected = true;
 				modeSel.appendChild(opt);
 			});
@@ -3148,7 +3163,7 @@
 			const arrangeWrap = document.createElement('div');
 			arrangeWrap.className = 'lane-arrange-group';
 			arrangeWrap.appendChild(btn);
-			arrangeWrap.appendChild(modeSel);
+			arrangeWrap.appendChild(selectBox(modeSel));
 
 			// BUG: cols-sel + arrange-group 을 헤더와 같은 줄에 인라인으로 두면
 			// lane 폭(zoom 에 비례, 모바일에서 매우 좁아짐)이 실제 필요폭보다 작을 때
@@ -3157,7 +3172,7 @@
 			pop.className = 'popup lane-settings-pop';
 			// 헤더 밖 레이어에 살기 때문에 어느 레인 것인지 표시가 필요하다.
 			pop.dataset.laneSlug = s.slug;
-			pop.appendChild(sel);
+			pop.appendChild(selectBox(sel));
 			pop.appendChild(arrangeWrap);
 
 			// DEV-105 fix5: 레인별 설정 (cols-sel + arrange-group) 토글 ⚙.
@@ -4782,21 +4797,48 @@
 	:global(.lane-settings-pop.open) {
 		display: flex;
 	}
-	:global(.lane-cols-sel) {
-		flex-shrink: 0;
+	/* DEV-440 후속: 레인 설정 팝업의 고르기 — 작은 줄(xs) 높이, 기본 화살표 대신 글자색 꺾쇠(Select 와 같은 모양). */
+	:global(.lane-sel-box) {
+		position: relative;
+		display: inline-flex;
+		color: var(--text-muted);
+	}
+	:global(.lane-sel-box:hover) {
+		color: var(--text);
+	}
+	:global(.lane-sel-caret) {
+		position: absolute;
+		right: var(--sp-4);
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		font-size: calc(var(--fs-xs) * 1.15);
+		pointer-events: none;
+	}
+	:global(.lane-cols-sel),
+	:global(.lane-mode-sel) {
+		flex: 1;
+		box-sizing: border-box;
+		min-height: var(--ctl-h-xs);
 		pointer-events: auto;
+		appearance: none;
+		-webkit-appearance: none;
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
-		color: var(--text-muted);
+		color: inherit;
 		font-size: var(--fs-xs);
-		padding: 1px 3px;
+		padding: 0 calc(var(--sp-4) + var(--sp-16)) 0 var(--sp-6);
 		cursor: pointer;
 		outline: none;
 	}
-	:global(.lane-cols-sel:hover) {
+	:global(.lane-sel-box:hover .lane-cols-sel),
+	:global(.lane-sel-box:hover .lane-mode-sel) {
 		border-color: var(--text-faint);
-		color: var(--text);
+	}
+	:global(.lane-cols-sel:focus-visible),
+	:global(.lane-mode-sel:focus-visible) {
+		border-color: var(--accent);
 	}
 	:global(.lane-arrange-btn) {
 		flex-shrink: 0;
@@ -4845,23 +4887,6 @@
 		cursor: not-allowed;
 	}
 
-	/* lane header 의 mode select (Group / All) — lane-cols-sel 과 비슷한 비주얼 */
-	:global(.lane-mode-sel) {
-		flex-shrink: 0;
-		pointer-events: auto;
-		background: var(--bg);
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-sm);
-		color: var(--text-muted);
-		font-size: var(--fs-xs);
-		padding: 1px 3px;
-		cursor: pointer;
-		outline: none;
-	}
-	:global(.lane-mode-sel:hover) {
-		border-color: var(--text-faint);
-		color: var(--text);
-	}
 	/* check-spacing:on */
 
 	/* lane header 의 ⊟ 버튼 + mode select 를 segmented 컨트롤로 묶음 (toolbar 와 동일 패턴) */
@@ -4873,6 +4898,8 @@
 		pointer-events: auto;
 	}
 	:global(.lane-arrange-group .lane-arrange-btn) {
+		box-sizing: border-box;
+		min-height: var(--ctl-h-xs);
 		border: var(--bw) solid var(--border);
 		border-right: none;
 		border-top-right-radius: 0;
