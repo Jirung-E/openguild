@@ -93,6 +93,37 @@ pub struct Store {
     pub index_recovered: Option<std::path::PathBuf>,
 }
 
+/// BUG-395: 잠근 문서(퀘스트 · 캠페인 · 도서관)의 파일을 쓰기로 열 수 있는지 — 열기만 하고 아무것도 쓰지 않는다
+/// (`append` 라 내용 · 시각이 그대로다). 읽기 전용 · 권한 없음 · 다른 프로그램이 잡고 있음(윈도우의 공유 위반)을 여기서
+/// 잡아 [`AppError::SaveFailed`](crate::error::AppError::SaveFailed) 로 돌려준다. 아직 없는 파일(새로 만들기)은 건너뛴다.
+fn ensure_docs_writable(
+    store: &Store,
+    docs: &[crate::lock::DocKey],
+) -> crate::error::AppResult<()> {
+    for d in docs {
+        let (doc, path) = if let Some(s) = d.is_quest() {
+            (s, store.paths.quest_path(s))
+        } else if let Some(s) = d.is_campaign() {
+            (s, store.paths.campaign_path(s))
+        } else if let Some(s) = d.is_book() {
+            (s, store.paths.book_path(s))
+        } else {
+            continue;
+        };
+        if !path.is_file() {
+            continue;
+        }
+        if let Err(e) = std::fs::OpenOptions::new().append(true).open(&path) {
+            return Err(crate::error::AppError::save_failed(
+                doc,
+                anyhow::Error::new(e)
+                    .context(format!("cannot open for writing: {}", path.display())),
+            ));
+        }
+    }
+    Ok(())
+}
+
 impl Store {
     /// DEV-299: auto-snapshot 백그라운드 실행 on/off.
     ///
@@ -124,8 +155,13 @@ impl Store {
     pub async fn lock_docs(
         &self,
         docs: &[crate::lock::DocKey],
-    ) -> Result<crate::lock::MutationGuard> {
+    ) -> crate::error::AppResult<crate::lock::MutationGuard> {
         let g = self.lock(crate::lock::GuildMode::Shared, docs).await?;
+        // BUG-395: 쓸 수 없는 문서면 **캐시를 바꾸기 전에** 멈춘다. 쓰기 경로는 캐시를 먼저 바꾸고 파일을 쓰는데,
+        // 파일을 쓰지 못하면 캐시를 파일로 되돌린다(`restore_cache_after_failed_write`) — 그러려면 파일을 읽을 수
+        // 있어야 한다. 윈도우에서 다른 프로그램이 파일을 독점으로 잡고 있으면 읽기도 안 돼 되돌리지 못했다(목록은 새 값,
+        // 파일은 옛 값). 도서관은 저장 직전의 판 비교가 못 읽은 파일을 빈 본문으로 보고 가짜 충돌 창을 띄웠다.
+        ensure_docs_writable(self, docs)?;
         // BUG-389: 고치려는 문서가 밖에서(git pull · 편집기) 바뀌었으면 캐시부터 맞춘다 — 낡은 행으로 파일을 다시
         // 쓰면 밖에서 고친 것이 되돌아간다. 쓰는 곳마다 부르지 않아도 되게 여기 둔다. 바뀐 문서만 읽어 싸다.
         crate::incremental::refresh_docs_before_write(self, docs).await?;

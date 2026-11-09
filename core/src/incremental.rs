@@ -562,7 +562,7 @@ pub(crate) async fn refresh_docs_before_write(
     Ok(())
 }
 
-pub(crate) async fn refresh_quest_before_write(store: &Store, slug: &str) -> anyhow::Result<()> {
+async fn refresh_quest_before_write(store: &Store, slug: &str) -> anyhow::Result<()> {
     let path = store.paths.quest_path(slug);
     let row: Option<(i64, i64)> = sqlx::query_as(
         "SELECT q.id, q.cached_mtime

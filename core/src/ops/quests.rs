@@ -1395,26 +1395,23 @@ pub(crate) async fn rewrite_deleted_quest_file(
 /// 진리원이니 캐시를 파일 쪽으로 되돌린다. 전에는 목록은 바뀐 상태, 파일은 옛 상태로 어긋난 채 남았고 `check drift` 도
 /// 못 잡았다(파일 시각이 그대로라).
 ///
-/// - 같은 작업이 앞서 바꾼 다른 행(부모 · 하위 · 선행 퀘스트)도 있을 수 있다. 모든 행을 "파일을 다시 읽을 것"
-///   (`cached_mtime` 0)으로 표시해, 다음 동기화(앱 · CLI 를 열 때, `check drift`, 다음 쓰기 직전)가 파일에서 다시
-///   옮기게 한다. 내용이 같은 파일은 시각만 고친다(BUG-103).
-/// - 실패한 이 퀘스트는 바로 되돌린다 — 오류를 본 화면이 다시 읽을 때 옛 상태가 보이게. 파일이 아예 없으면(새로
-///   만들다 실패) 행을 지운다.
+/// 같은 작업이 앞서 바꾼 다른 행(부모 · 하위 · 선행 퀘스트)도 있을 수 있어, 모든 행을 "파일을 다시 읽을 것"
+/// (`cached_mtime` 0)으로 표시하고 **그 자리에서** 퀘스트 파일 전체를 다시 옮긴다(`sync_changed_quest_files` — 내용이
+/// 같은 파일은 시각만 고친다, BUG-103). 표시만 해 두면 그사이 `check drift` 가 모든 퀘스트를 어긋났다고 보고했다.
+/// 파일이 아예 없는 행(새로 만들다 실패)은 같은 동기화가 지운다.
 ///
+/// 되돌리려면 파일을 읽을 수 있어야 한다 — 읽기조차 막힌 파일(윈도우에서 다른 프로그램이 독점으로 잡음)은
+/// `Store::lock_docs` 가 캐시를 바꾸기 **전에** 거절한다(`ensure_docs_writable`). 여기 오는 것은 파일은 읽히는데
+/// 쓰기가 안 되는 경우(폴더가 읽기 전용, 디스크 가득 참)다.
+///
+/// 문서 잠금만 쥔 채 전체를 다시 읽으므로 다른 문서를 쓰는 중인 쪽과 겹칠 수 있다 — 그래도 파일을 기준으로 맞추고,
+/// 늦게 쓴 쪽의 파일 시각이 더 새것이라 다음 동기화가 다시 맞춘다. 실패한 경우에만 도는 길이다.
 /// 되돌리기 자체의 실패는 삼킨다 — 돌려줄 오류는 원래의 쓰기 실패다. 표시는 남으니 다음 동기화가 다시 한다.
-async fn restore_cache_after_failed_write(store: &Store, quest: &QuestRow) {
-    let pool = &store.index_pool;
+async fn restore_cache_after_failed_write(store: &Store) {
     let _ = sqlx::query("UPDATE quests SET cached_mtime = 0")
-        .execute(pool)
+        .execute(&store.index_pool)
         .await;
-    if store.paths.quest_path(&quest.quest_id).exists() {
-        let _ = crate::incremental::refresh_quest_before_write(store, &quest.quest_id).await;
-    } else {
-        let _ = sqlx::query("DELETE FROM quests WHERE id = ?")
-            .bind(quest.id)
-            .execute(pool)
-            .await;
-    }
+    let _ = crate::incremental::sync_changed_quest_files(store).await;
 }
 
 async fn write_quest_file_as_deleted(store: &Store, quest: &QuestRow) -> AppResult<()> {
@@ -1440,7 +1437,7 @@ async fn write_quest_file_as_deleted(store: &Store, quest: &QuestRow) -> AppResu
         auto_block: String::new(),
     };
     if let Err(e) = qf.write(&path) {
-        restore_cache_after_failed_write(store, quest).await;
+        restore_cache_after_failed_write(store).await;
         return Err(crate::error::AppError::save_failed(&quest.quest_id, e));
     }
     // drift: soft-delete 로 쓴 파일도 cached_mtime 동기화 (오탐 방지).
@@ -1544,7 +1541,7 @@ pub(crate) async fn write_quest_file(
     };
 
     if let Err(e) = qf.write(&path) {
-        restore_cache_after_failed_write(store, quest).await;
+        restore_cache_after_failed_write(store).await;
         return Err(crate::error::AppError::save_failed(&quest.quest_id, e));
     }
 
@@ -1882,6 +1879,9 @@ mod tests {
             history_before,
             "기록 줄이 남으면 안 된다"
         );
+        // 실패 직후에도 drift 가 깨끗해야 한다 — 전에는 모든 행을 '다시 읽을 것' 으로만 표시해 모두 어긋났다고 나왔다.
+        let d = crate::drift::detect_drift(&store).await.unwrap();
+        assert!(d.is_clean(), "실패 뒤 drift: {:?}", d.fresh_files);
         let tmp_left = std::fs::read_dir(&quests_dir)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -1900,6 +1900,109 @@ mod tests {
         .unwrap();
         let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
         assert_eq!(row.status_slug, "in_progress");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-395: 쓸 수 없는 파일이면 캐시를 바꾸기 **전에** 멈춘다 — 되돌리기는 파일을 읽어야 하는데, 윈도우에서 다른
+    /// 프로그램이 독점으로 잡으면 읽기도 막혀 목록이 새 값으로 남았다. 여기서는 읽기 전용 파일로 같은 길을 탄다.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_file_is_refused_before_cache_changes() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tmp("file-ro");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let file = dir.join(".guild/quests/DEV-001.md");
+        let before = std::fs::read_to_string(&file).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+        if std::fs::OpenOptions::new().append(true).open(&file).is_ok() {
+            // root 처럼 권한을 무시하는 환경 — 실패를 만들 수 없다.
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        let res = change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        // 유닉스는 읽기 전용 파일도 이름 바꾸기로 덮어쓸 수 있다 — 미리 거절하지 않으면 여기서 성공해 버린다.
+        let err = res.unwrap_err();
+        assert!(
+            matches!(&err, AppError::SaveFailed(f) if f.doc == "DEV-001" && f.cause == crate::error::SaveCause::ReadOnly),
+            "{err:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+        let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+        assert_eq!(row.status_slug, "open");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-395: 윈도우 — 다른 프로그램이 파일을 독점으로 잡고 있으면(공유 없음) 저장 실패로 멈추고 캐시 · 파일이 그대로다.
+    /// 윈도우 세션이 0.6.0 점검에서 찾았다: 전에는 목록 · CLI 가 새 상태로 남았다.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn file_held_by_another_program_is_refused_on_windows() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = fresh_tmp("file-held");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let file = dir.join(".guild/quests/DEV-001.md");
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(&file)
+            .unwrap();
+        let res = change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await;
+        drop(held);
+        let err = res.unwrap_err();
+        assert!(
+            matches!(&err, AppError::SaveFailed(f) if f.doc == "DEV-001" && f.cause == crate::error::SaveCause::InUse),
+            "{err:?}"
+        );
+        let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+        assert_eq!(row.status_slug, "open", "목록이 새 값으로 남으면 안 된다");
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("status = \"open\"")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1168,6 +1168,35 @@ mod tests {
 
     /// BUG-302: 폴더는 만들 때마다 목록에 적힌다 — 문서를 새 폴더에 만들 때, 문서를 새 폴더로 옮길 때,
     /// 하위 폴더를 만들 때(위 폴더도). 예전엔 빈 폴더만 적혀서 트리에 보이는 폴더가 `folder list` 에 없었다.
+    /// BUG-395: 쓸 수 없는 도서관 문서를 저장하면 저장 실패다 — 전에는 판 비교가 못 읽은 파일을 빈 본문으로 보고
+    /// 가짜 충돌("다른 곳에서 같은 줄을 고쳤습니다")을 냈다(윈도우에서 다른 프로그램이 잡은 경우). 여기서는 읽기 전용으로.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_book_save_is_save_failure_not_conflict() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tmp("book-ro");
+        let store = setup(&dir).await;
+        let a = create_book(&store, "A", "line one", "")
+            .await
+            .unwrap()
+            .book_id();
+        let file = store.paths.book_path(&a);
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+        if std::fs::OpenOptions::new().append(true).open(&file).is_ok() {
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let _ = std::fs::remove_dir_all(&dir);
+            return; // root 처럼 권한을 무시하는 환경
+        }
+        let res = update_book(&store, &a, None, Some("line one EDITED"), None).await;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let err = res.unwrap_err();
+        assert!(
+            matches!(&err, AppError::SaveFailed(f) if f.doc == a),
+            "{err:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// BUG-396: 도서관 쓰기 뒤 `check drift` 가 깨끗해야 한다 — 전에는 우리가 쓴 파일을 바깥 편집으로 봤다.
     #[tokio::test]
     async fn library_writes_leave_no_drift() {

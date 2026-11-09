@@ -3,9 +3,9 @@ book_id = "BOOK-003"
 title = "openguild 아키텍처 — 개괄"
 path = "아키텍처"
 created_at = "2026-09-06T19:42:06+09:00"
-updated_at = "2026-11-10T01:30:05+09:00"
+updated_at = "2026-11-10T02:27:11+09:00"
 deleted = false
-version = 2
+version = 3
 +++
 
 # openguild 아키텍처 — 개괄
@@ -114,7 +114,7 @@ graph TB
 
 ```text
 1. 바뀌기 전 묻기   store.ask_pre(...)       플러그인이 막거나 값을 고칠 수 있다 — 잠금 전
-2. 잠금             lock_docs / lock_guild   고칠 문서만, 또는 길드 전체 — 프로세스 안 + 사이. 잠근 문서는 파일에서 다시 읽는다
+2. 잠금             lock_docs / lock_guild   고칠 문서만, 또는 길드 전체 — 프로세스 안 + 사이. 잠근 문서는 쓸 수 있는지 보고 파일에서 다시 읽는다
 3. journal          의도 기록                 복원·재생용 AOF
 4. 캐시             index.db 반영
 5. 파일             atomic write + 자동 블록 재생성

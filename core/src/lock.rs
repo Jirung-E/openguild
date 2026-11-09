@@ -76,6 +76,9 @@ impl DocKey {
     pub(crate) fn is_campaign(&self) -> Option<&str> {
         (self.kind == Self::campaign("").kind).then_some(self.id.as_str())
     }
+    pub(crate) fn is_book(&self) -> Option<&str> {
+        (self.kind == Self::book("").kind).then_some(self.id.as_str())
+    }
     pub fn quest(slug: &str) -> Self {
         Self::new("quest", slug)
     }
