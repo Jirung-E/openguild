@@ -314,12 +314,13 @@
 								{/each}
 							</span>
 						{/if}
+						<!-- 발췌도 링크 안 — 단추가 제목과 발췌를 합친 높이의 가운데에 온다(팔레트와 같다, admin). -->
+						{#if r.excerpt}
+							<span class="excerpt">
+								<HitText text={r.excerpt} terms={hitTerms} />
+							</span>
+						{/if}
 					</DocLink>
-					{#if r.excerpt}
-						<p class="excerpt">
-							<HitText text={r.excerpt} terms={hitTerms} />
-						</p>
-					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -396,7 +397,10 @@
 		margin: 0;
 		padding: 0;
 	}
+	/* 줄은 flex — DocLink 가 남는 폭을 다 써서 미리보기 · 새 창 · 이동 단추가 오른쪽 끝에 붙는다(팔레트 · 다른 목록과
+	   같다, admin). 예전엔 블록이라 단추가 제목 바로 뒤에 붙었다. 단추는 줄 전체 높이의 가운데(DocLink 의 align-items). */
 	.row {
+		display: flex;
 		padding: var(--sp-8) var(--sp-4);
 		border-bottom: var(--bw) solid var(--border-subtle, var(--border));
 	}
@@ -404,7 +408,7 @@
 		display: inline-flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--sp-8);
+		gap: var(--sp-4) var(--sp-8);
 		color: var(--text-strong);
 		text-decoration: none;
 	}
@@ -470,7 +474,9 @@
 		color: var(--text-muted);
 	}
 	.excerpt {
-		margin: var(--sp-4) 0 0;
+		flex-basis: 100%;
+		margin: 0;
+		font-weight: normal;
 		font-size: var(--fs-sm);
 		color: var(--text-muted);
 		overflow-wrap: anywhere;
