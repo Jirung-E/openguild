@@ -2076,6 +2076,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-457: 보기 고르기(.seg)의 이름 — 화면 읽기용.
 	'library.viewModeAria': { ko: '보기 방식', en: 'View mode' },
 	'library.treeView': { ko: '트리 보기', en: 'Tree view' },
+	'library.listView': { ko: '목록 보기', en: 'List view' },
 	'library.iconView': { ko: '아이콘 보기', en: 'Icon view' },
 	'library.newFolder': { ko: '+ 폴더', en: '+ Folder' },
 	'library.newDoc': { ko: '+ 신규', en: '+ New' },

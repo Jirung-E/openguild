@@ -286,10 +286,14 @@
 						href={openHref(r, mode === 'search' ? term : '')}
 						class="row-link"
 					>
-						<span class="kind {r.kind}">{t(`kind.${r.kind}`, $locale)}</span>
-						{#if r.kind !== 'rule'}
-							<span class="id"><HitText text={r.id} terms={hitTerms} /></span>
-						{/if}
+						<!-- 팔레트(SearchPalette)의 줄과 같은 칩 — 종류 칩 + 번호 칩. 규칙은 이름이 곧 번호라 번호
+						     칩 없이 이름을 제목 자리에 둔다(팔레트와 같다). -->
+						<span class="pills {r.kind}">
+							<span class="ptype {r.kind}">{t(`kind.${r.kind}`, $locale)}</span>
+							{#if r.kind !== 'rule'}
+								<span class="pill mono xs pslug"><HitText text={r.id} terms={hitTerms} /></span>
+							{/if}
+						</span>
 						<span class="title"
 							><HitText text={r.kind === 'rule' ? r.id : r.title} terms={hitTerms} /></span
 						>
@@ -389,7 +393,7 @@
 	.row :global(.row-link) {
 		display: inline-flex;
 		flex-wrap: wrap;
-		align-items: baseline;
+		align-items: center;
 		gap: var(--sp-8);
 		color: var(--text-strong);
 		text-decoration: none;
@@ -397,14 +401,49 @@
 	.row:hover .title {
 		text-decoration: underline;
 	}
-	.kind {
-		font-size: var(--fs-xs);
-		color: var(--text-muted);
+	/* 칩 모양은 SearchPalette 의 .pills · .ptype · .pslug 와 같다 — 같은 검색 결과가 두 곳에서 달라 보이지
+	   않게(REQ-040 다시 엶, admin). */
+	.pills {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--sp-6);
+		flex: none;
+		align-self: center;
 	}
-	.id {
-		font-family: var(--font-mono);
+	.pills.quest {
+		--kind-c: var(--accent);
+	}
+	.pills.campaign {
+		--kind-c: var(--hl-pre);
+	}
+	.pills.rule {
+		--kind-c: var(--success);
+	}
+	.pills.book {
+		--kind-c: var(--warning);
+	}
+	.ptype {
+		flex: none;
+		min-width: 3.6rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 1.375rem;
+		padding: 0 var(--sp-6);
+		box-sizing: border-box;
 		font-size: var(--fs-sm);
-		color: var(--text-muted);
+		font-weight: var(--fw-semibold);
+		line-height: var(--lh-tight);
+		border-radius: var(--r-sm);
+		border: var(--bw) solid transparent;
+		color: var(--kind-c);
+		background: color-mix(in srgb, var(--kind-c) 14%, transparent);
+	}
+	.pill.pslug {
+		--pill-fs: 0.72rem;
+		--pill-h: 1.375rem;
+		--c: var(--kind-c, var(--text-muted));
+		flex: none;
 	}
 	.title {
 		font-weight: var(--fw-medium, 500);

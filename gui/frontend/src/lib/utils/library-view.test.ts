@@ -15,6 +15,10 @@ describe('BUG-296 자식창에는 목록 쪽을 안 그린다', () => {
 		expect(showsTree('tree', false)).toBe(true);
 		expect(showsBackToList('explorer', false)).toBe(true);
 		expect(isSingleColumn('tree', false)).toBe(false);
+		// DEV-480: 목록 보기도 트리처럼 왼쪽 목록 + 오른쪽 문서다.
+		expect(showsTree('list', false)).toBe(true);
+		expect(showsBackToList('list', false)).toBe(false);
+		expect(isSingleColumn('list', false)).toBe(false);
 	});
 
 	it('자식창에서는 트리도 목록 버튼도 없다', () => {

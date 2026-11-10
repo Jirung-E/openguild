@@ -7,11 +7,12 @@
 // 판단을 템플릿의 `{#if}` 안에 두면 두 자리가 따로 놀기 쉬워(한쪽만 고치면 트리는 사라졌는데
 // 버튼은 남는다) 여기로 뺐다.
 
-export type LibraryViewMode = 'tree' | 'explorer';
+/** DEV-480: 목록(list)은 트리에서 계층만 뺀 것 — 왼쪽 목록 + 오른쪽 문서는 트리와 같다. */
+export type LibraryViewMode = 'tree' | 'list' | 'explorer';
 
-/** 좌측 트리(폴더 + 문서 목록)와 그 옆 드래그 핸들을 그리나. */
+/** 좌측 트리(폴더 + 문서 목록, 목록 보기면 문서만)와 그 옆 드래그 핸들을 그리나. */
 export function showsTree(mode: LibraryViewMode, isChildWindow: boolean): boolean {
-	return mode === 'tree' && !isChildWindow;
+	return mode !== 'explorer' && !isChildWindow;
 }
 
 /** 아이콘 보기에서 문서를 연 뒤의 '← 목록' 버튼을 그리나. */

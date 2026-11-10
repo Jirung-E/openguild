@@ -22,7 +22,8 @@
 		showsBackToList,
 		isSingleColumn,
 		shouldRefresh,
-		takeOutTarget
+		takeOutTarget,
+		type LibraryViewMode
 	} from '$lib/utils/library-view';
 	import { libraryExportZipUrl } from '$lib/utils/banner';
 	import { paneWidth } from '$lib/stores/paneWidth';
@@ -39,6 +40,7 @@
 	import {
 		buildLibraryTree,
 		flattenFolderPaths,
+		queryLibraryResults,
 		searchLibrary,
 		visibleTreeOrder
 	} from '$lib/utils/library-tree';
@@ -266,13 +268,14 @@
 	});
 	const tree = $derived(buildLibraryTree(folders, sortedBooks, { preserveDocOrder: true }));
 
-	// ─── 보기 방식 (tree / explorer) — localStorage 로 유지 ───
-	type ViewMode = 'tree' | 'explorer';
+	// ─── 보기 방식 (tree / list / explorer) — localStorage 로 유지 ───
+	// DEV-480: list = 트리에서 계층만 뺀 것(모든 문서를 번호 · 제목 한 줄씩, 정렬 선택을 따른다).
+	type ViewMode = LibraryViewMode;
 	const VIEW_MODE_KEY = 'openguild.libraryViewMode';
 	function loadViewMode(): ViewMode {
 		try {
 			const v = localStorage.getItem(VIEW_MODE_KEY);
-			if (v === 'tree' || v === 'explorer') return v;
+			if (v === 'tree' || v === 'list' || v === 'explorer') return v;
 		} catch {
 			/* ignore */
 		}
@@ -346,8 +349,11 @@
 		return new Set(hits.filter((h) => h.kind === 'book').map((h) => h.id));
 	}
 	const searchScope = $derived(viewMode === 'explorer' ? explorerPath : '');
+	// BUG-397: 쿼리가 맞으면(sortedBooks 가 이미 걸러져 있다) 검색과 같은 결과 목록으로 — 하위 폴더 문서도.
 	const searchResults = $derived(
-		searchLibrary(tree, sortedBooks, searchQuery, searchScope, attachMatchIds ?? undefined)
+		searchMode === 'query' && queryMatch
+			? queryLibraryResults(sortedBooks, searchScope)
+			: searchLibrary(tree, sortedBooks, searchQuery, searchScope, attachMatchIds ?? undefined)
 	);
 	// 제목 · 번호에 칠할 말 — 검색 글, 쿼리면 코어가 뽑아 준 낱말(DEV-470 · REQ-040).
 	const hitTerms = $derived(searchMode === 'search' ? termsOfSearch(searchQuery) : queryTerms);
@@ -409,7 +415,7 @@
 			if (preferId && books.some((b2) => b2.book_id === preferId)) {
 				selectedId = preferId;
 			} else if (selectedId == null || !books.some((b2) => b2.book_id === selectedId)) {
-				selectedId = viewMode === 'tree' ? (books[0]?.book_id ?? null) : null;
+				selectedId = viewMode !== 'explorer' ? (books[0]?.book_id ?? null) : null;
 			}
 			// BUG-210: 예전엔 여기서 무조건 `loadQuestIndex(true)` 를 불렀다.
 			// 이 함수는 **생성/삭제/이름변경 후에도, 페이지 진입 때도** 호출되는데
@@ -719,7 +725,9 @@
 	const pickOrder = $derived(
 		isMode('tree')
 			? visibleTreeOrder(tree, collapsedFolders)
-			: [...explorerFolders.map((f) => `folder:${f.path}`), ...explorerDocs.map((b) => b.book_id)]
+			: isMode('list')
+				? sortedBooks.map((b) => b.book_id)
+				: [...explorerFolders.map((f) => `folder:${f.path}`), ...explorerDocs.map((b) => b.book_id)]
 	);
 
 	/** DEV-429: 트리의 문서 줄. 그냥 누르면 열고(예전 그대로), 수식키가 있으면 고른다. */
@@ -1275,7 +1283,14 @@
 					aria-checked={isMode('tree')}
 					class:on={isMode('tree')}
 					onclick={() => setViewMode('tree')}
-					title={t('library.treeView', $locale)}><Icon name="menu" size="1em" /></button
+					title={t('library.treeView', $locale)}><Icon name="tree" size="1em" /></button
+				>
+				<button
+					role="radio"
+					aria-checked={isMode('list')}
+					class:on={isMode('list')}
+					onclick={() => setViewMode('list')}
+					title={t('library.listView', $locale)}><Icon name="menu" size="1em" /></button
 				>
 				<button
 					role="radio"
@@ -1645,7 +1660,14 @@
 								aria-checked={isMode('tree')}
 								class:on={isMode('tree')}
 								onclick={() => setViewMode('tree')}
-								title={t('library.treeView', $locale)}><Icon name="menu" size="1em" /></button
+								title={t('library.treeView', $locale)}><Icon name="tree" size="1em" /></button
+							>
+							<button
+								role="radio"
+								aria-checked={isMode('list')}
+								class:on={isMode('list')}
+								onclick={() => setViewMode('list')}
+								title={t('library.listView', $locale)}><Icon name="menu" size="1em" /></button
 							>
 							<button
 								role="radio"
@@ -1758,6 +1780,23 @@
 						{/if}
 					{:else if books.length === 0 && folders.length === 0}
 						<p class="empty-list">{t('library.emptyRoot', $locale)}</p>
+					{:else if isMode('list')}
+						<!-- DEV-480: 트리의 문서 줄 그대로, 폴더 줄 · 들여쓰기만 없다. 순서는 정렬 선택. -->
+						<div class="book-list">
+							{#each sortedBooks as b (b.book_id)}
+								<button
+									class="book-item"
+									class:active={b.book_id === selectedId}
+									class:picked={picked.ids.has(b.book_id)}
+									draggable="true"
+									ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
+									onclick={(e) => treeDocClick(e, b.book_id)}
+								>
+									<span class="book-id"><HitText text={b.book_id} terms={queryTerms} /></span>
+									<span class="book-title"><HitText text={b.title} terms={queryTerms} /></span>
+								</button>
+							{/each}
+						</div>
 					{:else}
 						<div class="book-list">
 							{#each tree.roots as node (node.path)}

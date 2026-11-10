@@ -163,3 +163,12 @@ export function searchLibrary(
 
 	return { folders, books: books_ ?? [] };
 }
+
+/**
+ * BUG-397(admin 보고): 쿼리에 맞는 문서 — 검색과 같이 그 폴더 자신 + 하위를 평평하게 보인다. 예전엔 지금
+ * 폴더의 문서만 걸러 보여서 하위 폴더에 있는 `id:BOOK-001` 이 나오지 않았다. 순서는 받은 그대로(정렬 선택).
+ */
+export function queryLibraryResults(books: Book[], scope = ''): LibrarySearchResult {
+	const inScope = (path: string) => !scope || path === scope || path.startsWith(`${scope}/`);
+	return { folders: [], books: books.filter((b) => inScope(b.path)) };
+}

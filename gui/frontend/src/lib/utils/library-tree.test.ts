@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	buildLibraryTree,
 	flattenFolderPaths,
+	queryLibraryResults,
 	searchBooks,
 	searchLibrary,
 	visibleTreeOrder
@@ -173,5 +174,24 @@ describe('visibleTreeOrder', () => {
 			'BOOK-004',
 			'BOOK-001'
 		]);
+	});
+});
+
+// BUG-397(admin 보고): 쿼리 `id:BOOK-001` 이 하위 폴더 문서를 보이지 않았다.
+describe('queryLibraryResults', () => {
+	const books = [
+		book('BOOK-001', '라우터 설계', '아키텍처'),
+		book('BOOK-002', '심화', '아키텍처/서브'),
+		book('BOOK-003', '배포', '운영'),
+		book('BOOK-004', '루트', '')
+	];
+	it('최상위에서는 하위 폴더 문서까지 평평하게, 받은 순서대로', () => {
+		const r = queryLibraryResults([books[1], books[0]]);
+		expect(r.folders).toEqual([]);
+		expect(r.books.map((b) => b.book_id)).toEqual(['BOOK-002', 'BOOK-001']);
+	});
+	it('폴더 안에서는 그 폴더 + 하위만', () => {
+		const r = queryLibraryResults(books, '아키텍처');
+		expect(r.books.map((b) => b.book_id)).toEqual(['BOOK-001', 'BOOK-002']);
 	});
 });
