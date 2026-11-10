@@ -358,7 +358,8 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--sp-4);
-		margin: var(--sp-16) 0 var(--sp-12);
+		/* 아래 여백 없음 — 탭 밑줄이 첫 결과 줄의 위 구분선이 된다. 있으면 첫 줄만 위가 넓어 가운데가 안 맞아 보였다(admin). */
+		margin: var(--sp-16) 0 0;
 		border-bottom: var(--bw) solid var(--border);
 	}
 	.tab {
