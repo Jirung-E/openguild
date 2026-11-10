@@ -698,7 +698,8 @@ async fn set_quest_tags_locked(store: &Store, id: i64, tags: Vec<String>) -> App
 /// projection이라 순서 컬럼이 없으므로 전용 태그 조회에는 파일 진리원을 쓴다.
 pub fn list_quest_tags(store: &Store, slug: &str) -> AppResult<Vec<String>> {
     let path = store.paths.quest_path(slug);
-    let quest = crate::repo::QuestFile::read(&path).map_err(crate::error::AppError::Internal)?;
+    let quest = crate::repo::QuestFile::read(&path)
+        .map_err(|e| crate::error::AppError::read_failed(slug, e))?;
     Ok(quest.frontmatter.tags)
 }
 
@@ -1951,6 +1952,49 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
         let row = sql::fetch_by_id(&store.index_pool, q.id).await.unwrap();
         assert_eq!(row.status_slug, "open");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-395 (라): 읽을 수 없는 퀘스트 파일 — 상세 화면의 오류가 경로 없는 짧은 문구다.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unreadable_file_is_read_failure_without_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tmp("file-unreadable");
+        let store = setup_store(&dir).await;
+        create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let file = dir.join(".guild/quests/DEV-001.md");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&file).is_ok() {
+            // root 처럼 권한을 무시하는 환경 — 실패를 만들 수 없다.
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        let res = list_quest_tags(&store, "DEV-001");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let err = res.unwrap_err();
+        assert!(
+            matches!(&err, AppError::SaveFailed(f) if f.doc == "DEV-001"
+                && f.action == crate::error::DocAction::Read
+                && f.cause == crate::error::SaveCause::ReadOnly),
+            "{err:?}"
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("DEV-001"), "{msg}");
+        assert!(!msg.contains(".guild"), "경로가 보이면 안 된다: {msg}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

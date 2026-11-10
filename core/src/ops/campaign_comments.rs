@@ -92,7 +92,8 @@ async fn upsert_memo_db(store: &Store, slug: &str, content: &str) -> AppResult<(
 
 /// 한 campaign 의 모든 댓글 entry.
 pub fn list_entries(store: &Store, slug: &str) -> AppResult<Vec<CommentEntry>> {
-    repo::read_entries_at(&store.paths.campaign_comments_path(slug)).map_err(AppError::Internal)
+    repo::read_entries_at(&store.paths.campaign_comments_path(slug))
+        .map_err(|e| AppError::read_failed(slug, e))
 }
 
 /// 새 댓글 entry 추가.
@@ -419,7 +420,8 @@ pub async fn toggle_pinned(store: &Store, slug: &str, id: u64) -> AppResult<Comm
 
 /// 메모 읽기. 부재 시 None.
 pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
-    repo::read_text_at(&store.paths.campaign_memo_path(slug)).map_err(AppError::Internal)
+    repo::read_text_at(&store.paths.campaign_memo_path(slug))
+        .map_err(|e| AppError::read_failed(slug, e))
 }
 
 /// 메모 쓰기 (전체 교체).

@@ -134,7 +134,7 @@ pub async fn search_global(
 
 /// 한 quest 의 모든 entry. 파일 부재 / legacy 단일 텍스트는 빈 vec or 1-entry.
 pub fn list_entries(store: &Store, slug: &str) -> AppResult<Vec<CommentEntry>> {
-    repo::read_entries(&store.paths, slug).map_err(AppError::Internal)
+    repo::read_entries(&store.paths, slug).map_err(|e| AppError::read_failed(slug, e))
 }
 
 /// 새 entry 추가. `id` 는 기존 max + 1 (없으면 1). `ts` 는 현재 로컬 시각.

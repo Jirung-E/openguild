@@ -94,6 +94,8 @@ Exit code `0` = success, `1` = failure. Common failure cases:
   The cause is short: read-only or not writable, in use by another program (Windows), or disk full. **Nothing
   was changed** — the guild still matches the file, so tell the user the cause and retry after it is fixed;
   do not hand-edit `.guild/` to work around it.
+- A file could not be read — `DEV-001 파일을 읽지 못했습니다 — <cause>` (English: `Could not read DEV-001 — <cause>`),
+  e.g. another program holds it on Windows. Same handling: tell the user the cause, retry once it is gone.
 - Remote mode, the server failed — the response carries no cause, only an **error ID** (`오류 번호 85351ac5` /
   `error ID 85351ac5`). The cause is in the server's log under the same `error_id=`. Report the ID to the user
   (they pass it to whoever runs the server); retrying the same request blindly will not help.

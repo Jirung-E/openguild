@@ -47,10 +47,14 @@ impl IntoResponse for HttpError {
                 StatusCode::from_u16(499).unwrap_or(StatusCode::BAD_REQUEST),
                 msg,
             ),
-            // BUG-395: 문서 저장 실패 — 어떤 문서인지와 오류 번호만 싣는다. 원인 · 경로는 로그에만(같은 번호로 찾는다).
+            // BUG-395: 문서 저장(· 읽기) 실패 — 어떤 문서인지와 오류 번호만 싣는다. 원인 · 경로는 로그에만(같은 번호로 찾는다).
             AppError::SaveFailed(f) => {
                 let id = new_error_id();
-                tracing::error!(error_id = %id, doc = %f.doc, "save failed: {:#}", f.source);
+                let what = match f.action {
+                    openguild_core::DocAction::Save => "save",
+                    openguild_core::DocAction::Read => "read",
+                };
+                tracing::error!(error_id = %id, doc = %f.doc, "{what} failed: {:#}", f.source);
                 (StatusCode::INTERNAL_SERVER_ERROR, f.public_message(&id))
             }
             AppError::Internal(err) => {
@@ -187,6 +191,22 @@ mod tests {
             msg.split_whitespace()
                 .any(|w| w.len() == 8 && w.chars().all(|c| c.is_ascii_hexdigit())),
             "오류 번호가 없다: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_failed_says_read_and_hides_path() {
+        let io = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let inner =
+            anyhow::Error::new(io).context("failed to read: /home/me/g/.guild/quests/DEV-001.md");
+        let resp = HttpError(AppError::read_failed("DEV-001", inner)).into_response();
+        let (status, body) = body_text(resp).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(body.contains("DEV-001"), "{body}");
+        assert!(!body.contains("/home/me"), "경로가 샜다: {body}");
+        assert!(
+            body.contains("읽지 못했습니다") || body.contains("Could not read"),
+            "{body}"
         );
     }
 

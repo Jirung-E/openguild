@@ -155,7 +155,7 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
 // 안전 위해 유지.
 
 pub fn get_comments(store: &Store, slug: &str) -> AppResult<Option<String>> {
-    repo::read_comments(&store.paths, slug).map_err(AppError::Internal)
+    repo::read_comments(&store.paths, slug).map_err(|e| AppError::read_failed(slug, e))
 }
 
 pub async fn set_comments(store: &Store, slug: &str, content: String) -> AppResult<()> {
@@ -605,7 +605,7 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
 }
 
 pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
-    repo::read_memo(&store.paths, slug).map_err(AppError::Internal)
+    repo::read_memo(&store.paths, slug).map_err(|e| AppError::read_failed(slug, e))
 }
 
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {

@@ -50,8 +50,9 @@ pub enum AppError {
     #[error("{}", .0.message)]
     EditConflict(Box<EditConflict>),
 
-    /// BUG-395: 문서 파일을 저장하지 못했다(디스크 쪽 실패). 앱 · CLI 는 자기 컴퓨터라 짧은 원인까지 보이고
-    /// (`Display`), 서버는 원인 없이 오류 번호만 보인다 — 원문은 서버 로그에(`server::error`).
+    /// BUG-395: 문서 파일을 저장하지(또는 읽지) 못했다(디스크 쪽 실패). 앱 · CLI 는 자기 컴퓨터라 짧은 원인까지
+    /// 보이고(`Display`), 서버는 원인 없이 오류 번호만 보인다 — 원문은 서버 로그에(`server::error`). 어느 쪽이든
+    /// 경로는 보이지 않는다.
     #[error("{}", .0.local_message())]
     SaveFailed(Box<SaveFailure>),
 
@@ -64,9 +65,19 @@ pub enum AppError {
 pub struct SaveFailure {
     /// 문서 번호(`DEV-001`, `C-003`, `BOOK-002`) — 보는 사람이 이미 아는 것만.
     pub doc: String,
+    /// 쓰다가인지 읽다가인지 — 문구만 다르다.
+    pub action: DocAction,
     pub cause: SaveCause,
     /// 원문(경로 포함) — 로그용. 서버 응답에는 싣지 않는다.
     pub source: anyhow::Error,
+}
+
+/// BUG-395: 문서 파일에 무엇을 하다 실패했나.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocAction {
+    Save,
+    /// 상세 화면 · 댓글처럼 파일을 그대로 읽는 곳 — 윈도우에서 다른 프로그램이 잡은 파일은 읽기도 막힌다.
+    Read,
 }
 
 /// 저장 실패의 짧은 분류 — 사용자가 손쓸 수 있는 것만 나눈다.
@@ -100,8 +111,15 @@ impl SaveCause {
         })
     }
 
-    fn label(self) -> String {
+    fn label(self, action: DocAction) -> String {
         match self {
+            SaveCause::ReadOnly if action == DocAction::Read && cfg!(windows) => crate::tf!(
+                "읽을 권한이 없거나, 다른 프로그램이 파일을 쓰고 있습니다",
+                "it is not readable, or in use by another program"
+            ),
+            SaveCause::ReadOnly if action == DocAction::Read => {
+                crate::tf!("읽을 권한이 없습니다", "it is not readable")
+            }
             SaveCause::ReadOnly if cfg!(windows) => crate::tf!(
                 "읽기 전용이거나 쓸 권한이 없거나, 다른 프로그램이 파일을 쓰고 있습니다",
                 "it is read-only, not writable, or in use by another program"
@@ -123,16 +141,33 @@ impl SaveCause {
 impl SaveFailure {
     /// 앱 · CLI 에 보이는 문구 — 짧은 원인까지, 경로는 없이.
     pub fn local_message(&self) -> String {
-        crate::tf!(
-            "{} 파일을 저장하지 못했습니다 — {}. 원인을 없앤 뒤 다시 하세요",
-            "Could not save {} — {}. Fix the cause and try again",
-            self.doc,
-            self.cause.label()
-        )
+        let cause = self.cause.label(self.action);
+        match self.action {
+            DocAction::Save => crate::tf!(
+                "{} 파일을 저장하지 못했습니다 — {}. 원인을 없앤 뒤 다시 하세요",
+                "Could not save {} — {}. Fix the cause and try again",
+                self.doc,
+                cause
+            ),
+            DocAction::Read => crate::tf!(
+                "{} 파일을 읽지 못했습니다 — {}. 원인을 없앤 뒤 다시 하세요",
+                "Could not read {} — {}. Fix the cause and try again",
+                self.doc,
+                cause
+            ),
+        }
     }
 
     /// 서버 응답 문구 — 원인 없이 오류 번호만. 서버 운영자가 같은 번호로 로그를 찾는다.
     pub fn public_message(&self, error_id: &str) -> String {
+        if self.action == DocAction::Read {
+            return crate::tf!(
+                "{} 파일을 읽지 못했습니다. 잠시 뒤 다시 해 보고, 계속 안 되면 서버 운영자에게 오류 번호 {} 를 알려 주세요",
+                "Could not read {}. Try again later; if it keeps failing, give error ID {} to the server operator",
+                self.doc,
+                error_id
+            );
+        }
         crate::tf!(
             "{} 파일을 저장하지 못했습니다. 잠시 뒤 다시 해 보고, 계속 안 되면 서버 운영자에게 오류 번호 {} 를 알려 주세요",
             "Could not save {}. Try again later; if it keeps failing, give error ID {} to the server operator",
@@ -145,9 +180,20 @@ impl SaveFailure {
 impl AppError {
     /// BUG-395: 문서 파일 쓰기의 실패 — 디스크 쪽 실패(I/O 오류)면 [`AppError::SaveFailed`], 아니면 그대로 내부 오류.
     pub fn save_failed(doc: &str, e: anyhow::Error) -> AppError {
+        Self::doc_file_failed(doc, DocAction::Save, e)
+    }
+
+    /// 문서 파일 읽기의 실패 — [`save_failed`](Self::save_failed) 와 같되 문구가 "읽지 못했습니다". 읽은 뒤의
+    /// 해석 오류(I/O 오류가 아님)는 그대로 내부 오류.
+    pub fn read_failed(doc: &str, e: anyhow::Error) -> AppError {
+        Self::doc_file_failed(doc, DocAction::Read, e)
+    }
+
+    fn doc_file_failed(doc: &str, action: DocAction, e: anyhow::Error) -> AppError {
         match SaveCause::of(&e) {
             Some(cause) => AppError::SaveFailed(Box::new(SaveFailure {
                 doc: doc.to_string(),
+                action,
                 cause,
                 source: e,
             })),
