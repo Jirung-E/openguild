@@ -317,18 +317,26 @@
 		box-shadow: var(--shadow-sm);
 		opacity: 0;
 		transform: scale(0.7);
-		pointer-events: none;
+		/* 숨어 있어도 마우스는 받는다 — 카드 밖에서 × 를 누르러 올 때 × 자리에 닿으면 떠야 한다(admin). × 는
+		   카드의 자식이라 × 에 닿으면 .nc:hover 도 켜진다. */
 		transition:
 			opacity var(--dur-fast),
 			transform var(--dur-fast);
 	}
+	/* 숨을 때 0.7 배로 줄어도 마우스를 받는 자리는 보일 때 크기 그대로(1 / 0.7 ≈ 1.43 배 → 사방 22%). */
+	.nc-x::after {
+		content: '';
+		position: absolute;
+		inset: -22%;
+		border-radius: 50%;
+	}
 	/* 누른 뒤 포커스가 남아도 × 가 남지 않게 — 키보드로 옮겨 왔을 때만(focus-visible). */
 	.nc:hover .nc-x,
 	.nc:focus-visible .nc-x,
+	.nc-x:hover,
 	.nc-x:focus-visible {
 		opacity: 1;
 		transform: scale(1);
-		pointer-events: auto;
 	}
 	.nc-x:hover {
 		color: var(--text);
@@ -338,7 +346,6 @@
 		.nc-x {
 			opacity: 1;
 			transform: none;
-			pointer-events: auto;
 		}
 	}
 </style>
