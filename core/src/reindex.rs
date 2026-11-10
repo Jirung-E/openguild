@@ -77,6 +77,26 @@ impl ReindexReport {
     }
 }
 
+/// BUG-395: 건너뛸 파일의 사유 — 단 **읽지 못한** 것(I/O 오류: 다른 프로그램이 잡음, 권한)은 건너뛰지 않고 다시
+/// 색인을 멈춘다. 그 파일은 망가진 게 아니라 잠깐 못 읽은 것이라, 빼고 다시 만들면 멀쩡한 문서가 캐시에서 사라진다.
+/// 다시 색인은 트랜잭션 하나라 여기서 멈추면 기존 캐시가 그대로 남는다.
+fn skip_reason(path: &std::path::Path, e: anyhow::Error) -> AppResult<String> {
+    if crate::error::SaveCause::of(&e).is_none() {
+        return Ok(format!("{e:#}"));
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let doc = name.split('.').next().unwrap_or_default();
+    Err(crate::error::AppError::read_failed(doc, e))
+}
+
+/// 다시 색인이 [`skip_reason`] 으로 멈췄나 — 명령마다 도는 자동 재색인은 이때 기존 캐시로 계속한다.
+pub fn stopped_on_unreadable(e: &crate::error::AppError) -> bool {
+    matches!(e, crate::error::AppError::SaveFailed(f) if f.action == crate::error::DocAction::Read)
+}
+
 /// 메인 진입점.
 ///
 /// BUG-342: 길드 **독점**으로 돈다 — 캐시를 비우고 파일에서 다시 채우는 사이에 다른 변경이 캐시에 쓰면, 읽기가
@@ -245,7 +265,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), format!("{e:#}")));
+                    .push((path.display().to_string(), skip_reason(path, e)?));
             }
         }
     }
@@ -290,7 +310,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), format!("{e:#}")));
+                    .push((path.display().to_string(), skip_reason(path, e)?));
             }
         }
     }
@@ -307,7 +327,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), format!("{e:#}")));
+                    .push((path.display().to_string(), skip_reason(path, e)?));
             }
         }
     }
@@ -347,7 +367,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), format!("{e:#}")));
+                    .push((path.display().to_string(), skip_reason(path, e)?));
                 continue;
             }
         };
@@ -496,7 +516,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), format!("{e:#}")));
+                    .push((path.display().to_string(), skip_reason(path, e)?));
             }
         }
     }
@@ -552,7 +572,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                 Err(e) => {
                     report
                         .skipped
-                        .push((path.display().to_string(), format!("{e:#}")));
+                        .push((path.display().to_string(), skip_reason(&path, e)?));
                 }
             }
         }
@@ -595,7 +615,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), e.to_string()));
+                    .push((path.display().to_string(), skip_reason(path, e.into())?));
                 continue;
             }
         };
@@ -641,7 +661,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
             Err(e) => {
                 report
                     .skipped
-                    .push((path.display().to_string(), e.to_string()));
+                    .push((path.display().to_string(), skip_reason(path, e.into())?));
                 continue;
             }
         };
@@ -800,7 +820,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                 Err(e) => {
                     report
                         .skipped
-                        .push((path.display().to_string(), format!("{e:#}")));
+                        .push((path.display().to_string(), skip_reason(path, e)?));
                     continue;
                 }
             };
@@ -897,7 +917,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                 Err(e) => {
                     report
                         .skipped
-                        .push((path.display().to_string(), e.to_string()));
+                        .push((path.display().to_string(), skip_reason(path, e.into())?));
                     continue;
                 }
             };
@@ -940,7 +960,7 @@ pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
                 Err(e) => {
                     report
                         .skipped
-                        .push((path.display().to_string(), e.to_string()));
+                        .push((path.display().to_string(), skip_reason(path, e.into())?));
                     continue;
                 }
             };
@@ -1318,6 +1338,78 @@ mod tests {
     async fn setup_store(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// BUG-395: 지금 못 읽는 퀘스트 파일 — 다시 색인은 그 문서를 빼고 만들지 않고 멈춘다(기존 캐시 그대로). 명령마다
+    /// 도는 자동 재색인(여기서는 다른 파일의 없는 status 가 부름)은 기존 캐시로 계속한다.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unreadable_file_stops_reindex_and_keeps_cache() {
+        use crate::models::CreateQuestRequest;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tmp("unreadable");
+        let store = setup_store(&dir).await;
+        for title in ["a", "b"] {
+            crate::ops::quests::create_quest(
+                &store,
+                CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: title.into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let paths = GuildPaths::new(&dir);
+        let locked = paths.quest_path("DEV-001");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&locked).is_ok() {
+            // root 처럼 권한을 무시하는 환경 — 실패를 만들 수 없다.
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        let count = |store: &Store| {
+            let pool = store.index_pool.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM quests")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            }
+        };
+
+        let err = reindex(&store).await.unwrap_err();
+        assert!(stopped_on_unreadable(&err), "{err:?}");
+        assert!(err.to_string().contains("DEV-001"), "{err}");
+        assert!(
+            !err.to_string().contains(".guild"),
+            "경로가 보이면 안 된다: {err}"
+        );
+        assert_eq!(count(&store).await, 2, "기존 캐시가 남아야 한다");
+
+        // 다른 퀘스트가 없는 status 로 바뀌어 자동 재색인이 서는 경우.
+        let other = paths.quest_path("DEV-002");
+        let text = std::fs::read_to_string(&other).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(
+            &other,
+            text.replace("status = \"open\"", "status = \"nosuch\""),
+        )
+        .unwrap();
+        let res = crate::incremental::sync_on_open(&store).await;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+        res.unwrap();
+        assert_eq!(
+            count(&store).await,
+            2,
+            "잠긴 DEV-001 이 목록에서 빠지면 안 된다"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// DEV-215: 도서관 캐시 재구축 — index.db 를 비워도 `.guild/library/*.md`

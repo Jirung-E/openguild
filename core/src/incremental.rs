@@ -1623,14 +1623,26 @@ async fn sync_locked(
     sync_changed_sibling_files(store, &mut inc).await?;
     sync_changed_library_files(store, &mut inc).await?;
     let inc = inc;
-    let reindex_report = if inc.needs_full_reindex {
-        crate::drift::auto_resync_locked(store)
-            .await
-            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?
+    let resynced = if inc.needs_full_reindex {
+        crate::drift::auto_resync_locked(store).await.map_err(|e| {
+            match e.downcast::<crate::error::AppError>() {
+                Ok(app) => app,
+                Err(e) => crate::error::AppError::Internal(e),
+            }
+        })
     } else if has_changed_definition(store).await {
-        Some(crate::reindex::reindex_locked(store).await?)
+        crate::reindex::reindex_locked(store).await.map(Some)
     } else {
-        None
+        Ok(None)
+    };
+    let reindex_report = match resynced {
+        // BUG-395: 지금 못 읽는 파일 때문에 다시 색인이 멈췄다 — 기존 캐시로 계속한다(잠긴 문서가 목록에서 빠지지
+        // 않게). 그 파일은 CLI 경고 · 상세 화면이 따로 알린다. 풀리면 다음 명령이 다시 맞춘다.
+        Err(e) if crate::reindex::stopped_on_unreadable(&e) => {
+            tracing::warn!("reindex skipped — {e}");
+            None
+        }
+        other => other?,
     };
     Ok((inc, reindex_report))
 }
