@@ -1,7 +1,7 @@
 +++
 created_at = "2026-07-07T09:32:56+09:00"
-updated_at = "2026-11-10T15:35:18+09:00"
-version = 3
+updated_at = "2026-11-11T00:15:44+09:00"
+version = 4
 +++
 # 테스트 데이터 주입 스크립트 — 운영 규칙
 
@@ -89,7 +89,7 @@ node <openguild repo>/scripts/seed-test-data.mjs
   flatten 동작은 수동 확인.
 - **첨부파일 — 이미지/동영상 외 임의 파일 (DEV-237)** — open 상태 / 기능
   미구현 (도서관 문서에 이미지/동영상은 이미 됨, 그 외 파일 타입만 미구현).
-- **도서관 검색 (DEV-238)** — open 상태 / 기능 미구현.
+- **도서관 검색 (DEV-238 · BUG-398)** — 시드가 따로 주입하지 않는다. 제목 · 번호 · 본문 · 첨부 이름으로 찾는지는 시드 문서로 수동 확인.
 - **외부 편집 후 자동 reindex (BUG-049)** — GUI 가 Store::open 직후 자동
   `drift::auto_resync`. 본 스크립트 후엔 별도 호출 불필요.
 - **schema ahead banner (BUG-041)** — 같은 binary 가 만든 DB 라 ahead 안 됨;

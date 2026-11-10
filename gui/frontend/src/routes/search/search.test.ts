@@ -147,4 +147,16 @@ describe('REQ-040 검색 페이지', () => {
 			expect(screen.getByTestId('doc-search-mode').getAttribute('aria-checked')).toBe('true')
 		);
 	});
+	it('검색칸에 library: 를 쓰면 도서관 탭으로 옮기고 나머지 글로 찾는다(admin)', async () => {
+		await open('http://localhost/search');
+		const box = screen.getByTestId('doc-search-input') as HTMLInputElement;
+		await fireEvent.input(box, { target: { value: 'library:코끼리' } });
+		await vi.waitFor(() =>
+			expect(screen.getByTestId('doc-search-tab-book').getAttribute('aria-selected')).toBe('true')
+		);
+		expect((screen.getByTestId('doc-search-input') as HTMLInputElement).value).toBe('코끼리');
+		await vi.waitFor(() =>
+			expect(enhanced).toHaveBeenCalledWith('코끼리', ['body', 'comment', 'attachment'])
+		);
+	});
 });

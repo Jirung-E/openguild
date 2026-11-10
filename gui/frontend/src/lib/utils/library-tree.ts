@@ -112,7 +112,8 @@ export function searchBooks(books: Book[], query: string, attachIds?: Set<string
 	const titleHits: Book[] = [];
 	const bodyOnlyHits: Book[] = [];
 	for (const b of books) {
-		const titleHit = b.title.toLowerCase().includes(q);
+		// BUG-398: 번호(BOOK-004)도 찾는다 — 제목에 맞은 것과 같은 무리(앞쪽).
+		const titleHit = b.title.toLowerCase().includes(q) || b.book_id.toLowerCase().includes(q);
 		const bodyHit = !titleHit && b.body.toLowerCase().includes(q);
 		const attachHit = !titleHit && !bodyHit && (attachIds?.has(b.book_id) ?? false);
 		if (titleHit) titleHits.push(b);

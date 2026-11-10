@@ -195,3 +195,17 @@ describe('queryLibraryResults', () => {
 		expect(r.books.map((b) => b.book_id)).toEqual(['BOOK-001', 'BOOK-002']);
 	});
 });
+
+// BUG-398(admin 보고): 검색칸에 BOOK-004 를 쳐도 안 나왔다 — 번호는 안 봤다.
+describe('searchBooks — 번호', () => {
+	const books = [
+		book('BOOK-004', '루트 메모', ''),
+		book('BOOK-014', '다른 문서', '', 'BOOK-004 를 말함')
+	];
+	it('번호에 맞으면 제목에 맞은 것과 같이 앞쪽에', () => {
+		expect(searchBooks(books, 'book-004')?.map((b) => b.book_id)).toEqual(['BOOK-004', 'BOOK-014']);
+	});
+	it('번호 일부(004)로도 찾는다', () => {
+		expect(searchBooks(books, '004')?.map((b) => b.book_id)).toEqual(['BOOK-004', 'BOOK-014']);
+	});
+});

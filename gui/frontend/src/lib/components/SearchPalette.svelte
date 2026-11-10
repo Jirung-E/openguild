@@ -676,7 +676,7 @@
 				class="all-results"
 				data-testid="palette-all-results"
 				onclick={() => {
-					openInPage(searchPageHref(parsed.term));
+					openInPage(searchPageHref(parsed.term, parsed.kind));
 					onclose();
 				}}>{t('palette.allResults', $locale).replace('{q}', parsed.term)}</button
 			>

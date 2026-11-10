@@ -2114,12 +2114,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Query keys differ by kind — pick the Quest, Campaign, Library or Comment tab to use a query'
 	},
 	'search.hint': {
-		ko: '찾을 말을 넣으세요 — /정규식/ 도 됩니다. 제목에서 맞은 문서가 먼저 나옵니다',
-		en: 'Type what to find — /regex/ works too. Documents with a title match come first'
+		ko: '찾을 말을 넣으세요 — /정규식/ 도 됩니다. library: · quest: · campaign: · rule: 을 앞에 쓰면 그 종류에서만 찾습니다. 제목에서 맞은 문서가 먼저 나옵니다',
+		en: 'Type what to find — /regex/ works too. Start with library: · quest: · campaign: · rule: to search one kind only. Documents with a title match come first'
 	},
 	'search.loading': { ko: '찾는 중…', en: 'Searching…' },
 	'search.empty': { ko: '맞는 문서가 없습니다', en: 'No matching documents' },
-	'library.searchPlaceholder': { ko: '제목/본문 검색', en: 'Search title/body' },
+	'library.searchPlaceholder': { ko: '제목 · 번호 · 본문 검색', en: 'Search title, number, body' },
 	// REQ-011: 도서관 검색 영역 확장. 도서관 문서엔 댓글이 없어 첨부 이름만 대상이다.
 	'library.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },
 	'library.sortAria': { ko: '문서 정렬', en: 'Sort documents' },

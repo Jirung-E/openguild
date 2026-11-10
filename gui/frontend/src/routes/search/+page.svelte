@@ -45,6 +45,7 @@
 		rowsOfTab,
 		searchStateParams,
 		sortRows,
+		splitKindPrefix,
 		type QueryKind,
 		type SearchKind,
 		type SearchRow,
@@ -180,6 +181,15 @@
 			keepFocus: true,
 			noScroll: true
 		});
+	});
+
+	// 팔레트처럼 `library:` · `quest:` 접두로 종류를 고른다 — 접두는 탭으로 옮기고 칸에는 나머지 글만 남긴다(admin).
+	$effect(() => {
+		if (mode !== 'search') return;
+		const s = splitKindPrefix(search);
+		if (!s.tab) return;
+		tab = s.tab;
+		search = s.rest;
 	});
 
 	const counts = $derived(countByTab(rows));

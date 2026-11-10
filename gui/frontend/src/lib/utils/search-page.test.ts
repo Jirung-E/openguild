@@ -10,6 +10,7 @@ import {
 	searchPageHref,
 	searchStateParams,
 	sortRows,
+	splitKindPrefix,
 	type SearchRow
 } from './search-page';
 
@@ -89,5 +90,31 @@ describe('REQ-040 검색 페이지', () => {
 	it('팔레트의 "모든 결과 보기" 주소', () => {
 		expect(searchPageHref('로그인')).toBe('/search?q=%EB%A1%9C%EA%B7%B8%EC%9D%B8');
 		expect(searchPageHref('  ')).toBe('/search');
+	});
+});
+
+// REQ-040 다시 엶(admin): 팔레트처럼 `library:` 로 도서관에서만 찾는다.
+describe('종류 접두', () => {
+	it('팔레트와 같은 별칭을 탭으로 바꾸고 나머지 글만 남긴다', () => {
+		expect(splitKindPrefix('library:설계')).toEqual({ tab: 'book', rest: '설계' });
+		expect(splitKindPrefix('Lib: 설계')).toEqual({ tab: 'book', rest: '설계' });
+		expect(splitKindPrefix('q:코끼리')).toEqual({ tab: 'quest', rest: '코끼리' });
+		expect(splitKindPrefix('c:')).toEqual({ tab: 'campaign', rest: '' });
+		expect(splitKindPrefix('r:zoo')).toEqual({ tab: 'rule', rest: 'zoo' });
+	});
+	it('별칭이 아니면 그대로', () => {
+		expect(splitKindPrefix('http://x')).toEqual({ tab: null, rest: 'http://x' });
+		expect(splitKindPrefix('설계')).toEqual({ tab: null, rest: '설계' });
+	});
+	it('주소의 q 에 접두가 있으면 그 탭으로 연다 — 쿼리는 건드리지 않는다', () => {
+		const s = readSearchState(new URLSearchParams('q=library:설계'));
+		expect([s.tab, s.q]).toEqual(['book', '설계']);
+		const qy = readSearchState(new URLSearchParams('q=id:BOOK-001&kind=book&mode=query'));
+		expect([qy.tab, qy.q, qy.mode]).toEqual(['book', 'id:BOOK-001', 'query']);
+	});
+	it('팔레트의 "모든 결과 보기" 는 고른 종류를 탭으로 들고 간다', () => {
+		expect(searchPageHref('설계', 'book')).toBe(
+			`/search?q=${encodeURIComponent('설계')}&kind=book`
+		);
 	});
 });

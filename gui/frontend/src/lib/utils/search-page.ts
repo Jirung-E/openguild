@@ -7,6 +7,7 @@
 import type { SearchHit } from '$lib/api/search';
 import type { SearchMode } from '$lib/components/SearchField.svelte';
 import { withFindParam } from './find-in-page';
+import { KIND_ALIASES, type Kind } from '$lib/stores/questIndex';
 
 export type SearchKind = SearchHit['kind'];
 /** 쿼리를 쓸 수 있는 탭 — 규칙은 쿼리가 없고, '전체' 는 종류마다 키가 달라 막는다. */
@@ -107,12 +108,35 @@ export interface SearchPageState {
 	memo: boolean;
 }
 
+/**
+ * 팔레트와 같은 종류 접두(`library:` · `lib:` · `quest:` · `q:` · `campaign:` · `c:` · `rule:` · `r:`) — 검색 글 앞에
+ * 있으면 그 탭과 나머지 글로 나눈다(REQ-040 다시 엶, admin: 팔레트처럼 `library:` 로 도서관에서만 찾기).
+ * 쿼리에는 쓰지 않는다 — 쿼리의 `id:` · `tag:` 같은 키와 겹친다.
+ */
+export function splitKindPrefix(text: string): { tab: SearchTab | null; rest: string } {
+	const raw = text.trimStart();
+	const ci = raw.indexOf(':');
+	if (ci > 0) {
+		const k = KIND_ALIASES[raw.slice(0, ci).toLowerCase()];
+		if (k) return { tab: k, rest: raw.slice(ci + 1).trimStart() };
+	}
+	return { tab: null, rest: text };
+}
+
 export function readSearchState(params: URLSearchParams): SearchPageState {
 	const kind = params.get('kind') ?? 'all';
-	const tab = (SEARCH_TABS as readonly string[]).includes(kind) ? (kind as SearchTab) : 'all';
+	let tab = (SEARCH_TABS as readonly string[]).includes(kind) ? (kind as SearchTab) : 'all';
 	const wantQuery = params.get('mode') === 'query';
+	let q = params.get('q') ?? '';
+	if (!wantQuery) {
+		const s = splitKindPrefix(q);
+		if (s.tab) {
+			tab = s.tab;
+			q = s.rest;
+		}
+	}
 	return {
-		q: params.get('q') ?? '',
+		q,
 		tab,
 		// 쿼리를 못 쓰는 탭이면 검색으로 연다 — 고칠 방법이 없는 오류 화면을 내지 않는다.
 		mode: wantQuery && canQuery(tab) ? 'query' : 'search',
@@ -131,8 +155,8 @@ export function searchStateParams(s: SearchPageState): URLSearchParams {
 }
 
 /** 팔레트의 "모든 결과 보기" — 검색어를 들고 이 페이지로. */
-export function searchPageHref(term: string): string {
-	const p = searchStateParams({ q: term, tab: 'all', mode: 'search', memo: false });
+export function searchPageHref(term: string, kind: Kind | null = null): string {
+	const p = searchStateParams({ q: term, tab: kind ?? 'all', mode: 'search', memo: false });
 	const qs = p.toString();
 	return qs ? `/search?${qs}` : '/search';
 }
