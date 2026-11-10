@@ -167,3 +167,17 @@ describe('QuestCommentsSection — 편집 버튼 포커스 (DEV-475)', () => {
 		expect(ta.selectionStart).toBe(ta.value.length);
 	});
 });
+
+describe('BUG-395 댓글을 읽지 못하면 개수를 보이지 않는다', () => {
+	it('읽기 실패 문구는 보이고, 제목 옆에 0 이 나오지 않는다', async () => {
+		vi.mocked(commentsApi.listComments).mockRejectedValue(
+			new Error('DEV-001 파일을 읽지 못했습니다 — 다른 프로그램이 파일을 쓰고 있습니다')
+		);
+		const view = render(QuestCommentsSection, { props: { slug: 'DEV-001' } });
+		await vi.waitFor(() => {
+			if (!view.container.querySelector('.state.err')) throw new Error('오류 미렌더');
+		});
+		expect(view.container.querySelector('.state.err')?.textContent).toContain('읽지 못했습니다');
+		expect(view.container.querySelector('.count')).toBeNull();
+	});
+});

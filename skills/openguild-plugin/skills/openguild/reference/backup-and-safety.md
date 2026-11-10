@@ -96,6 +96,8 @@ Exit code `0` = success, `1` = failure. Common failure cases:
   do not hand-edit `.guild/` to work around it.
 - A file could not be read — `DEV-001 파일을 읽지 못했습니다 — <cause>` (English: `Could not read DEV-001 — <cause>`),
   e.g. another program holds it on Windows. Same handling: tell the user the cause, retry once it is gone.
+  While a quest file is held, every CLI command also prints this as a `⚠` line on stderr — the file is not
+  broken, so do not `reindex` or edit it; it clears by itself once the other program lets go.
 - Remote mode, the server failed — the response carries no cause, only an **error ID** (`오류 번호 85351ac5` /
   `error ID 85351ac5`). The cause is in the server's log under the same `error_id=`. Report the ID to the user
   (they pass it to whoever runs the server); retrying the same request blindly will not help.

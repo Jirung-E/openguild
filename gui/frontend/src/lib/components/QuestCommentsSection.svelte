@@ -1512,7 +1512,8 @@
 			>
 			<h2 class="section-title">{t('comment.title', $locale)}</h2>
 		</button>
-		<span class="count">{entries.length}</span>
+		<!-- BUG-395: 읽지 못했으면 개수를 모른다 — 0 으로 보이면 댓글이 없는 줄 안다. -->
+		{#if !loadError}<span class="count">{entries.length}</span>{/if}
 		<!-- DEV-214: 섹션이 접혀 있어도 미해결 토론은 보이게 (완료 차단과 직결). -->
 		{#if sectionShut && unresolvedCount > 0}
 			<span

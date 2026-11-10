@@ -2685,8 +2685,13 @@ impl Backend {
     /// 시동 알림과 동일 취지로 사용자에게 알린다. Http 모드 / 조회 실패는 noop.
     fn warn_problem_files(&self) {
         if let Backend::Local(l) = self {
-            let problems =
-                l.rt.block_on(openguild_core::health::list_problem_quest_files(&l.store));
+            let scan =
+                l.rt.block_on(openguild_core::health::scan_quest_files(&l.store));
+            // BUG-395: 읽지 못한 파일은 내용 문제가 아니다 — 경로 · reindex 안내 없이 짧게.
+            for msg in &scan.unreadable {
+                eprintln!("⚠ {msg}");
+            }
+            let problems = scan.problems;
             if !problems.is_empty() {
                 eprintln!(
                     "{}",

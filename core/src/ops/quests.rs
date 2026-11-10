@@ -1984,7 +1984,21 @@ mod tests {
             return;
         }
         let res = list_quest_tags(&store, "DEV-001");
+        // 시작 알림 · CLI 경고: 내용 문제(캐시에서 제외 · reindex)가 아니라 읽지 못함으로, 경로 없이.
+        let scan = crate::health::scan_quest_files(&store).await;
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(scan.problems.is_empty(), "{:?}", scan.problems);
+        assert_eq!(scan.unreadable.len(), 1, "{:?}", scan.unreadable);
+        assert!(
+            scan.unreadable[0].contains("DEV-001"),
+            "{:?}",
+            scan.unreadable
+        );
+        assert!(
+            !scan.unreadable[0].contains(".guild"),
+            "{:?}",
+            scan.unreadable
+        );
         let err = res.unwrap_err();
         assert!(
             matches!(&err, AppError::SaveFailed(f) if f.doc == "DEV-001"
