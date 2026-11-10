@@ -4942,6 +4942,114 @@ fn claude_session_opens_wt_through_powershell() {
     );
 }
 
+/// DEV-464: 새로 만드는 세션은 '첫 메시지'를 받아 자기가 어느 문서의 세션인지 알고 시작한다. 그 글은 명령 글자에 끼워
+/// 넣지 않는다(BUG-387) — 임시 파일로 건네고, 열린 셸이 읽어 인자 하나로 넘긴 뒤 지운다.
+#[cfg(unix)]
+#[test]
+fn claude_session_sends_first_prompt_to_new_session_only_as_one_argument() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../examples/plugins/claude-session/open.sh");
+    let tmp = std::env::temp_dir().join(format!("og-claude-session-{}", crate::test_seq()));
+    let bin = tmp.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let fake = bin.join("claude");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let dry = |prompt: Option<&str>| {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg(&script)
+            .env("CLAUDE_CONFIG_DIR", tmp.join("home"))
+            .env("PROJECT_DIR", &tmp)
+            .env("CLAUDE_SESSION_DRY_RUN", "1")
+            .env_remove("FIRST_PROMPT")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped());
+        if let Some(p) = prompt {
+            cmd.env("FIRST_PROMPT", p);
+        }
+        let mut child = cmd.spawn().unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(br#"{"name":"BUG-002"}"#)
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    let run = |line: &str| {
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(line)
+            .env("PATH", path)
+            .output()
+            .unwrap();
+        String::from_utf8(out.stdout).unwrap()
+    };
+
+    let tricky = "{ID} 의 본문을 읽어라 — it's $HOME `id` \"q\"";
+    let line = dry(Some(tricky));
+    assert!(!line.contains("본문"), "글이 명령 글자에 들어갔다: {line}");
+    let args = run(&line);
+    assert_eq!(
+        args,
+        "ARG[-n]\nARG[BUG-002]\nARG[BUG-002 의 본문을 읽어라 — it's $HOME `id` \"q\"]\n"
+    );
+    let left: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+        .unwrap()
+        .flatten()
+        .filter(|e| {
+            line.contains(&*e.file_name().to_string_lossy())
+                && e.file_name()
+                    .to_string_lossy()
+                    .starts_with("claude-session.")
+        })
+        .collect();
+    assert!(left.is_empty(), "임시 파일이 남았다");
+
+    // 비우면 예전처럼 이름만.
+    assert_eq!(run(&dry(None)), "ARG[-n]\nARG[BUG-002]\n");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// DEV-464: 윈도우 쪽도 첫 메시지를 명령 글자에 넣지 않고 임시 파일에서 읽는다.
+#[test]
+fn claude_session_ps1_reads_first_prompt_from_a_file() {
+    let src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/plugins/claude-session/open.ps1"),
+    )
+    .unwrap();
+    let add = src
+        .lines()
+        .find(|l| l.trim_start().starts_with("$claude +="))
+        .expect("첫 메시지를 인자에 더하는 줄");
+    assert!(
+        add.contains("Get-Content -Raw -Encoding UTF8 -LiteralPath"),
+        "{add}"
+    );
+    assert!(
+        !add.contains("FIRST_PROMPT"),
+        "글을 명령에 직접 넣는다: {add}"
+    );
+    assert!(
+        src.is_ascii(),
+        "open.ps1 은 ASCII 만 — 윈도우 PowerShell 5.1 이 지역 코드 페이지로 읽는다"
+    );
+}
+
 #[test]
 fn shipped_scripts_do_not_splice_text_into_applescript() {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");

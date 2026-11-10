@@ -4,7 +4,8 @@
 #
 # - one session with that name -> resume it (claude -r <session id>)
 # - several -> claude -r <name>, which shows a picker filtered by that name
-# - none -> create it (claude -n <name>)
+# - none -> create it (claude -n <name>). If FIRST_PROMPT is set (the 'first message' setting, {ID} -> the name),
+#   it goes along as the first message, so the session knows which document it is for.
 #
 # Sessions are grouped per folder: ~/.claude/projects/<folder path with every non-alphanumeric char as ->.
 # CLAUDE_SESSION_DRY_RUN=1 prints the command instead of opening a terminal (for tests).
@@ -63,6 +64,14 @@ if (Test-Path -LiteralPath $store) {
 if ($ids.Count -eq 0) { $claude = @('-n', $name) }
 elseif ($ids.Count -eq 1) { $claude = @('-r', $ids[0]) }
 else { $claude = @('-r', $name) }
+
+# The first message is never spliced into the command text (BUG-387): it goes to a temp file, and the new shell
+# reads that file into the argument. (The file stays in %TEMP% - deleting it would need ';', which wt.exe splits on.)
+if ($ids.Count -eq 0 -and $env:FIRST_PROMPT) {
+    $pf = [IO.Path]::GetTempFileName()
+    [IO.File]::WriteAllText($pf, $env:FIRST_PROMPT.Replace('{ID}', $name), (New-Object Text.UTF8Encoding $false))
+    $claude += "(Get-Content -Raw -Encoding UTF8 -LiteralPath '" + $pf.Replace("'", "''") + "')"
+}
 
 if ($env:CLAUDE_SESSION_DRY_RUN -eq '1') {
     Write-Output ("cd `"$dir`" ; claude " + ($claude -join ' '))

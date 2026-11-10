@@ -3,7 +3,8 @@
 #
 # - 그 이름의 세션이 하나면 그 세션을 이어서 연다(`claude -r <세션 id>`).
 # - 여럿이면 `claude -r 이름` — claude 가 그 이름으로 거른 고르기 목록을 띄운다.
-# - 없으면 그 이름으로 새로 만든다(`claude -n 이름`).
+# - 없으면 그 이름으로 새로 만든다(`claude -n 이름`). FIRST_PROMPT(설정의 '새 세션 첫 메시지', `{ID}` 는 이름으로)가
+#   있으면 첫 메시지로 함께 보낸다 — 세션이 자기가 어느 문서의 세션인지 알고 시작한다.
 #
 # 세션은 claude 를 띄운 **폴더마다** 따로 모인다(~/.claude/projects/{폴더 경로의 글자 · 숫자 말고는 - 로}).
 # CLAUDE_SESSION_DRY_RUN=1 이면 터미널을 열지 않고 띄울 명령만 적는다(시험용).
@@ -47,6 +48,15 @@ case $count in
 1) run="claude -r $id" ;;
 *) run="claude -r $name" ;;
 esac
+
+# 첫 메시지는 명령 글자에 끼워 넣지 않는다(BUG-387) — 임시 파일에 쓰고, 열린 셸이 그 파일을 읽어 인자로 넘긴 뒤 지운다.
+if [ "$count" = 0 ] && [ -n "${FIRST_PROMPT:-}" ]; then
+	pf=$(mktemp "${TMPDIR:-/tmp}/claude-session.XXXXXX")
+	# 이름은 위에서 글자 · 숫자 · - · _ 로만 걸렀다 — sed 치환에 그대로 써도 된다.
+	printf '%s' "$FIRST_PROMPT" | sed "s/{ID}/$name/g" >"$pf"
+	qpf=$(printf '%s' "$pf" | sed "s/'/'\\\\''/g")
+	run="$run \"\$(cat '$qpf'; rm -f '$qpf')\""
+fi
 
 # 폴더 이름의 작은따옴표는 셸에 맞게 감싼다.
 qdir=$(printf '%s' "$dir" | sed "s/'/'\\\\''/g")

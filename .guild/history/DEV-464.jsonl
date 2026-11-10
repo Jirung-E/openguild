@@ -7,3 +7,5 @@
 {"ts":"2026-11-01T22:44:57+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-11-01T22:49:42+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-11-01T23:03:13+09:00","op":"change_status","old":"testing","new":"done"}
+{"ts":"2026-11-10T12:35:32+09:00","op":"change_status","old":"done","new":"in_progress"}
+{"ts":"2026-11-10T12:48:06+09:00","op":"change_status","old":"in_progress","new":"testing"}
