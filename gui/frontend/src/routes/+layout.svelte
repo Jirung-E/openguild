@@ -16,6 +16,14 @@
 		guildSwitchingPossible,
 		type GuildId
 	} from '$lib/stores/guildIdentity';
+	// BUG-399: 히스토리 이동 때 '길드 화면' 플래그(타이틀바 ☰ · 길드 이름)를 항목 표식대로 되살린다.
+	import {
+		guildCtxStamp,
+		isGuildContextActive,
+		markGuildContextActive,
+		markGuildContextInactive,
+		shouldRestoreGuildCtx
+	} from '$lib/stores/guildSession';
 	import {
 		markRemoteSessionActive,
 		pingRemoteServer,
@@ -366,6 +374,12 @@
 		invalidateCurrentGuild();
 	}
 
+	function restoreGuildCtx(path: string) {
+		if (path === '/welcome') return; // welcome 은 스스로 끈다.
+		if (shouldRestoreGuildCtx(path, $page.state.guildCtx)) markGuildContextActive();
+		else markGuildContextInactive();
+	}
+
 	async function guardGuildHistory(nav: { type: string }) {
 		const cur = await currentGuildId();
 		if (!cur) {
@@ -373,15 +387,30 @@
 			return; // 브라우저 모드 / 길드 미오픈 — 전환 개념 없음.
 		}
 		const stamped = $page.state.guild as GuildId | undefined;
+		const path = $page.url.pathname;
 		if (!stamped) {
 			// 아직 표식이 없는 항목(길드를 연 직후, 콜드 스타트 등) — 현재 길드로
 			// 표시만 남기고 통과. replaceState 라 히스토리가 늘지 않는다.
-			replaceState('', { ...$page.state, guild: cur });
+			replaceState('', {
+				...$page.state,
+				guild: cur,
+				guildCtx: guildCtxStamp(path, isGuildContextActive())
+			});
 			historyGuildSwitching = false;
 			return;
 		}
 		if (sameGuild(stamped, cur)) {
 			historyGuildSwitching = false;
+			if (nav.type === 'popstate') {
+				// BUG-399: 홈(welcome)을 지나 같은 길드의 화면으로 돌아온 경우 — welcome 이 끈 플래그를 되살린다.
+				restoreGuildCtx(path);
+			} else if ($page.state.guildCtx === undefined) {
+				// welcome 의 goto 처럼 길드 표식만 실어 온 항목에도 길드 화면 표식을 남긴다.
+				replaceState('', {
+					...$page.state,
+					guildCtx: guildCtxStamp(path, isGuildContextActive())
+				});
+			}
 			return;
 		}
 		// 다른 길드의 항목 — 뒤로/앞으로 이동으로 도달했을 때만 개입한다.
@@ -394,6 +423,9 @@
 		historyGuildSwitching = true;
 		try {
 			await reopenGuildFromHistory(stamped);
+			// BUG-399: 보드가 아닌 화면으로 돌아오면 아무도 플래그를 켜지 않아 ☰ 와 길드 이름이 사라졌다.
+			// sessionStorage 라 reload 뒤에도 남는다.
+			restoreGuildCtx(path);
 			// 전환 상태를 유지한 채 전체 route tree 를 새 길드 기준으로 재생성.
 			window.location.reload();
 		} catch (error) {

@@ -10,6 +10,8 @@ declare global {
 		// 없다). SvelteKit 의 shallow routing state 에 실어 항목마다 남긴다.
 		interface PageState {
 			guild?: { kind: 'local'; path: string } | { kind: 'remote'; url: string };
+			/** BUG-399: 이 항목이 길드 화면이었나 — 뒤로/앞으로 이동 때 타이틀바 상태를 되살린다. */
+			guildCtx?: boolean;
 		}
 		// interface Platform {}
 	}

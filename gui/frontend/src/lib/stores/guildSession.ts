@@ -57,3 +57,25 @@ export function isGuildContextActive(): boolean {
 		return false;
 	}
 }
+
+/**
+ * BUG-399: 히스토리 항목에 남길 "이 화면이 길드 안이었나" 표식.
+ *
+ * 플래그는 welcome 이 끄고 보드(/) 만 켠다. 그래서 길드 A → 홈 → 길드 B → 뒤로가기로 A 의 보드가 아닌
+ * 화면에 돌아오면 길드는 열려 있는데 플래그가 꺼진 채라 타이틀바 ☰ 와 길드 이름이 사라졌다. 항목마다
+ * 그때의 상태를 남겨 두고, 뒤로/앞으로 이동으로 그 항목에 닿으면 되살린다.
+ * 보드는 마운트가 끝나야 플래그를 켜므로(비동기) 경로로도 판단한다.
+ */
+export function guildCtxStamp(path: string, active: boolean): boolean {
+	return path !== '/welcome' && (active || path === '/');
+}
+
+/**
+ * BUG-399: 뒤로/앞으로 이동으로 닿은 항목에서 플래그를 켤지.
+ * 표식이 없는 옛 항목은 경로로 판단한다 — 설정은 welcome 에서도 갈 수 있어(DEV-207) 켜지 않는다.
+ */
+export function shouldRestoreGuildCtx(path: string, stamped: boolean | undefined): boolean {
+	if (path === '/welcome') return false;
+	if (stamped !== undefined) return stamped;
+	return path !== '/settings';
+}
