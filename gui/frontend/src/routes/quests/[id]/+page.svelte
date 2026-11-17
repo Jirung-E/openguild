@@ -998,6 +998,19 @@
 			<section>
 				<div class="section-head">
 					<h2 class="section-title parent-label">{t('quest.section.parent', $locale)}</h2>
+					{#if !editMode}
+						<!-- DEV-483: 서브퀘스트 칸처럼 새로 만들기 · 기존 지정 두 갈래. -->
+						<button
+							class="sec-add-btn"
+							onclick={() => {
+								pendingRelMode = 'parent';
+								newRelMode = 'parent';
+							}}>{t('qd.newSub', $locale)}</button
+						>
+						<button class="sec-add-btn" onclick={() => openCombo('parent')}
+							>{t('qd.assignExisting', $locale)}</button
+						>
+					{/if}
 				</div>
 				<ul class="quest-list">
 					<li>
@@ -1089,8 +1102,16 @@
 				<div class="section-head">
 					<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
 					{#if !editMode}
+						<!-- DEV-483: 서브퀘스트 칸처럼 새로 만들기 · 기존 지정 두 갈래. -->
+						<button
+							class="sec-add-btn"
+							onclick={() => {
+								pendingRelMode = 'prereq';
+								newRelMode = 'prereq';
+							}}>{t('qd.newSub', $locale)}</button
+						>
 						<button class="sec-add-btn" onclick={() => openCombo('prereq')}
-							>{t('qd.addBtn', $locale)}</button
+							>{t('qd.assignExisting', $locale)}</button
 						>
 					{/if}
 				</div>
@@ -1137,13 +1158,19 @@
 					<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
 					<span class="sec-hint">{t('quest.section.successorsHint', $locale)}</span>
 					{#if !editMode}
+						<!-- DEV-483: 서브퀘스트 칸처럼 새로 만들기 · 기존 지정 두 갈래. -->
+						<button
+							class="sec-add-btn"
+							onclick={() => {
+								pendingRelMode = 'succ';
+								newRelMode = 'succ';
+							}}>{t('qd.newSub', $locale)}</button
+						>
 						<button
 							class="sec-add-btn"
 							onclick={() => openCombo('succ')}
-							title={t('qd.addSuccessor', $locale)}
+							title={t('qd.addSuccessor', $locale)}>{t('qd.assignExisting', $locale)}</button
 						>
-							{t('qd.addBtn', $locale)}
-						</button>
 					{/if}
 				</div>
 				{#if (detail.successors ?? []).length > 0}

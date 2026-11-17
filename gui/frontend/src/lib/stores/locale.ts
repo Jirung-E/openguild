@@ -1813,7 +1813,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'qd.assignExisting': { ko: '+ 기존 지정', en: '+ Assign existing' },
 	'qd.detachFromParent': { ko: '부모에서 분리', en: 'Detach from parent' },
 	'qd.noSubQuests': { ko: '서브퀘스트 없음.', en: 'No sub-quests.' },
-	'qd.addBtn': { ko: '+ 추가', en: '+ Add' },
 	// DEV-279: 빈 섹션을 숨기는 대신 하나의 '연관 추가' 버튼에서 종류를 고른다.
 	'qd.addRelation': { ko: '+ 연관 추가', en: '+ Add relation' },
 	'qd.addRelationTitle': { ko: '추가할 연관 종류', en: 'Relation to add' },
