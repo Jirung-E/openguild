@@ -2005,6 +2005,19 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-457: 고르기(.seg)의 이름 — 화면 읽기용.
 	'worklogPage.unitAria': { ko: '기간 단위', en: 'Period unit' },
 	'worklogPage.viewAria': { ko: '표시 방식', en: 'Display' },
+	// DEV-481: 필터 — 문서 종류 · 활동 종류 여러 개 고르기. 아무것도 안 고르면 전체.
+	'worklogPage.filter.all': { ko: '전체', en: 'All' },
+	'worklogPage.filter.docAria': { ko: '문서 종류', en: 'Document type' },
+	'worklogPage.filter.actAria': { ko: '활동 종류', en: 'Activity type' },
+	'worklogPage.filter.act.status': { ko: '상태 변경', en: 'Status' },
+	'worklogPage.filter.act.comment': { ko: '댓글', en: 'Comments' },
+	'worklogPage.filter.act.created': { ko: '생성', en: 'Created' },
+	'worklogPage.filter.act.discussion': { ko: '토론', en: 'Discussion' },
+	'worklogPage.filter.act.doc': { ko: '문서 변경', en: 'Doc changes' },
+	'worklogPage.filter.noMatch': {
+		ko: '고른 조건에 맞는 활동이 없습니다.',
+		en: 'No activity matches the filter.'
+	},
 	'worklogPage.title': { ko: '작업 기록', en: 'Work Log' },
 	'worklogPage.rangeStartAria': { ko: '구간 시작', en: 'Range start' },
 	'worklogPage.rangeEndAria': { ko: '구간 끝', en: 'Range end' },

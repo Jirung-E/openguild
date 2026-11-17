@@ -5,7 +5,7 @@
  * 테스트를 붙일 수 없어 — 첫 등장 순서 유지·시각 범위 표기·뱃지 중복 제거가
  * 전부 육안 확인에만 의존했다 — 여기로 분리했다. 페이지는 이 함수들을 쓴다.
  */
-import type { ActivityRow } from '$lib/api/worklog';
+import type { ActivityCounts, ActivityRow } from '$lib/api/worklog';
 
 /** 하루치 활동을 문서 단위로 묶은 결과. */
 export interface DocGroup {
@@ -78,4 +78,95 @@ export function groupTimeLabel(g: DocGroup): string {
 /** 요약은 첫 줄만 — 여러 줄 본문이 행 높이를 밀어내지 않도록. */
 export function firstLine(s: string): string {
 	return s.split('\n', 1)[0] ?? '';
+}
+
+// ─── DEV-481: 필터 ───
+
+/** 활동이 가리키는 문서 종류. */
+export type WorklogDocKind = 'quest' | 'campaign' | 'rule' | 'book';
+export const WORKLOG_DOC_KINDS: WorklogDocKind[] = ['quest', 'campaign', 'rule', 'book'];
+
+/** 필터의 활동 종류 — 아래 합계의 칸과 같게 묶는다(상태 · 타입 변경은 서버도 한 칸으로 센다). */
+export type WorklogActKind = 'status' | 'comment' | 'created' | 'discussion' | 'doc';
+export const WORKLOG_ACT_KINDS: WorklogActKind[] = [
+	'status',
+	'comment',
+	'created',
+	'discussion',
+	'doc'
+];
+
+export function activityDocKind(a: ActivityRow): WorklogDocKind {
+	if (a.kind === 'rule') return 'rule';
+	if (a.kind === 'book') return 'book';
+	return /^C-\d+$/.test(a.slug) ? 'campaign' : 'quest';
+}
+
+export function activityActKind(a: ActivityRow): WorklogActKind | null {
+	switch (a.kind) {
+		case 'status':
+		case 'type':
+			return 'status';
+		case 'comment':
+		case 'created':
+		case 'discussion':
+			return a.kind;
+		case 'rule':
+		case 'book':
+			return 'doc';
+		default:
+			return null;
+	}
+}
+
+/** 빈 집합 = 그 축은 거르지 않음(전체). */
+export function filterActivities(
+	rows: ActivityRow[],
+	docKinds: ReadonlySet<WorklogDocKind>,
+	actKinds: ReadonlySet<WorklogActKind>
+): ActivityRow[] {
+	if (docKinds.size === 0 && actKinds.size === 0) return rows;
+	return rows.filter((a) => {
+		if (docKinds.size > 0 && !docKinds.has(activityDocKind(a))) return false;
+		if (actKinds.size > 0) {
+			const k = activityActKind(a);
+			if (!k || !actKinds.has(k)) return false;
+		}
+		return true;
+	});
+}
+
+/** 걸러진 활동으로 합계를 다시 센다 — 서버 `core::ops::worklog::activities` 의 집계와 같은 규칙. */
+export function countActivities(rows: ActivityRow[]): ActivityCounts {
+	const c: ActivityCounts = {
+		status_changes: 0,
+		comments: 0,
+		created: 0,
+		done_transitions: 0,
+		discussion_events: 0,
+		doc_changes: 0
+	};
+	for (const a of rows) {
+		switch (a.kind) {
+			case 'status':
+			case 'type':
+				c.status_changes += 1;
+				if (a.kind === 'status' && a.summary.endsWith('→ done')) c.done_transitions += 1;
+				break;
+			case 'discussion':
+				c.discussion_events += 1;
+				break;
+			case 'comment':
+				c.comments += 1;
+				break;
+			case 'created':
+				c.created += 1;
+				break;
+			case 'rule':
+			case 'book':
+				c.doc_changes += 1;
+				break;
+		}
+	}
+	return c;
 }

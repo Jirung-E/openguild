@@ -23,7 +23,14 @@
 		groupByDay,
 		groupByDoc,
 		groupTimeLabel,
-		firstLine
+		firstLine,
+		// DEV-481: 필터.
+		filterActivities,
+		countActivities,
+		WORKLOG_DOC_KINDS,
+		WORKLOG_ACT_KINDS,
+		type WorklogDocKind,
+		type WorklogActKind
 	} from '$lib/utils/worklog-group';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SizeGrip from '$lib/components/SizeGrip.svelte';
@@ -350,8 +357,25 @@
 				return t('worklogPage.unit.range', $locale);
 		}
 	}
+	// DEV-481: 필터 — 문서 종류 · 활동 종류를 여러 개 고른다. 빈 집합 = 전체. 기억하지 않는다(admin 결정):
+	// 페이지를 다시 열면 전체로 시작.
+	let docFilter = $state<Set<WorklogDocKind>>(new Set());
+	let actFilter = $state<Set<WorklogActKind>>(new Set());
+	function toggleIn<T>(cur: Set<T>, v: T): Set<T> {
+		// Set 을 직접 mutate 하면 Svelte 5 가 변화를 못 본다 — 새 Set 으로 교체.
+		const next = new Set(cur);
+		if (next.has(v)) next.delete(v);
+		else next.add(v);
+		return next;
+	}
+	const filtered = $derived(
+		report ? filterActivities(report.activities, docFilter, actFilter) : []
+	);
+	// 아래 합계도 걸러진 결과로 다시 센다(admin 결정).
+	const counts = $derived(countActivities(filtered));
+
 	// 주/월 뷰: 날짜별 그룹핑.
-	const grouped = $derived(report ? groupByDay(report.activities) : []);
+	const grouped = $derived(groupByDay(filtered));
 
 	// REQ-006: compact 뷰 — 같은 날 같은 문서에 가한 조작을 문서 단위로 묶는다.
 	// 평면 목록은 한 퀘스트를 작업하면 상태변경·댓글·수정이 줄줄이 풀려 나와,
@@ -484,6 +508,39 @@
 		</div>
 	</div>
 
+	<!-- DEV-481: 필터 — 두 고르기 모두 여러 개를 함께 켤 수 있다. '전체' 는 그 축의 고름을 지운다. -->
+	<div class="filters">
+		<div class="seg sm" role="group" aria-label={t('worklogPage.filter.docAria', $locale)}>
+			<button
+				class:on={docFilter.size === 0}
+				aria-pressed={docFilter.size === 0}
+				onclick={() => (docFilter = new Set())}>{t('worklogPage.filter.all', $locale)}</button
+			>
+			{#each WORKLOG_DOC_KINDS as k (k)}
+				<button
+					class:on={docFilter.has(k)}
+					aria-pressed={docFilter.has(k)}
+					onclick={() => (docFilter = toggleIn(docFilter, k))}>{t(`kind.${k}`, $locale)}</button
+				>
+			{/each}
+		</div>
+		<div class="seg sm" role="group" aria-label={t('worklogPage.filter.actAria', $locale)}>
+			<button
+				class:on={actFilter.size === 0}
+				aria-pressed={actFilter.size === 0}
+				onclick={() => (actFilter = new Set())}>{t('worklogPage.filter.all', $locale)}</button
+			>
+			{#each WORKLOG_ACT_KINDS as k (k)}
+				<button
+					class:on={actFilter.has(k)}
+					aria-pressed={actFilter.has(k)}
+					onclick={() => (actFilter = toggleIn(actFilter, k))}
+					>{t(`worklogPage.filter.act.${k}`, $locale)}</button
+				>
+			{/each}
+		</div>
+	</div>
+
 	{#if loading}
 		<div class="state">Loading…</div>
 	{:else if error}
@@ -554,13 +611,15 @@
 
 		<!-- 타임라인 -->
 		<div class="count">
-			{t('worklogPage.activitiesPre', $locale)}{report.activities.length}{t(
+			{t('worklogPage.activitiesPre', $locale)}{filtered.length}{t(
 				'worklogPage.activitiesPost',
 				$locale
 			)}
 		</div>
 		{#if report.activities.length === 0}
 			<div class="state">{t('worklogPage.noActivity', $locale)}</div>
+		{:else if filtered.length === 0}
+			<div class="state">{t('worklogPage.filter.noMatch', $locale)}</div>
 		{:else}
 			<div class="timeline">
 				{#each grouped as g (g.date)}
@@ -629,25 +688,23 @@
 			</div>
 			<div class="totals">
 				<span
-					><b>{report.counts.status_changes}</b>
+					><b>{counts.status_changes}</b>
 					{t('worklogPage.summary.statusChanges', $locale)}</span
 				>
-				<span><b>{report.counts.comments}</b> {t('worklogPage.summary.comments', $locale)}</span>
-				<span><b>{report.counts.created}</b> {t('worklogPage.summary.created', $locale)}</span>
-				{#if report.counts.doc_changes > 0}
-					<span
-						><b>{report.counts.doc_changes}</b> {t('worklogPage.summary.docChanges', $locale)}</span
-					>
+				<span><b>{counts.comments}</b> {t('worklogPage.summary.comments', $locale)}</span>
+				<span><b>{counts.created}</b> {t('worklogPage.summary.created', $locale)}</span>
+				{#if counts.doc_changes > 0}
+					<span><b>{counts.doc_changes}</b> {t('worklogPage.summary.docChanges', $locale)}</span>
 				{/if}
-				{#if report.counts.discussion_events > 0}
+				{#if counts.discussion_events > 0}
 					<span
-						><b>{report.counts.discussion_events}</b>
+						><b>{counts.discussion_events}</b>
 						{t('worklogPage.summary.discussion', $locale)}</span
 					>
 				{/if}
 				<span class="right"
 					>{t('worklogPage.summary.doneTransitions', $locale)}
-					<b>{report.counts.done_transitions}</b></span
+					<b>{counts.done_transitions}</b></span
 				>
 			</div>
 		{/if}
@@ -675,6 +732,16 @@
 		font-size: var(--fs-xl);
 		font-weight: var(--fw-semibold);
 		margin: 0;
+	}
+	/* DEV-481: 필터 줄 — 좁으면 두 고르기가 줄바꿈. */
+	.filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-6) var(--sp-12);
+		margin-bottom: var(--sp-16);
+	}
+	.filters .seg {
+		flex-wrap: wrap;
 	}
 	.controls {
 		margin-left: auto;

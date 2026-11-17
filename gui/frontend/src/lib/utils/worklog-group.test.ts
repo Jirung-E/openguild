@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import type { ActivityRow } from '$lib/api/worklog';
-import { activityHref, groupByDay, groupByDoc, groupTimeLabel, firstLine } from './worklog-group';
+import {
+	activityHref,
+	groupByDay,
+	groupByDoc,
+	groupTimeLabel,
+	firstLine,
+	activityDocKind,
+	filterActivities,
+	countActivities,
+	type WorklogActKind,
+	type WorklogDocKind
+} from './worklog-group';
 
 function row(
 	ts: string,
@@ -157,5 +168,78 @@ describe('firstLine', () => {
 	});
 	it('한 줄은 그대로', () => {
 		expect(firstLine('그대로')).toBe('그대로');
+	});
+});
+
+describe('DEV-481: 작업 기록 필터', () => {
+	const rows: ActivityRow[] = [
+		{
+			ts: '2026-11-10T00:00:00+09:00',
+			kind: 'status',
+			slug: 'BUG-395',
+			summary: 'in_progress → done'
+		},
+		{ ts: '2026-11-10T00:01:00+09:00', kind: 'type', slug: 'DEV-1', summary: 'DEV → BUG' },
+		{ ts: '2026-11-10T00:02:00+09:00', kind: 'comment', slug: 'BUG-395', summary: 'claude: hi' },
+		{ ts: '2026-11-10T00:03:00+09:00', kind: 'comment', slug: 'C-006', summary: 'claude: c' },
+		{ ts: '2026-11-10T00:04:00+09:00', kind: 'status', slug: 'C-006', summary: 'active → done' },
+		{ ts: '2026-11-10T00:05:00+09:00', kind: 'created', slug: 'BUG-396', summary: 't' },
+		{ ts: '2026-11-10T00:06:00+09:00', kind: 'discussion', slug: 'BUG-395', summary: 'd' },
+		{ ts: '2026-11-10T00:07:00+09:00', kind: 'rule', slug: 'release-process', summary: 'update' },
+		{ ts: '2026-11-10T00:08:00+09:00', kind: 'book', slug: 'BOOK-006', summary: 'update' }
+	];
+	const set = <T>(...xs: T[]) => new Set<T>(xs);
+
+	it('문서 종류를 가린다 — C-NNN 은 캠페인', () => {
+		expect(rows.map(activityDocKind)).toEqual([
+			'quest',
+			'quest',
+			'quest',
+			'campaign',
+			'campaign',
+			'quest',
+			'quest',
+			'rule',
+			'book'
+		]);
+	});
+	it('둘 다 비면 전부', () => {
+		expect(filterActivities(rows, set<WorklogDocKind>(), set<WorklogActKind>())).toBe(rows);
+	});
+	it('문서 종류 여러 개', () => {
+		const out = filterActivities(
+			rows,
+			set<WorklogDocKind>('campaign', 'rule'),
+			set<WorklogActKind>()
+		);
+		expect(out.map((a) => a.slug)).toEqual(['C-006', 'C-006', 'release-process']);
+	});
+	it('활동 종류 여러 개 — 상태는 타입 변경도 포함', () => {
+		const out = filterActivities(
+			rows,
+			set<WorklogDocKind>(),
+			set<WorklogActKind>('status', 'created')
+		);
+		expect(out.map((a) => a.kind)).toEqual(['status', 'type', 'status', 'created']);
+	});
+	it('두 축은 함께 건다', () => {
+		const out = filterActivities(
+			rows,
+			set<WorklogDocKind>('quest'),
+			set<WorklogActKind>('comment')
+		);
+		expect(out.map((a) => a.slug)).toEqual(['BUG-395']);
+	});
+	it('합계를 서버와 같은 규칙으로 다시 센다', () => {
+		expect(countActivities(rows)).toEqual({
+			status_changes: 3,
+			comments: 2,
+			created: 1,
+			done_transitions: 2,
+			discussion_events: 1,
+			doc_changes: 2
+		});
+		const quests = filterActivities(rows, set<WorklogDocKind>('quest'), set<WorklogActKind>());
+		expect(countActivities(quests).done_transitions).toBe(1);
 	});
 });
