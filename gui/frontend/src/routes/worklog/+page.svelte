@@ -30,8 +30,17 @@
 		WORKLOG_DOC_KINDS,
 		WORKLOG_ACT_KINDS,
 		type WorklogDocKind,
-		type WorklogActKind
+		type WorklogActKind,
+		// DEV-482: 줄 모양 — 종류 · 번호 칩 + 제목, 상태는 흐름 칩.
+		activityDocKind,
+		activityDocOp,
+		activityFlow,
+		groupChips,
+		type FlowChip
 	} from '$lib/utils/worklog-group';
+	import type { ActivityRow } from '$lib/api/worklog';
+	import DocKindPills from '$lib/components/DocKindPills.svelte';
+	import { loadQuestIndex, questIndexNs } from '$lib/stores/questIndex';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SizeGrip from '$lib/components/SizeGrip.svelte';
 	// DEV-302: 제목/노트 라벨에 섞여 있던 이모지(🕘/📝)를 아이콘으로 분리.
@@ -192,6 +201,8 @@
 	}
 
 	onMount(() => {
+		// DEV-482: 묶음 머리 줄의 제목 — 인덱스가 아직 없으면 불러 둔다(있으면 그대로).
+		void loadQuestIndex();
 		const dateParam = new URLSearchParams(window.location.search).get('date');
 		if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
 			anchor = dateParam;
@@ -324,6 +335,23 @@
 		rule: 'b-doc',
 		book: 'b-doc'
 	};
+	// DEV-482: 묶음 머리 줄의 제목 — cross-link 인덱스에서(최근 문서와 같은 출처). 규칙은 slug 가 이름이다.
+	function docTitle(a: ActivityRow): string {
+		const kind = activityDocKind(a);
+		if (kind === 'rule') return a.slug;
+		return $questIndexNs.get(`${kind}:${a.slug.toUpperCase()}`)?.title ?? '';
+	}
+	function flowWhat(f: FlowChip): string {
+		return f.what ? t(`worklogPage.flow.${f.what}`, $locale) : '';
+	}
+	/** 줄의 내용 글자 — 상태 줄은 흐름 칩이 이미 보이고, 규칙 · 도서관은 이름 바꿈만 내용이 있다. */
+	function rowText(a: ActivityRow): string {
+		if (activityFlow(a)) return '';
+		const op = activityDocOp(a);
+		if (op) return op === 'rename' ? a.summary : '';
+		return firstLine(a.summary);
+	}
+
 	function kindBadgeLabel(kind: string): string {
 		switch (kind) {
 			case 'status':
@@ -621,6 +649,23 @@
 		{:else if filtered.length === 0}
 			<div class="state">{t('worklogPage.filter.noMatch', $locale)}</div>
 		{:else}
+			<!-- DEV-482: 상태 줄은 "상태" 칩 대신 흐름 하나(캠페인의 "다 끝남"은 무엇이 끝났는지를 앞에). -->
+			{#snippet flowChip(f: FlowChip)}
+				<span class="badge b-status flow"
+					>{#if f.what}<span class="flow-what">{flowWhat(f)}</span>{/if}{f.text}</span
+				>
+			{/snippet}
+			{#snippet actChip(a: ActivityRow)}
+				{@const f = activityFlow(a)}
+				{@const op = activityDocOp(a)}
+				{#if f}
+					{@render flowChip(f)}
+				{:else if op}
+					<span class="badge b-doc">{t(`worklogPage.docOp.${op}`, $locale)}</span>
+				{:else}
+					<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">{kindBadgeLabel(a.kind)}</span>
+				{/if}
+			{/snippet}
 			<div class="timeline">
 				{#each grouped as g (g.date)}
 					{#if unit !== 'day'}
@@ -650,23 +695,31 @@
 										>
 									</button>
 									<span class="ts">{groupTimeLabel(dg)}</span>
-									<a class="slug doclink" href={dg.href}>{dg.slug}</a>
+									<a class="doclink headlink" href={dg.href}>
+										<DocKindPills kind={activityDocKind(dg.rows[0])} id={dg.slug} />
+										<span class="title">{docTitle(dg.rows[0])}</span>
+									</a>
 									<span class="kinds">
-										{#each dg.kinds as k (k)}
-											<span class="badge {KIND_BADGE_CLS[k] ?? ''}">{kindBadgeLabel(k)}</span>
+										{#each groupChips(dg.rows) as c, ci (ci)}
+											{#if c.type === 'flow'}
+												{@render flowChip(c.flow)}
+											{:else if c.type === 'docOp'}
+												<span class="badge b-doc">{t(`worklogPage.docOp.${c.op}`, $locale)}</span>
+											{:else}
+												<span class="badge {KIND_BADGE_CLS[c.kind] ?? ''}"
+													>{kindBadgeLabel(c.kind)}</span
+												>
+											{/if}
 										{/each}
 									</span>
 									<span class="cnt">{dg.rows.length}{t('worklogPage.group.count', $locale)}</span>
-									<span class="summary">{firstLine(dg.rows[0].summary)}</span>
 								</div>
 								{#if open}
 									{#each dg.rows as a, ri (ri)}
 										<a class="row sub" href={activityHref(a)}>
 											<span class="ts">{a.ts.slice(11, 16)}</span>
-											<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">
-												{kindBadgeLabel(a.kind)}
-											</span>
-											<span class="summary">{firstLine(a.summary)}</span>
+											{@render actChip(a)}
+											<span class="summary">{rowText(a)}</span>
 										</a>
 									{/each}
 								{/if}
@@ -676,11 +729,11 @@
 						{#each g.rows as a, ri (ri)}
 							<a class="row" href={activityHref(a)}>
 								<span class="ts">{a.ts.slice(11, 16)}</span>
-								<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">
-									{kindBadgeLabel(a.kind)}
-								</span>
-								<span class="slug">{a.slug}</span>
-								<span class="summary">{firstLine(a.summary)}</span>
+								<!-- DEV-482: 문서 칩을 시각 바로 뒤에 — 활동 칩(흐름)은 폭이 들쭉날쭉해 앞에 두면 문서 칩 줄이 어긋난다. -->
+								<DocKindPills kind={activityDocKind(a)} id={a.slug} />
+								{#if a.kind === 'rule'}<span class="slug">{a.slug}</span>{/if}
+								{@render actChip(a)}
+								<span class="summary">{rowText(a)}</span>
 							</a>
 						{/each}
 					{/if}
@@ -869,7 +922,8 @@
 	.docrow {
 		display: flex;
 		gap: var(--sp-8);
-		align-items: baseline;
+		/* DEV-482: 칩이 줄마다 있어 글자 기준선보다 가운데로 맞춰야 고르게 보인다. */
+		align-items: center;
 		padding: var(--sp-6) 0;
 		font-size: var(--fs-sm);
 		min-width: 0;
@@ -905,6 +959,29 @@
 	.doclink:hover {
 		text-decoration: underline;
 	}
+	/* DEV-482: 머리 줄 링크 = 종류 · 번호 칩 + 제목. 제목이 남는 폭을 다 쓰고 길면 "…". */
+	.headlink {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-8);
+		flex: 1 1 auto;
+		min-width: 0;
+		color: var(--text);
+	}
+	.headlink .title {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.badge.flow {
+		font-family: var(--font-mono);
+		white-space: nowrap;
+	}
+	.flow-what {
+		font-family: var(--font-sans);
+		margin-right: var(--sp-4);
+	}
 	.kinds {
 		display: flex;
 		gap: var(--sp-4);
@@ -927,7 +1004,7 @@
 	.row {
 		display: flex;
 		gap: var(--sp-8);
-		align-items: baseline;
+		align-items: center;
 		padding: var(--sp-6) 0;
 		border-bottom: var(--bw) solid var(--border);
 		text-decoration: none;

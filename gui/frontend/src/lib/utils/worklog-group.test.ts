@@ -9,6 +9,9 @@ import {
 	activityDocKind,
 	filterActivities,
 	countActivities,
+	groupChips,
+	activityFlow,
+	activityDocOp,
 	type WorklogActKind,
 	type WorklogDocKind
 } from './worklog-group';
@@ -241,5 +244,52 @@ describe('DEV-481: 작업 기록 필터', () => {
 		});
 		const quests = filterActivities(rows, set<WorklogDocKind>('quest'), set<WorklogActKind>());
 		expect(countActivities(quests).done_transitions).toBe(1);
+	});
+});
+
+describe('DEV-482: 묶음 칩', () => {
+	it('퀘스트 상태는 그날 처음 → 마지막 흐름 하나로, 다른 활동은 등장 순 칩', () => {
+		const rows = [
+			row('2026-11-10T01:33', 'BUG-396', 'created', { summary: '제목' }),
+			row('2026-11-10T01:33', 'BUG-396', 'status', { summary: 'open → in_progress' }),
+			row('2026-11-10T01:47', 'BUG-396', 'status', { summary: 'in_progress → testing' }),
+			row('2026-11-10T01:47', 'BUG-396', 'comment', { summary: 'claude: x' }),
+			row('2026-11-10T01:53', 'BUG-396', 'status', { summary: 'testing → done' }),
+			row('2026-11-10T01:53', 'BUG-396', 'comment', { summary: 'claude: y' })
+		];
+		expect(groupChips(rows)).toEqual([
+			{ type: 'kind', kind: 'created' },
+			{ type: 'flow', flow: { what: null, text: 'open → done' } },
+			{ type: 'kind', kind: 'comment' }
+		]);
+	});
+
+	it('캠페인 "다 끝남"은 퀘스트 / 체크리스트마다 마지막 값, 상태 변경은 흐름', () => {
+		const rows = [
+			row('2026-08-16T00:44', 'C-005', 'status', { summary: '? → 6/6', op: 'checklist_all_done' }),
+			row('2026-08-16T00:44', 'C-005', 'status', { summary: '? → 142/142', op: 'quests_all_done' }),
+			row('2026-08-16T00:45', 'C-005', 'status', { summary: '? → 142/142', op: 'quests_all_done' }),
+			row('2026-08-16T00:50', 'C-005', 'status', { summary: 'active → done', op: 'change_status' })
+		];
+		expect(groupChips(rows)).toEqual([
+			{ type: 'flow', flow: { what: 'checklist', text: '6/6' } },
+			{ type: 'flow', flow: { what: 'quests', text: '142/142' } },
+			{ type: 'flow', flow: { what: null, text: 'active → done' } }
+		]);
+		expect(activityFlow(rows[0])).toEqual({ what: 'checklist', text: '6/6' });
+		expect(activityFlow(rows[3])).toEqual({ what: null, text: 'active → done' });
+	});
+
+	it('규칙 · 도서관은 한 일로 — op 가 없는 옛 서버는 summary 로 짐작', () => {
+		const rows = [
+			row('2026-11-10T01:30', 'BOOK-006', 'book', { summary: 'update', op: 'update' }),
+			row('2026-11-10T02:27', 'BOOK-006', 'book', { summary: 'update' }),
+			row('2026-11-10T03:00', 'BOOK-006', 'book', { summary: 'a → b' })
+		];
+		expect(groupChips(rows)).toEqual([
+			{ type: 'docOp', op: 'update' },
+			{ type: 'docOp', op: 'rename' }
+		]);
+		expect(activityDocOp(row('t', 'DEV-001', 'status'))).toBeNull();
 	});
 });

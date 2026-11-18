@@ -2002,6 +2002,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-288: 규칙·도서관 변경 활동.
 	'worklogPage.badge.rule': { ko: '규칙', en: 'Rule' },
 	'worklogPage.badge.book': { ko: '문서', en: 'Doc' },
+	// DEV-482: 규칙 · 도서관 줄은 무엇을 했는지로 보인다(앞의 종류 칩과 겹치지 않게).
+	'worklogPage.docOp.create': { ko: '생성', en: 'Created' },
+	'worklogPage.docOp.update': { ko: '수정', en: 'Edited' },
+	'worklogPage.docOp.delete': { ko: '삭제', en: 'Deleted' },
+	'worklogPage.docOp.rename': { ko: '이름 바꿈', en: 'Renamed' },
+	// DEV-482: 캠페인의 "다 끝남" 기록 — 무엇이 다 끝났는지 칩 앞에.
+	'worklogPage.flow.quests': { ko: '퀘스트', en: 'Quests' },
+	'worklogPage.flow.checklist': { ko: '체크리스트', en: 'Checklist' },
 	// DEV-457: 고르기(.seg)의 이름 — 화면 읽기용.
 	'worklogPage.unitAria': { ko: '기간 단위', en: 'Period unit' },
 	'worklogPage.viewAria': { ko: '표시 방식', en: 'Display' },

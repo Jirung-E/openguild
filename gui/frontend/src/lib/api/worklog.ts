@@ -15,6 +15,11 @@ export interface ActivityRow {
 	 * 그 외 kind 는 서버가 생략(undefined).
 	 */
 	ref_id?: number | null;
+	/**
+	 * DEV-482: 원래 조작 — 캠페인 상태 줄(`change_status` / `quests_all_done` / `checklist_all_done`)과
+	 * 규칙 · 도서관 줄(`create` / `update` / `delete` / `rename`)만. 옛 서버는 보내지 않는다.
+	 */
+	op?: string | null;
 }
 
 export interface ActivityCounts {

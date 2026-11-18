@@ -52,6 +52,11 @@ pub struct ActivityRow {
     /// (slug 만으로는 문서까지만 갈 수 있다). 그 외 kind 는 None.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ref_id: Option<i64>,
+    /// DEV-482: 기록의 원래 조작 — 캠페인 상태 줄(`change_status` / `quests_all_done` /
+    /// `checklist_all_done`)과 규칙 · 도서관 줄(`create` / `update` / `delete` / `rename`)만.
+    /// 캠페인의 "다 끝남" 두 가지는 summary 가 둘 다 `? → 6/6` 이라 이것 없이는 무엇이 끝났는지 모른다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op: Option<String>,
 }
 
 /// 종류별 집계 (타임라인과 함께 반환).
@@ -102,7 +107,8 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                     WHEN 'discussion_resolved' THEN CAST(h.new_value AS INTEGER)
                     WHEN 'discussion_reopened' THEN CAST(h.new_value AS INTEGER)
                     ELSE NULL
-                  END AS ref_id
+                  END AS ref_id,
+                  NULL AS op
              FROM quest_history h
             WHERE h.quest_slug IS NOT NULL
               AND substr(h.ts,1,10) BETWEEN ? AND ?
@@ -112,7 +118,7 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                   c.author || ': ' || substr(c.body, 1, 200),
                   -- DEV-296: UI 앵커(`#comment-N`)는 **퀘스트별 번호**(entry_id)를
                   -- 쓴다. 전역 rowid(c.id)를 보내면 딥링크가 아무 데도 안 걸린다.
-                  c.entry_id
+                  c.entry_id, NULL
              FROM quest_comments c
              JOIN quests q ON q.id = c.quest_id
              JOIN quest_types qt ON qt.id = q.quest_type_id
@@ -120,13 +126,13 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
            UNION ALL
            SELECT c.ts, 'comment', ca.campaign_slug,
                   c.author || ': ' || substr(c.body, 1, 200),
-                  c.entry_id
+                  c.entry_id, NULL
              FROM campaign_comments c
              JOIN campaigns ca ON ca.id = c.campaign_id
             WHERE substr(c.ts,1,10) BETWEEN ? AND ?
            UNION ALL
            SELECT q.created_at, 'created',
-                  qt.prefix || '-' || printf('%03d', q.number), q.title, NULL
+                  qt.prefix || '-' || printf('%03d', q.number), q.title, NULL, NULL
              FROM quests q
              JOIN quest_types qt ON qt.id = q.quest_type_id
             WHERE substr(q.created_at,1,10) BETWEEN ? AND ?
@@ -134,7 +140,7 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
            -- DEV-226 후속(admin 보고): 캠페인 상태 변경도 활동 타임라인에.
            SELECT ch.ts, 'status', ch.campaign_slug,
                   COALESCE(ch.old_value,'?') || ' → ' || COALESCE(ch.new_value,'?'),
-                  NULL
+                  NULL, ch.op
              FROM campaign_history ch
             WHERE substr(ch.ts,1,10) BETWEEN ? AND ?
            UNION ALL
@@ -146,7 +152,7 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                     WHEN 'rename' THEN COALESCE(d.old_value,'?') || ' → ' || COALESCE(d.new_value,'?')
                     ELSE d.op
                   END,
-                  NULL
+                  NULL, d.op
              FROM doc_history d
             WHERE substr(d.ts,1,10) BETWEEN ? AND ?
          )
@@ -487,6 +493,8 @@ mod tests {
             .expect("캠페인 상태 변경이 타임라인에 있어야 함");
         assert_eq!(row.kind, "status");
         assert_eq!(row.summary, "active → done");
+        // DEV-482: 캠페인 상태 줄은 무슨 기록인지(op)도 함께 — 화면이 "다 끝남" 두 가지와 구분한다.
+        assert_eq!(row.op.as_deref(), Some("change_status"));
         assert_eq!(report.counts.status_changes, 1);
 
         // 히트맵에도 반영.

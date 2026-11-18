@@ -170,3 +170,93 @@ export function countActivities(rows: ActivityRow[]): ActivityCounts {
 	}
 	return c;
 }
+
+// ─── DEV-482: 줄 모양 ───
+
+/** 규칙 · 도서관 줄의 조작 — `op` 가 없는 옛 서버는 summary 에서 짐작한다(rename 만 `a → b`). */
+export type DocOp = 'create' | 'update' | 'delete' | 'rename';
+export function activityDocOp(a: ActivityRow): DocOp | null {
+	if (a.kind !== 'rule' && a.kind !== 'book') return null;
+	const op = a.op ?? (a.summary.includes(' → ') ? 'rename' : a.summary);
+	return op === 'create' || op === 'update' || op === 'delete' || op === 'rename' ? op : null;
+}
+
+/** 상태 칩 하나 — `what` 이 있으면 캠페인의 "다 끝남" 기록(퀘스트 / 체크리스트). */
+export interface FlowChip {
+	what: 'quests' | 'checklist' | null;
+	text: string;
+}
+
+/** 묶음 머리 줄의 칩 하나 — 상태는 흐름, 나머지는 활동 종류 칩. */
+export type GroupChip =
+	| { type: 'flow'; flow: FlowChip }
+	| { type: 'kind'; kind: string }
+	| { type: 'docOp'; op: DocOp };
+
+function splitFlow(summary: string): [string, string] {
+	const i = summary.indexOf(' → ');
+	return i < 0 ? ['?', summary] : [summary.slice(0, i), summary.slice(i + 3)];
+}
+
+function allDoneWhat(a: ActivityRow): FlowChip['what'] {
+	if (a.op === 'quests_all_done') return 'quests';
+	if (a.op === 'checklist_all_done') return 'checklist';
+	return null;
+}
+
+/** 한 줄의 상태 칩 — 상태 줄이 아니면 null. "다 끝남"은 앞의 `?` 없이 값만. */
+export function activityFlow(a: ActivityRow): FlowChip | null {
+	if (a.kind !== 'status') return null;
+	const what = allDoneWhat(a);
+	return what ? { what, text: splitFlow(a.summary)[1] } : { what: null, text: a.summary };
+}
+
+/**
+ * 묶음 머리 줄의 칩들(등장 순, 중복 없이).
+ *
+ * - 상태 변경은 "상태" 칩 대신 그날 처음 → 마지막 흐름 하나(`open → done`).
+ * - 캠페인의 "다 끝남" 기록은 퀘스트 / 체크리스트마다 마지막 값 하나.
+ * - 규칙 · 도서관은 한 일(수정 · 생성 · 삭제 · 이름 바꿈)로.
+ * - 나머지(댓글 · 생성 · 토론 · 타입)는 지금처럼 활동 종류 칩.
+ */
+export function groupChips(rows: ActivityRow[]): GroupChip[] {
+	const out: GroupChip[] = [];
+	const seen = new Map<string, GroupChip>();
+	let firstFrom: string | null = null;
+	for (const a of rows) {
+		const docOp = activityDocOp(a);
+		if (docOp) {
+			if (!seen.has(`op:${docOp}`)) {
+				const c: GroupChip = { type: 'docOp', op: docOp };
+				seen.set(`op:${docOp}`, c);
+				out.push(c);
+			}
+			continue;
+		}
+		if (a.kind === 'status') {
+			const what = allDoneWhat(a);
+			const key = `flow:${what ?? 'status'}`;
+			let text: string;
+			if (what) text = splitFlow(a.summary)[1];
+			else {
+				const [from, to] = splitFlow(a.summary);
+				firstFrom ??= from;
+				text = `${firstFrom} → ${to}`;
+			}
+			const prev = seen.get(key);
+			if (prev && prev.type === 'flow') prev.flow.text = text;
+			else {
+				const c: GroupChip = { type: 'flow', flow: { what, text } };
+				seen.set(key, c);
+				out.push(c);
+			}
+			continue;
+		}
+		if (!seen.has(`kind:${a.kind}`)) {
+			const c: GroupChip = { type: 'kind', kind: a.kind };
+			seen.set(`kind:${a.kind}`, c);
+			out.push(c);
+		}
+	}
+	return out;
+}
