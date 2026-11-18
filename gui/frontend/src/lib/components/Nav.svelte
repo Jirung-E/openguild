@@ -53,6 +53,7 @@
 	// questIndexNs)는 팔레트가 담당한다 — 여기서는 인덱스 선로드만.
 	import { goto } from '$app/navigation';
 	import { recentDocs } from '$lib/stores/recentDocs';
+	import PillDocLabel from '$lib/components/PillDocLabel.svelte';
 	import { loadQuestIndex } from '$lib/stores/questIndex';
 	let recentOpen = $state(false);
 	// 라우트가 바뀌면 닫기 — $page 구독으로 자동 반응.
@@ -385,6 +386,8 @@
 				title={t('titlebar.search', $locale)}
 			>
 				<span class="nav-pill-name">{guildName}</span>
+				<!-- DEV-484: 문서 페이지면 길드 이름 뒤에 "› 지금 문서 번호". -->
+				<PillDocLabel />
 				{#if isRemote}
 					<span class="nav-remote" title={t('nav.remoteConnected', $locale)}>
 						<svg
@@ -814,6 +817,9 @@
 		color: var(--text);
 	}
 	.nav-pill-name {
+		/* DEV-484: 뒤에 문서 번호가 붙으면 이름이 먼저 줄어든다. */
+		flex: 0 1 auto;
+		min-width: 0;
 		font-size: var(--fs-xs);
 		letter-spacing: 0.02em;
 		overflow: hidden;

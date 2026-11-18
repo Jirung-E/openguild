@@ -47,6 +47,7 @@
 	// BUG-159: 제목은 cross-link 인덱스에서 조회(저장값 아님) — 목록을 열 때
 	// 인덱스가 아직 없으면 조용히 적재(이미 있으면 memo 라 비용 0).
 	import { recentDocs } from '$lib/stores/recentDocs';
+	import PillDocLabel from '$lib/components/PillDocLabel.svelte';
 	import { loadQuestIndex } from '$lib/stores/questIndex';
 
 	let maximized = $state(false);
@@ -441,6 +442,8 @@
 				title={t('titlebar.search', $locale)}
 			>
 				<span class="tb-search-name">{guildName}</span>
+				<!-- DEV-484: 문서 페이지면 길드 이름 뒤에 "› 지금 문서 번호". -->
+				<PillDocLabel />
 				{#if isRemote}
 					<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
 						<svg
@@ -941,6 +944,9 @@
 		color: var(--text);
 	}
 	.tb-search-name {
+		/* DEV-484: 뒤에 문서 번호가 붙으면 이름이 먼저 줄어든다. */
+		flex: 0 1 auto;
+		min-width: 0;
 		font-size: var(--fs-xs);
 		letter-spacing: 0.02em;
 		overflow: hidden;
