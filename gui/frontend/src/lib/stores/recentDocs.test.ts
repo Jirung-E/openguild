@@ -156,3 +156,46 @@ describe('recentDocs store', () => {
 		expect(get(m.recentDocs)).toEqual([]);
 	});
 });
+
+// BUG-400: 길드를 바꾸면 그 길드의 최근 문서 목록이 나온다.
+describe('bindRecentDocsGuild', () => {
+	beforeEach(() => {
+		sessionStorage.clear();
+	});
+
+	const labels = (m: Awaited<ReturnType<typeof loadFresh>>) =>
+		get(m.recentDocs).map((d) => d.label);
+
+	it('길드마다 따로 기억 — A → 웰컴 → B → A', async () => {
+		const m = await loadFresh();
+		m.bindRecentDocsGuild('local:/a');
+		m.recordRecentDocHref('/quests/DEV-001');
+		m.bindRecentDocsGuild(null);
+		expect(labels(m)).toEqual([]);
+		m.bindRecentDocsGuild('local:/b');
+		expect(labels(m)).toEqual([]);
+		m.recordRecentDocHref('/quests/DEV-002');
+		m.bindRecentDocsGuild('local:/a');
+		expect(labels(m)).toEqual(['DEV-001']);
+		m.bindRecentDocsGuild('local:/b');
+		expect(labels(m)).toEqual(['DEV-002']);
+	});
+
+	it('주인 없이 쌓인 것은 처음 정해진 길드에 붙는다', async () => {
+		const m = await loadFresh();
+		m.recordRecentDocHref('/quests/DEV-003');
+		m.bindRecentDocsGuild('local:/a');
+		expect(labels(m)).toEqual(['DEV-003']);
+	});
+
+	it('reload 뒤에도 주인 · 다른 길드 목록이 남는다', async () => {
+		let m = await loadFresh();
+		m.bindRecentDocsGuild('local:/a');
+		m.recordRecentDocHref('/quests/DEV-001');
+		m.bindRecentDocsGuild('remote:http://x');
+		m = await loadFresh();
+		expect(labels(m)).toEqual([]);
+		m.bindRecentDocsGuild('local:/a');
+		expect(labels(m)).toEqual(['DEV-001']);
+	});
+});

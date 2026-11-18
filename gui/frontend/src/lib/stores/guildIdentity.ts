@@ -27,6 +27,11 @@ export function sameGuild(a: GuildId | null | undefined, b: GuildId | null | und
 			: false;
 }
 
+/** BUG-400: 길드별로 따로 기억할 때 쓰는 문자열 키(최근 문서 목록). */
+export function guildOwnerKey(id: GuildId): string {
+	return id.kind === 'local' ? `local:${id.path}` : `remote:${id.url}`;
+}
+
 /**
  * 지금 열려 있는 길드.
  *

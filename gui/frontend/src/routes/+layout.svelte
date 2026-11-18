@@ -11,6 +11,7 @@
 	// BUG-176 / DEV-355: 히스토리 항목의 길드 표식 비교 + 길드 복원.
 	import {
 		currentGuildId,
+		guildOwnerKey,
 		invalidateCurrentGuild,
 		sameGuild,
 		guildSwitchingPossible,
@@ -36,7 +37,7 @@
 	import { isReloadShortcut } from '$lib/utils/reload-shortcut';
 	import { onMount, tick } from 'svelte';
 	// DEV-276: 최근 본 문서 추적.
-	import { recordRecentDocHref } from '$lib/stores/recentDocs';
+	import { bindRecentDocsGuild, recordRecentDocHref } from '$lib/stores/recentDocs';
 	import { forwardRecentDoc, listenRecentDocs } from '$lib/utils/recent-doc-relay';
 	import Nav from '$lib/components/Nav.svelte';
 	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
@@ -332,7 +333,16 @@
 			void forwardRecentDoc(href);
 			return;
 		}
+		// BUG-400: 데스크탑은 이 화면이 어느 길드의 것인지 확인한 뒤 guardGuildHistory 가 기록한다 —
+		// 다른 길드의 항목으로 뒤로 가면 URL 은 옛 길드 것인데 그 순간 열린 길드는 아직 지금 길드다.
+		if (guildSwitchingPossible()) return;
 		recordRecentDocHref(href);
+	}
+
+	/** BUG-400: 목록을 이 길드의 것으로 바꾼 뒤 지금 문서를 올린다. */
+	function recordForGuild(cur: GuildId, href: string) {
+		bindRecentDocsGuild(guildOwnerKey(cur));
+		if (!$isChildWindow) recordRecentDocHref(href);
 	}
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);
@@ -381,9 +391,11 @@
 	}
 
 	async function guardGuildHistory(nav: { type: string }) {
+		const href = $page.url.pathname + $page.url.search;
 		const cur = await currentGuildId();
 		if (!cur) {
 			historyGuildSwitching = false;
+			if (guildSwitchingPossible() && !$isChildWindow) recordRecentDocHref(href);
 			return; // 브라우저 모드 / 길드 미오픈 — 전환 개념 없음.
 		}
 		const stamped = $page.state.guild as GuildId | undefined;
@@ -397,10 +409,12 @@
 				guildCtx: guildCtxStamp(path, isGuildContextActive())
 			});
 			historyGuildSwitching = false;
+			recordForGuild(cur, href);
 			return;
 		}
 		if (sameGuild(stamped, cur)) {
 			historyGuildSwitching = false;
+			recordForGuild(cur, href);
 			if (nav.type === 'popstate') {
 				// BUG-399: 홈(welcome)을 지나 같은 길드의 화면으로 돌아온 경우 — welcome 이 끈 플래그를 되살린다.
 				restoreGuildCtx(path);
@@ -417,6 +431,7 @@
 		// (링크 클릭으로 이런 상태가 되는 경로는 없다.)
 		if (nav.type !== 'popstate') {
 			historyGuildSwitching = false;
+			recordForGuild(cur, href);
 			return;
 		}
 
@@ -426,6 +441,8 @@
 			// BUG-399: 보드가 아닌 화면으로 돌아오면 아무도 플래그를 켜지 않아 ☰ 와 길드 이름이 사라졌다.
 			// sessionStorage 라 reload 뒤에도 남는다.
 			restoreGuildCtx(path);
+			// BUG-400: reload 뒤 처음 그려질 때 이 길드의 최근 목록이 보이게 — 이 문서는 reload 뒤 기록된다.
+			bindRecentDocsGuild(guildOwnerKey(stamped));
 			// 전환 상태를 유지한 채 전체 route tree 를 새 길드 기준으로 재생성.
 			window.location.reload();
 		} catch (error) {

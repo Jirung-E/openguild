@@ -27,6 +27,7 @@
 		markRemoteSessionActive
 	} from '$lib/stores/remoteServer';
 	import { markGuildContextInactive } from '$lib/stores/guildSession';
+	import { bindRecentDocsGuild } from '$lib/stores/recentDocs';
 	// DEV-113 후속(사용자 피드백: "원격 길드도 등록하면 일반 길드처럼 접속할
 	// 수 있어야하는데 지금은 이해가 안 된다"): 원격 연결을 local recents 와
 	// 동등한 "최근 목록" 항목으로 — 한 번 연결하면 기록에 남아 다음부터는
@@ -141,6 +142,8 @@
 		// 있음" 판단은 여기서 항상 리셋. 길드를 다시 열면(routes/+page.svelte
 		// 의 board onMount) 다시 active 로 마크됨.
 		markGuildContextInactive();
+		// BUG-400: 보던 길드의 최근 문서 목록은 따로 넣어 두고 비운다 — 다음에 여는 길드의 목록이 나온다.
+		bindRecentDocsGuild(null);
 		await refreshGuildLists();
 		// launch_mode 가 'uninit' 이면 prompt 활성화.
 		if (env === 'tauri') {

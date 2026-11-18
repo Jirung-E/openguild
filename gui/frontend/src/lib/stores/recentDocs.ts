@@ -41,32 +41,95 @@ export interface RecentDoc {
 }
 
 const KEY = 'openguild.recentDocs';
+/**
+ * BUG-400: 목록이 어느 길드의 것인지. 데스크탑은 한 창에서 길드를 갈아끼우는데 목록은 창 하나에 하나라,
+ * 길드 A 에서 본 `DEV-001` 이 길드 B 로 바꾼 뒤에도 남아 누르면 B 의 `DEV-001` 이 열렸다.
+ * 이제 길드마다 따로 기억한다 — 지금 길드의 목록은 KEY, 다른 길드들의 목록은 STASH_KEY 에.
+ * 주인이 없으면(웹 · 웰컴) 키가 없다.
+ */
+const OWNER_KEY = 'openguild.recentDocs.owner';
+const STASH_KEY = 'openguild.recentDocs.byGuild';
 /** 목록 상한 — 드롭다운 한 화면에 들어오는 정도. */
 export const MAX_RECENT_DOCS = 12;
 
 function load(): RecentDoc[] {
 	if (typeof sessionStorage === 'undefined') return [];
 	try {
-		const raw = sessionStorage.getItem(KEY);
-		if (!raw) return [];
-		const parsed: unknown = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
-		// 스키마가 바뀐 예전 값이 섞여도 앱이 죽지 않게 필드 단위 방어.
-		return parsed
-			.filter(
-				(x): x is RecentDoc =>
-					!!x &&
-					typeof x === 'object' &&
-					typeof (x as RecentDoc).href === 'string' &&
-					typeof (x as RecentDoc).label === 'string'
-			)
-			.slice(0, MAX_RECENT_DOCS);
+		return sanitize(JSON.parse(sessionStorage.getItem(KEY) ?? '[]'));
 	} catch {
 		return [];
 	}
 }
 
+function sanitize(parsed: unknown): RecentDoc[] {
+	if (!Array.isArray(parsed)) return [];
+	// 스키마가 바뀐 예전 값이 섞여도 앱이 죽지 않게 필드 단위 방어.
+	return parsed
+		.filter(
+			(x): x is RecentDoc =>
+				!!x &&
+				typeof x === 'object' &&
+				typeof (x as RecentDoc).href === 'string' &&
+				typeof (x as RecentDoc).label === 'string'
+		)
+		.slice(0, MAX_RECENT_DOCS);
+}
+
 export const recentDocs = writable<RecentDoc[]>(load());
+
+function readOwner(): string | null {
+	try {
+		return sessionStorage.getItem(OWNER_KEY);
+	} catch {
+		return null;
+	}
+}
+
+function readStash(): Record<string, RecentDoc[]> {
+	try {
+		const parsed: unknown = JSON.parse(sessionStorage.getItem(STASH_KEY) ?? '{}');
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+		const out: Record<string, RecentDoc[]> = {};
+		for (const [k, v] of Object.entries(parsed)) out[k] = sanitize(v);
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+/**
+ * BUG-400: 지금 목록의 주인 길드를 정한다(`null` = 길드 없음, 웰컴).
+ *
+ * - 주인이 바뀌면 지금 목록을 옛 주인 몫으로 넣어 두고, 새 주인의 목록을 꺼낸다.
+ * - 주인이 없을 때 쌓인 것은 새 주인에게 붙인다(콜드 스타트 · 웰컴에서 길드로 돌아옴).
+ */
+export function bindRecentDocsGuild(owner: string | null): void {
+	if (typeof sessionStorage === 'undefined') return;
+	const prevOwner = readOwner();
+	if (prevOwner === owner) return;
+	const stash = readStash();
+	const cur = get(recentDocs);
+	if (prevOwner !== null && cur.length > 0) stash[prevOwner] = cur;
+	let next: RecentDoc[] = [];
+	if (owner !== null) {
+		const saved = stash[owner] ?? [];
+		delete stash[owner];
+		const carried = prevOwner === null ? cur : [];
+		const seen = new Set<string>();
+		next = [...carried, ...saved]
+			.filter((d) => !seen.has(d.href) && !!seen.add(d.href))
+			.slice(0, MAX_RECENT_DOCS);
+	}
+	try {
+		if (owner === null) sessionStorage.removeItem(OWNER_KEY);
+		else sessionStorage.setItem(OWNER_KEY, owner);
+		sessionStorage.setItem(STASH_KEY, JSON.stringify(stash));
+	} catch {
+		/* 보조 기능 — 조용히 무시 */
+	}
+	recentDocs.set(next);
+	persist(next);
+}
 
 function persist(list: RecentDoc[]) {
 	if (typeof sessionStorage === 'undefined') return;
