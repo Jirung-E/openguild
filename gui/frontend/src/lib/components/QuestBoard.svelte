@@ -4524,8 +4524,12 @@
 		line-height: 15px;
 		overflow-wrap: anywhere;
 	}
+	/* BUG-402: 마감일 줄이 있으면 제목 칸이 26px(76 - 33 - 17)이라 두 줄(30px)이 안 들어가 둘째 줄이 반쯤
+	   잘렸다. 조금 올리고 줄 간격을 줄여 두 줄(28px)이 꼭 들어가게 한다. */
 	.node-title.with-due {
+		top: 31px;
 		bottom: 17px;
+		line-height: 14px;
 	}
 	.node-due {
 		position: absolute;
