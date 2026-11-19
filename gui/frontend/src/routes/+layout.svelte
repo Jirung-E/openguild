@@ -38,6 +38,7 @@
 	import { onMount, tick } from 'svelte';
 	// DEV-276: 최근 본 문서 추적.
 	import { bindRecentDocsGuild, recordRecentDocHref } from '$lib/stores/recentDocs';
+	import { isExternalHref } from '$lib/utils/link-scheme';
 	import { forwardRecentDoc, listenRecentDocs } from '$lib/utils/recent-doc-relay';
 	import Nav from '$lib/components/Nav.svelte';
 	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
@@ -727,7 +728,8 @@
 				| undefined;
 			if (!anchor) return;
 			const href = anchor.getAttribute('href') ?? '';
-			if (!/^https?:\/\//i.test(href)) return; // internal / hash / javascript: → pass
+			// DEV-485: http 만이 아니라 `vscode://` 같은 다른 앱의 주소도 바깥으로 넘긴다(앱 권한도 같이 넓혔다).
+			if (!isExternalHref(href)) return; // internal / hash → pass
 			e.preventDefault();
 			e.stopPropagation();
 			try {

@@ -11,6 +11,7 @@
 	import { markedHighlight } from 'marked-highlight';
 	import hljs from 'highlight.js';
 	import DOMPurify, { type Config as PurifyConfig } from 'dompurify';
+	import { ALLOWED_URI_REGEXP } from '$lib/utils/link-scheme';
 	import { tick } from 'svelte';
 	// DEV-443: 개인 형광펜 — 읽는 화면에서 칠한다. 본문은 안 건드린다.
 	import { locale, t } from '$lib/stores/locale';
@@ -168,9 +169,12 @@
 	// 첨부 동영상(video 태그 · controls · src), 코드 하이라이트의 class, 체크박스, 표, 이미지는 그대로다.
 	// 더 막는 것: style 태그와 style 속성 — 스크립트가 없어도 앱 화면을 덮어 꾸밀 수 있다(허용 단추 흉내 등).
 	// form 류 — 본문에 입력칸을 만들어 보내게 할 수 있다(체크박스 input 은 marked 가 만든다).
+	// DEV-485: 링크 주소는 종류를 가리지 않는다(`vscode://` 등) — 앱 안에서 도는 javascript: · vbscript: · data: 만
+	// 지운다. DOMPurify 기본은 http · mailto 등 몇 가지만 남겨 다른 앱으로 가는 링크가 지워졌다.
 	const PURIFY: PurifyConfig = {
 		FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select'],
-		FORBID_ATTR: ['style']
+		FORBID_ATTR: ['style'],
+		ALLOWED_URI_REGEXP
 	};
 	let html = $derived(
 		DOMPurify.sanitize(md.parse(source ?? '', { async: false }) as string, {
