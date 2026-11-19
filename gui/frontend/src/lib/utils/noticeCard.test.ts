@@ -130,3 +130,20 @@ describe('같은 밀리초에 온 알림', () => {
 		expect(stackCards([], items, true).map((c) => c.title)).toEqual(['하나', '둘', '셋']);
 	});
 });
+
+describe('같은 글이 잇달아 와 토스트 하나(×N)로 묶여도', () => {
+	it('알림함을 열면 카드 key 가 겹치지 않는다(BUG-401)', () => {
+		const seen = new Map<string, string>();
+		const t = (count: number) =>
+			toast({ id: 'toast-1', plugin: 'p', text: '할 일', message: 'p: 할 일', count });
+		const lines = [0, 1, 2].map((k) =>
+			item({ key: `g${k}`, at: `2026-11-19T12:0${k}:00.000+09:00`, plugin: 'p', text: '할 일' })
+		);
+		// 한 줄씩 와서 그때마다 가장 최근 줄과 짝짓는다 — 지나간 줄 셋이 모두 toast-1 을 기억한다.
+		for (let n = 1; n <= 3; n++) stackCards([t(n)], lines.slice(0, n).reverse(), false, seen);
+		const keys = stackCards([t(3)], [...lines].reverse(), true, seen).map((c) => c.key);
+		expect(keys).toHaveLength(3);
+		expect(new Set(keys).size).toBe(3);
+		expect(keys).toContain('toast-1');
+	});
+});

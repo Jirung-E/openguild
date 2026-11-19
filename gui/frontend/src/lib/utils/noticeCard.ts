@@ -155,12 +155,17 @@ export function stackCards(
 	const shown = toasts.map((t) => cardOfToast(t, matched.get(t.id)));
 	if (!open) return shown;
 	const taken = new Set([...matched.values()].map((i) => i.key));
+	// 물려받는 key 는 한 카드만 쓴다 — 같은 글이 잇달아 와 토스트 하나(×N)로 묶이면 그 토스트가 짝지었던 지나간
+	// 줄이 여럿이라, 모두 같은 key 를 받아 목록이 겹친 key 로 멈췄다(BUG-401). 이미 쓰인 key 면 줄 제 key 로.
+	const used = new Set(shown.map((c) => c.key));
 	const past = items
 		.filter((i) => !taken.has(i.key))
 		.map((i) => {
 			const c = cardOfItem(i);
 			const was = seen.get(i.key);
-			return was ? { ...c, key: was } : c;
+			const key = was && !used.has(was) ? was : c.key;
+			used.add(key);
+			return key === c.key ? c : { ...c, key };
 		});
 	const time = (c: NoticeCardData) => (c.at ? Date.parse(c.at) : Number.MAX_SAFE_INTEGER);
 	// 시각이 같으면 떠 있는 것을 아래로(코너 쪽) — 열고 닫을 때 자리가 안 바뀐다.
