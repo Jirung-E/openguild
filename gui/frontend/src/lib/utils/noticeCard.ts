@@ -2,7 +2,7 @@
 //
 // 토스트(지금 떠 있는 것)와 알림함 줄(지나간 것까지)을 카드 하나의 모양으로 맞추고, 알림함을 열 때 둘을 섞는다.
 // 지금 떠 있는 카드는 **같은 key** 를 그대로 써서 제자리에 남고, 그 사이 사라졌던 줄만 끼어 들어온다.
-import type { InboxItem } from '$lib/stores/inbox';
+import type { InboxItem, NoticeAction } from '$lib/stores/inbox';
 import type { ToastNotif } from '$lib/stores/toast';
 
 /** 아이콘과 색 — 일반 알림(종, 파랑) · 무엇이 생긴 것(plus-circle, 파랑) · 실패(경고, 빨강). */
@@ -31,6 +31,8 @@ export interface NoticeCardData {
 	toast?: ToastNotif;
 	/** 알림함의 줄. */
 	item?: InboxItem;
+	/** DEV-486: 카드 안에서 할 일(새 버전 — 릴리스 노트 · 설치 단추). */
+	action?: NoticeAction;
 }
 
 /** 글을 제목(첫 줄)과 본문(나머지)으로. */
@@ -71,7 +73,8 @@ export function cardOfItem(item: InboxItem): NoticeCardData {
 		target: targetOf(item.href),
 		unread: item.unread,
 		count: item.count,
-		item
+		item,
+		...(item.action ? { action: item.action } : {})
 	};
 	if (item.source === 'problem') {
 		return { ...base, tone: 'problem', kind: 'problem', ...problemParts(item.text) };
@@ -97,7 +100,8 @@ export function cardOfToast(t: ToastNotif, item?: InboxItem): NoticeCardData {
 		unread: item?.unread ?? false,
 		count: t.count,
 		toast: t,
-		item
+		item,
+		...((t.action ?? item?.action) ? { action: t.action ?? item?.action } : {})
 	};
 	if (t.plugin !== undefined) {
 		const tone = t.icon === 'created' ? 'created' : 'notify';

@@ -147,3 +147,13 @@ describe('같은 글이 잇달아 와 토스트 하나(×N)로 묶여도', () =>
 		expect(keys).toContain('toast-1');
 	});
 });
+
+describe('카드 안의 할 일 — DEV-486', () => {
+	it('떠 있는 알림 · 알림함의 줄 모두 action 을 넘긴다', () => {
+		const line = item({ key: 'app-1', source: 'app', text: '새 버전', action: 'update' });
+		const t = toast({ id: 'toast-9', message: '새 버전', inboxKey: 'app-1', action: 'update' });
+		expect(stackCards([t], [line], false)[0].action).toBe('update');
+		expect(stackCards([], [line], true)[0].action).toBe('update');
+		expect(stackCards([], [item({ key: 'x', text: '보통' })], true)[0].action).toBeUndefined();
+	});
+});

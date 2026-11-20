@@ -10,7 +10,7 @@
 // 사용(하위호환 유지): import { showToast } from '$lib/stores/toast';
 
 import { get, writable } from 'svelte/store';
-import { noticeHref, recordAppNotice, refreshInbox } from './inbox';
+import { noticeHref, recordAppNotice, refreshInbox, type NoticeAction } from './inbox';
 import { isChildWindow, readLabel } from './windowKind';
 
 export type ToastVariant = 'error' | 'success' | 'info';
@@ -38,6 +38,8 @@ export interface ToastNotif extends NotifBase {
 	icon?: 'created';
 	/** DEV-478: 알림함의 같은 알림(앱 알림의 key). 성공 알림은 알림함에 없어 비어 있다. */
 	inboxKey?: string;
+	/** DEV-486: 카드 안에서 할 일(새 버전 — 릴리스 노트 · 설치 단추). */
+	action?: NoticeAction;
 }
 export interface UpdateNotif extends NotifBase {
 	kind: 'update';
@@ -106,7 +108,7 @@ function pushToast(
 	variant: ToastVariant,
 	durationMs: number,
 	href?: string,
-	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey' | 'icon'> = {}
+	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey' | 'icon' | 'action'> = {}
 ): string {
 	let id: string | null = null;
 	const at = new Date().toISOString();
@@ -135,6 +137,28 @@ function pushToast(
 		);
 	}
 	return id;
+}
+
+/** DEV-486: 새 버전 알림 — 알림함의 줄. 같은 버전은 한 줄만 남긴다. */
+let updateNotice: { version: string; key: string } | null = null;
+
+/**
+ * DEV-486: 새 버전이 있다 — 닫을 때까지 남는 알림으로 띄우고 알림함에도 남긴다. 카드 안에 릴리스 노트 · 설치
+ * 단추가 있다(`action: 'update'`). 같은 버전을 다시 확인해도 알림함에 줄을 더 쌓지 않고, 이미 떠 있으면 그대로 둔다.
+ */
+export function showUpdateNotice(version: string, message: string): void {
+	if (updateNotice?.version !== version) {
+		updateNotice = { version, key: recordAppNotice(message, false, undefined, 'update') };
+	}
+	// 앞 버전의 알림이 떠 있으면 거둔다(알림함의 줄은 남는다).
+	let showing = false;
+	for (const n of get(notifications)) {
+		if (n.kind !== 'toast' || n.action !== 'update') continue;
+		if (n.message === message) showing = true;
+		else dismissNotif(n.id);
+	}
+	if (showing) return;
+	pushToast(message, 'info', 0, undefined, { inboxKey: updateNotice.key, action: 'update' });
 }
 
 /** 플러그인 `notify` 의 옵션. 값은 코어가 부를 때 검사했다. */

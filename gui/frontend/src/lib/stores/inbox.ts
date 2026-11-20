@@ -22,7 +22,12 @@ export interface InboxItem {
 	count: number;
 	/** 플러그인이 고른 아이콘(`notify(글, #{ icon })`). */
 	icon?: 'created';
+	/** DEV-486: 카드 안에서 할 일 — 새 버전 알림이면 릴리스 노트 · 설치 단추. */
+	action?: NoticeAction;
 }
+
+/** DEV-486: 알림 카드 안의 할 일. */
+export type NoticeAction = 'update';
 
 /** 알림을 눌렀을 때 갈 앱 안 주소 — 번호로 문서 종류를 가른다. */
 export function noticeHref({
@@ -49,6 +54,7 @@ interface AppNotice {
 	error: boolean;
 	href?: string;
 	count: number;
+	action?: NoticeAction;
 }
 
 const appNotices = writable<AppNotice[]>([]);
@@ -58,20 +64,32 @@ const guild = writable<Inbox>({ notices: [], unread: 0, unread_problems: 0 });
 let seq = 1;
 
 /** 앱 토스트를 알림함에 남긴다 — `showToast` 가 부른다. 돌려주는 것은 그 줄의 key(같은 오류가 잇달으면 묶인 줄). */
-export function recordAppNotice(text: string, error: boolean, href?: string): string {
+export function recordAppNotice(
+	text: string,
+	error: boolean,
+	href?: string,
+	action?: NoticeAction
+): string {
 	const item: AppNotice = {
 		key: `app-${seq++}`,
 		at: new Date().toISOString(),
 		text,
 		error,
 		href,
-		count: 1
+		count: 1,
+		...(action ? { action } : {})
 	};
 	let key = item.key;
 	appNotices.update((list) => {
 		// 같은 오류가 잇달아 나면 한 줄로 — 맨 위 것을 새 시각으로 올리고 횟수를 센다(토스트의 ×N 과 같다).
 		const top = list[0];
-		if (top && top.text === text && top.error === error && top.href === href) {
+		if (
+			top &&
+			top.text === text &&
+			top.error === error &&
+			top.href === href &&
+			top.action === action
+		) {
 			key = top.key;
 			return [{ ...top, at: item.at, count: top.count + 1 }, ...list.slice(1)];
 		}
@@ -133,7 +151,8 @@ export const inboxItems = derived([appNotices, appSeen, guild], ([$app, $seen, $
 			error: a.error,
 			href: a.href,
 			unread: Date.parse(a.at) > $seen,
-			count: a.count
+			count: a.count,
+			...(a.action ? { action: a.action } : {})
 		}))
 	];
 	return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

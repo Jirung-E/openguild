@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import NoticeUpdate from './NoticeUpdate.svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { loadQuestIndex, questIndex } from '$lib/stores/questIndex';
 	import { formatRelative, formatTs } from '$lib/utils/datetime';
@@ -112,6 +113,9 @@
 					/>{card.target}{#if targetTitle}&nbsp;{targetTitle}{/if}</span
 				>
 			</span>
+		{/if}
+		{#if card.action === 'update'}
+			<NoticeUpdate />
 		{/if}
 	</div>
 	{#if card.body && (overflowing || expanded)}

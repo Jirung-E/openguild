@@ -177,3 +177,41 @@ describe('플러그인 알림 — 표시 시간 · 갈 곳', () => {
 		]);
 	});
 });
+
+describe('새 버전 알림 — DEV-486', () => {
+	it('닫을 때까지 남는 알림으로 뜨고 알림함에 한 줄 — 같은 버전을 다시 확인해도 늘지 않는다', async () => {
+		const m = await loadFreshStore();
+		const inbox = await import('./inbox');
+		m.showUpdateNotice('0.6.1', '새 버전 0.6.1 사용 가능');
+		m.showUpdateNotice('0.6.1', '새 버전 0.6.1 사용 가능');
+		const toasts = get(m.notifications) as ToastNotif[];
+		expect(toasts).toHaveLength(1);
+		expect(toasts[0].action).toBe('update');
+		expect(toasts[0].count).toBe(1);
+		const lines = get(inbox.inboxItems).filter((i) => i.action === 'update');
+		expect(lines).toHaveLength(1);
+		expect(toasts[0].inboxKey).toBe(lines[0].key);
+		vi.advanceTimersByTime(60_000); // 저절로 사라지지 않는다
+		expect(get(m.notifications)).toHaveLength(1);
+	});
+
+	it('닫은 뒤 다시 확인하면 알림은 다시 뜨되 알림함 줄은 그대로', async () => {
+		const m = await loadFreshStore();
+		const inbox = await import('./inbox');
+		m.showUpdateNotice('0.6.1', '새 버전 0.6.1 사용 가능');
+		m.dismissNotif((get(m.notifications)[0] as ToastNotif).id);
+		m.showUpdateNotice('0.6.1', '새 버전 0.6.1 사용 가능');
+		expect(get(m.notifications)).toHaveLength(1);
+		expect(get(inbox.inboxItems).filter((i) => i.action === 'update')).toHaveLength(1);
+	});
+
+	it('더 새 버전이 오면 앞 버전 알림은 거두고 알림함에 새 줄', async () => {
+		const m = await loadFreshStore();
+		const inbox = await import('./inbox');
+		m.showUpdateNotice('0.6.1', '새 버전 0.6.1 사용 가능');
+		m.showUpdateNotice('0.6.2', '새 버전 0.6.2 사용 가능');
+		const toasts = get(m.notifications) as ToastNotif[];
+		expect(toasts.map((t) => t.message)).toEqual(['새 버전 0.6.2 사용 가능']);
+		expect(get(inbox.inboxItems).filter((i) => i.action === 'update')).toHaveLength(2);
+	});
+});

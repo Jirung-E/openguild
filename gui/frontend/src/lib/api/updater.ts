@@ -19,6 +19,12 @@ export type UpdateState =
 
 export const updateState = writable<UpdateState>({ status: 'idle' });
 
+/**
+ * DEV-486: 받을 수 있는 새 버전 — 알림 카드(떠 있는 것 · 알림함의 줄)가 릴리스 노트와 설치 단추를 그리는 데 쓴다.
+ * 알림을 닫아도(`updateState` 가 idle 이 돼도) 남아, 알림함에서 다시 설치할 수 있다.
+ */
+export const availableUpdate = writable<{ version: string; notes: string } | null>(null);
+
 // check() 가 반환한 Update 핸들. available → download 사이에 보관.
 // 타입은 plugin 의 Update (동적 import 라 unknown 으로 보관 후 좁힘).
 let pendingUpdate: {
@@ -52,6 +58,7 @@ export async function checkForUpdate(opts: { silent?: boolean } = {}): Promise<v
 		const update = await check();
 		if (update) {
 			pendingUpdate = update as unknown as typeof pendingUpdate;
+			availableUpdate.set({ version: update.version, notes: update.body ?? '' });
 			updateState.set({
 				status: 'available',
 				version: update.version,
@@ -60,6 +67,7 @@ export async function checkForUpdate(opts: { silent?: boolean } = {}): Promise<v
 			});
 		} else {
 			pendingUpdate = null;
+			availableUpdate.set(null);
 			if (silent) updateState.set({ status: 'idle' });
 			else updateState.set({ status: 'uptodate' });
 		}

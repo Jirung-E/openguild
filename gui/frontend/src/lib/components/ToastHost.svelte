@@ -26,14 +26,10 @@
 		isSchemaDismissed,
 		computeVisible,
 		MAX_VISIBLE_NOTIFS,
-		showToast
+		showToast,
+		showUpdateNotice
 	} from '$lib/stores/toast';
-	import {
-		updateState,
-		checkForUpdate,
-		downloadAndRelaunch,
-		dismissUpdate
-	} from '$lib/api/updater';
+	import { availableUpdate, updateState, checkForUpdate, dismissUpdate } from '$lib/api/updater';
 	// DEV-305: 자동 확인 on/off.
 	import { isAutoUpdateCheckEnabled } from '$lib/stores/updateSettings';
 	import { detectEnvironment } from '$lib/api/transport';
@@ -56,8 +52,6 @@
 	const RELEASE_URL = 'https://github.com/Jirung-E/openguild/releases/latest';
 	const isTauri = detectEnvironment() === 'tauri';
 
-	let notesEl: HTMLPreElement | undefined = $state(undefined);
-
 	// 스키마 경고의 "최신 버전 받기" — 시스템 브라우저로. (button 이라 layout 의
 	// anchor intercept 를 안 타서 명시 호출.)
 	async function openRelease() {
@@ -79,8 +73,6 @@
 
 	// DEV-083: 주기적 업데이트 재확인 간격(6시간 타협점).
 	const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1000;
-	// BUG-096: uptodate/error 는 정보성이라 일정 시간 후 자동으로 idle 로.
-	const AUTO_DISMISS_MS = 5000;
 
 	// BUG-170: 디버그 훅(`window.__ogNotify`) 노출 조건 = **디버그 빌드**.
 	//
@@ -104,32 +96,47 @@
 					aheadVersions: [99],
 					latestKnown: 1
 				}),
-			update: (status = 'available') =>
+			update: (status = 'available') => {
+				if (status === 'available')
+					availableUpdate.set({ version: '9.9.9-dev', notes: 'dev trigger' });
 				updateState.set(
 					status === 'available'
 						? { status: 'available', version: '9.9.9-dev', notes: 'dev trigger' }
 						: ({ status } as never)
-				)
+				);
+			}
 		};
 	}
 
-	// DEV-063/DEV-259: 업데이터 상태 → 'update' 알림 presence(제자리 갱신).
-	// DEV-266: dev 모드는 브라우저에서도 허용 — __ogNotify.update() 트리거용.
-	// BUG-170: 디버그 빌드에서도 동일하게 허용(트리거 검증).
+	// DEV-486: 업데이터 상태 → 보통 알림. 예전엔 따로 그린 상태 카드라 알림함에 남지 않았다.
+	// - 새 버전: 닫을 때까지 남는 알림 + 알림함 — 카드 안에 릴리스 노트 · 설치 단추 · 받는 중 진행률(`NoticeUpdate`).
+	// - 최신입니다(직접 확인했을 때) · 실패: 보통 알림(실패는 알림함에 남는다). 띄운 뒤 상태는 idle 로 돌린다.
+	// - 확인 중: 알림 없음 — 설정의 단추가 "확인 중…" 으로 보인다.
+	// DEV-266 · BUG-170: dev 모드 · 디버그 빌드는 브라우저에서도 허용 — __ogNotify.update() 트리거용.
 	$effect(() => {
 		if (!isTauri && !debugHooks) return;
-		if ($updateState.status === 'idle') {
-			dismissNotif('update');
-		} else {
-			upsertNotif({ id: 'update', kind: 'update' });
+		const s = $updateState;
+		// 글은 그 순간의 언어로 — 언어를 바꿔도 알림을 다시 띄우지 않게 `$locale` 을 따라가지 않는다.
+		const lang = get(locale);
+		if (s.status === 'available') {
+			showUpdateNotice(
+				s.version,
+				`${t('update.availablePre', lang)}${s.version}${t('update.availablePost', lang)}`
+			);
+		} else if (s.status === 'uptodate') {
+			showToast(t('update.uptodate', lang), 'success');
+			dismissUpdate();
+		} else if (s.status === 'error') {
+			showToast(`${t('update.error', lang)}\n${s.message}`, 'error', 0);
+			dismissUpdate();
 		}
 	});
-	// BUG-096: uptodate/error 자동 닫힘(→ idle → 위 effect 가 알림 제거).
+
+	// 받을 새 버전이 없어졌으면(다시 확인하니 최신) 떠 있는 새 버전 알림도 거둔다 — 알림함의 줄은 지난 일로 남는다.
 	$effect(() => {
-		const s = $updateState.status;
-		if (s !== 'uptodate' && s !== 'error') return;
-		const handle = setTimeout(() => dismissUpdate(), AUTO_DISMISS_MS);
-		return () => clearTimeout(handle);
+		if ($availableUpdate) return;
+		for (const n of get(notifications))
+			if (n.kind === 'toast' && n.action === 'update') dismissNotif(n.id);
 	});
 
 	// BUG-041/BUG-139: DB schema 가 binary 보다 앞서면 'schema' 알림.
@@ -190,7 +197,8 @@
 			return;
 		}
 		// 갈 곳이 없는 토스트는 눌러서 닫는다(알림함에는 남는다). 알림함의 지나간 줄은 누를 일이 없다.
-		if (card.toast && !$inboxOpen) dismissNotif(card.toast.id);
+		// 새 버전 알림은 누른다고 닫지 않는다 — 안의 설치 단추를 쓰는 카드다(× 로 닫는다).
+		if (card.toast && !$inboxOpen && card.action !== 'update') dismissNotif(card.toast.id);
 	}
 
 	// 지울 때 — 먼저 그 카드만 제자리에서 옆으로 빼 보내고(`.removing`), 다 안 보이게 된 **뒤에** 목록에서 지운다.
@@ -468,47 +476,7 @@
 		<OverlayScrollbar target={scrollEl} />
 	{/if}
 	{#each persistent as n (n.id)}
-		{#if n.kind === 'update'}
-			<div class="card upd" class:err={$updateState.status === 'error'} role="status">
-				<button class="card-x" title={t('update.close', $locale)} onclick={() => dismissUpdate()}
-					><Icon name="close" size="1em" /></button
-				>
-				{#if $updateState.status === 'checking'}
-					<p class="t-title">{t('update.checking', $locale)}</p>
-				{:else if $updateState.status === 'uptodate'}
-					<p class="t-title ok">{t('update.uptodate', $locale)}</p>
-				{:else if $updateState.status === 'available'}
-					<p class="t-title">
-						{t('update.availablePre', $locale)}<strong>{$updateState.version}</strong>{t(
-							'update.availablePost',
-							$locale
-						)}
-					</p>
-					{#if $updateState.notes}
-						<details>
-							<summary>{t('update.releaseNotes', $locale)}</summary>
-							<pre bind:this={notesEl}>{$updateState.notes}</pre>
-							{#if notesEl}
-								<OverlayScrollbar target={notesEl} />
-							{/if}
-						</details>
-					{/if}
-					<button class="btn btn-primary" onclick={() => downloadAndRelaunch()}>
-						{t('update.installBtn', $locale)}
-					</button>
-				{:else if $updateState.status === 'downloading'}
-					<p class="t-title">
-						{t('update.downloading', $locale)}
-						{$updateState.pct !== null ? `${$updateState.pct}%` : ''}
-					</p>
-				{:else if $updateState.status === 'ready'}
-					<p class="t-title ok">{t('update.ready', $locale)}</p>
-				{:else if $updateState.status === 'error'}
-					<p class="t-title err">{t('update.error', $locale)}</p>
-					<p class="t-msg">{$updateState.message}</p>
-				{/if}
-			</div>
-		{:else if n.kind === 'schema'}
+		{#if n.kind === 'schema'}
 			<div class="card schema" role="alert">
 				<button
 					class="card-x"
@@ -729,52 +697,6 @@
 	}
 	.more-chip:hover {
 		color: var(--text);
-	}
-
-	/* ── update ── */
-	.upd {
-		padding: var(--sp-12) var(--sp-32) var(--sp-12) var(--sp-16);
-		border-left: 3px solid var(--success-strong);
-	}
-	.upd.err {
-		border-left-color: var(--danger);
-	}
-	.upd .t-title {
-		margin: 0;
-		font-weight: var(--fw-semibold);
-	}
-	.upd .t-title.ok {
-		color: var(--success);
-	}
-	.upd .t-title.err {
-		color: var(--danger);
-	}
-	.upd .t-msg {
-		margin: var(--sp-6) 0 0;
-		color: var(--text-muted);
-		font-size: var(--fs-sm);
-		word-break: break-word;
-	}
-	.upd details {
-		margin: var(--sp-8) 0;
-		color: var(--text-muted);
-	}
-	.upd pre {
-		white-space: pre-wrap;
-		background: var(--bg);
-		border: var(--bw) solid var(--bg-subtle);
-		border-radius: var(--r-md);
-		padding: var(--sp-8) var(--sp-12);
-		max-height: 8rem;
-		overflow-y: auto;
-		margin: var(--sp-6) 0 0;
-		scrollbar-width: none;
-	}
-	.upd pre::-webkit-scrollbar {
-		display: none;
-	}
-	.upd .btn-primary {
-		margin-top: var(--sp-8);
 	}
 
 	/* ── schema ── */
