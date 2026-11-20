@@ -1231,20 +1231,21 @@
 						{#each [...(detail.parent ? [] : [{ mode: 'parent' as ComboMode, label: t('quest.section.parent', $locale) }]), { mode: 'sub' as ComboMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as ComboMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as ComboMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
 							<div class="rel-menu-row">
 								<span class="rel-menu-kind">{row.label}</span>
+								<!-- DEV-483: 칸 머리의 단추와 같은 글 · 차례 · 모양("+ 신규" · "+ 기존 지정"). -->
 								<button
-									class="rel-menu-act"
-									onclick={() => {
-										relMenuOpen = false;
-										openCombo(row.mode);
-									}}>{t('qd.relLinkExisting', $locale)}</button
-								>
-								<button
-									class="rel-menu-act"
+									class="sec-add-btn"
 									onclick={() => {
 										relMenuOpen = false;
 										pendingRelMode = row.mode;
 										newRelMode = row.mode;
-									}}>{t('qd.relCreateNew', $locale)}</button
+									}}>{t('qd.newSub', $locale)}</button
+								>
+								<button
+									class="sec-add-btn"
+									onclick={() => {
+										relMenuOpen = false;
+										openCombo(row.mode);
+									}}>{t('qd.assignExisting', $locale)}</button
 								>
 							</div>
 						{/each}
@@ -1988,19 +1989,8 @@
 		font-size: var(--fs-sm);
 		color: var(--text);
 	}
-	.rel-menu-act {
+	.rel-menu-row .sec-add-btn {
 		flex: none;
-		padding: var(--sp-4) var(--sp-8);
-		font-size: var(--fs-xs);
-		border-radius: var(--r-sm);
-		border: var(--bw) solid var(--border);
-		background: transparent;
-		color: var(--text-muted);
-		cursor: pointer;
-	}
-	.rel-menu-act:hover {
-		border-color: var(--accent);
-		color: var(--text);
 	}
 
 	.sec-add-btn {

@@ -1817,8 +1817,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'qd.addRelation': { ko: '+ 연관 추가', en: '+ Add relation' },
 	'qd.addRelationTitle': { ko: '추가할 연관 종류', en: 'Relation to add' },
 	// DEV-278: 선행/후속도 신규 생성으로 추가할 수 있게 — 종류별 두 갈래.
-	'qd.relLinkExisting': { ko: '기존 연결', en: 'Link existing' },
-	'qd.relCreateNew': { ko: '새로 만들기', en: 'Create new' },
 	'qd.removePrereq': { ko: '선행 퀘스트 제거', en: 'Remove prerequisite' },
 	'qd.removeSuccessor': { ko: '후속 연결 해제', en: 'Unlink successor' },
 	'qd.noPrereqs': { ko: '선행 퀘스트 없음.', en: 'No prerequisites.' },
