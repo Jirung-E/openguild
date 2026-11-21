@@ -70,6 +70,7 @@
 <div
 	class="nc"
 	class:problem={card.tone === 'problem'}
+	class:update={card.action === 'update' && card.tone !== 'problem'}
 	class:link={!!card.href}
 	role="button"
 	tabindex="0"
@@ -163,6 +164,11 @@
 	}
 	.nc.problem {
 		--c: var(--danger);
+	}
+	/* DEV-486: 새 버전 알림은 예전 업데이트 카드처럼 초록 — 아이콘 · 점 · 왼쪽 띠. */
+	.nc.update {
+		--c: var(--success-strong);
+		border-left: 0.1875rem solid var(--success-strong); /* token-ok: 예전 업데이트 카드의 3px 띠 */
 	}
 	.nc.link {
 		cursor: pointer;
