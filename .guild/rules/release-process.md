@@ -1,7 +1,7 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-11-10T01:33:02+09:00"
-version = 9
+updated_at = "2026-11-23T00:13:08+09:00"
+version = 10
 +++
 # 릴리즈 패키지 절차
 
@@ -294,7 +294,7 @@ git push origin master --tags
 - [ ] macOS: dmg 열기 → Applications 로 드래그 → 첫 실행이 Gatekeeper 안내대로
       우클릭>열기로 통과되는지 (미서명 배포라 정상 동작이다).
 - [ ] `openguild-gui --version` 출력이 새 version 맞는지.
-- [ ] BUG-041 의 SchemaAheadBanner 가 구버전 길드 열 때 정상 표시되는지.
+- [ ] BUG-041 의 "길드 DB 가 앱보다 새롭다" 경고 카드(주황 "경고 · 앱" 알림)가 새 길드를 구버전 앱으로 열 때 뜨는지.
 - [ ] Tauri updater (구 release 에서) 새 release 감지 동작 확인.
 
 ## 후속
