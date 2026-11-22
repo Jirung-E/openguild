@@ -11,6 +11,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import NoticeUpdate from './NoticeUpdate.svelte';
+	import NoticeSchema from './NoticeSchema.svelte';
 	import { locale, t } from '$lib/stores/locale';
 	import { loadQuestIndex, questIndex } from '$lib/stores/questIndex';
 	import { formatRelative, formatTs } from '$lib/utils/datetime';
@@ -70,7 +71,8 @@
 <div
 	class="nc"
 	class:problem={card.tone === 'problem'}
-	class:update={card.action === 'update' && card.tone !== 'problem'}
+	class:ok={card.tone === 'ok'}
+	class:warn={card.tone === 'warn'}
 	class:link={!!card.href}
 	role="button"
 	tabindex="0"
@@ -80,9 +82,16 @@
 >
 	<span class="nc-dot" class:on={card.unread} aria-hidden="true"></span>
 	<div class="nc-kind">
-		<span class="nc-icon" class:bell={card.tone === 'notify'} aria-hidden="true"
+		<span
+			class="nc-icon"
+			class:bell={card.tone === 'notify' || card.tone === 'ok'}
+			aria-hidden="true"
 			><Icon
-				name={card.tone === 'problem' ? 'warn' : card.tone === 'created' ? 'plus-circle' : 'bell'}
+				name={card.tone === 'problem' || card.tone === 'warn'
+					? 'warn'
+					: card.tone === 'created'
+						? 'plus-circle'
+						: 'bell'}
 				size="1rem"
 			/></span
 		>
@@ -117,6 +126,8 @@
 		{/if}
 		{#if card.action === 'update'}
 			<NoticeUpdate />
+		{:else if card.action === 'schema'}
+			<NoticeSchema />
 		{/if}
 	</div>
 	{#if card.body && (overflowing || expanded)}
@@ -165,10 +176,13 @@
 	.nc.problem {
 		--c: var(--danger);
 	}
-	/* DEV-486: 새 버전 알림은 예전 업데이트 카드처럼 초록 — 아이콘 · 점 · 왼쪽 띠. */
-	.nc.update {
+	/* DEV-486: 업데이트 알림(새 버전 · 최신입니다)은 예전 업데이트 카드처럼 초록 — 아이콘 · 점(카드 옆 색 띠는 두지 않는다). */
+	.nc.ok {
 		--c: var(--success-strong);
-		border-left: 0.1875rem solid var(--success-strong); /* token-ok: 예전 업데이트 카드의 3px 띠 */
+	}
+	/* 길드 DB 가 앱보다 새로움 — 예전 경고 카드의 주황. */
+	.nc.warn {
+		--c: var(--orange);
 	}
 	.nc.link {
 		cursor: pointer;
@@ -208,8 +222,9 @@
 		color: var(--text-muted);
 		min-width: 0;
 	}
-	.nc.problem .nc-who {
-		color: var(--danger);
+	.nc.problem .nc-who,
+	.nc.warn .nc-who {
+		color: var(--c);
 	}
 	.nc-icon {
 		display: inline-flex;

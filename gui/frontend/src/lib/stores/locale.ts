@@ -198,6 +198,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'notice.kind.problem': { ko: '실패', en: 'Failed' },
 	'notice.kind.app': { ko: '앱', en: 'App' },
 	'notice.kind.error': { ko: '오류 · 앱', en: 'Error · App' },
+	'notice.kind.warning': { ko: '경고 · 앱', en: 'Warning · App' },
 	'notice.lineFailed': { ko: "플러그인 '{line}' 실행 실패", en: "Plugin line '{line}' failed" },
 	'notice.expand': { ko: '펼치기', en: 'Expand' },
 	'notice.collapse': { ko: '접기', en: 'Collapse' },

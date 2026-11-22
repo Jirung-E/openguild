@@ -27,7 +27,8 @@ export interface InboxItem {
 }
 
 /** DEV-486: 알림 카드 안의 할 일. */
-export type NoticeAction = 'update';
+/** 카드 안에서 할 일 — 새 버전(설치) · 길드 DB 가 앱보다 새로움(최신 버전 받기). */
+export type NoticeAction = 'update' | 'schema';
 
 /** 알림을 눌렀을 때 갈 앱 안 주소 — 번호로 문서 종류를 가른다. */
 export function noticeHref({

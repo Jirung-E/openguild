@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import type { InboxItem } from '$lib/stores/inbox';
 import type { ToastNotif } from '$lib/stores/toast';
-import { cardOfItem, stackCards, targetOf } from './noticeCard';
+import { cardOfItem, cardOfSchema, stackCards, targetOf } from './noticeCard';
 
 const item = (over: Partial<InboxItem>): InboxItem => ({
 	key: 'k',
@@ -155,5 +155,34 @@ describe('카드 안의 할 일 — DEV-486', () => {
 		expect(stackCards([t], [line], false)[0].action).toBe('update');
 		expect(stackCards([], [line], true)[0].action).toBe('update');
 		expect(stackCards([], [item({ key: 'x', text: '보통' })], true)[0].action).toBeUndefined();
+		// 업데이트 알림은 초록(ok) — 떠 있는 것 · 알림함의 줄 · "최신입니다"(할 일 없음) 모두.
+		expect(stackCards([t], [line], false)[0].tone).toBe('ok');
+		expect(stackCards([], [line], true)[0].tone).toBe('ok');
+		expect(
+			stackCards(
+				[toast({ id: 'toast-8', message: '최신', variant: 'success', tone: 'ok' })],
+				[],
+				false
+			)[0].tone
+		).toBe('ok');
+		expect(stackCards([], [item({ key: 'x', text: '보통' })], true)[0].tone).toBe('notify');
+	});
+});
+
+describe('길드 DB 가 앱보다 새로울 때의 경고', () => {
+	it('같은 알림 카드로 — 주황 경고, 안에 최신 버전 받기, 버전은 본문에', () => {
+		const c = cardOfSchema({
+			id: 'schema',
+			kind: 'schema',
+			binaryVersion: '0.6.0',
+			aheadVersions: [42, 43],
+			latestKnown: 41
+		});
+		expect(c.tone).toBe('warn');
+		expect(c.kind).toBe('warning');
+		expect(c.action).toBe('schema');
+		expect(c.body).toContain('v0.6.0');
+		expect(c.body).toContain('migration 43 (+1 more)');
+		expect(c.body).toContain('migration 41 까지 인식');
 	});
 });

@@ -3,13 +3,14 @@
 // 토스트(지금 떠 있는 것)와 알림함 줄(지나간 것까지)을 카드 하나의 모양으로 맞추고, 알림함을 열 때 둘을 섞는다.
 // 지금 떠 있는 카드는 **같은 key** 를 그대로 써서 제자리에 남고, 그 사이 사라졌던 줄만 끼어 들어온다.
 import type { InboxItem, NoticeAction } from '$lib/stores/inbox';
-import type { ToastNotif } from '$lib/stores/toast';
+import type { SchemaNotif, ToastNotif } from '$lib/stores/toast';
 
-/** 아이콘과 색 — 일반 알림(종, 파랑) · 무엇이 생긴 것(plus-circle, 파랑) · 실패(경고, 빨강). */
-export type Tone = 'notify' | 'created' | 'problem';
+/** 아이콘과 색 — 일반 알림(종, 파랑) · 무엇이 생긴 것(plus-circle, 파랑) · 실패(경고, 빨강) ·
+ *  업데이트(종, 초록 — 새 버전 · 최신입니다, 예전 업데이트 카드의 색). */
+export type Tone = 'notify' | 'created' | 'problem' | 'ok' | 'warn';
 
 /** 종류 줄의 앞말. */
-export type KindLabel = 'plugin' | 'problem' | 'app' | 'error';
+export type KindLabel = 'plugin' | 'problem' | 'app' | 'error' | 'warning';
 
 export interface NoticeCardData {
 	key: string;
@@ -33,6 +34,24 @@ export interface NoticeCardData {
 	item?: InboxItem;
 	/** DEV-486: 카드 안에서 할 일(새 버전 — 릴리스 노트 · 설치 단추). */
 	action?: NoticeAction;
+}
+
+/** 길드 DB 가 이 앱보다 새로울 때의 경고 — 같은 알림 카드로(주황, 경고 아이콘, 안에 "최신 버전 받기"). 닫을 때까지 남는다. */
+export function cardOfSchema(n: SchemaNotif): NoticeCardData {
+	const known = n.latestKnown != null ? ` (migration ${n.latestKnown} 까지 인식)` : '';
+	const more = n.aheadVersions.length > 1 ? ` (+${n.aheadVersions.length - 1} more)` : '';
+	return {
+		key: `schema-${n.id}`,
+		tone: 'warn',
+		kind: 'warning',
+		title: '이 길드 DB 가 현재 GUI 버전보다 새롭습니다',
+		body:
+			`현재 GUI: v${n.binaryVersion}${known} · 이 길드 DB: migration ${Math.max(...n.aheadVersions)}${more} 적용됨. ` +
+			'일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.',
+		unread: false,
+		count: 1,
+		action: 'schema'
+	};
 }
 
 /** 글을 제목(첫 줄)과 본문(나머지)으로. */
@@ -85,7 +104,7 @@ export function cardOfItem(item: InboxItem): NoticeCardData {
 	}
 	return {
 		...base,
-		tone: item.error ? 'problem' : 'notify',
+		tone: item.error ? 'problem' : item.action === 'update' ? 'ok' : 'notify',
 		kind: item.error ? 'error' : 'app',
 		...split(item.text)
 	};
@@ -110,7 +129,11 @@ export function cardOfToast(t: ToastNotif, item?: InboxItem): NoticeCardData {
 	const error = t.variant === 'error';
 	return {
 		...base,
-		tone: error ? 'problem' : 'notify',
+		tone: error
+			? 'problem'
+			: t.tone === 'ok' || (t.action ?? item?.action) === 'update'
+				? 'ok'
+				: 'notify',
 		kind: error ? 'error' : 'app',
 		...split(t.message)
 	};

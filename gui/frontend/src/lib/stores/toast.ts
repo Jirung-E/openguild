@@ -40,6 +40,8 @@ export interface ToastNotif extends NotifBase {
 	inboxKey?: string;
 	/** DEV-486: 카드 안에서 할 일(새 버전 — 릴리스 노트 · 설치 단추). */
 	action?: NoticeAction;
+	/** DEV-486: 업데이트 알림의 초록 — 할 일이 없는 "최신 버전입니다" 도 새 버전 알림과 같은 색. */
+	tone?: 'ok';
 }
 export interface UpdateNotif extends NotifBase {
 	kind: 'update';
@@ -102,13 +104,18 @@ export function showToast(
 	return pushToast(message, variant, durationMs, href, { inboxKey });
 }
 
+/** DEV-486: "최신 버전입니다" — 성공 알림(알림함에 안 남음)이되 업데이트 알림과 같은 초록. */
+export function showUpToDate(message: string): string {
+	return pushToast(message, 'success', 4000, undefined, { tone: 'ok' });
+}
+
 /** 토스트만 띄운다 — 알림함에는 안 남긴다(길드 알림은 코어가 이미 적었다). */
 function pushToast(
 	message: string,
 	variant: ToastVariant,
 	durationMs: number,
 	href?: string,
-	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey' | 'icon' | 'action'> = {}
+	extra: Pick<ToastNotif, 'plugin' | 'text' | 'inboxKey' | 'icon' | 'action' | 'tone'> = {}
 ): string {
 	let id: string | null = null;
 	const at = new Date().toISOString();

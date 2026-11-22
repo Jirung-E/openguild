@@ -13,7 +13,6 @@
 -->
 <script lang="ts">
 	// DEV-454: 글자 아이콘 대신 SVG.
-	import Icon from './Icon.svelte';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
@@ -27,6 +26,7 @@
 		computeVisible,
 		MAX_VISIBLE_NOTIFS,
 		showToast,
+		showUpToDate,
 		showUpdateNotice
 	} from '$lib/stores/toast';
 	import { availableUpdate, updateState, checkForUpdate, dismissUpdate } from '$lib/api/updater';
@@ -46,26 +46,10 @@
 		inboxItems,
 		inboxOpen
 	} from '$lib/stores/inbox';
-	import { stackCards, type NoticeCardData } from '$lib/utils/noticeCard';
+	import { cardOfSchema, stackCards, type NoticeCardData } from '$lib/utils/noticeCard';
 	import type { ToastNotif } from '$lib/stores/toast';
 
-	const RELEASE_URL = 'https://github.com/Jirung-E/openguild/releases/latest';
 	const isTauri = detectEnvironment() === 'tauri';
-
-	// 스키마 경고의 "최신 버전 받기" — 시스템 브라우저로. (button 이라 layout 의
-	// anchor intercept 를 안 타서 명시 호출.)
-	async function openRelease() {
-		try {
-			const { openUrl } = await import('@tauri-apps/plugin-opener');
-			await openUrl(RELEASE_URL);
-		} catch {
-			try {
-				window.open(RELEASE_URL, '_blank');
-			} catch {
-				/* ignore */
-			}
-		}
-	}
 
 	// ── DEV-259: 알림 소스 watcher 를 이 호스트로 흡수 ──────────────────
 	// 이전엔 UpdateBanner/SchemaAheadBanner 가 아무것도 렌더 안 하면서 로직만
@@ -124,7 +108,7 @@
 				`${t('update.availablePre', lang)}${s.version}${t('update.availablePost', lang)}`
 			);
 		} else if (s.status === 'uptodate') {
-			showToast(t('update.uptodate', lang), 'success');
+			showUpToDate(t('update.uptodate', lang));
 			dismissUpdate();
 		} else if (s.status === 'error') {
 			showToast(`${t('update.error', lang)}\n${s.message}`, 'error', 0);
@@ -477,31 +461,13 @@
 	{/if}
 	{#each persistent as n (n.id)}
 		{#if n.kind === 'schema'}
-			<div class="card schema" role="alert">
-				<button
-					class="card-x"
-					onclick={() => dismissSchema(schemaSig(n.binaryVersion, n.aheadVersions))}
-					aria-label={t('update.close', $locale)}
-					title={t('update.close', $locale)}><Icon name="close" size="1em" /></button
-				>
-				<div class="msg">
-					<strong><Icon name="warn" size="1em" /> 이 길드 DB 가 현재 GUI 버전보다 새롭습니다</strong
-					>
-					<span class="detail">
-						현재 GUI: <code>v{n.binaryVersion}</code>
-						{#if n.latestKnown != null}
-							(migration {n.latestKnown} 까지 인식)
-						{/if}
-						· 이 길드 DB: migration <strong>{Math.max(...n.aheadVersions)}</strong>
-						{#if n.aheadVersions.length > 1}
-							(+{n.aheadVersions.length - 1} more)
-						{/if}
-						적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.
-					</span>
-				</div>
-				<button class="btn btn-warning btn-update" onclick={openRelease}>
-					최신 버전 받기 <Icon name="external" size="1em" />
-				</button>
+			<!-- 길드 DB 가 앱보다 새로움 — 다른 알림과 같은 카드(안에 "최신 버전 받기"). 닫으면 같은 버전 동안 다시 안 뜬다. -->
+			<div class="slot" role="alert">
+				<NoticeCard
+					card={cardOfSchema(n)}
+					onopen={() => {}}
+					ondismiss={() => dismissSchema(schemaSig(n.binaryVersion, n.aheadVersions))}
+				/>
 			</div>
 		{/if}
 	{/each}
@@ -558,8 +524,7 @@
 	.notif-stack.open .ib-scroll::-webkit-scrollbar {
 		display: none;
 	}
-	/* 간격은 위 여백으로 — 카드 자리(.slot)와 업데이트 · 스키마 카드가 같은 간격으로 쌓인다. */
-	.notif-stack > .card,
+	/* 간격은 위 여백으로 — 빈 알림함 글 · "+N개 더" 칩도 카드 자리(.slot)와 같은 간격으로 쌓인다. */
 	.ib-scroll > .card {
 		margin-top: var(--sp-12);
 	}
@@ -584,21 +549,6 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
-	}
-	.card-x {
-		position: absolute;
-		top: 0.4rem;
-		right: 0.5rem;
-		background: none;
-		border: none;
-		color: var(--text-faint);
-		font-size: 1.1rem; /* token-ok: × 글리프 크기 */
-		line-height: var(--lh-tight);
-		cursor: pointer;
-		padding: 0 var(--sp-4);
-	}
-	.card-x:hover {
-		color: var(--text);
 	}
 
 	/* ── DEV-478: 알림 카드 자리 · 알림함 ── */
@@ -697,37 +647,5 @@
 	}
 	.more-chip:hover {
 		color: var(--text);
-	}
-
-	/* ── schema ── */
-	.schema {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-8);
-		padding: var(--sp-12) var(--sp-32) var(--sp-12) var(--sp-16);
-		border-left: 3px solid var(--orange);
-	}
-	.schema .msg {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-4);
-	}
-	.schema .msg strong {
-		font-weight: var(--fw-semibold);
-		color: var(--orange);
-	}
-	.schema .detail {
-		font-size: var(--fs-sm);
-		color: var(--text-muted);
-	}
-	.schema .detail code {
-		background: color-mix(in srgb, var(--text) 10%, transparent);
-		padding: 0 var(--sp-4);
-		border-radius: var(--r-xs);
-		font-size: 0.85em;
-		color: var(--text);
-	}
-	.schema .btn-update {
-		align-self: flex-start;
 	}
 </style>
