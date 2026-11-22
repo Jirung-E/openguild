@@ -1962,8 +1962,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 
 	// DEV-205(2차): 업데이트 확인 알림(UpdateBanner) — 우하단 floating toast.
-	'update.close': { ko: '닫기', en: 'Close' },
-	'update.checking': { ko: '업데이트 확인 중…', en: 'Checking for updates…' },
 	'update.uptodate': { ko: '최신 버전입니다.', en: 'You are up to date.' },
 	'update.availablePre': { ko: '새 버전 ', en: 'New version ' },
 	'update.availablePost': { ko: ' 사용 가능', en: ' available' },
