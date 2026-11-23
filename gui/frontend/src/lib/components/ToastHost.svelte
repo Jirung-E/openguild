@@ -38,7 +38,6 @@
 	import { locale, t } from '$lib/stores/locale';
 	import { tick } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
-	import { flip } from 'svelte/animate';
 	import {
 		clearAllNotices,
 		closeInbox,
@@ -186,15 +185,14 @@
 	}
 
 	// 지울 때 — 먼저 그 카드만 제자리에서 옆으로 빼 보내고(`.removing`), 다 안 보이게 된 **뒤에** 목록에서 지운다.
-	// 그러면 남은 카드(`animate:flip`)와 머리 띠(`followHead`)가 지연 없이 함께 자리를 메운다. 예전엔 flip 에 지연을
-	// 줬는데, 맥 앱(WebKit)은 지연 동안 카드를 옛 자리에 붙들지 않아 위 카드가 먼저 튀었다.
+	// 그러면 남은 카드와 머리 띠가 지연 없이 함께 자리를 메운다(`glide`). 예전엔 자리 옮김에 지연을 줬는데, 맥 앱
+	// (WebKit)은 지연 동안 카드를 옛 자리에 붙들지 않아 위 카드가 먼저 튀었다.
 	let removing = $state<Set<string>>(new Set());
 	function dismissCard(card: NoticeCardData) {
 		if (removing.has(card.key)) return;
 		removing = new Set(removing).add(card.key);
 		setTimeout(() => {
 			quietOut = true;
-			followHead();
 			if (card.toast) dismissNotif(card.toast.id);
 			if (card.item) void dismissItem(card.item);
 			void tick().then(() => {
@@ -225,9 +223,9 @@
 	const motionMs = () => cssMs('--dur-mid') * 1.5;
 
 	/**
-	 * 올 때 · 갈 때 — transform · opacity 만 움직인다(높이 · 그림자는 그대로라 매 프레임 레이아웃을 다시 하지 않는다).
-	 * 빠지는 카드는 그 자리에 떼어 두고(position: absolute) 오른쪽으로 빠지고, 남은 카드는 `animate:flip` 으로 자리를
-	 * 메운다. 예전엔 높이를 접느라 overflow: hidden 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
+	 * 올 때 · 갈 때 — transform · translate · opacity 만 움직인다(높이 · 그림자는 그대로라 매 프레임 레이아웃을 다시 하지
+	 * 않는다). 빠지는 카드는 그 자리에 떼어 두고(position: absolute) 오른쪽으로 빠지고, 남은 카드와 머리 띠는 `glide` 로
+	 * 자리를 메운다. 예전엔 높이를 접느라 overflow: hidden 이 그림자를 매 프레임 다르게 잘라 끊겨 보였다.
 	 */
 	// 알림함을 열 때 끼어 드는 카드와 머리 띠도 알림이 올 때처럼 오른쪽에서 미끄러져 들어온다(사용자가 정한 것). 닫을 때는
 	// 그 반대로 오른쪽으로 빠진다(`.leaving`).
@@ -240,38 +238,106 @@
 			}
 		};
 	}
-	// 빠지는 자리 고정(position: absolute + transform 으로 제자리 맞춤)은 `animate:flip` 이 있는 목록에서 Svelte 가
-	// 스스로 한다 — 여기서 위치를 또 정하거나 `transform` 을 쓰면 그 맞춤을 덮어 엉뚱한 곳으로 갔다. 그래서 움직임은
-	// 따로 겹쳐지는 `translate` 속성으로 준다. 알림함을 닫아 지나간 카드를 거둘 때는 이미 제자리에서 옅어졌으니 움직이지 않는다(`quietOut`).
+	// 알림함을 닫아 지나간 카드를 거둘 때는 이미 제자리에서 옅어졌으니 움직이지 않는다(`quietOut`).
 	let quietOut = false;
 	/** 빠지는 카드가 다 안 보이게 될 때까지의 시간 — 옅어짐은 이 안에 끝난다. */
 	const outMs = () => cssMs('--dur-mid');
-	function cardOut(_node: HTMLElement) {
+	function cardOut(node: HTMLElement) {
 		if (quietOut) return { duration: 0 };
+		// 빠지는 동안 그 자리에 떼어 둔다 — 바뀌기 전에 재 둔 자리(`before`)로. 다른 카드가 같은 때 빠져 흐름이 이미
+		// 바뀌었어도 제자리다. 움직임은 `glide` 의 transform 과 겹치지 않게 따로인 `translate` 속성으로.
+		const at = before.get(node.dataset.key ?? '');
+		if (at) {
+			node.style.position = 'absolute';
+			node.style.top = `${at.offTop}px`;
+			node.style.left = `${at.offLeft}px`;
+			node.style.width = `${at.width}px`;
+		}
 		return {
 			duration: outMs(),
 			css: (t: number) => `opacity: ${t}; translate: ${(1 - cubicOut(t)) * 60}% 0;`
 		};
 	}
 
-	// 지울 때 머리 띠도 카드와 **같이** 내려온다 — 카드가 빠지면 목록 높이가 그 자리에서 줄어 머리 띠만 먼저 툭
-	// 떨어졌다. 카드의 `animate:flip` 과 같은 지연 · 시간 · 곡선으로 머리 띠를 옛 자리에서 새 자리로 옮긴다(FLIP).
-	let headEl: HTMLDivElement | undefined = $state(undefined);
+	// ── 자리 옮김(FLIP) ── 카드가 들고 나거나 알림함이 열리고 닫혀 자리가 바뀌면, 남아 있던 카드와 머리 띠는 옛 자리에서
+	// 새 자리로 미끄러진다. 예전엔 Svelte `animate:flip` 에 맡겼는데, 알림함을 열 때 새 카드의 옛 자리를 오른쪽에서
+	// 들어오는 중인 위치로 재 그 미끄러짐을 지웠고, 떠 있던 카드는 이미 옮겨진 뒤에 재 중간 자리로 툭 튀었다(BUG-403).
+	// 그래서 DOM 이 바뀌기 **전**에(`$effect.pre`) 직접 재 두고, 바뀐 **뒤**에(`$effect`) 그 차이만큼 옮긴다.
+	const HEAD_KEY = '\u0000head';
 	const EASE_OUT_CUBIC = 'cubic-bezier(0.33, 1, 0.68, 1)'; // svelte/easing 의 cubicOut 과 같은 곡선
-	function followHead() {
-		const el = headEl;
-		if (!el || typeof el.animate !== 'function') return;
-		const before = el.getBoundingClientRect().top;
-		void tick().then(() => {
-			const dy = before - el.getBoundingClientRect().top;
-			if (Math.abs(dy) < 0.5) return;
-			el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], {
-				duration: motionMs(),
-				easing: EASE_OUT_CUBIC,
-				fill: 'backwards'
-			});
-		});
+	/** 자리를 재는 것들 — 카드 자리(.slot)는 그 key 로, 머리 띠는 HEAD_KEY 로. */
+	const tracked = new Map<string, HTMLElement>();
+	function track(node: HTMLElement, key: string) {
+		let k = key;
+		node.dataset.key = k;
+		tracked.set(k, node);
+		return {
+			update(next: string) {
+				if (tracked.get(k) === node) tracked.delete(k);
+				k = next;
+				node.dataset.key = k;
+				tracked.set(k, node);
+			},
+			destroy() {
+				if (tracked.get(k) === node) tracked.delete(k);
+			}
+		};
 	}
+	/** 바뀌기 전의 자리 — 화면 위 끝(움직이는 중이면 지금 보이는 곳)과, 빠질 때 떼어 둘 흐름 속 자리. */
+	let before = new Map<string, { top: number; offTop: number; offLeft: number; width: number }>();
+	const glides = new Map<HTMLElement, Animation>();
+	function snapshot() {
+		const m = new Map<string, { top: number; offTop: number; offLeft: number; width: number }>();
+		for (const [k, el] of tracked) {
+			if (el.inert) continue; // 빠지는 중
+			m.set(k, {
+				top: el.getBoundingClientRect().top,
+				offTop: el.offsetTop,
+				offLeft: el.offsetLeft,
+				width: el.offsetWidth
+			});
+		}
+		before = m;
+	}
+	/** 알림함을 열고 닫을 때는 값을 바꾸기 직전에 재 둔다 — 그 값은 다른 효과 안에서 바뀌어, `$effect.pre` 가 돌 때면
+	 *  화면이 이미 열린 모양이었다(떠 있던 카드의 옛 자리를 놓쳤다). 재 둔 것을 다음 옮김까지 덮지 않는다. */
+	let pinned = false;
+	function setLayoutOpen(v: boolean) {
+		if (layoutOpen === v) return;
+		snapshot();
+		pinned = true;
+		layoutOpen = v;
+	}
+	$effect.pre(() => {
+		void cards;
+		void layoutOpen;
+		if (!pinned) snapshot();
+	});
+	$effect(() => {
+		void cards;
+		void layoutOpen;
+		const ms = motionMs();
+		// 알림함이면 먼저 맨 아래에 붙인다 — 새 자리를 붙인 뒤의 자리로 재야 다음 프레임에 스크롤이 또 튀지 않는다.
+		if (layoutOpen && scrollEl && following) scrollEl.scrollTop = scrollEl.scrollHeight;
+		for (const [k, el] of tracked) {
+			const was = before.get(k);
+			if (!was || el.inert || typeof el.animate !== 'function') continue;
+			// 움직이던 중이면 그 움직임을 걷고 새 자리를 잰다 — 출발은 아까 보이던 곳(`was`)에서.
+			glides.get(el)?.cancel();
+			const dy = was.top - el.getBoundingClientRect().top;
+			if (Math.abs(dy) < 0.5 || ms === 0) continue;
+			const a = el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], {
+				duration: ms,
+				easing: EASE_OUT_CUBIC
+			});
+			glides.set(el, a);
+			a.onfinish = a.oncancel = () => {
+				if (glides.get(el) === a) glides.delete(el);
+			};
+		}
+		before = new Map();
+		pinned = false;
+	});
 	/** 머리 띠 · 덮개 — 옅어지기만. */
 	function fadeOnly(_node: Element) {
 		return { duration: cssMs('--dur-mid'), css: (t: number) => `opacity: ${t};` };
@@ -283,13 +349,13 @@
 	const closing = $derived(layoutOpen && !$inboxOpen);
 	$effect(() => {
 		if ($inboxOpen) {
-			layoutOpen = true;
+			setLayoutOpen(true);
 			return;
 		}
 		if (!layoutOpen) return;
 		const t = setTimeout(() => {
 			quietOut = true;
-			layoutOpen = false;
+			setLayoutOpen(false);
 			void tick().then(() => (quietOut = false));
 		}, motionMs() + 30);
 		return () => clearTimeout(t);
@@ -411,7 +477,7 @@
 			class="ib-head"
 			class:shadowed={fadeTop}
 			class:leaving={closing}
-			bind:this={headEl}
+			use:track={HEAD_KEY}
 			in:cardIn
 		>
 			<span class="ib-title">{t('inbox.title', $locale)}</span>
@@ -450,7 +516,7 @@
 				class:removing={removing.has(card.key)}
 				in:cardIn
 				out:cardOut
-				animate:flip={{ duration: motionMs() }}
+				use:track={card.key}
 			>
 				<NoticeCard {card} onopen={openCard} ondismiss={dismissCard} />
 			</div>
